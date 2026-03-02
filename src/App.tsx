@@ -39,7 +39,7 @@ const MOCK_PROJECTS: LandProject[] = [
     { id: 'P1', name: 'แปลง A1', group: 'โครงการหนองจอก', sellerName: 'คุณสมศักดิ์', titleDeed: '12345', rai: 5, ngan: 2, sqWah: 50, fullPrice: 2000000, deposit: 50000, purchaseDate: '2023-11-15', status: 'Deposit' }
 ];
 const MOCK_SETTINGS: AppSettings = {
-    appName: 'Goldenmole Dashboard', appSubtext: 'ระบบจัดการ', appIcon: 'GM',
+    appName: 'Goldenmole Dashboard', appSubtext: 'ระบบจัดการ', appIcon: 'https://img2.pic.in.th/unnamed-18906f5f592b392df.jpg',
     cars: ['รถแม็คโคร SK200-8 (น้องโกลเด้น)', 'รถแม็คโคร SK200-8 (พี่ยักษ์ใหญ่)', 'รถดรัมโอเว่น', 'รถดรัมนายก', 'รถดรัมนายกนิต'],
     jobDescriptions: ['ล้างทรายที่ท่าทราย', 'ล้างทรายที่บ้าน', 'งานทั่วไป'],
     incomeTypes: ['ขายทราย', 'ขายหิน', 'ขายแร่'],
@@ -195,7 +195,7 @@ function App() {
 
     // --- LOGIN GATE ---
     if (!isLoggedIn) {
-        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={settings.appIcon} />;
+        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={settings.appIcon} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
     }
 
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
