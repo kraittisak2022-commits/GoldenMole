@@ -94,24 +94,24 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <div className="flex gap-2 justify-center mb-4"><Button variant={view === 'Calculate' ? 'primary' : 'outline'} onClick={() => setView('Calculate')}>คำนวณเงินเดือน</Button><Button variant={view === 'History' ? 'primary' : 'outline'} onClick={() => setView('History')}>ประวัติการจ่าย</Button></div>
+            <div className="flex flex-wrap gap-2 justify-center mb-4"><Button variant={view === 'Calculate' ? 'primary' : 'outline'} onClick={() => setView('Calculate')}>คำนวณเงินเดือน</Button><Button variant={view === 'History' ? 'primary' : 'outline'} onClick={() => setView('History')}>ประวัติการจ่าย</Button></div>
             {view === 'Calculate' ? (
                 <>
-                    <Card className="p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="flex gap-2 items-center w-full">
-                            <Input placeholder="ค้นหา..." value={search} onChange={(e: any) => setSearch(e.target.value)} className="w-full md:w-48" />
+                    <Card className="p-3 sm:p-4 flex flex-col gap-3 sm:gap-4">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center w-full">
+                            <Input placeholder="ค้นหา..." value={search} onChange={(e: any) => setSearch(e.target.value)} className="w-full sm:w-48" />
                             <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg border">
-                                <input type="date" value={range.start} onChange={(e) => setRange({ ...range, start: e.target.value })} className="bg-transparent text-xs outline-none" />-<input type="date" value={range.end} onChange={(e) => setRange({ ...range, end: e.target.value })} className="bg-transparent text-xs outline-none" />
+                                <input type="date" value={range.start} onChange={(e) => setRange({ ...range, start: e.target.value })} className="bg-transparent text-xs outline-none w-full sm:w-auto" />-<input type="date" value={range.end} onChange={(e) => setRange({ ...range, end: e.target.value })} className="bg-transparent text-xs outline-none w-full sm:w-auto" />
                             </div>
                             <div className="flex gap-1">
-                                <button onClick={setCurrentMonth} className="px-2 py-1 text-xs bg-emerald-50 text-emerald-600 rounded border border-emerald-100 hover:bg-emerald-100">เดือนนี้</button>
-                                <button onClick={setLastMonth} className="px-2 py-1 text-xs bg-slate-50 text-slate-600 rounded border border-slate-200 hover:bg-slate-100">เดือนก่อน</button>
+                                <button onClick={setCurrentMonth} className="px-2 py-1 text-xs bg-emerald-50 text-emerald-600 rounded border border-emerald-100 hover:bg-emerald-100 whitespace-nowrap">เดือนนี้</button>
+                                <button onClick={setLastMonth} className="px-2 py-1 text-xs bg-slate-50 text-slate-600 rounded border border-slate-200 hover:bg-slate-100 whitespace-nowrap">เดือนก่อน</button>
                             </div>
                         </div>
                     </Card>
                     <div className="grid grid-cols-1 gap-4">
                         {payrollData.map(p => (
-                            <Card key={p.id} className={`p-4 flex flex-col md:flex-row justify-between items-center gap-4 ${p.isPaid ? 'opacity-60 bg-slate-50' : ''}`}>
+                            <Card key={p.id} className={`p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 ${p.isPaid ? 'opacity-60 bg-slate-50' : ''}`}>
                                 <div className="flex items-center gap-4 w-full md:w-auto">
                                     <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-lg">{p.nickname.charAt(0)}</div>
                                     <div>
@@ -134,15 +134,15 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                 </>
             ) : (
                 <Card className="p-0 overflow-hidden">
-                    <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+                    <div className="p-3 sm:p-4 border-b bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <span className="font-bold">ประวัติการจ่าย</span>
-                        <div className="flex gap-2">
-                            <Input placeholder="ค้นหาชื่อ..." value={historySearch} onChange={(e: any) => setHistorySearch(e.target.value)} className="w-32 text-xs" />
-                            <div className="flex items-center gap-1 bg-white border rounded px-2"><input type="date" value={historyRange.start} onChange={e => setHistoryRange({ ...historyRange, start: e.target.value })} className="text-xs outline-none w-24" />- <input type="date" value={historyRange.end} onChange={e => setHistoryRange({ ...historyRange, end: e.target.value })} className="text-xs outline-none w-24" /></div>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <Input placeholder="ค้นหาชื่อ..." value={historySearch} onChange={(e: any) => setHistorySearch(e.target.value)} className="w-full sm:w-32 text-xs" />
+                            <div className="flex items-center gap-1 bg-white border rounded px-2"><input type="date" value={historyRange.start} onChange={e => setHistoryRange({ ...historyRange, start: e.target.value })} className="text-xs outline-none w-full sm:w-24" />- <input type="date" value={historyRange.end} onChange={e => setHistoryRange({ ...historyRange, end: e.target.value })} className="text-xs outline-none w-full sm:w-24" /></div>
                         </div>
                     </div>
-                    <div className="max-h-[600px] overflow-y-auto">
-                        <table className="w-full text-sm text-left">
+                    <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
+                        <table className="w-full text-sm text-left min-w-[500px]">
                             <thead className="bg-white sticky top-0"><tr><th className="p-4">วันที่จ่าย</th><th className="p-4">รายการ</th><th className="p-4 text-right">จำนวนเงิน</th><th className="p-4"></th></tr></thead>
                             <tbody>{filteredHistory.map(t => <tr key={t.id} className="border-b hover:bg-slate-50"><td className="p-4">{t.date}</td><td className="p-4"><div className="font-bold">{t.description}</div><div className="text-xs text-slate-400">งวด: {t.payrollPeriod?.start} ถึง {t.payrollPeriod?.end}</div></td><td className="p-4 text-right font-bold text-emerald-600"><FormatNumber value={t.amount} /></td><td className="p-4 text-center"><Button variant="ghost" onClick={() => setViewHistoryItem(t)} size="sm" className="px-2"><Eye size={16} /></Button></td></tr>)}</tbody>
                         </table>

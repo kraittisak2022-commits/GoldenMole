@@ -85,12 +85,12 @@ const LaborModule = ({ employees, settings, onSaveTransaction }: LaborModuleProp
     };
 
     return (
-        <div className={`space-y-6 animate-fade-in ${successAnim ? 'animate-bounce-short' : ''}`}>
-            <div className="flex justify-center bg-white p-1 rounded-xl shadow-sm w-fit mx-auto overflow-x-auto">
-                {[{ id: 'Attendance', l: 'ลงเวลา', i: Briefcase }, { id: 'OT', l: 'OT', i: Clock }, { id: 'Advance', l: 'เบิก', i: Coins }, { id: 'Leave', l: 'ลา', i: CalendarDays }].map(t => <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`flex gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><t.i className="w-4 h-4" /> {t.l}</button>)}
+        <div className={`space-y-4 sm:space-y-6 animate-fade-in ${successAnim ? 'animate-bounce-short' : ''}`}>
+            <div className="flex justify-center bg-white p-1 rounded-xl shadow-sm w-full sm:w-fit mx-auto overflow-x-auto hide-scrollbar">
+                {[{ id: 'Attendance', l: 'ลงเวลา', i: Briefcase }, { id: 'OT', l: 'OT', i: Clock }, { id: 'Advance', l: 'เบิก', i: Coins }, { id: 'Leave', l: 'ลา', i: CalendarDays }].map(t => <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`flex gap-2 px-3 sm:px-4 py-2 rounded-lg transition-all whitespace-nowrap shrink-0 text-sm ${activeTab === t.id ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><t.i className="w-4 h-4" /> {t.l}</button>)}
             </div>
-            <Card className="p-6 max-w-4xl mx-auto">
-                <div className="flex gap-4 mb-4"><Input type="date" value={formDate} onChange={(e: any) => setFormDate(e.target.value)} label="วันที่" />{activeTab === 'Attendance' && <div className="w-full"><Select value={location} onChange={(e: any) => setLocation(e.target.value)} label="สถานที่">{settings.locations.map((l: string) => <option key={l}>{l}</option>)}</Select></div>}</div>
+            <Card className="p-4 sm:p-6 max-w-4xl mx-auto">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4"><Input type="date" value={formDate} onChange={(e: any) => setFormDate(e.target.value)} label="วันที่" />{activeTab === 'Attendance' && <div className="w-full"><Select value={location} onChange={(e: any) => setLocation(e.target.value)} label="สถานที่">{settings.locations.map((l: string) => <option key={l}>{l}</option>)}</Select></div>}</div>
 
                 {activeTab === 'Attendance' && (
                     <div className="flex gap-4 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -99,7 +99,7 @@ const LaborModule = ({ employees, settings, onSaveTransaction }: LaborModuleProp
                     </div>
                 )}
 
-                <div className="mb-6 p-4 border rounded-xl bg-slate-50 max-h-80 overflow-y-auto"><div className="flex justify-between items-center mb-3"><label className="text-sm font-bold text-slate-700">เลือกพนักงาน ({selectedIds.length})</label><input className="text-sm border rounded px-2 py-1" placeholder="ค้นหาชื่อ..." value={empSearch} onChange={e => setEmpSearch(e.target.value)} /></div><div className="grid grid-cols-2 md:grid-cols-3 gap-2">{filteredEmps.map((e: Employee) => <div key={e.id} onClick={() => setSelectedIds(p => p.includes(e.id) ? p.filter(x => x !== e.id) : [...p, e.id])} className={`p-2 border rounded-lg cursor-pointer flex justify-between items-center transition-all ${selectedIds.includes(e.id) ? 'bg-slate-800 text-white' : 'bg-white'}`}><span className="text-sm">{e.nickname} ({e.name})</span>{selectedIds.includes(e.id) && <CheckCircle2 size={16} />}</div>)}</div></div>
+                <div className="mb-6 p-3 sm:p-4 border rounded-xl bg-slate-50 max-h-80 overflow-y-auto"><div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2"><label className="text-sm font-bold text-slate-700">เลือกพนักงาน ({selectedIds.length})</label><input className="text-sm border rounded px-2 py-1 w-full sm:w-auto" placeholder="ค้นหาชื่อ..." value={empSearch} onChange={e => setEmpSearch(e.target.value)} /></div><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">{filteredEmps.map((e: Employee) => <div key={e.id} onClick={() => setSelectedIds(p => p.includes(e.id) ? p.filter(x => x !== e.id) : [...p, e.id])} className={`p-2 border rounded-lg cursor-pointer flex justify-between items-center transition-all ${selectedIds.includes(e.id) ? 'bg-slate-800 text-white' : 'bg-white'}`}><span className="text-sm truncate">{e.nickname} ({e.name})</span>{selectedIds.includes(e.id) && <CheckCircle2 size={16} className="shrink-0" />}</div>)}</div></div>
                 <div className="space-y-4">
                     {activeTab === 'Attendance' && (
                         <>

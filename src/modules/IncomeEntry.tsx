@@ -31,7 +31,7 @@ const IncomeEntry = ({ settings, onSave, transactions }: IncomeEntryProps) => {
                         <option value="">-- เลือกประเภท --</option>
                         {settings.incomeTypes.map(t => <option key={t} value={t}>{t}</option>)}
                     </Select>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         <Input label="ปริมาณ" type="number" value={form.qty} onChange={(e: any) => handleCalc('qty', e.target.value)} />
                         <Input label="ราคา/หน่วย" type="number" value={form.price} onChange={(e: any) => handleCalc('price', e.target.value)} />
                         <Input label="รวม (บาท)" type="number" value={form.total} onChange={(e: any) => handleCalc('total', e.target.value)} className="font-bold" />

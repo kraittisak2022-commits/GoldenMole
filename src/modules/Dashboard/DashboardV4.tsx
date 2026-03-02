@@ -34,7 +34,7 @@ const NeuralCore = ({ isActive }: { isActive: boolean }) => {
     }, [nodes]);
 
     return (
-        <div className="relative w-64 h-64 flex items-center justify-center">
+        <div className="relative w-40 h-40 sm:w-52 sm:h-52 lg:w-64 lg:h-64 flex items-center justify-center">
             {/* Background Glow */}
             <div className={`absolute inset-0 bg-indigo-500/10 rounded-full blur-3xl transition-all duration-1000 ${isActive ? 'scale-125 opacity-80' : 'scale-100 opacity-40'}`}></div>
 
@@ -198,13 +198,13 @@ const DashboardV4 = ({ transactions }: { transactions: Transaction[] }) => {
     const netProfit = totalIncome - totalExpense;
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-hidden relative p-8">
+        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-hidden relative p-3 sm:p-5 lg:p-8">
             <div className="bg-mesh absolute inset-0 opacity-40 pointer-events-none"></div>
 
             {/* Header */}
-            <div className="relative z-10 flex justify-between items-start mb-8 animate-slide-up">
+            <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-4 mb-6 sm:mb-8 animate-slide-up">
                 <div>
-                    <h1 className="text-3xl font-light tracking-tight text-white mb-2">
+                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-light tracking-tight text-white mb-2">
                         สวัสดี, <span className="font-medium text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">ผู้ดูแลระบบ</span>
                     </h1>
                     <p className="text-slate-400 text-sm flex items-center gap-2">
@@ -213,18 +213,18 @@ const DashboardV4 = ({ transactions }: { transactions: Transaction[] }) => {
                 </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-180px)]">
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 lg:h-[calc(100vh-180px)]">
 
                 {/* Left: Stats & Core (7 cols) */}
                 <div className="lg:col-span-7 flex flex-col gap-6">
                     {/* Main Stats Row */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <GlassCard className="animate-float" glow>
                             <div className="flex items-center gap-3 mb-4 text-slate-400">
                                 <div className="p-2 bg-indigo-500/10 rounded-xl"><Wallet size={18} className="text-indigo-400" /></div>
                                 <span className="text-sm font-medium">กำไรสุทธิ (Net Profit)</span>
                             </div>
-                            <div className="text-4xl font-medium text-white mb-2">
+                            <div className="text-2xl sm:text-3xl lg:text-4xl font-medium text-white mb-2">
                                 ฿<AnimatedStats value={netProfit} />
                             </div>
                             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">

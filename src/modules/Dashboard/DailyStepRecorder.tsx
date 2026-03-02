@@ -66,23 +66,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransactio
     const prevStep = () => setStep(s => Math.max(s - 1, 0));
 
     return (
-        <div className="min-h-screen bg-slate-50 p-6 animate-fade-in relative">
+        <div className="min-h-screen bg-slate-50 p-3 sm:p-4 lg:p-6 animate-fade-in relative">
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-8 gap-3">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">บันทึกงานประจำวัน (Daily Wizard)</h2>
-                    <p className="text-slate-500 text-sm">ระบบช่วยบันทึกข้อมูลแบบทีละขั้นตอน</p>
+                    <h2 className="text-lg sm:text-2xl font-bold text-slate-800">บันทึกงานประจำวัน (Daily Wizard)</h2>
+                    <p className="text-slate-500 text-xs sm:text-sm">ระบบช่วยบันทึกข้อมูลแบบทีละขั้นตอน</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar w-full sm:w-auto">
                     {STEPS.map((s, i) => (
-                        <div key={s.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                            <s.icon size={12} /> {s.label}
+                        <div key={s.id} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                            <s.icon size={12} />
+                            <span className="hidden sm:inline">{s.label}</span>
                         </div>
                     ))}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
                 {/* Left: Wizard Form */}
                 <div className="lg:col-span-8 space-y-6">
                     <Card className="p-6 min-h-[500px] flex flex-col relative overflow-hidden">
@@ -128,7 +129,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransactio
                                     <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border rounded-lg px-2 py-1" />
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto border rounded-xl bg-slate-50 p-4 grid grid-cols-2 lg:grid-cols-3 gap-2 content-start">
+                                <div className="flex-1 overflow-y-auto border rounded-xl bg-slate-50 p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 content-start">
                                     {employees.filter(e => e.name.includes(laborSearch)).map(emp => {
                                         const status = dayTransactions.find(t => t.category === 'Labor' && t.employeeIds?.includes(emp.id));
                                         const isWork = status && status.laborStatus === 'Work' && status.subCategory === 'Attendance';
@@ -334,7 +335,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransactio
                                 <h3 className="text-2xl font-bold text-slate-800 mb-2">บันทึกข้อมูลเรียบร้อยแล้ว</h3>
                                 <p className="text-slate-500 mb-8">ตรวจสอบรายการทั้งหมดได้ที่ตารางด้านขวา</p>
 
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-lg">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-lg">
                                     <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
                                         <div className="text-2xl font-bold text-emerald-600">{dayTransactions.filter(t => t.category === 'Labor').length}</div>
                                         <div className="text-xs text-emerald-800">ค่าแรง</div>

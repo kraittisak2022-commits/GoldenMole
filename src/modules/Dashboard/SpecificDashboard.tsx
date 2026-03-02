@@ -34,7 +34,7 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
         const activeWorkers = new Set(filteredTransactions.filter(t => t.category === 'Labor').flatMap(t => t.employeeIds || [])).size;
         return (
             <div className="space-y-6 animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
                     <StatCard title="ค่าแรงรวม" value={totalWage} icon={Users} color="#10b981" />
                     <StatCard title="ค่า OT รวม" value={otTotal} icon={Clock} color="#f59e0b" />
                     <StatCard title="ยอดเบิก" value={advanceTotal} icon={Coins} color="#ef4444" />
@@ -56,7 +56,7 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
 
         return (
             <div className="space-y-6 animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                     <StatCard title={`รวม${type}`} value={totalCost} icon={isFuel ? Fuel : Truck} color={isFuel ? "#ea580c" : "#f59e0b"} />
                     {isFuel && (
                         <Card className="p-5 flex flex-col justify-between h-32 relative overflow-hidden bg-slate-800 text-white">

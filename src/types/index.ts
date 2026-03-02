@@ -69,3 +69,23 @@ export interface AppSettings {
     appName: string; appSubtext: string; appIcon: string;
     cars: string[]; jobDescriptions: string[]; incomeTypes: string[]; expenseTypes: string[]; maintenanceTypes: string[]; locations: string[]; landGroups: string[];
 }
+
+export interface AdminUser {
+    id: string;
+    username: string;
+    password: string;
+    displayName: string;
+    role: 'SuperAdmin' | 'Admin';
+    createdAt: string;
+    lastLogin?: string;
+    avatar?: string;
+}
+
+export interface AdminLog {
+    id: string;
+    adminId: string;
+    adminName: string;
+    action: string;
+    details: string;
+    timestamp: string;
+}

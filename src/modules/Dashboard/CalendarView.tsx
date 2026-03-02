@@ -40,37 +40,39 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
     });
 
     return (
-        <Card className="p-6 animate-fade-in">
-            <h3 className="font-bold mb-6 text-lg text-slate-700">ปฏิทินการทำงาน & การเงิน (เดือนปัจจุบัน)</h3>
-            <div className="grid grid-cols-7 gap-2 mb-2 text-center text-sm font-bold text-slate-400">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => <div key={i}>{d}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-2">
-                {daysInMonth.map((d, i) => (
-                    <div key={i} onClick={() => setSelectedDay(d.date)} className="aspect-square border rounded-lg p-1 flex flex-col justify-between hover:bg-slate-50 transition-colors min-h-[100px] relative group cursor-pointer">
-                        <div className="flex justify-between items-start">
-                            <span className="text-xs text-slate-400 font-medium">{d.day}</span>
-                            <div className="flex gap-1">
-                                {d.presentCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`มา: ${d.presentCount}`} />}
-                                {d.leaveCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`ลา: ${d.leaveCount}`} />}
-                                {d.missingCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-slate-200" title={`ขาด: ${d.missingCount}`} />}
+        <Card className="p-3 sm:p-6 animate-fade-in">
+            <h3 className="font-bold mb-4 sm:mb-6 text-base sm:text-lg text-slate-700">ปฏิทินการทำงาน & การเงิน (เดือนปัจจุบัน)</h3>
+            <div className="overflow-x-auto">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center text-xs sm:text-sm font-bold text-slate-400 min-w-[320px]">
+                    {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => <div key={i}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[320px]">
+                    {daysInMonth.map((d, i) => (
+                        <div key={i} onClick={() => setSelectedDay(d.date)} className="aspect-square border rounded-lg p-0.5 sm:p-1 flex flex-col justify-between hover:bg-slate-50 transition-colors min-h-[48px] sm:min-h-[100px] relative group cursor-pointer">
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] sm:text-xs text-slate-400 font-medium">{d.day}</span>
+                                <div className="flex gap-1">
+                                    {d.presentCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`มา: ${d.presentCount}`} />}
+                                    {d.leaveCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`ลา: ${d.leaveCount}`} />}
+                                    {d.missingCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-slate-200" title={`ขาด: ${d.missingCount}`} />}
+                                </div>
+                            </div>
+
+                            {/* Display Leave Names — hidden on mobile */}
+                            <div className="hidden sm:flex flex-col gap-0.5 mt-1 overflow-hidden">
+                                {d.leaveNames.slice(0, 3).map((name, idx) => (
+                                    <span key={idx} className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded truncate">ลา: {name}</span>
+                                ))}
+                                {d.leaveNames.length > 3 && <span className="text-[9px] text-amber-500 pl-1">+{d.leaveNames.length - 3}</span>}
+                            </div>
+
+                            <div className="flex flex-col gap-0.5 text-[8px] sm:text-[10px] text-right mt-auto">
+                                {d.inc > 0 && <span className="text-emerald-600 font-bold">+{d.inc.toLocaleString()}</span>}
+                                {d.exp > 0 && <span className="text-red-500">-{d.exp.toLocaleString()}</span>}
                             </div>
                         </div>
-
-                        {/* Display Leave Names */}
-                        <div className="flex flex-col gap-0.5 mt-1 overflow-hidden">
-                            {d.leaveNames.slice(0, 3).map((name, idx) => (
-                                <span key={idx} className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded truncate">ลา: {name}</span>
-                            ))}
-                            {d.leaveNames.length > 3 && <span className="text-[9px] text-amber-500 pl-1">+{d.leaveNames.length - 3}</span>}
-                        </div>
-
-                        <div className="flex flex-col gap-0.5 text-[10px] text-right mt-auto">
-                            {d.inc > 0 && <span className="text-emerald-600 font-bold">+{d.inc.toLocaleString()}</span>}
-                            {d.exp > 0 && <span className="text-red-500">-{d.exp.toLocaleString()}</span>}
-                        </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             {/* Modal for Day Details */}

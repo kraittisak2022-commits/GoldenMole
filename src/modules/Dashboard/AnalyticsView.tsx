@@ -40,9 +40,9 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <div className="grid grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
                 {/* Left Main (9 Cols) */}
-                <div className="col-span-12 lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     {/* Chart 1: Daily Expenses (Bar) */}
                     <Card className="p-6 h-80">
                         <h3 className="font-bold text-slate-700 mb-4">ค่าใช้จ่ายประจำวัน (บาท)</h3>
@@ -79,7 +79,7 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
                 </div>
 
                 {/* Right Sidebar (3 Cols) */}
-                <div className="col-span-12 lg:col-span-3 space-y-6">
+                <div className="lg:col-span-3 space-y-4 sm:space-y-6">
                     <Card className="p-6">
                         <h3 className="font-bold text-slate-500 text-sm mb-2">รวมรายวันล่าสุด</h3>
                         <div className="h-20 mb-2"><LineChart data={dailyExpenses} color="#10b981" height={40} /></div>
