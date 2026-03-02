@@ -201,7 +201,7 @@ function App() {
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
 
     return (
-        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-[#F9FAFB] text-slate-800'}`}>
+        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 ${darkMode ? 'bg-gray-950 text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
             {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
             {/* Mobile Overlay Backdrop */}
@@ -216,14 +216,14 @@ function App() {
             <aside className={`
                 fixed top-0 left-0 h-screen z-50 flex flex-col
                 transition-all duration-300 ease-in-out border-r
-                ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'}
+                ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-stone-100'}
                 ${isMobile
                     ? `w-72 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`
                     : `lg:sticky ${isSidebarOpen ? 'w-64' : 'w-20'}`
                 }
             `}>
-                <div className={`p-4 sm:p-6 flex items-center gap-3 border-b ${darkMode ? 'border-gray-700' : 'border-slate-50'}`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg overflow-hidden shrink-0 ${darkMode ? 'bg-emerald-600' : 'bg-slate-900'}`}>
+                <div className={`p-4 sm:p-6 flex items-center gap-3 border-b ${darkMode ? 'border-gray-800' : 'border-stone-50'}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg overflow-hidden shrink-0`} style={{ background: darkMode ? '#1a1a1a' : '#0a0a0a' }}>
                         {settings.appIcon.startsWith('http') || settings.appIcon.startsWith('data:') ? (
                             <img src={settings.appIcon} alt="Logo" className="w-full h-full object-cover" />
                         ) : (
@@ -237,7 +237,7 @@ function App() {
                         </div>
                     )}
                     {isMobile && (
-                        <button onClick={() => setIsSidebarOpen(false)} className={`p-1.5 rounded-lg shrink-0 ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-100 text-slate-400'}`}>
+                        <button onClick={() => setIsSidebarOpen(false)} className={`p-1.5 rounded-lg shrink-0 ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-stone-100 text-stone-400'}`}>
                             <X size={20} />
                         </button>
                     )}
@@ -248,11 +248,11 @@ function App() {
                             key={m.id}
                             onClick={() => handleMenuClick(m.id)}
                             className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${activeMenu === m.id
-                                ? (darkMode ? 'bg-gray-700 text-white font-bold shadow-sm' : 'bg-slate-50 text-slate-900 font-bold shadow-sm')
-                                : (darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-slate-500 hover:bg-slate-50')
+                                ? (darkMode ? 'bg-amber-500/10 text-amber-400 font-bold shadow-sm border border-amber-500/20' : 'bg-stone-50 text-gray-900 font-bold shadow-sm')
+                                : (darkMode ? 'text-gray-500 hover:bg-gray-800/50 hover:text-gray-300' : 'text-gray-500 hover:bg-stone-50')
                                 }`}
                         >
-                            <m.icon size={20} className={`shrink-0 ${activeMenu === m.id ? 'text-emerald-500' : ''}`} />
+                            <m.icon size={20} className={`shrink-0 ${activeMenu === m.id ? (darkMode ? 'text-amber-400' : 'text-amber-600') : ''}`} />
                             {(isSidebarOpen || isMobile) && <span className="text-sm truncate">{m.l}</span>}
                         </button>
                     ))}
@@ -260,20 +260,20 @@ function App() {
 
                 {/* Sidebar Footer — Logout (Desktop) */}
                 {!isMobile && (
-                    <div className={`p-4 border-t space-y-2 ${darkMode ? 'border-gray-700' : ''}`}>
+                    <div className={`p-4 border-t space-y-2 ${darkMode ? 'border-gray-800' : ''}`}>
                         {isSidebarOpen && currentAdmin && (
                             <div className="flex items-center gap-2 px-2 mb-2">
-                                <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs font-bold shrink-0">
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
                                     {currentAdmin.displayName.charAt(0)}
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-xs font-medium text-slate-700 truncate">{currentAdmin.displayName}</p>
+                                    <p className={`text-xs font-medium truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
                                     <p className="text-[10px] text-slate-400">{currentAdmin.role}</p>
                                 </div>
                             </div>
                         )}
                         <div className="flex gap-2">
-                            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-50 text-slate-400'}`}>
+                            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
                                 <MoreHorizontal size={18} />
                             </button>
                             <button onClick={handleLogout} className="flex items-center justify-center p-2 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors" title="ออกจากระบบ">
@@ -285,14 +285,14 @@ function App() {
 
                 {/* Sidebar Footer — Logout (Mobile) */}
                 {isMobile && (
-                    <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : ''}`}>
+                    <div className={`p-4 border-t ${darkMode ? 'border-gray-800' : ''}`}>
                         {currentAdmin && (
                             <div className="flex items-center gap-3 px-2 mb-3">
-                                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold shrink-0">
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0 ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
                                     {currentAdmin.displayName.charAt(0)}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-slate-700 truncate">{currentAdmin.displayName}</p>
+                                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
                                     <p className="text-xs text-slate-400">@{currentAdmin.username} • {currentAdmin.role}</p>
                                 </div>
                             </div>
@@ -327,20 +327,20 @@ function App() {
                         {/* Dark Mode Toggle */}
                         <button
                             onClick={() => setDarkMode(!darkMode)}
-                            className={`p-2 rounded-xl transition-all ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                            className={`p-2 rounded-xl transition-all ${darkMode ? 'bg-gray-800 text-amber-400 hover:bg-gray-700 border border-gray-700' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
                             title={darkMode ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
                         >
                             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                         {currentAdmin && (
-                            <div className={`hidden sm:flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-slate-700'}`}>{currentAdmin.displayName}</span>
+                            <div className={`hidden sm:flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-stone-500'}`}>
+                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{currentAdmin.displayName}</span>
                                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${currentAdmin.role === 'SuperAdmin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                                     {currentAdmin.role}
                                 </span>
                             </div>
                         )}
-                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold ${darkMode ? 'bg-emerald-900 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold ${darkMode ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'bg-amber-50 text-amber-700'}`}>
                             <User size={18} />
                         </div>
                     </div>

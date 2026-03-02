@@ -250,3 +250,101 @@
         transform: translateY(-20px);
     }
 }
+
+/* Premium Login Page Animations */
+.animate-particle {
+    animation: particle 8s ease-in-out infinite;
+}
+
+@keyframes particle {
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 0.3;
+    }
+
+    25% {
+        transform: translate(30px, -40px) scale(1.1);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: translate(-20px, -80px) scale(0.9);
+        opacity: 0.4;
+    }
+
+    75% {
+        transform: translate(10px, -30px) scale(1.05);
+        opacity: 0.5;
+    }
+}
+
+.animate-shimmer {
+    background: linear-gradient(90deg, transparent, rgba(197, 165, 90, 0.3), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-card-entrance {
+    animation: cardEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cardEntrance {
+    from {
+        opacity: 0;
+        transform: translateY(40px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-glow-pulse {
+    animation: glowPulse 2s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 20px rgba(197, 165, 90, 0.15);
+    }
+
+    50% {
+        box-shadow: 0 0 40px rgba(197, 165, 90, 0.3);
+    }
+}
+
+.animate-rotate-slow {
+    animation: rotateSlow 20s linear infinite;
+}
+
+@keyframes rotateSlow {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.gold-gradient-text {
+    background: linear-gradient(135deg, #C5A55A, #E8D5A0, #C5A55A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
