@@ -13,7 +13,15 @@ export const getLastDayOfMonth = () => {
     return d.toISOString().split('T')[0];
 };
 
-export const FormatNumber = ({ value, prefix = '฿' }: { value: number, prefix?: string }) => {
+export const formatDateBE = (dateString?: string) => {
+    if (!dateString) return '-';
+    const [year, month, day] = dateString.split('-');
+    if (!year || !month || !day) return dateString;
+    const beYear = parseInt(year) + 543;
+    return `${day}/${month}/${beYear}`;
+};
+
+export const FormatNumber = ({ value }: { value: number }) => {
     // Note: This was a component in the original code, but as a util efficiently it should return string, 
     // but for the UI consistency I will keep it as a component-like helper or just use string formatting here and Text Component in UI.
     // However, the original code used it as a Component with a tooltip. I will move the Component to `components/ui/FormatNumber.tsx` but keep logic here? 

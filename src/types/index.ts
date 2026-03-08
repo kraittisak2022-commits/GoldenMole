@@ -12,9 +12,20 @@ export interface SalaryHistoryItem {
     type: EmployeeType; // To track if they switched from Daily <-> Monthly
 }
 
+export interface KPIEvaluation {
+    id: string;
+    date: string;
+    score: number;
+    maxScore: number;
+    evaluator: string;
+    notes?: string;
+    criteria?: { label: string; score: number; max: number }[];
+}
+
 export interface Employee {
     id: string; name: string; nickname: string; type: EmployeeType; baseWage: number; phone?: string; startDate?: string;
     salaryHistory?: SalaryHistoryItem[];
+    kpiHistory?: KPIEvaluation[];
     // Computed fields often added in runtime
     fullDays?: number;
     halfDays?: number;
@@ -54,6 +65,7 @@ export interface Transaction {
     sandAfternoon?: number;
     sandMachineType?: 'Old' | 'New';
     sandOperators?: string[];
+    sandTransport?: number;
     eventTime?: string;
 }
 
@@ -66,7 +78,7 @@ export interface DailyEvent {
 }
 
 export interface AppSettings {
-    appName: string; appSubtext: string; appIcon: string;
+    appName: string; appSubtext: string; appIcon: string; appIconDark?: string;
     cars: string[]; jobDescriptions: string[]; incomeTypes: string[]; expenseTypes: string[]; maintenanceTypes: string[]; locations: string[]; landGroups: string[];
 }
 

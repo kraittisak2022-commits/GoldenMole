@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { XCircle } from 'lucide-react';
+import { XCircle, TrendingUp, TrendingDown, Activity, CalendarDays } from 'lucide-react';
 import Card from '../../components/ui/Card';
+import FormatNumber from '../../components/ui/FormatNumber';
 import { Transaction, Employee } from '../../types';
 
 const CalendarView = ({ transactions, employees }: { transactions: Transaction[], employees: Employee[] }) => {
@@ -30,142 +31,264 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
         const leaveCount = leaveEmpIds.size;
         const missingCount = employees.length - presentCount - leaveCount;
 
-        return { day: d, inc, exp, date: dateStr, presentCount, leaveCount, missingCount, transactions: dayTrans, leaveNames };
         // Get Daily Logs
         const machineLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'MachineWork');
         const sandLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'SandProduction');
         const eventLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'GeneralEvent');
 
-        return { day: d, inc, exp, date: dateStr, presentCount, leaveCount, missingCount, transactions: dayTrans, leaveNames, machineLogs, sandLogs, eventLogs };
+        return { day: d, inc, exp, net: inc - exp, date: dateStr, presentCount, leaveCount, missingCount, transactions: dayTrans, leaveNames, machineLogs, sandLogs, eventLogs };
     });
 
+    const monthIncome = daysInMonth.reduce((s, d) => s + d.inc, 0);
+    const monthExpense = daysInMonth.reduce((s, d) => s + d.exp, 0);
+
     return (
-        <Card className="p-3 sm:p-6 animate-fade-in">
-            <h3 className="font-bold mb-4 sm:mb-6 text-base sm:text-lg text-slate-700">ปฏิทินการทำงาน & การเงิน (เดือนปัจจุบัน)</h3>
-            <div className="overflow-x-auto">
-                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center text-xs sm:text-sm font-bold text-slate-400 min-w-[320px]">
-                    {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => <div key={i}>{d}</div>)}
+        <Card className="p-4 sm:p-6 lg:p-8 animate-fade-in relative z-10 bg-white border-slate-200 shadow-sm">
+            {/* Header & Monthly Summary */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
+                <div>
+                    <h3 className="font-bold text-2xl lg:text-3xl text-slate-800 flex items-center gap-3">
+                        <CalendarDays className="text-indigo-500" />
+                        ปฏิทินการทำงาน <span className="text-slate-400 font-normal">เดือนนี้</span>
+                    </h3>
+                    <p className="text-sm text-slate-500 mt-2">ภาพรวมรายรับรายจ่าย และ การมาทำงานพนักงาน</p>
                 </div>
-                <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[320px]">
-                    {daysInMonth.map((d, i) => (
-                        <div key={i} onClick={() => setSelectedDay(d.date)} className="aspect-square border rounded-lg p-0.5 sm:p-1 flex flex-col justify-between hover:bg-slate-50 transition-colors min-h-[48px] sm:min-h-[100px] relative group cursor-pointer">
-                            <div className="flex justify-between items-start">
-                                <span className="text-[10px] sm:text-xs text-slate-400 font-medium">{d.day}</span>
-                                <div className="flex gap-1">
-                                    {d.presentCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`มา: ${d.presentCount}`} />}
-                                    {d.leaveCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`ลา: ${d.leaveCount}`} />}
-                                    {d.missingCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-slate-200" title={`ขาด: ${d.missingCount}`} />}
-                                </div>
-                            </div>
 
-                            {/* Display Leave Names — hidden on mobile */}
-                            <div className="hidden sm:flex flex-col gap-0.5 mt-1 overflow-hidden">
-                                {d.leaveNames.slice(0, 3).map((name, idx) => (
-                                    <span key={idx} className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded truncate">ลา: {name}</span>
-                                ))}
-                                {d.leaveNames.length > 3 && <span className="text-[9px] text-amber-500 pl-1">+{d.leaveNames.length - 3}</span>}
-                            </div>
-
-                            <div className="flex flex-col gap-0.5 text-[8px] sm:text-[10px] text-right mt-auto">
-                                {d.inc > 0 && <span className="text-emerald-600 font-bold">+{d.inc.toLocaleString()}</span>}
-                                {d.exp > 0 && <span className="text-red-500">-{d.exp.toLocaleString()}</span>}
-                            </div>
+                <div className="flex gap-4 w-full lg:w-auto">
+                    <div className="flex-1 lg:flex-none bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                            <TrendingUp size={20} />
                         </div>
-                    ))}
+                        <div>
+                            <p className="text-xs text-emerald-600 font-medium">รายรับเดือนนี้</p>
+                            <p className="font-bold text-lg text-emerald-700">฿<FormatNumber value={monthIncome} /></p>
+                        </div>
+                    </div>
+                    <div className="flex-1 lg:flex-none bg-red-50 border border-red-200 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                            <TrendingDown size={20} />
+                        </div>
+                        <div>
+                            <p className="text-xs text-red-600 font-medium">รายจ่ายเดือนนี้</p>
+                            <p className="font-bold text-lg text-red-700">฿<FormatNumber value={monthExpense} /></p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Modal for Day Details */}
+            {/* Calendar Grid */}
+            <div className="overflow-x-auto pb-4">
+                <div className="grid grid-cols-7 gap-2 lg:gap-3 mb-3 text-center text-sm font-bold text-slate-400 min-w-[500px]">
+                    {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์'].map((d, i) => <div key={i}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-2 lg:gap-3 min-w-[500px]">
+                    {daysInMonth.map((d, i) => {
+                        // Determine heatmap background
+                        let bgClass = "bg-white border-slate-200 hover:shadow-lg";
+                        if (d.inc > 0 || d.exp > 0) {
+                            if (d.net > 0) bgClass = "bg-emerald-50 border-emerald-200 hover:shadow-emerald-100";
+                            else if (d.net < 0) bgClass = "bg-rose-50 border-rose-200 hover:shadow-rose-100";
+                            else bgClass = "bg-amber-50 border-amber-200 hover:shadow-amber-100";
+                        }
+
+                        return (
+                            <div
+                                key={i}
+                                onClick={() => setSelectedDay(d.date)}
+                                className={`aspect-[4/3] sm:aspect-square border rounded-2xl p-2 sm:p-3 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer relative group ${bgClass}`}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <span className={`text-sm sm:text-base font-bold ${d.inc > 0 || d.exp > 0 ? (d.net > 0 ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-400'}`}>
+                                        {d.day}
+                                    </span>
+                                    <div className="flex gap-1.5">
+                                        {d.presentCount > 0 && <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]" title={`มา: ${d.presentCount}`} />}
+                                        {d.leaveCount > 0 && <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_5px_rgba(245,158,11,0.5)]" title={`ลา: ${d.leaveCount}`} />}
+                                    </div>
+                                </div>
+
+                                {/* Display Leave Names — hidden on tiny mobile screens */}
+                                <div className="hidden md:flex flex-col gap-1 mt-2 overflow-hidden">
+                                    {d.leaveNames.slice(0, 2).map((name, idx) => (
+                                        <span key={idx} className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded truncate font-medium">ลา: {name}</span>
+                                    ))}
+                                    {d.leaveNames.length > 2 && <span className="text-[10px] text-amber-500 pl-1">+{d.leaveNames.length - 2}</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-1 text-[10px] sm:text-xs text-right mt-auto">
+                                    {d.inc > 0 && <span className="text-emerald-600 font-bold bg-emerald-100 px-1 rounded inline-block self-end">+{FormatNumber({ value: d.inc })}</span>}
+                                    {d.exp > 0 && <span className="text-rose-500 font-bold bg-rose-100 px-1 rounded inline-block self-end">-{FormatNumber({ value: d.exp })}</span>}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* Premium Glassmorphic Modal for Day Details */}
             {selectedDay && (() => {
                 const dayDetails = daysInMonth.find(d => d.date === selectedDay);
                 if (!dayDetails) return null;
 
+                const dayDate = new Date(selectedDay);
+
                 return (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4">
-                        <Card className="w-full max-w-2xl p-6 max-h-[85vh] overflow-y-auto relative animate-slide-up">
-                            <button onClick={() => setSelectedDay(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><XCircle /></button>
-                            <h3 className="font-bold text-xl mb-6 text-center text-slate-800">รายละเอียดวันที่ {new Date(selectedDay).toLocaleDateString('th-TH', { dateStyle: 'full' })}</h3>
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedDay(null)} />
 
-                            {/* Summary of People */}
-                            <div className="grid grid-cols-3 gap-2 mb-6">
-                                <div className="bg-emerald-50 p-2 rounded text-center border border-emerald-100">
-                                    <p className="text-xs text-emerald-600">มาทำงาน</p>
-                                    <p className="font-bold text-lg text-emerald-700">{dayDetails.presentCount}</p>
+                        {/* Modal Content */}
+                        <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-3xl shadow-2xl relative z-10 max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
+
+                            {/* Modal Header */}
+                            <div className="p-6 sm:p-8 flex justify-between items-center border-b border-slate-100 bg-slate-50">
+                                <div>
+                                    <h3 className="font-bold text-2xl sm:text-3xl text-slate-800">
+                                        {dayDate.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                    </h3>
+                                    <p className="text-slate-500 mt-1 flex items-center gap-2">
+                                        <Activity size={16} /> สรุปกิจกรรมและข้อมูลการเงิน
+                                    </p>
                                 </div>
-                                <div className="bg-amber-50 p-2 rounded text-center border border-amber-100">
-                                    <p className="text-xs text-amber-600">ลางาน</p>
-                                    <p className="font-bold text-lg text-amber-700">{dayDetails.leaveCount}</p>
-                                </div>
-                                <div className="bg-slate-50 p-2 rounded text-center border border-slate-200">
-                                    <p className="text-xs text-slate-500">ขาดงาน</p>
-                                    <p className="font-bold text-lg text-slate-600">{dayDetails.missingCount}</p>
-                                </div>
+                                <button onClick={() => setSelectedDay(null)} className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+                                    <XCircle size={24} />
+                                </button>
                             </div>
 
-                            {/* Daily Log Section (V.3 Enhancements) */}
-                            <div className="space-y-4 mb-6">
-                                <h4 className="font-bold text-sm text-slate-700 bg-slate-100 p-2 rounded-lg">บันทึกประจำวัน</h4>
+                            {/* Modal Body */}
+                            <div className="p-6 sm:p-8 overflow-y-auto space-y-8">
 
-                                {/* Machine Logs */}
-                                {(dayDetails.machineLogs || []).map(t => (
-                                    <div key={t.id} className="flex items-start gap-3 p-3 border rounded-xl bg-orange-50 border-orange-100">
-                                        <div className="bg-orange-100 p-2 rounded-full"><code className="text-xl">🚜</code></div>
-                                        <div>
-                                            <div className="font-bold text-orange-900">{t.machineId} <span className="text-sm font-normal text-slate-500">({t.machineHours} ชม.)</span></div>
-                                            <div className="text-sm text-slate-600">{t.note || t.description}</div>
-                                            <div className="text-xs text-slate-400 flex gap-2 mt-1">📍 {t.location || 'ไม่ระบุ'}</div>
-                                        </div>
+                                {/* Financial Summary */}
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 text-center">
+                                        <p className="text-sm text-emerald-600 mb-1">รายรับ</p>
+                                        <p className="font-bold text-xl sm:text-2xl text-emerald-700">+{FormatNumber({ value: dayDetails.inc })}</p>
                                     </div>
-                                ))}
+                                    <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 text-center">
+                                        <p className="text-sm text-rose-600 mb-1">รายจ่าย</p>
+                                        <p className="font-bold text-xl sm:text-2xl text-rose-700">-{FormatNumber({ value: dayDetails.exp })}</p>
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border text-center ${dayDetails.net >= 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-orange-50 border-orange-200 text-orange-700'}`}>
+                                        <p className="text-sm mb-1 opacity-80">ยอดสุทธิ</p>
+                                        <p className="font-bold text-xl sm:text-2xl">{dayDetails.net > 0 ? '+' : ''}{FormatNumber({ value: dayDetails.net })}</p>
+                                    </div>
+                                </div>
 
-                                {/* Sand Logs */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {(dayDetails.sandLogs || []).map(t => (
-                                        <div key={t.id} className={`p-3 border rounded-xl ${(t as any).sandMachineType === 'Old' ? 'bg-amber-50 border-amber-100' : 'bg-blue-50 border-blue-100'}`}>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className={`text-xs font-bold px-2 py-0.5 rounded ${(t as any).sandMachineType === 'Old' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                    {(t as any).sandMachineType === 'Old' ? 'เครื่องเก่า' : 'เครื่องใหม่'}
-                                                </span>
-                                                <span className="font-bold text-lg text-slate-800">{t.quantity} คิว</span>
+                                {/* Attendance Summary */}
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-700 mb-4 flex items-center gap-2">
+                                        <span className="w-2 h-6 bg-blue-500 rounded-full"></span>
+                                        การมาทำงาน
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                                                {dayDetails.presentCount}
                                             </div>
-                                            <div className="text-xs text-slate-500">เช้า {(t as any).sandMorning} / บ่าย {(t as any).sandAfternoon}</div>
-                                            <div className="text-xs text-slate-500 mt-1">คนคุม: {((t as any).sandOperators || []).join(', ')}</div>
+                                            <div>
+                                                <p className="font-bold text-slate-800">มาทำงาน</p>
+                                                <p className="text-sm text-slate-500">พนักงานเข้ากะ</p>
+                                            </div>
                                         </div>
-                                    ))}
+                                        <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xl font-bold">
+                                                {dayDetails.leaveCount}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-800">ลางาน</p>
+                                                <p className="text-sm text-slate-500">{dayDetails.leaveNames.join(', ') || '-'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* General Events */}
-                                {(dayDetails.eventLogs || []).map(t => (
-                                    <div key={t.id} className="flex gap-3 p-3 border rounded-xl bg-purple-50 border-purple-100">
-                                        <div className="font-bold text-purple-600 text-sm min-w-[50px]">{(t as any).eventTime}</div>
-                                        <div className="text-sm text-slate-700">{t.description}</div>
-                                    </div>
-                                ))}
+                                {/* Daily Logs Gallery */}
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-700 mb-4 flex items-center gap-2">
+                                        <span className="w-2 h-6 bg-purple-500 rounded-full"></span>
+                                        บันทึกกิจกรรมประจำวันแทรกเตอร์ / ทราย
+                                    </h4>
 
-                                {/* Empty State for Logs */}
-                                {(!(dayDetails.machineLogs || []).length &&
-                                    !(dayDetails.sandLogs || []).length &&
-                                    !(dayDetails.eventLogs || []).length) &&
-                                    <div className="text-center text-slate-400 text-sm py-2 italic">- ไม่มีบันทึกเหตุการณ์ -</div>}
-                            </div>
+                                    <div className="space-y-3">
+                                        {/* Machine Logs */}
+                                        {(dayDetails.machineLogs || []).map(t => (
+                                            <div key={t.id} className="flex gap-4 p-4 border border-slate-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow">
+                                                <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center text-2xl shrink-0">🚜</div>
+                                                <div>
+                                                    <div className="font-bold text-lg text-slate-800">
+                                                        {t.machineId} <span className="text-orange-500 font-medium">({t.machineHours} ชม.)</span>
+                                                    </div>
+                                                    <div className="text-slate-600 mt-1">{t.note || t.description}</div>
+                                                    {t.location && <div className="text-sm text-slate-400 mt-2 flex items-center gap-1">📍 {t.location}</div>}
+                                                </div>
+                                            </div>
+                                        ))}
 
-                            {/* Transaction List */}
-                            <h4 className="font-bold text-sm mb-2 text-slate-700">รายการธุรกรรม</h4>
-                            <div className="space-y-2">
-                                {(dayDetails.transactions || []).map(t => (
-                                    <div key={t.id} className="border p-3 rounded-lg flex justify-between items-center text-sm">
-                                        <div>
-                                            <div className="font-bold">{t.description}</div>
-                                            <div className="text-xs text-slate-500">{t.category} {t.subCategory ? `• ${t.subCategory}` : ''}</div>
-                                        </div>
-                                        <div className={`font-bold ${t.type === 'Income' ? 'text-emerald-600' : t.category === 'Leave' ? 'text-amber-500' : 'text-red-500'}`}>
-                                            {t.type === 'Income' ? '+' : ''}{t.amount > 0 ? `฿${t.amount.toLocaleString()}` : t.laborStatus === 'Leave' ? 'ลา' : '-'}
-                                        </div>
+                                        {/* Sand Logs */}
+                                        {(dayDetails.sandLogs || []).map(t => (
+                                            <div key={t.id} className="flex gap-4 p-4 border border-slate-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow">
+                                                <div className="w-12 h-12 rounded-2xl bg-cyan-100 flex items-center justify-center text-2xl shrink-0">🌊</div>
+                                                <div className="flex-1">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="font-bold text-lg text-slate-800">
+                                                            ผลผลิตทราย <span className="text-cyan-600 font-medium">{t.quantity} คิว</span>
+                                                        </div>
+                                                        <span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-600">
+                                                            {(t as any).sandMachineType === 'Old' ? 'เครื่องเก่า' : 'เครื่องใหม่'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-slate-600 mt-1">เช้า: {(t as any).sandMorning} คิว / บ่าย: {(t as any).sandAfternoon} คิว</div>
+                                                    {(t as any).sandTransport > 0 && <div className="text-slate-500 text-sm mt-1">🚛 ทรายที่ขน: {(t as any).sandTransport} คิว</div>}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {/* Empty State */}
+                                        {!(dayDetails.machineLogs?.length) && !(dayDetails.sandLogs?.length) && (
+                                            <div className="text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-slate-400">
+                                                ไม่มีบันทึกกิจกรรมพิเศษสำหรับวันนี้
+                                            </div>
+                                        )}
                                     </div>
-                                ))}
-                                {(dayDetails.transactions || []).length === 0 && <p className="text-center text-slate-400 text-sm">ไม่มีรายการบันทึก</p>}
+                                </div>
+
+                                {/* Transactions Grid */}
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-700 mb-4 flex items-center gap-2">
+                                        <span className="w-2 h-6 bg-emerald-500 rounded-full"></span>
+                                        รายการเดินบัญชีทั้งหมด
+                                    </h4>
+
+                                    <div className="space-y-3">
+                                        {(dayDetails.transactions || []).map(t => (
+                                            <div key={t.id} className="group p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all flex justify-between items-center">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${t.type === 'Income' ? 'bg-emerald-100 text-emerald-600' :
+                                                        'bg-rose-100 text-rose-600'
+                                                        }`}>
+                                                        {t.type === 'Income' ? '+' : '-'}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 line-clamp-1">{t.description}</p>
+                                                        <p className="text-sm text-slate-500">{t.category} {t.subCategory ? `• ${t.subCategory}` : ''}</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`font-bold text-lg ${t.type === 'Income' ? 'text-emerald-600' :
+                                                    t.category === 'Leave' ? 'text-amber-500' : 'text-rose-500'
+                                                    }`}>
+                                                    {t.amount > 0 ? `฿${FormatNumber({ value: t.amount })}` : (t.category === 'Leave' ? 'ลา' : '-')}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {dayDetails.transactions?.length === 0 && (
+                                            <div className="text-center p-6 text-slate-400 italic">ไม่มีรายการเดินบัญชี</div>
+                                        )}
+                                    </div>
+                                </div>
+
                             </div>
-                        </Card>
+                        </div>
                     </div>
                 );
             })()}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Lock, User, Eye, EyeOff, Shield, Loader2, Sun, Moon } from 'lucide-react';
 import { AdminUser } from '../../types';
 
@@ -11,6 +11,175 @@ interface LoginPageProps {
     onToggleDarkMode: () => void;
 }
 
+// ─── Network Background Canvas ─────────────────────────────────────────
+interface Particle {
+    x: number; y: number; vx: number; vy: number;
+    radius: number; opacity: number; pulseSpeed: number; pulseOffset: number;
+}
+
+const NetworkBackground = ({ darkMode }: { darkMode: boolean }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const animationRef = useRef<number>(0);
+    const particlesRef = useRef<Particle[]>([]);
+    const mouseRef = useRef({ x: -1000, y: -1000 });
+
+    const initParticles = useCallback((w: number, h: number) => {
+        const count = Math.floor((w * h) / 12000);
+        const particles: Particle[] = [];
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: Math.random() * w, y: Math.random() * h,
+                vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6,
+                radius: Math.random() * 2 + 1,
+                opacity: Math.random() * 0.5 + 0.2,
+                pulseSpeed: Math.random() * 0.02 + 0.01,
+                pulseOffset: Math.random() * Math.PI * 2
+            });
+        }
+        particlesRef.current = particles;
+    }, []);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const resize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initParticles(canvas.width, canvas.height);
+        };
+        resize();
+        window.addEventListener('resize', resize);
+
+        const handleMouse = (e: MouseEvent) => {
+            mouseRef.current = { x: e.clientX, y: e.clientY };
+        };
+        window.addEventListener('mousemove', handleMouse);
+
+        let time = 0;
+        const animate = () => {
+            time += 1;
+            const w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const particles = particlesRef.current;
+            const mouse = mouseRef.current;
+            const connectionDist = 150;
+            const mouseDist = 200;
+
+            const primary = darkMode ? [0, 200, 255] : [197, 165, 90];
+            const secondary = darkMode ? [120, 80, 255] : [139, 122, 62];
+
+            // Update & draw particles
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy;
+
+                // Bounce off edges
+                if (p.x < 0 || p.x > w) p.vx *= -1;
+                if (p.y < 0 || p.y > h) p.vy *= -1;
+                p.x = Math.max(0, Math.min(w, p.x));
+                p.y = Math.max(0, Math.min(h, p.y));
+
+                // Mouse attraction
+                const mdx = mouse.x - p.x, mdy = mouse.y - p.y;
+                const md = Math.sqrt(mdx * mdx + mdy * mdy);
+                if (md < mouseDist && md > 0) {
+                    p.vx += (mdx / md) * 0.03;
+                    p.vy += (mdy / md) * 0.03;
+                }
+
+                // Damping
+                p.vx *= 0.99; p.vy *= 0.99;
+
+                // Pulse glow
+                const pulse = Math.sin(time * p.pulseSpeed + p.pulseOffset) * 0.3 + 0.7;
+                const alpha = p.opacity * pulse;
+
+                // Draw particle
+                const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 3);
+                grad.addColorStop(0, `rgba(${primary[0]},${primary[1]},${primary[2]},${alpha})`);
+                grad.addColorStop(0.5, `rgba(${primary[0]},${primary[1]},${primary[2]},${alpha * 0.3})`);
+                grad.addColorStop(1, 'transparent');
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Core dot
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${primary[0]},${primary[1]},${primary[2]},${alpha * 1.2})`;
+                ctx.fill();
+
+                // Connections
+                for (let j = i + 1; j < particles.length; j++) {
+                    const p2 = particles[j];
+                    const dx = p.x - p2.x, dy = p.y - p2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < connectionDist) {
+                        const lineAlpha = (1 - dist / connectionDist) * 0.25;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.strokeStyle = `rgba(${secondary[0]},${secondary[1]},${secondary[2]},${lineAlpha})`;
+                        ctx.lineWidth = 0.8;
+                        ctx.stroke();
+                    }
+                }
+
+                // Mouse connections
+                if (md < mouseDist) {
+                    const lineAlpha = (1 - md / mouseDist) * 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(mouse.x, mouse.y);
+                    ctx.strokeStyle = `rgba(${primary[0]},${primary[1]},${primary[2]},${lineAlpha})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+
+            // Floating hex grid overlay (very subtle)
+            ctx.save();
+            ctx.globalAlpha = darkMode ? 0.02 : 0.015;
+            const hexSize = 60;
+            for (let row = -1; row < h / (hexSize * 1.5) + 1; row++) {
+                for (let col = -1; col < w / (hexSize * 1.73) + 1; col++) {
+                    const cx = col * hexSize * 1.73 + (row % 2 ? hexSize * 0.866 : 0) + Math.sin(time * 0.005 + row) * 5;
+                    const cy = row * hexSize * 1.5 + Math.cos(time * 0.005 + col) * 5;
+                    ctx.beginPath();
+                    for (let s = 0; s < 6; s++) {
+                        const angle = (Math.PI / 3) * s - Math.PI / 6;
+                        const sx = cx + hexSize * 0.4 * Math.cos(angle);
+                        const sy = cy + hexSize * 0.4 * Math.sin(angle);
+                        s === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = `rgb(${primary[0]},${primary[1]},${primary[2]})`;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+
+            animationRef.current = requestAnimationFrame(animate);
+        };
+
+        animate();
+        return () => {
+            cancelAnimationFrame(animationRef.current);
+            window.removeEventListener('resize', resize);
+            window.removeEventListener('mousemove', handleMouse);
+        };
+    }, [darkMode, initParticles]);
+
+    return <canvas ref={canvasRef} className="fixed inset-0 w-full h-full" style={{ zIndex: 0 }} />;
+};
+
+// ─── Login Page ─────────────────────────────────────────────────────────
 const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMode }: LoginPageProps) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -18,6 +187,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [shake, setShake] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => { setMounted(true); }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -33,213 +205,156 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
     const triggerShake = () => { setShake(true); setTimeout(() => setShake(false), 600); };
 
     const gold = '#C5A55A';
-    const goldLight = '#E8D5A0';
     const goldDark = '#8B7A3E';
 
     return (
-        <div className={`min-h-screen min-h-[100dvh] flex transition-colors duration-700 ${darkMode ? 'bg-[#0a0a0f]' : 'bg-gradient-to-br from-stone-50 via-white to-amber-50/30'}`}>
+        <div className={`min-h-screen min-h-[100dvh] flex items-center justify-center relative overflow-hidden transition-colors duration-700 ${darkMode ? 'bg-[#050510]' : 'bg-gradient-to-br from-stone-100 via-stone-50 to-amber-50/30'}`}>
 
-            {/* Dark Mode Toggle - Fixed top right */}
+            {/* Network Canvas Background */}
+            <NetworkBackground darkMode={darkMode} />
+
+            {/* Radial gradient overlays */}
+            <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+                <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full"
+                    style={{
+                        background: darkMode
+                            ? 'radial-gradient(circle, rgba(0,150,255,0.08), transparent 60%)'
+                            : 'radial-gradient(circle, rgba(197,165,90,0.08), transparent 60%)',
+                    }} />
+                <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full"
+                    style={{
+                        background: darkMode
+                            ? 'radial-gradient(circle, rgba(120,80,255,0.05), transparent 60%)'
+                            : 'radial-gradient(circle, rgba(139,122,62,0.05), transparent 60%)',
+                    }} />
+            </div>
+
+            {/* Dark Mode Toggle */}
             <button onClick={onToggleDarkMode}
-                className={`fixed top-5 right-5 z-50 p-2.5 rounded-full transition-all duration-300 backdrop-blur-sm ${darkMode
-                    ? 'bg-white/10 text-amber-400 hover:bg-white/20 border border-white/10'
-                    : 'bg-black/5 text-gray-600 hover:bg-black/10 border border-black/5'
+                className={`fixed top-5 right-5 z-50 p-2.5 rounded-full transition-all duration-300 backdrop-blur-md ${darkMode
+                    ? 'bg-white/10 text-cyan-400 hover:bg-white/20 border border-white/10 hover:border-cyan-500/40'
+                    : 'bg-black/5 text-gray-600 hover:bg-black/10 border border-black/5 hover:border-amber-500/40'
                     }`}>
                 {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* ===================== LEFT PANEL - Decorative ===================== */}
-            <div className={`hidden lg:flex lg:w-[52%] relative overflow-hidden items-center justify-center ${darkMode ? '' : ''}`}
-                style={{
-                    background: darkMode
-                        ? `linear-gradient(135deg, #0d0d15 0%, #111118 40%, #15131f 100%)`
-                        : `linear-gradient(135deg, #1a1810 0%, #0f0e0a 50%, #1a1612 100%)`
-                }}>
+            {/* Main Login Card */}
+            <div className={`relative z-10 w-full max-w-lg mx-4 transition-all duration-1000 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} ${shake ? 'animate-shake' : ''}`}>
 
-                {/* Grid pattern */}
-                <div className="absolute inset-0 opacity-[0.04]" style={{
-                    backgroundImage: `linear-gradient(${gold} 1px, transparent 1px), linear-gradient(90deg, ${gold} 1px, transparent 1px)`,
-                    backgroundSize: '60px 60px'
-                }} />
+                {/* Glassmorphism Card */}
+                <div className={`relative rounded-3xl overflow-hidden transition-all duration-500 ${darkMode
+                    ? 'bg-white/[0.04] border border-white/[0.08] shadow-2xl shadow-cyan-500/10'
+                    : 'bg-white/70 border border-stone-200/60 shadow-2xl shadow-amber-200/30'
+                    }`}
+                    style={{ backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}>
 
-                {/* Animated floating circles */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                    {/* Large outer ring */}
-                    <div className="absolute -inset-[180px] animate-rotate-slow">
-                        <div className="w-full h-full rounded-full" style={{
-                            border: `1.5px solid ${gold}30`,
-                        }} />
-                        <div className="absolute top-0 left-1/2 w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2"
-                            style={{ background: gold, boxShadow: `0 0 15px ${gold}60` }} />
-                    </div>
-                    {/* Medium ring */}
-                    <div className="absolute -inset-[120px] animate-spin-reverse-slow">
-                        <div className="w-full h-full rounded-full" style={{
-                            border: `1px solid ${gold}20`,
-                            borderStyle: 'dashed',
-                        }} />
-                        <div className="absolute bottom-0 left-1/2 w-2 h-2 rounded-full -translate-x-1/2 translate-y-1/2"
-                            style={{ background: goldLight, boxShadow: `0 0 10px ${gold}40` }} />
-                    </div>
-                    {/* Inner ring */}
-                    <div className="absolute -inset-[70px] animate-spin-slow" style={{ animationDuration: '30s' }}>
-                        <div className="w-full h-full rounded-full" style={{
-                            border: `1px solid ${gold}15`,
-                        }} />
-                    </div>
-                </div>
-
-                {/* Floating gold particles */}
-                {[...Array(8)].map((_, i) => (
-                    <div key={i} className="absolute animate-particle"
+                    {/* Top Glow Bar */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px]"
                         style={{
-                            width: `${4 + i * 2}px`, height: `${4 + i * 2}px`,
-                            borderRadius: '50%',
-                            background: `radial-gradient(circle, ${gold}90, transparent)`,
-                            left: `${8 + i * 11}%`, top: `${15 + (i % 4) * 20}%`,
-                            animationDelay: `${i * 0.8}s`, opacity: 0.5
-                        }} />
-                ))}
-
-                {/* Center Logo + Branding */}
-                <div className="relative z-10 text-center px-8">
-                    <div className="w-32 h-32 mx-auto rounded-3xl flex items-center justify-center shadow-2xl overflow-hidden mb-8 animate-card-entrance"
-                        style={{
-                            background: 'linear-gradient(135deg, #1a1a1a, #0a0a0a)',
-                            boxShadow: `0 0 60px ${gold}15, 0 20px 40px rgba(0,0,0,0.5)`,
-                            border: `1px solid ${gold}25`
+                            background: darkMode
+                                ? 'linear-gradient(90deg, transparent, #00c8ff, #7850ff, transparent)'
+                                : `linear-gradient(90deg, transparent, ${gold}, ${goldDark}, transparent)`
                         }}>
-                        {appIcon.startsWith('http') || appIcon.startsWith('data:') ? (
-                            <img src={appIcon} alt="Logo" className="w-full h-full object-cover" />
-                        ) : (
-                            <span className="text-4xl font-bold" style={{ color: gold }}>{appIcon}</span>
-                        )}
+                        <div className="absolute inset-0 animate-shimmer-fast" />
                     </div>
 
-                    <h1 className="text-4xl font-bold mb-3 gold-gradient-text">{appName}</h1>
-                    <p className="text-lg mb-6" style={{ color: `${gold}80` }}>ระบบจัดการโครงการ</p>
-
-                    {/* Shimmer line */}
-                    <div className="animate-shimmer h-[1px] w-48 mx-auto rounded-full mb-8" />
-
-                    {/* Feature badges */}
-                    <div className="flex flex-wrap gap-3 justify-center">
-                        {['📊 วิเคราะห์ข้อมูล', '🏗️ จัดการงาน', '💰 บันทึกรายรับ-จ่าย'].map((feat, i) => (
-                            <div key={i} className="px-4 py-2 rounded-xl text-sm font-medium animate-fade-in"
-                                style={{
-                                    background: `${gold}10`,
-                                    border: `1px solid ${gold}15`,
-                                    color: `${gold}90`,
-                                    animationDelay: `${0.5 + i * 0.15}s`
-                                }}>
-                                {feat}
-                            </div>
-                        ))}
+                    {/* Inner scanning line animation */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                        <div className={`absolute w-full h-[1px] animate-scan-line ${darkMode ? 'bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent' : 'bg-gradient-to-r from-transparent via-amber-400/15 to-transparent'}`} />
                     </div>
 
-                    {/* Bottom corner accents */}
-                    <div className="absolute bottom-0 left-0 right-0 h-[1px] opacity-10"
-                        style={{ background: `linear-gradient(90deg, transparent, ${gold}, transparent)` }} />
-                </div>
-
-                {/* Ambient glow */}
-                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] rounded-full opacity-[0.04]"
-                    style={{ background: `radial-gradient(circle, ${gold}, transparent 60%)` }} />
-
-                {/* Corner decorations */}
-                <div className="absolute top-0 left-0 w-32 h-32 opacity-30">
-                    <div className="absolute top-0 left-0 w-full h-[1px]" style={{ background: `linear-gradient(90deg, ${gold}60, transparent)` }} />
-                    <div className="absolute top-0 left-0 h-full w-[1px]" style={{ background: `linear-gradient(180deg, ${gold}60, transparent)` }} />
-                </div>
-                <div className="absolute bottom-0 right-0 w-32 h-32 opacity-30">
-                    <div className="absolute bottom-0 right-0 w-full h-[1px]" style={{ background: `linear-gradient(270deg, ${gold}60, transparent)` }} />
-                    <div className="absolute bottom-0 right-0 h-full w-[1px]" style={{ background: `linear-gradient(0deg, ${gold}60, transparent)` }} />
-                </div>
-            </div>
-
-            {/* ===================== RIGHT PANEL - Login Form ===================== */}
-            <div className="flex-1 flex items-center justify-center p-6 sm:p-10 relative">
-
-                {/* Subtle background pattern for right panel */}
-                {darkMode && (
-                    <div className="absolute inset-0 opacity-[0.02]" style={{
-                        backgroundImage: `linear-gradient(${gold} 1px, transparent 1px), linear-gradient(90deg, ${gold} 1px, transparent 1px)`,
-                        backgroundSize: '40px 40px'
-                    }} />
-                )}
-
-                <div className={`w-full max-w-md relative z-10 ${shake ? 'animate-shake' : ''}`}>
-
-                    {/* Mobile: Logo shown above form (hidden on lg+) */}
-                    <div className="lg:hidden text-center mb-8">
-                        <div className="w-20 h-20 mx-auto rounded-2xl flex items-center justify-center shadow-xl overflow-hidden mb-4"
+                    <div className="relative p-8 sm:p-10">
+                        {/* Logo */}
+                        <div className={`w-24 h-24 mx-auto rounded-2xl flex items-center justify-center shadow-2xl overflow-hidden mb-6 transition-all duration-700 ${mounted ? 'scale-100 rotate-0' : 'scale-50 rotate-12'}`}
                             style={{
-                                background: 'linear-gradient(135deg, #1a1a1a, #0a0a0a)',
-                                border: `1px solid ${gold}25`
+                                background: darkMode
+                                    ? 'linear-gradient(135deg, #0a0a20, #111130)'
+                                    : 'linear-gradient(135deg, #1a1a1a, #0a0a0a)',
+                                boxShadow: darkMode
+                                    ? '0 0 40px rgba(0,200,255,0.15), 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)'
+                                    : `0 0 40px ${gold}20, 0 10px 30px rgba(0,0,0,0.3)`,
+                                border: darkMode ? '1px solid rgba(0,200,255,0.15)' : `1px solid ${gold}25`
                             }}>
                             {appIcon.startsWith('http') || appIcon.startsWith('data:') ? (
                                 <img src={appIcon} alt="Logo" className="w-full h-full object-cover" />
                             ) : (
-                                <span className="text-xl font-bold" style={{ color: gold }}>{appIcon}</span>
+                                <span className="text-3xl font-bold" style={{ color: darkMode ? '#00c8ff' : gold }}>{appIcon}</span>
                             )}
                         </div>
-                        <h1 className={`text-2xl font-bold ${darkMode ? 'gold-gradient-text' : 'text-gray-900'}`}>{appName}</h1>
-                        <p className="text-sm mt-1" style={{ color: darkMode ? `${gold}80` : goldDark }}>ระบบจัดการโครงการ</p>
-                    </div>
 
-                    {/* Welcome Text */}
-                    <div className="mb-8">
-                        <h2 className={`text-2xl sm:text-3xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            ยินดีต้อนรับ 👋
-                        </h2>
-                        <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                            เข้าสู่ระบบเพื่อเริ่มใช้งาน <span style={{ color: gold }} className="font-medium">{appName}</span>
-                        </p>
-                    </div>
+                        {/* Title */}
+                        <div className="text-center mb-8">
+                            <h1 className={`text-2xl sm:text-3xl font-bold mb-2 transition-all duration-700 delay-200 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'} ${darkMode ? 'bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent' : 'gold-gradient-text'}`}>
+                                {appName}
+                            </h1>
+                            <p className={`text-sm transition-all duration-700 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'} ${darkMode ? 'text-cyan-300/50' : 'text-stone-500'}`}>
+                                ระบบจัดการโครงการก่อสร้าง
+                            </p>
 
-                    {/* Login Form Card */}
-                    <div className={`rounded-2xl p-6 sm:p-8 transition-all duration-500 ${darkMode
-                        ? 'bg-white/[0.03] border border-white/[0.06] backdrop-blur-xl'
-                        : 'bg-white border border-stone-200/60 shadow-lg shadow-stone-200/30'
-                        }`}>
+                            {/* Feature badges */}
+                            <div className={`flex flex-wrap gap-2 justify-center mt-4 transition-all duration-700 delay-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+                                {['📊 วิเคราะห์', '🏗️ จัดการงาน', '💰 รายรับ-จ่าย'].map((feat, i) => (
+                                    <span key={i} className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode
+                                        ? 'bg-cyan-500/10 text-cyan-400/70 border border-cyan-500/15'
+                                        : `bg-amber-500/10 border border-amber-500/15`
+                                        }`}
+                                        style={{ color: darkMode ? undefined : `${gold}cc`, animationDelay: `${i * 0.1}s` }}>
+                                        {feat}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Login Form */}
                         <form onSubmit={handleSubmit} className="space-y-5">
                             {/* Username */}
-                            <div>
+                            <div className={`transition-all duration-700 delay-[400ms] ${mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'}`}>
                                 <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                     ชื่อผู้ใช้ (Username)
                                 </label>
                                 <div className="relative group">
-                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-600 group-focus-within:text-amber-500' : 'text-stone-400 group-focus-within:text-amber-600'}`}>
+                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${darkMode
+                                        ? 'text-gray-600 group-focus-within:text-cyan-400'
+                                        : 'text-stone-400 group-focus-within:text-amber-600'
+                                        }`}>
                                         <User size={18} />
                                     </div>
                                     <input type="text" placeholder="กรอกชื่อผู้ใช้" value={username}
                                         onChange={(e) => setUsername(e.target.value)}
                                         className={`w-full rounded-xl pl-12 pr-4 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
-                                            ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-amber-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-amber-500/20'
-                                            : 'bg-stone-50 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20'
+                                            ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
+                                            : 'bg-white/60 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="username" />
+                                    {/* Focus glow effect */}
+                                    <div className={`absolute inset-0 rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 pointer-events-none ${darkMode
+                                        ? 'shadow-[inset_0_0_0_1px_rgba(0,200,255,0.1)]'
+                                        : 'shadow-[inset_0_0_0_1px_rgba(197,165,90,0.1)]'
+                                        }`} />
                                 </div>
                             </div>
 
                             {/* Password */}
-                            <div>
+                            <div className={`transition-all duration-700 delay-[500ms] ${mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`}>
                                 <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                     รหัสผ่าน (Password)
                                 </label>
                                 <div className="relative group">
-                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-600 group-focus-within:text-amber-500' : 'text-stone-400 group-focus-within:text-amber-600'}`}>
+                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${darkMode
+                                        ? 'text-gray-600 group-focus-within:text-cyan-400'
+                                        : 'text-stone-400 group-focus-within:text-amber-600'
+                                        }`}>
                                         <Lock size={18} />
                                     </div>
                                     <input type={showPassword ? 'text' : 'password'} placeholder="กรอกรหัสผ่าน" value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         className={`w-full rounded-xl pl-12 pr-12 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
-                                            ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-amber-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-amber-500/20'
-                                            : 'bg-stone-50 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20'
+                                            ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
+                                            : 'bg-white/60 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="current-password" />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)}
-                                        className={`absolute right-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-500 hover:text-white' : 'text-stone-400 hover:text-stone-700'}`}>
+                                        className={`absolute right-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-500 hover:text-cyan-400' : 'text-stone-400 hover:text-stone-700'}`}>
                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
                                 </div>
@@ -253,41 +368,57 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                             )}
 
                             {/* Remember + Forgot */}
-                            <div className="flex justify-between items-center">
+                            <div className={`flex justify-between items-center transition-all duration-700 delay-[600ms] ${mounted ? 'opacity-100' : 'opacity-0'}`}>
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" className="w-4 h-4 rounded border-gray-300 accent-amber-500" />
                                     <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>จดจำฉัน</span>
                                 </label>
-                                <span className={`text-xs cursor-pointer hover:underline ${darkMode ? 'text-amber-500/70 hover:text-amber-400' : 'text-amber-700/70 hover:text-amber-700'}`}>
+                                <span className={`text-xs cursor-pointer hover:underline ${darkMode ? 'text-cyan-500/70 hover:text-cyan-400' : 'text-amber-700/70 hover:text-amber-700'}`}>
                                     ลืมรหัสผ่าน?
                                 </span>
                             </div>
 
                             {/* Submit Button */}
-                            <button type="submit" disabled={isLoading}
-                                className="w-full font-bold py-3.5 rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 group text-white shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
-                                style={{
-                                    background: `linear-gradient(135deg, ${gold}, ${goldDark})`,
-                                    boxShadow: `0 4px 20px ${gold}30`
-                                }}>
-                                {isLoading ? (
-                                    <><Loader2 size={20} className="animate-spin" /><span>กำลังตรวจสอบ...</span></>
-                                ) : (
-                                    <><Lock size={18} className="group-hover:scale-110 transition-transform" /><span>เข้าสู่ระบบ</span></>
-                                )}
-                            </button>
+                            <div className={`transition-all duration-700 delay-[700ms] ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+                                <button type="submit" disabled={isLoading}
+                                    className="w-full relative font-bold py-3.5 rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 group text-white overflow-hidden hover:scale-[1.01] active:scale-[0.99]"
+                                    style={{
+                                        background: darkMode
+                                            ? 'linear-gradient(135deg, #0080ff, #6020c0)'
+                                            : `linear-gradient(135deg, ${gold}, ${goldDark})`,
+                                        boxShadow: darkMode
+                                            ? '0 4px 25px rgba(0,128,255,0.3), 0 0 60px rgba(0,128,255,0.1)'
+                                            : `0 4px 25px ${gold}30, 0 0 60px ${gold}10`
+                                    }}>
+                                    {/* Button shine animation */}
+                                    <div className="absolute inset-0 -translate-x-full animate-btn-shine bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                                    {isLoading ? (
+                                        <><Loader2 size={20} className="animate-spin" /><span>กำลังตรวจสอบ...</span></>
+                                    ) : (
+                                        <><Lock size={18} className="group-hover:scale-110 transition-transform" /><span>เข้าสู่ระบบ</span></>
+                                    )}
+                                </button>
+                            </div>
                         </form>
                     </div>
 
-                    {/* Footer */}
-                    <div className="mt-6 text-center">
-                        <p className={`text-xs ${darkMode ? 'text-gray-700' : 'text-stone-400'}`}>
-                            ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน
-                        </p>
-                        <p className={`text-xs mt-2 ${darkMode ? 'text-gray-800' : 'text-stone-300'}`}>
-                            © 2024 {appName}. All rights reserved.
-                        </p>
-                    </div>
+                    {/* Bottom glow bar */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[1px]"
+                        style={{
+                            background: darkMode
+                                ? 'linear-gradient(90deg, transparent, rgba(0,200,255,0.3), rgba(120,80,255,0.3), transparent)'
+                                : `linear-gradient(90deg, transparent, ${gold}40, transparent)`
+                        }} />
+                </div>
+
+                {/* Footer */}
+                <div className={`mt-6 text-center transition-all duration-700 delay-[800ms] ${mounted ? 'opacity-100' : 'opacity-0'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-stone-400'}`}>
+                        ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน
+                    </p>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-800' : 'text-stone-300'}`}>
+                        © 2024 {appName}. All rights reserved.
+                    </p>
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Sparkles, TrendingUp, TrendingDown, Wallet, Activity, Zap, MessageSquare, ArrowRight, Brain, Send, User, Bot, BarChart3, PieChart, Cpu } from 'lucide-react';
+import { Sparkles, TrendingUp, Wallet, Activity, Send, Bot, PieChart, Cpu } from 'lucide-react';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { Transaction } from '../../types';
 
@@ -116,10 +116,12 @@ interface ChatMessage {
 }
 
 const processAIQuery = (query: string, transactions: Transaction[]): string => {
-    const q = query.toLowerCase();
+    const q = query.toLowerCase().trim();
     const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
+    const currentDateTh = today.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
     // Filter Helpers
     const getMonthTrans = () => transactions.filter(t => {
@@ -127,37 +129,97 @@ const processAIQuery = (query: string, transactions: Transaction[]): string => {
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
+    const getTodayTrans = () => transactions.filter(t => t.date === todayStr);
+
     const sumAmount = (trans: Transaction[]) => trans.reduce((s, t) => s + t.amount, 0);
 
-    // Logic
-    if (q.includes('กำไร') || q.includes('profit')) {
+    // --- Time Analysis ---
+    if (q.includes('วันนี้เดือนอะไร') || q.includes('วันที่เท่าไหร่')) {
+        return `วันนี้คือวันที่ ${currentDateTh} ครับ`;
+    }
+
+    // --- Complex Queries ---
+
+    // 1. Profit / Overview
+    if (q.includes('กำไร') || q.includes('สถานะการเงิน') || q.includes('profit')) {
         const income = sumAmount(transactions.filter(t => t.type === 'Income'));
         const expense = sumAmount(transactions.filter(t => t.type === 'Expense'));
         const prof = income - expense;
-        return `กำไรสุทธิรวมทั้งหมดอยู่ที่ ${prof.toLocaleString()} บาทครับ (รายรับ: ${income.toLocaleString()} - รายจ่าย: ${expense.toLocaleString()})`;
+        const monthIncome = sumAmount(getMonthTrans().filter(t => t.type === 'Income'));
+        const monthExpense = sumAmount(getMonthTrans().filter(t => t.type === 'Expense'));
+        return `กำไรสุทธิรวมทั้งหมดอยู่ที่ ${prof.toLocaleString()} บาทครับ (รับรวม: ${income.toLocaleString()} - จ่ายรวม: ${expense.toLocaleString()}) สำหรับเดือนนี้มีรายได้ ${monthIncome.toLocaleString()} บาท และรายจ่าย ${monthExpense.toLocaleString()} บาทครับ`;
     }
 
-    if (q.includes('เดือนนี้') && (q.includes('จ่าย') || q.includes('expense'))) {
-        const monthTrans = getMonthTrans().filter(t => t.type === 'Expense');
-        const monthExp = sumAmount(monthTrans);
-        return `ยอดรายจ่ายประจำเดือนนี้คือ ${monthExp.toLocaleString()} บาทครับ`;
+    // 2. Today's Summary
+    if (q.includes('วันนี้เรา') || q.includes('ยอดวันนี้') || (q.includes('วันนี้') && (q.includes('สรุป') || q.includes('ทั้งหมด')))) {
+        const todayTrans = getTodayTrans();
+        if (todayTrans.length === 0) return 'วันนี้ยังไม่มีการบันทึกข้อมูลใดๆ เข้าระบบเลยครับ';
+
+        const inToday = sumAmount(todayTrans.filter(t => t.type === 'Income'));
+        const exToday = sumAmount(todayTrans.filter(t => t.type === 'Expense'));
+        const sand = todayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+        return `📅 สรุปข้อมูลวันนี้ (${todayStr}): มีรายรับ ${inToday.toLocaleString()} บาท, รายจ่าย ${exToday.toLocaleString()} บาท, และล้างทรายได้ ${sand} คิวครับ`;
     }
 
+    // 3. Specific Categories (Fuel)
     if (q.includes('น้ำมัน') || q.includes('fuel')) {
-        const fuel = sumAmount(transactions.filter(t => t.category === 'Fuel'));
-        return `ยอดค่าใช้จ่ายน้ำมันรวมทั้งหมดอยู่ที่ ${fuel.toLocaleString()} บาทครับ`;
+        const fuelTrans = transactions.filter(t => t.category === 'Fuel');
+        const fuelTotal = sumAmount(fuelTrans);
+        const fuelLiters = fuelTrans.reduce((s, t) => s + (t.quantity || 0), 0);
+
+        if (q.includes('วันนี้')) {
+            const todayFuel = fuelTrans.filter(t => t.date === todayStr);
+            const todayLiters = todayFuel.reduce((s, t) => s + (t.quantity || 0), 0);
+            return `วันนี้เราเติมน้ํามันไปทั้งหมด ${todayLiters.toLocaleString()} ลิตร เป็นเงิน ${sumAmount(todayFuel).toLocaleString()} บาทครับ`;
+        }
+        return `ยอดใช้จ่ายน้ำมันรวมทั้งหมดตั้งแต่เริ่มโครงการคือ ${fuelTotal.toLocaleString()} บาทครับ ใช้น้ำมันไปแล้ว ${fuelLiters.toLocaleString()} ลิตร`;
     }
 
-    if (q.includes('แรงงาน') || q.includes('labor') || q.includes('คนงาน')) {
+    // 4. Sand Production
+    if (q.includes('ทราย') || q.includes('ล้างทราย')) {
+        const dLogs = transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+        const totalQ = dLogs.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+        if (q.includes('วันนี้')) {
+            const todayQ = dLogs.filter(t => t.date === todayStr).reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+            return `วันนี้เราล้างทรายได้ทั้งหมด ${todayQ} คิวครับ 🌊`;
+        }
+        return `ปริมาณทรายที่ล้างได้ทั้งหมดตามที่บันทึกไว้ในระบบคือ ${totalQ} คิวครับ`;
+    }
+
+    // 5. Labor / Workers
+    if (q.includes('คนงาน') || q.includes('แรงงาน') || q.includes('พนักงาน')) {
         const labor = sumAmount(transactions.filter(t => t.category === 'Labor'));
-        return `ค่าแรงงานรวมทั้งหมดอยู่ที่ ${labor.toLocaleString()} บาทครับ`;
+        if (q.includes('วันนี้')) {
+            const todayWorkers = getTodayTrans().filter(t => t.category === 'Labor' && t.laborStatus === 'Work').reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
+            return `วันนี้มีคนงานมาทำงานทั้งหมด ${todayWorkers} คนครับ`;
+        }
+        return `เราจ่ายค่าแรงไปแล้วรวมทั้งสิ้น ${labor.toLocaleString()} บาทครับ`;
     }
 
-    if (q.includes('สวัสดี') || q.includes('hi')) {
-        return 'สวัสดีครับ! ผมคือ AI Assistant ของโครงการก่อสร้างนี้ มีข้อมูลอะไรให้ผมช่วยตรวจสอบไหมครับ?';
+    // 6. Vehicles
+    if (q.includes('รถ') || q.includes('เครื่องจักร')) {
+        const veh = transactions.filter(t => t.category === 'Vehicle');
+        if (q.includes('วันนี้มา')) {
+            const tVeh = getTodayTrans().filter(t => t.category === 'Vehicle');
+            if (tVeh.length === 0) return 'ไม่ได้บันทึกข้อมูลรถเข้าทำงานในวันนี้ครับ';
+            const vNames = tVeh.map(t => t.vehicleId).join(', ');
+            return `วันนี้มีรถเข้าทำงาน ${tVeh.length} คัน ได้แก่: ${vNames} ครับ`;
+        }
+        return `มีการบันทึกการทำงานของรถ/เครื่องจักรในระบบทั้งหมด ${veh.length} รายการ`;
     }
 
-    return 'ขอโทษด้วยครับ ผมไม่แน่ใจในคำถาม ลองถามเกี่ยวกับ "กำไร", "รายจ่ายเดือนนี้", "ค่าน้ำมัน" หรือ "ค่าแรง" ดูนะครับ';
+    // 7. Salary / Payroll
+    if (q.includes('เงินเดือน') || q.includes('ค่าจ้าง')) {
+        const pRoll = sumAmount(transactions.filter(t => t.category === 'Payroll'));
+        return `ยอดรวมการจ่ายเงินเดือนพนักงานในระบบที่ตัดยอดแล้วคือ ${pRoll.toLocaleString()} บาทครับ`;
+    }
+
+    // 8. General Greetings & Help
+    if (q.includes('สวัสดี') || q.includes('hi') || q.includes('ทำอะไรได้บ้าง')) {
+        return `สวัสดีครับ! 🤖 ผมคือ AI Manager ประจำโครงการครับ\nผมสามารถอ่านข้อมูลทุกอย่างในระบบและสรุปให้คุณได้ทันที เช่น:\n- "ยอดสรุปวันนี้"\n- "เราล้างทรายได้กี่คิวแล้ว"\n- "วันนี้ใช้น้ำมันไปเท่าไหร่"\n- "กำไรเดือนนี้เท่าไหร่"\nลองถามผมมาได้เลยครับ!`;
+    }
+
+    return 'ผมกำลังรวบรวมข้อมูลส่วนนี้อยู่ อาจจะยังไม่มีในฐานข้อมูลที่ผมเข้าถึงได้ ลองถามเกี่ยวกับ "สรุปยอดวันนี้", "กำไรทั้งหมด", "ทรายที่ล้างได้", "รถที่มาทำงาน" หรือ "ยอดน้ำมัน" ดูก่อนนะครับ';
 };
 
 // --- Main Dashboard ---

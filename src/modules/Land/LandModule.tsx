@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { FolderOpen, Edit2, Trash2, ArrowRight, FileText, PieChart } from 'lucide-react';
+import { FolderOpen, Edit2, Trash2, ArrowRight, FileText } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import { getToday } from '../../utils';
+import { getToday, formatDateBE } from '../../utils';
 import { LandProject, Transaction, LandStatus } from '../../types';
 
 interface LandModuleProps {
@@ -40,7 +40,7 @@ const LandModule = ({ projects, setProjects, onSave, transactions }: LandModuleP
 
     if (tab === 'Details' && selectedProject) {
         const projTrans = transactions.filter((t: Transaction) => t.projectId === selectedProject.id);
-        const paidAmount = selectedProject.deposit + projTrans.filter((t: Transaction) => t.subCategory === 'Installment').reduce((s: number, t: Transaction) => s + t.amount, 0);
+        const _paidAmount = selectedProject.deposit + projTrans.filter((t: Transaction) => t.subCategory === 'Installment').reduce((s: number, t: Transaction) => s + t.amount, 0);
         const extraCost = projTrans.filter((t: Transaction) => ['ค่าโอนที่ดิน', 'ภาษีที่ดิน', 'ค่านายหน้า'].includes(t.subCategory || '')).reduce((s: number, t: Transaction) => s + t.amount, 0);
 
         return (
@@ -54,7 +54,7 @@ const LandModule = ({ projects, setProjects, onSave, transactions }: LandModuleP
                         <div><p className="text-slate-400">โฉนด</p><p className="font-medium">{selectedProject.titleDeed}</p></div>
                         <div><p className="text-slate-400">พื้นที่</p><p className="font-medium">{selectedProject.rai}-{selectedProject.ngan}-{selectedProject.sqWah}</p></div>
                         <div><p className="text-slate-400">ราคาซื้อ</p><p className="font-medium">฿{selectedProject.fullPrice.toLocaleString()}</p></div>
-                        <div><p className="text-slate-400">ซื้อเมื่อ</p><p className="font-medium">{selectedProject.purchaseDate}</p></div>
+                        <div><p className="text-slate-400">ซื้อเมื่อ</p><p className="font-medium">{formatDateBE(selectedProject.purchaseDate)}</p></div>
                     </div>
                 </Card>
                 <Card className="p-6">
@@ -79,10 +79,10 @@ const LandModule = ({ projects, setProjects, onSave, transactions }: LandModuleP
                     <table className="w-full text-sm text-left">
                         <thead className="text-slate-400"><tr><th className="p-3">วันที่</th><th className="p-3">รายการ</th><th className="p-3 text-right">จำนวนเงิน</th></tr></thead>
                         <tbody>
-                            <tr className="border-b"><td className="p-3">{selectedProject.purchaseDate}</td><td className="p-3">วางมัดจำตั้งต้น</td><td className="p-3 text-right">฿{selectedProject.deposit.toLocaleString()}</td></tr>
+                            <tr className="border-b"><td className="p-3">{formatDateBE(selectedProject.purchaseDate)}</td><td className="p-3">วางมัดจำตั้งต้น</td><td className="p-3 text-right">฿{selectedProject.deposit.toLocaleString()}</td></tr>
                             {projTrans.map((t: Transaction) => (
                                 <tr key={t.id} className="border-b hover:bg-slate-50">
-                                    <td className="p-3">{t.date}</td>
+                                    <td className="p-3">{formatDateBE(t.date)}</td>
                                     <td className="p-3">{t.description} <span className="bg-slate-100 text-xs px-1 rounded">{t.subCategory}</span></td>
                                     <td className="p-3 text-right">฿{t.amount.toLocaleString()}</td>
                                 </tr>

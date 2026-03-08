@@ -4,7 +4,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
-import { getToday } from '../utils';
+import { getToday, formatDateBE } from '../utils';
 import { Transaction, AppSettings } from '../types';
 
 interface GeneralEntryProps {
@@ -55,7 +55,7 @@ const GeneralEntry = ({ type, settings, onSave, transactions }: GeneralEntryProp
                                 </label>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <Input label="ปริมาณ" type="number" value={form.quantity} onChange={(e: any) => setForm({ ...form, quantity: e.target.value })} />
+                                <Input label="จำนวนลิตร" type="number" value={form.quantity} onChange={(e: any) => setForm({ ...form, quantity: e.target.value })} />
                                 <Select label="หน่วย" value={form.unit} onChange={(e: any) => setForm({ ...form, unit: e.target.value })}>
                                     <option>แกลอน</option>
                                     <option>ลิตร</option>
@@ -74,7 +74,7 @@ const GeneralEntry = ({ type, settings, onSave, transactions }: GeneralEntryProp
                             <Input label="รายละเอียดเพิ่มเติม" value={form.extra} onChange={(e: any) => setForm({ ...form, extra: e.target.value })} />
                         </>
                     )}
-                    <Input label="จำนวนเงิน" type="number" value={form.amount} onChange={(e: any) => setForm({ ...form, amount: e.target.value })} className="input-highlight" />
+                    <Input label="ราคาซื้อน้ำมัน (บาท)" type="number" value={form.amount} onChange={(e: any) => setForm({ ...form, amount: e.target.value })} className="input-highlight" />
                     <Button onClick={handleSave} className="w-full mt-4">บันทึก</Button>
                 </div>
             </Card>
@@ -87,7 +87,7 @@ const GeneralEntry = ({ type, settings, onSave, transactions }: GeneralEntryProp
                         <div key={t.id} className="p-3 text-sm flex justify-between items-center hover:bg-slate-50">
                             <div>
                                 <div className="font-medium text-slate-800">{t.description}</div>
-                                <div className="text-xs text-slate-400">{t.date} {t.category === 'Fuel' && `• ${t.quantity} ${t.unit}`}</div>
+                                <div className="text-xs text-slate-400">{formatDateBE(t.date)} {t.category === 'Fuel' && `• ${t.quantity} ${t.unit}`}</div>
                             </div>
                             <span className="font-bold text-slate-700">฿{t.amount.toLocaleString()}</span>
                         </div>

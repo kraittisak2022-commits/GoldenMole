@@ -4,7 +4,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
-import { getToday } from '../utils';
+import { getToday, formatDateBE } from '../utils';
 import { Transaction, AppSettings } from '../types';
 
 interface IncomeEntryProps {
@@ -50,7 +50,7 @@ const IncomeEntry = ({ settings, onSave, transactions }: IncomeEntryProps) => {
                         <div key={t.id} className="p-3 text-sm flex justify-between items-center hover:bg-slate-50">
                             <div>
                                 <div className="font-medium text-emerald-700">{t.description}</div>
-                                <div className="text-xs text-slate-400">{t.date}</div>
+                                <div className="text-xs text-slate-400">{formatDateBE(t.date)}</div>
                             </div>
                             <span className="font-bold text-emerald-600">+฿{t.amount.toLocaleString()}</span>
                         </div>

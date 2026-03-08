@@ -4,7 +4,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import { getToday } from '../../utils';
+import { getToday, formatDateBE } from '../../utils';
 import { AppSettings, Transaction } from '../../types';
 
 interface MachineWorkLogProps {
@@ -64,7 +64,7 @@ const MachineWorkLog = ({ settings, onSave, transactions }: MachineWorkLogProps)
                         <div key={t.id} className="p-3 text-sm flex justify-between items-center hover:bg-slate-50">
                             <div>
                                 <div className="font-medium text-slate-800">{t.description}</div>
-                                <div className="text-xs text-slate-400">{t.date} • {t.location}</div>
+                                <div className="text-xs text-slate-400">{formatDateBE(t.date)} • {t.location}</div>
                             </div>
                             <span className="font-bold text-slate-600">{t.machineHours} ชม.</span>
                         </div>

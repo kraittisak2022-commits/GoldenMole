@@ -21,7 +21,7 @@ import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
 import LoginPage from './modules/Auth/LoginPage';
 import AdminModule from './modules/Admin/AdminModule';
 
-import { getToday } from './utils';
+import { getToday, formatDateBE } from './utils';
 
 // --- Default Admin Account ---
 const DEFAULT_ADMINS: AdminUser[] = [
@@ -39,7 +39,7 @@ const MOCK_PROJECTS: LandProject[] = [
     { id: 'P1', name: 'แปลง A1', group: 'โครงการหนองจอก', sellerName: 'คุณสมศักดิ์', titleDeed: '12345', rai: 5, ngan: 2, sqWah: 50, fullPrice: 2000000, deposit: 50000, purchaseDate: '2023-11-15', status: 'Deposit' }
 ];
 const MOCK_SETTINGS: AppSettings = {
-    appName: 'Goldenmole Dashboard', appSubtext: 'ระบบจัดการ', appIcon: 'https://img2.pic.in.th/unnamed-18906f5f592b392df.jpg',
+    appName: 'Goldenmole Dashboard', appSubtext: 'ระบบจัดการ', appIcon: 'https://img2.pic.in.th/unnamed-18906f5f592b392df.jpg', appIconDark: 'https://img2.pic.in.th/unnamed-245ad907783477a6c.jpg',
     cars: ['รถแม็คโคร SK200-8 (น้องโกลเด้น)', 'รถแม็คโคร SK200-8 (พี่ยักษ์ใหญ่)', 'รถดรัมโอเว่น', 'รถดรัมนายก', 'รถดรัมนายกนิต'],
     jobDescriptions: ['ล้างทรายที่ท่าทราย', 'ล้างทรายที่บ้าน', 'งานทั่วไป'],
     incomeTypes: ['ขายทราย', 'ขายหิน', 'ขายแร่'],
@@ -81,7 +81,7 @@ const RecordManager = ({ transactions, setTransactions }: { transactions: Transa
                 <tbody>
                     {transactions.map(t => (
                         <tr key={t.id} className="border-b hover:bg-slate-50">
-                            <td className="p-2 sm:p-4 whitespace-nowrap">{t.date}</td>
+                            <td className="p-2 sm:p-4 whitespace-nowrap">{formatDateBE(t.date)}</td>
                             <td className="p-2 sm:p-4">{t.description}</td>
                             <td className={`p-2 sm:p-4 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600' : 'text-red-500'}`}><FormatNumber value={t.amount} /></td>
                             <td className="p-2 sm:p-4 text-center">
@@ -195,19 +195,30 @@ function App() {
 
     // --- LOGIN GATE ---
     if (!isLoggedIn) {
-        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={settings.appIcon} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
+        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
     }
 
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
 
     return (
-        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 ${darkMode ? 'bg-gray-950 text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
-            {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 relative overflow-hidden ${darkMode ? 'dark bg-[#0a0a0f] text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
+
+            {/* Global Darktech X Background Auras */}
+            {darkMode && (
+                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                    <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[120px]" />
+                    <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-600/10 blur-[150px]" />
+                    <div className="absolute top-[20%] right-[10%] w-[40%] h-[40%] rounded-full bg-purple-600/15 blur-[120px]" />
+                    <div className="absolute bottom-[10%] left-[10%] w-[40%] h-[40%] rounded-full bg-amber-500/10 blur-[150px]" />
+                </div>
+            )}
+
+            {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
 
             {/* Mobile Overlay Backdrop */}
             {isMobile && isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300"
+                    className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 backdrop-blur-sm"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
@@ -216,7 +227,7 @@ function App() {
             <aside className={`
                 fixed top-0 left-0 h-screen z-50 flex flex-col
                 transition-all duration-300 ease-in-out border-r
-                ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-stone-100'}
+                ${darkMode ? 'bg-[#0a0a0f]/40 backdrop-blur-xl border-white/[0.05]' : 'bg-white border-stone-100'}
                 ${isMobile
                     ? `w-72 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`
                     : `lg:sticky ${isSidebarOpen ? 'w-64' : 'w-20'}`
@@ -224,10 +235,10 @@ function App() {
             `}>
                 <div className={`p-4 sm:p-6 flex items-center gap-3 border-b ${darkMode ? 'border-gray-800' : 'border-stone-50'}`}>
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg overflow-hidden shrink-0`} style={{ background: darkMode ? '#1a1a1a' : '#0a0a0a' }}>
-                        {settings.appIcon.startsWith('http') || settings.appIcon.startsWith('data:') ? (
-                            <img src={settings.appIcon} alt="Logo" className="w-full h-full object-cover" />
+                        {(darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon).startsWith('http') || (darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon).startsWith('data:') ? (
+                            <img src={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} alt="Logo" className="w-full h-full object-cover" />
                         ) : (
-                            settings.appIcon
+                            darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon
                         )}
                     </div>
                     {(isSidebarOpen || isMobile) && (

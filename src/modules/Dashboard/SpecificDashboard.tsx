@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
-import { Users, Truck, Fuel, MapPin, TrendingUp, Droplets, PieChart, Wallet, Clock, Coins } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Users, Truck, Fuel, MapPin, TrendingUp, Droplets, PieChart, Wallet, Clock, Coins, ChevronDown, ChevronUp } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import LineChart from '../../components/charts/LineChart';
 import { StatCard } from './DashboardOverview';
-import { Transaction, AppSettings } from '../../types';
+import { Transaction, AppSettings, Employee } from '../../types';
 
-const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type: string, transactions: Transaction[], settings: AppSettings, dateFilter: any }) => {
+const SpecificDashboard = ({ type, transactions, settings, employees = [], dateFilter }: { type: string, transactions: Transaction[], settings: AppSettings, employees?: Employee[], dateFilter: any }) => {
+    const [expandedDate, setExpandedDate] = useState<string | null>(null);
+
     const filteredTransactions = useMemo(() => {
         const start = new Date(dateFilter.start);
         const end = new Date(dateFilter.end);
@@ -27,11 +29,24 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
         return res;
     };
 
+    const getEmpName = (id: string) => employees.find(e => e.id === id)?.nickname || id;
+
+    // Group transactions by date for detail view
+    const groupByDate = (txs: Transaction[]) => {
+        const map: Record<string, Transaction[]> = {};
+        txs.forEach(t => { if (!map[t.date]) map[t.date] = []; map[t.date].push(t); });
+        return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
+    };
+
+    const formatThaiDate = (d: string) => new Date(d).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' });
+
     if (type === 'Labor') {
         const totalWage = getSum('Labor');
         const otTotal = filteredTransactions.filter(t => t.category === 'Labor').reduce((s, t) => s + (t.otAmount || 0), 0);
         const advanceTotal = filteredTransactions.filter(t => t.category === 'Labor').reduce((s, t) => s + (t.advanceAmount || 0), 0);
         const activeWorkers = new Set(filteredTransactions.filter(t => t.category === 'Labor').flatMap(t => t.employeeIds || [])).size;
+        const laborTxByDate = groupByDate(filteredTransactions.filter(t => t.category === 'Labor'));
+
         return (
             <div className="space-y-6 animate-fade-in">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
@@ -44,6 +59,43 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
                     </Card>
                 </div>
                 <Card className="p-6 h-80"><h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><TrendingUp size={20} /> แนวโน้มค่าแรง</h3><div className="h-60"><LineChart data={getTrend('Labor')} color="#10b981" /></div></Card>
+
+                {/* Daily details */}
+                <Card className="p-6">
+                    <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Users size={20} /> รายละเอียดค่าแรงรายวัน</h3>
+                    <div className="space-y-2">
+                        {laborTxByDate.map(([d, txs]) => (
+                            <div key={d} className="border rounded-xl overflow-hidden">
+                                <button onClick={() => setExpandedDate(expandedDate === d ? null : d)}
+                                    className="w-full flex justify-between items-center p-3 bg-emerald-50 hover:bg-emerald-100 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-bold text-emerald-800">{formatThaiDate(d)}</span>
+                                        <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">{txs.length} รายการ</span>
+                                        <span className="text-xs font-bold text-emerald-700">฿{txs.reduce((s, t) => s + t.amount, 0).toLocaleString()}</span>
+                                    </div>
+                                    {expandedDate === d ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </button>
+                                {expandedDate === d && (
+                                    <div className="p-3 bg-white space-y-2">
+                                        {txs.map(t => (
+                                            <div key={t.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg text-sm">
+                                                <div>
+                                                    <span className={`px-1.5 py-0.5 rounded text-xs font-bold mr-2 ${t.laborStatus === 'OT' ? 'bg-amber-100 text-amber-700' : t.laborStatus === 'Leave' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                        {t.laborStatus === 'OT' ? 'OT' : t.laborStatus === 'Leave' ? 'ลา' : 'ทำงาน'}
+                                                    </span>
+                                                    <span className="text-slate-600">{t.description}</span>
+                                                    {t.employeeIds && <span className="text-xs text-slate-400 ml-2">({t.employeeIds.map(id => getEmpName(id)).join(', ')})</span>}
+                                                </div>
+                                                <span className="font-bold text-slate-800">฿{t.amount.toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        {laborTxByDate.length === 0 && <p className="text-center text-sm text-slate-400 py-8">ไม่มีข้อมูลค่าแรงในช่วงนี้</p>}
+                    </div>
+                </Card>
             </div>
         );
     }
@@ -51,13 +103,14 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
     if (type === 'Vehicle' || type === 'Fuel') {
         const isFuel = type === 'Fuel';
         const totalCost = getSum(type);
-        const items = filteredTransactions.filter(t => t.category === type);
+        const items = filteredTransactions.filter(t => isFuel ? t.category === 'Fuel' : (t.category === 'Vehicle' || (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip')));
         const totalQty = isFuel ? items.reduce((s, t) => s + (t.quantity || 0), 0) : 0;
+        const detailByDate = groupByDate(items);
 
         return (
             <div className="space-y-6 animate-fade-in">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                    <StatCard title={`รวม${type}`} value={totalCost} icon={isFuel ? Fuel : Truck} color={isFuel ? "#ea580c" : "#f59e0b"} />
+                    <StatCard title={`รวม${isFuel ? 'น้ำมัน' : 'การใช้รถ'}`} value={isFuel ? totalCost : getSum('Vehicle')} icon={isFuel ? Fuel : Truck} color={isFuel ? "#ea580c" : "#f59e0b"} />
                     {isFuel && (
                         <Card className="p-5 flex flex-col justify-between h-32 relative overflow-hidden bg-slate-800 text-white">
                             <div className="flex items-center gap-2 mb-1"><Droplets size={18} /> <span className="text-sm font-medium opacity-80">ปริมาณรวม</span></div>
@@ -67,6 +120,48 @@ const SpecificDashboard = ({ type, transactions, settings, dateFilter }: { type:
                     )}
                 </div>
                 <Card className="p-6 h-80"><h3 className="font-bold text-slate-700 mb-4">แนวโน้มค่าใช้จ่าย</h3><div className="h-60"><LineChart data={getTrend(type)} color={isFuel ? "#ea580c" : "#f59e0b"} /></div></Card>
+
+                {/* Daily details */}
+                <Card className="p-6">
+                    <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        {isFuel ? <Fuel size={20} /> : <Truck size={20} />} รายละเอียด{isFuel ? 'น้ำมัน' : 'การใช้รถ'}รายวัน
+                    </h3>
+                    <div className="space-y-2">
+                        {detailByDate.map(([d, txs]) => (
+                            <div key={d} className="border rounded-xl overflow-hidden">
+                                <button onClick={() => setExpandedDate(expandedDate === d ? null : d)}
+                                    className={`w-full flex justify-between items-center p-3 ${isFuel ? 'bg-red-50 hover:bg-red-100' : 'bg-amber-50 hover:bg-amber-100'} transition-colors`}>
+                                    <div className="flex items-center gap-3">
+                                        <span className={`text-sm font-bold ${isFuel ? 'text-red-800' : 'text-amber-800'}`}>{formatThaiDate(d)}</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${isFuel ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'}`}>{txs.length} รายการ</span>
+                                        <span className={`text-xs font-bold ${isFuel ? 'text-red-700' : 'text-amber-700'}`}>฿{txs.reduce((s, t) => s + t.amount, 0).toLocaleString()}</span>
+                                    </div>
+                                    {expandedDate === d ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </button>
+                                {expandedDate === d && (
+                                    <div className="p-3 bg-white space-y-2">
+                                        {txs.map(t => (
+                                            <div key={t.id} className="flex justify-between items-start p-2.5 bg-slate-50 rounded-lg text-sm">
+                                                <div className="flex-1">
+                                                    <div className="text-slate-700 font-medium">{t.description}</div>
+                                                    {isFuel && (
+                                                        <div className="text-xs text-slate-400 mt-0.5">
+                                                            {(t as any).fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'} • {t.quantity || 0} {(t as any).unit === 'gallon' ? 'แกลลอน' : 'ลิตร'}
+                                                        </div>
+                                                    )}
+                                                    {!isFuel && t.driverId && <div className="text-xs text-slate-400">คนขับ: {getEmpName(t.driverId)}</div>}
+                                                    {t.workDetails && <div className="text-xs text-slate-400">{t.workDetails}</div>}
+                                                </div>
+                                                <span className="font-bold text-slate-800 shrink-0 ml-3">฿{t.amount.toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        {detailByDate.length === 0 && <p className="text-center text-sm text-slate-400 py-8">ไม่มีข้อมูลในช่วงนี้</p>}
+                    </div>
+                </Card>
             </div>
         );
     }

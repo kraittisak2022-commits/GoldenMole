@@ -15,13 +15,13 @@ const SettingsModule = ({ settings, setSettings }: SettingsModuleProps) => {
     const [newItem, setNewItem] = useState('');
 
     // General Form
-    const [generalForm, setGeneralForm] = useState({ name: settings.appName, icon: settings.appIcon });
+    const [generalForm, setGeneralForm] = useState({ name: settings.appName, icon: settings.appIcon, iconDark: settings.appIconDark || '' });
 
     const handleAdd = () => { if (!newItem) return; setSettings({ ...settings, [activeTab]: [...(settings as any)[activeTab], newItem] }); setNewItem(''); };
     const handleDelete = (index: number) => { if (confirm('ยืนยันลบ?')) { const newList = [...(settings as any)[activeTab]]; newList.splice(index, 1); setSettings({ ...settings, [activeTab]: newList }); } };
 
     const saveGeneral = () => {
-        setSettings({ ...settings, appName: generalForm.name, appIcon: generalForm.icon });
+        setSettings({ ...settings, appName: generalForm.name, appIcon: generalForm.icon, appIconDark: generalForm.iconDark || undefined });
         alert('บันทึกตั้งค่าทั่วไปแล้ว');
     };
 
@@ -42,22 +42,39 @@ const SettingsModule = ({ settings, setSettings }: SettingsModuleProps) => {
                 <Card className="p-4 h-fit md:col-span-1"><div className="flex flex-col gap-2">{tabs.map(t => (<button key={t.key} onClick={() => setActiveTab(t.key)} className={`text-left px-4 py-3 rounded-lg text-sm font-medium ${activeTab === t.key ? 'bg-slate-800 text-white' : 'hover:bg-slate-50'}`}>{t.l}</button>))}</div></Card>
                 <Card className="p-6 md:col-span-3 min-h-[500px]">
                     {activeTab === 'general' ? (
-                        <div className="space-y-4 max-w-md">
+                        <div className="space-y-6 max-w-lg">
                             <h3 className="font-bold text-lg mb-4">ตั้งค่าทั่วไป</h3>
                             <Input label="ชื่อเว็บไซต์/แอพ" value={generalForm.name} onChange={(e: any) => setGeneralForm({ ...generalForm, name: e.target.value })} />
 
+                            {/* Logo Light Mode */}
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">โลโก้ (URL รูปภาพ หรือ อักษรย่อ)</label>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">☀️ โลโก้ (โหมดปกติ / Light)</label>
                                 <div className="flex gap-4 items-center">
-                                    <div className="w-16 h-16 bg-slate-100 rounded-xl border flex items-center justify-center overflow-hidden shrink-0">
+                                    <div className="w-16 h-16 bg-white rounded-xl border-2 border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                                         {generalForm.icon.startsWith('http') || generalForm.icon.startsWith('data:') ? (
-                                            <img src={generalForm.icon} alt="Preview" className="w-full h-full object-cover" />
+                                            <img src={generalForm.icon} alt="Light Logo" className="w-full h-full object-cover" />
                                         ) : (
                                             <span className="text-2xl font-bold text-slate-400">{generalForm.icon.substring(0, 2)}</span>
                                         )}
                                     </div>
                                     <Input value={generalForm.icon} onChange={(e: any) => setGeneralForm({ ...generalForm, icon: e.target.value })} placeholder="https://example.com/logo.png" />
                                 </div>
+                            </div>
+
+                            {/* Logo Dark Mode */}
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">🌙 โลโก้ (โหมด Dark)</label>
+                                <div className="flex gap-4 items-center">
+                                    <div className="w-16 h-16 bg-slate-800 rounded-xl border-2 border-slate-600 flex items-center justify-center overflow-hidden shrink-0">
+                                        {(generalForm.iconDark || generalForm.icon).startsWith('http') || (generalForm.iconDark || generalForm.icon).startsWith('data:') ? (
+                                            <img src={generalForm.iconDark || generalForm.icon} alt="Dark Logo" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <span className="text-2xl font-bold text-slate-400">{(generalForm.iconDark || generalForm.icon).substring(0, 2)}</span>
+                                        )}
+                                    </div>
+                                    <Input value={generalForm.iconDark} onChange={(e: any) => setGeneralForm({ ...generalForm, iconDark: e.target.value })} placeholder="URL โลโก้ Dark (ว่างไว้ = ใช้ตัวเดียวกัน)" />
+                                </div>
+                                <p className="text-xs text-slate-400">หากไม่กรอก ระบบจะใช้โลโก้ปกติแทน</p>
                             </div>
 
                             <Button onClick={saveGeneral} className="mt-4">บันทึกการเปลี่ยนแปลง</Button>

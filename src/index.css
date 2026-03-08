@@ -5,6 +5,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+    html {
+        font-size: 16px;
+        /* Base */
+    }
+
+    @media (min-width: 1024px) {
+        html {
+            font-size: 18px;
+            /* Slightly larger on desktop */
+        }
+    }
+}
+
 .animate-fade-in {
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -347,4 +361,43 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+}
+
+/* High-tech Login Animations */
+.animate-scan-line {
+    animation: scanLine 4s linear infinite;
+}
+
+@keyframes scanLine {
+    0% {
+        top: -2%;
+    }
+
+    100% {
+        top: 102%;
+    }
+}
+
+.animate-btn-shine {
+    animation: btnShine 3s ease-in-out infinite;
+}
+
+@keyframes btnShine {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    50% {
+        transform: translateX(100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer-fast {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
 }

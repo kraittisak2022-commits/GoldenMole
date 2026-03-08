@@ -4,7 +4,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import { getToday } from '../../utils';
+import { getToday, formatDateBE } from '../../utils';
 import { Transaction, Employee } from '../../types';
 
 interface SandProductionLogProps {
@@ -166,7 +166,7 @@ const SandProductionLog = ({ onSave, transactions, employees }: SandProductionLo
                         <div key={t.id} className="p-4 text-sm flex justify-between items-center hover:bg-slate-50">
                             <div>
                                 <div className="font-bold text-slate-800 flex items-center gap-2">
-                                    {t.date}
+                                    {formatDateBE(t.date)}
                                     <span className={`px-2 py-0.5 rounded text-[10px] ${(t as any).sandMachineType === 'Old' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                                         {(t as any).sandMachineType === 'Old' ? 'เครื่องเก่า' : 'เครื่องใหม่'}
                                     </span>

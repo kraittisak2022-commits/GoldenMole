@@ -3,7 +3,7 @@ import { FileText } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { getToday } from '../../utils';
+import { getToday, formatDateBE } from '../../utils';
 import { Transaction } from '../../types';
 
 interface GeneralEventLogProps {
@@ -57,7 +57,7 @@ const GeneralEventLog = ({ onSave, transactions }: GeneralEventLogProps) => {
                 <div className="divide-y">
                     {history.map(t => (
                         <div key={t.id} className="p-4 hover:bg-slate-50 flex gap-4 items-start">
-                            <div className="text-xs font-bold text-slate-500 min-w-[60px] pt-1">{t.date}<br />{(t as any).eventTime}</div>
+                            <div className="text-xs font-bold text-slate-500 min-w-[60px] pt-1">{formatDateBE(t.date)}<br />{(t as any).eventTime}</div>
                             <div className="text-sm text-slate-800">{t.description}</div>
                         </div>
                     ))}

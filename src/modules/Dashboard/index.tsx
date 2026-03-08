@@ -1,7 +1,5 @@
 import { useState, useMemo } from 'react';
 import { LayoutDashboard, BarChart3, Calendar as CalIcon, Users, Truck, Fuel, MapPin, Wallet, CalendarDays, Activity, ClipboardList } from 'lucide-react';
-import Select from '../../components/ui/Select';
-import Input from '../../components/ui/Input';
 import DashboardOverview from './DashboardOverview';
 import DashboardV4 from './DashboardV4';
 import AnalyticsView from './AnalyticsView';
@@ -67,7 +65,7 @@ const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDel
                     subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} /> :
                         subTab === 'V4' ? <DashboardV4 transactions={transactions} /> :
                             subTab === 'Wizard' ? <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
-                                <SpecificDashboard type={subTab} transactions={transactions} settings={settings} dateFilter={dateFilter} />}
+                                <SpecificDashboard type={subTab} transactions={transactions} settings={settings} employees={employees} dateFilter={dateFilter} />}
         </div>
     );
 };
