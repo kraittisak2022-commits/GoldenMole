@@ -5,6 +5,7 @@ import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
 import FormatNumber from './components/ui/FormatNumber';
 import { Trash2 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 // Modules
 import Dashboard from './modules/Dashboard';
@@ -361,6 +362,7 @@ function App() {
                     {renderContent()}
                 </div>
             </main>
+            <Analytics />
         </div>
     );
 }
