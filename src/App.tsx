@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, User, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, User, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
@@ -22,6 +22,9 @@ import LoginPage from './modules/Auth/LoginPage';
 import AdminModule from './modules/Admin/AdminModule';
 
 import { getToday, formatDateBE } from './utils';
+
+// Supabase Services
+import * as db from './services/dataService';
 
 // --- Default Admin Account ---
 const DEFAULT_ADMINS: AdminUser[] = [
@@ -99,7 +102,7 @@ function App() {
     // --- Auth State ---
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
-    const [admins, setAdmins] = useState<AdminUser[]>(DEFAULT_ADMINS);
+    const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
 
     // --- App State ---
@@ -107,11 +110,56 @@ function App() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
-    const [employees, setEmployees] = useState(MOCK_EMPLOYEES);
-    const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS);
-    const [projects, setProjects] = useState<LandProject[]>(MOCK_PROJECTS);
-    const [settings, setSettings] = useState(MOCK_SETTINGS);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [projects, setProjects] = useState<LandProject[]>([]);
+    const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
     const [toast, setToast] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const hasSeeded = useRef(false);
+
+    // --- Load all data from Supabase on mount ---
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                setIsLoading(true);
+
+                // Seed default data if needed (only once)
+                if (!hasSeeded.current) {
+                    hasSeeded.current = true;
+                    await db.seedDefaultData(MOCK_EMPLOYEES, MOCK_TRANSACTIONS, MOCK_PROJECTS, MOCK_SETTINGS, DEFAULT_ADMINS);
+                }
+
+                // Load all data in parallel
+                const [emps, txs, projs, sett, adms, logs] = await Promise.all([
+                    db.fetchEmployees(),
+                    db.fetchTransactions(),
+                    db.fetchProjects(),
+                    db.fetchSettings(),
+                    db.fetchAdmins(),
+                    db.fetchAdminLogs(),
+                ]);
+
+                setEmployees(emps);
+                setTransactions(txs);
+                setProjects(projs);
+                if (sett) setSettings(sett);
+                setAdmins(adms.length > 0 ? adms : DEFAULT_ADMINS);
+                setAdminLogs(logs);
+            } catch (err) {
+                console.error('Failed to load data from Supabase:', err);
+                // Fallback to mock data
+                setEmployees(MOCK_EMPLOYEES);
+                setTransactions(MOCK_TRANSACTIONS);
+                setProjects(MOCK_PROJECTS);
+                setSettings(MOCK_SETTINGS);
+                setAdmins(DEFAULT_ADMINS);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadData();
+    }, []);
 
     // Detect mobile vs desktop
     useEffect(() => {
@@ -137,6 +185,7 @@ function App() {
             timestamp: new Date().toLocaleString('th-TH'),
         };
         setAdminLogs(prev => [log, ...prev]);
+        db.saveAdminLog(log);
     }, [currentAdmin]);
 
     const handleLogin = (admin: AdminUser) => {
@@ -144,6 +193,7 @@ function App() {
         setAdmins(prev => prev.map(a => a.id === admin.id ? updatedAdmin : a));
         setCurrentAdmin(updatedAdmin);
         setIsLoggedIn(true);
+        db.saveAdmin(updatedAdmin);
         // Log the login event
         const log: AdminLog = {
             id: Date.now().toString(),
@@ -154,6 +204,7 @@ function App() {
             timestamp: new Date().toLocaleString('th-TH'),
         };
         setAdminLogs(prev => [log, ...prev]);
+        db.saveAdminLog(log);
     };
 
     const handleLogout = () => {
@@ -170,28 +221,101 @@ function App() {
         if (isMobile) setIsSidebarOpen(false);
     }, [isMobile]);
 
-    const handleSave = (t: Transaction) => { setTransactions(p => [...p, t]); setToast('บันทึกสำเร็จ'); setTimeout(() => setToast(null), 3000); };
+    const handleSave = (t: Transaction) => {
+        setTransactions(p => [...p, t]);
+        db.saveTransaction(t);
+        setToast('บันทึกสำเร็จ');
+        setTimeout(() => setToast(null), 3000);
+    };
+
+    // --- Wrapped setters that persist to Supabase ---
+    const handleSetEmployees = useCallback((updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
+        setEmployees(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            // Persist changes: save any new/updated employees
+            next.forEach(emp => db.saveEmployee(emp));
+            // Delete removed employees
+            const nextIds = new Set(next.map(e => e.id));
+            prev.forEach(emp => { if (!nextIds.has(emp.id)) db.deleteEmployee(emp.id); });
+            return next;
+        });
+    }, []);
+
+    const handleSetTransactions = useCallback((updater: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
+        setTransactions(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            // Delete removed transactions
+            const nextIds = new Set(next.map(t => t.id));
+            prev.forEach(t => { if (!nextIds.has(t.id)) db.deleteTransaction(t.id); });
+            return next;
+        });
+    }, []);
+
+    const handleDeleteTransaction = useCallback((id: string) => {
+        setTransactions(prev => prev.filter(t => t.id !== id));
+        db.deleteTransaction(id);
+    }, []);
+
+    const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
+        setProjects(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            next.forEach(p => db.saveProject(p));
+            const nextIds = new Set(next.map(p => p.id));
+            prev.forEach(p => { if (!nextIds.has(p.id)) db.deleteProject(p.id); });
+            return next;
+        });
+    }, []);
+
+    const handleSetSettings = useCallback((updater: AppSettings | ((prev: AppSettings) => AppSettings)) => {
+        setSettings(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            db.saveSettings(next);
+            return next;
+        });
+    }, []);
+
+    const handleSetAdmins = useCallback((updater: AdminUser[] | ((prev: AdminUser[]) => AdminUser[])) => {
+        setAdmins(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            next.forEach(a => db.saveAdmin(a));
+            const nextIds = new Set(next.map(a => a.id));
+            prev.forEach(a => { if (!nextIds.has(a.id)) db.deleteAdmin(a.id); });
+            return next;
+        });
+    }, []);
 
     const renderContent = () => {
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={(id: string) => setTransactions((prev: Transaction[]) => prev.filter(t => t.id !== id))} />;
-            case 'Employees': return <EmployeeManager employees={employees} setEmployees={setEmployees} transactions={transactions} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} transactions={transactions} setTransactions={setTransactions} />;
+            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
+            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} transactions={transactions} setTransactions={handleSetTransactions} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} onSave={handleSave} />;
             case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} onSave={handleSave} transactions={transactions} />;
             case 'Maintenance': return <GeneralEntry type="Maintenance" settings={settings} onSave={handleSave} transactions={transactions} />;
             case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} transactions={transactions} />;
-            case 'Land': return <LandModule projects={projects} setProjects={setProjects} onSave={handleSave} transactions={transactions} />;
+            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={transactions} />;
             case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} transactions={transactions} />;
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
-            case 'DataList': return <RecordManager transactions={transactions} setTransactions={setTransactions} />;
+            case 'DataList': return <RecordManager transactions={transactions} setTransactions={handleSetTransactions} />;
             case 'DailyLog': return <DailyLogModule settings={settings} onSaveTransaction={handleSave} transactions={transactions} employees={employees} />;
-            case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={(id: string) => setTransactions((prev: Transaction[]) => prev.filter(t => t.id !== id))} />;
-            case 'AdminManagement': return currentAdmin ? <AdminModule admins={admins} setAdmins={setAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : null;
-            case 'Settings': return <SettingsModule settings={settings} setSettings={setSettings} />;
+            case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
+            case 'AdminManagement': return currentAdmin ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : null;
+            case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} />;
             default: return <div className="p-8 text-center text-slate-400">Coming Soon</div>;
         }
     };
+
+    // --- LOADING STATE ---
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f]">
+                <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-amber-400 animate-spin mx-auto mb-4" />
+                    <p className="text-gray-400 text-sm">กำลังโหลดข้อมูล...</p>
+                </div>
+            </div>
+        );
+    }
 
     // --- LOGIN GATE ---
     if (!isLoggedIn) {
