@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Search, Plus, Edit2, Trash2, XCircle, Briefcase, CalendarClock, Wallet, Target, Activity } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Plus, Edit2, Trash2, XCircle, Briefcase, CalendarClock, Wallet, Target, Activity, UserCircle, Briefcase as BriefcaseIcon } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { formatDateBE } from '../../utils';
 import { Employee, Transaction, SalaryHistoryItem, KPIEvaluation } from '../../types';
+
+const POSITIONS_STORAGE_KEY = 'app_employee_positions';
 
 interface EmployeeManagerProps {
     employees: Employee[];
@@ -14,6 +16,7 @@ interface EmployeeManagerProps {
 }
 
 const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeManagerProps) => {
+    const [section, setSection] = useState<'employees' | 'positions'>('employees');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingEmp, setEditingEmp] = useState<Partial<Employee>>({});
     const [viewingEmp, setViewingEmp] = useState<Employee | null>(null);
@@ -22,21 +25,31 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
     const [isAddingKpi, setIsAddingKpi] = useState(false);
     const [newKpi, setNewKpi] = useState({ date: new Date().toISOString().split('T')[0], score: 100, maxScore: 100, notes: '', evaluator: 'Admin' });
 
-    const handleSave = () => {
-        if (!editingEmp.name || !editingEmp.baseWage) return;
-        if (editingEmp.id) {
-            // Update existing
-            const oldEmp = employees.find(e => e.id === editingEmp.id);
-            let updatedEmp = { ...oldEmp, ...editingEmp } as Employee;
+    const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
+    const [positions, setPositions] = useState<string[]>(() => {
+        try {
+            const s = localStorage.getItem(POSITIONS_STORAGE_KEY);
+            if (s) return JSON.parse(s);
+            return [...DEFAULT_POSITIONS];
+        } catch { return [...DEFAULT_POSITIONS]; }
+    });
+    const [newPositionName, setNewPositionName] = useState('');
+    useEffect(() => { try { localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions)); } catch (_) {} }, [positions]);
 
-            // Check if wage changed
-            if (oldEmp && oldEmp.baseWage !== editingEmp.baseWage) {
+    const handleSave = () => {
+        if (editingEmp.id) {
+            const oldEmp = employees.find(e => e.id === editingEmp.id);
+            const posList = editingEmp.positions ?? (editingEmp.position ? [editingEmp.position] : []);
+            let updatedEmp = { ...oldEmp, ...editingEmp, positions: posList.length ? posList : undefined, position: undefined } as Employee;
+            const newWage = editingEmp.baseWage != null ? Number(editingEmp.baseWage) : undefined;
+
+            if (oldEmp && (oldEmp.baseWage ?? 0) !== (newWage ?? 0) && newWage != null && newWage > 0) {
                 const historyItem: SalaryHistoryItem = {
                     id: Date.now().toString(),
                     date: new Date().toISOString().split('T')[0],
-                    oldWage: oldEmp.baseWage,
-                    newWage: editingEmp.baseWage!,
-                    type: editingEmp.type || oldEmp.type,
+                    oldWage: oldEmp.baseWage ?? 0,
+                    newWage: newWage,
+                    type: (editingEmp.type || oldEmp.type) as any,
                     reason: 'ปรับฐานเงินเดือน'
                 };
                 updatedEmp.salaryHistory = [...(oldEmp.salaryHistory || []), historyItem];
@@ -44,11 +57,16 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
 
             setEmployees(employees.map((e: Employee) => e.id === editingEmp.id ? updatedEmp : e));
         } else {
-            // Create new
+            const posList = editingEmp.positions ?? (editingEmp.position ? [editingEmp.position] : []);
             setEmployees([...employees, {
                 ...editingEmp,
                 id: Date.now().toString(),
-                type: editingEmp.type || 'Daily',
+                name: editingEmp.name ?? '',
+                nickname: editingEmp.nickname ?? '',
+                type: (editingEmp.type || 'Daily') as any,
+                baseWage: editingEmp.baseWage != null ? Number(editingEmp.baseWage) : undefined,
+                positions: posList.length ? posList : undefined,
+                position: undefined,
                 salaryHistory: []
             } as Employee]);
         }
@@ -57,7 +75,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
     };
 
     const handleDelete = (id: string) => { if (confirm('ลบพนักงาน?')) setEmployees(employees.filter((e: Employee) => e.id !== id)); };
-    const filtered = employees.filter((e: Employee) => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || (e.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()));
+    const filtered = employees.filter((e: Employee) => (e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (e.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
     // Employee Detail View Logic
     const getEmpHistory = (id: string, filterFn: (t: Transaction) => boolean) => transactions.filter((t: Transaction) => (t.employeeIds?.includes(id) || t.employeeId === id) && filterFn(t)).sort((a: Transaction, b: Transaction) => b.date.localeCompare(a.date));
@@ -78,20 +96,31 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
 
     return (
         <div className="space-y-6 animate-fade-in">
+            <div className="flex gap-2 border-b border-slate-200 pb-2 mb-4">
+                <button onClick={() => setSection('employees')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${section === 'employees' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <UserCircle size={18} /> พนักงาน
+                </button>
+                <button onClick={() => setSection('positions')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${section === 'positions' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <BriefcaseIcon size={18} /> ตำแหน่งพนักงาน
+                </button>
+            </div>
+
+            {section === 'employees' && (
+                <>
             <div className="flex justify-between items-center">
                 <div className="relative w-64">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                     <input className="pl-9 pr-4 py-2 w-full border rounded-lg" placeholder="ค้นหา..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
-                <Button onClick={() => { setEditingEmp({}); setIsModalOpen(true); }}><Plus size={18} /> เพิ่ม</Button>
+                <Button onClick={() => { setEditingEmp({}); setIsModalOpen(true); }}><Plus size={18} /> เพิ่มพนักงาน</Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filtered.map((emp: Employee) => (
                     <Card key={emp.id} className="p-4">
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">{(emp.nickname || '?').charAt(0)}</div>
-                                <div><h4 className="font-bold">{emp.nickname}</h4><p className="text-xs text-slate-500">{emp.type} • ฿{emp.baseWage}</p></div>
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">{(emp.nickname || emp.name || '—').charAt(0)}</div>
+                                <div><h4 className="font-bold">{emp.nickname || emp.name || '—'}</h4><p className="text-xs text-slate-500">{emp.type}{(emp.positions?.length || emp.position) ? ` • ${(emp.positions || (emp.position ? [emp.position] : [])).join(', ')}` : ''} • {(emp.baseWage != null && emp.baseWage > 0) ? `฿${emp.baseWage}` : 'ยังไม่ระบุค่าแรง'}</p></div>
                             </div>
                             <div className="flex gap-1">
                                 <button onClick={() => { setEditingEmp(emp); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-amber-500"><Edit2 size={16} /></button>
@@ -102,19 +131,61 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                     </Card>
                 ))}
             </div>
+                </>
+            )}
+
+            {section === 'positions' && (
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-500">จัดการตำแหน่งสำหรับระบุให้พนักงาน (ไม่บังคับ)</p>
+                    <div className="flex gap-2 flex-wrap items-center">
+                        <input className="border rounded-lg px-3 py-2 w-48" placeholder="ชื่อตำแหน่งใหม่" value={newPositionName} onChange={e => setNewPositionName(e.target.value)} />
+                        <Button onClick={() => { if (newPositionName.trim()) { setPositions(p => [...p, newPositionName.trim()]); setNewPositionName(''); } }}><Plus size={16} /> เพิ่มตำแหน่ง</Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {positions.map((pos, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 rounded-lg text-sm">
+                                {pos}
+                                <button type="button" onClick={() => setPositions(p => p.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">×</button>
+                            </span>
+                        ))}
+                        {positions.length === 0 && <span className="text-slate-400 text-sm">ยังไม่มีตำแหน่ง</span>}
+                    </div>
+                </div>
+            )}
+
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <Card className="w-full max-w-md p-6">
-                        <h3 className="font-bold text-lg mb-4">{editingEmp.id ? 'แก้ไข' : 'เพิ่ม'}</h3>
+                        <h3 className="font-bold text-lg mb-4">{editingEmp.id ? 'แก้ไข' : 'เพิ่มพนักงาน'}</h3>
+                        <p className="text-xs text-slate-500 mb-2">ชื่อ เบอร์ ค่าแรง ไม่บังคับ — กรอกเท่าที่มีแล้วกดบันทึกได้เลย (ค่าแรงใส่ทีหลังได้ ระบบจะถามเมื่อนำพนักงานไปใช้)</p>
                         <div className="space-y-4">
-                            <Input label="ชื่อ" value={editingEmp.name || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, name: e.target.value })} />
-                            <Input label="ชื่อเล่น" value={editingEmp.nickname || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, nickname: e.target.value })} />
-                            <Input label="เบอร์" value={editingEmp.phone || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, phone: e.target.value })} />
+                            <Input label="ชื่อ (ไม่บังคับ)" value={editingEmp.name || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, name: e.target.value })} placeholder="ชื่อ-นามสกุล" />
+                            <Input label="ชื่อเล่น (ไม่บังคับ)" value={editingEmp.nickname || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, nickname: e.target.value })} placeholder="ชื่อที่เรียก" />
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">ตำแหน่ง (เลือกได้หลายตำแหน่ง)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {positions.map(p => {
+                                        const list = editingEmp.positions ?? (editingEmp.position ? [editingEmp.position] : []);
+                                        const checked = list.includes(p);
+                                        return (
+                                            <label key={p} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border bg-white cursor-pointer hover:bg-slate-50">
+                                                <input type="checkbox" checked={checked} onChange={() => {
+                                                    const next = checked ? list.filter(x => x !== p) : [...list, p];
+                                                    setEditingEmp({ ...editingEmp, positions: next.length ? next : undefined, position: undefined });
+                                                }} className="rounded border-slate-300" />
+                                                <span className="text-sm text-slate-700">{p}</span>
+                                            </label>
+                                        );
+                                    })}
+                                    {positions.length === 0 && <span className="text-sm text-slate-400">ไปที่แท็บ ตำแหน่งพนักงาน เพื่อเพิ่มตำแหน่ง</span>}
+                                </div>
+                            </div>
+                            <Input label="เบอร์ (ไม่บังคับ)" value={editingEmp.phone || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, phone: e.target.value })} placeholder="หมายเลขโทรศัพท์" />
                             <Select label="ประเภท" value={editingEmp.type || 'Daily'} onChange={(e: any) => setEditingEmp({ ...editingEmp, type: e.target.value })}>
                                 <option value="Daily">รายวัน</option>
                                 <option value="Monthly">รายเดือน</option>
                             </Select>
-                            <Input label="ค่าแรง" type="number" value={editingEmp.baseWage || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, baseWage: Number(e.target.value) })} />
+                            <Input label="ค่าแรง (ไม่บังคับ — ใส่ทีหลังได้)" type="number" min="0" value={editingEmp.baseWage ?? ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, baseWage: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="บาท" />
                             <div className="flex gap-2 mt-4">
                                 <Button variant="outline" onClick={() => setIsModalOpen(false)} className="flex-1">ยกเลิก</Button>
                                 <Button onClick={handleSave} className="flex-1">บันทึก</Button>
@@ -131,7 +202,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                                 <div className="w-16 h-16 rounded-full bg-slate-700 font-bold text-2xl flex items-center justify-center">{(viewingEmp.nickname || '?').charAt(0)}</div>
                                 <div>
                                     <h3 className="font-bold text-2xl">{viewingEmp.nickname}</h3>
-                                    <p className="text-slate-300">{viewingEmp.type === 'Daily' ? 'รายวัน' : 'รายเดือน'} • ฿{viewingEmp.baseWage} • 📞 {viewingEmp.phone || '-'}</p>
+                                    <p className="text-slate-300">{viewingEmp.type === 'Daily' ? 'รายวัน' : 'รายเดือน'}{(viewingEmp.positions?.length || viewingEmp.position) ? ` • ${(viewingEmp.positions || (viewingEmp.position ? [viewingEmp.position] : [])).join(', ')}` : ''} • {(viewingEmp.baseWage != null && viewingEmp.baseWage > 0) ? `฿${viewingEmp.baseWage}` : 'ยังไม่ระบุค่าแรง'} • 📞 {viewingEmp.phone || '-'}</p>
                                 </div>
                             </div>
                             <button onClick={() => setViewingEmp(null)} className="text-slate-400 hover:text-white"><XCircle size={24} /></button>
@@ -168,7 +239,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                                                             </span>
                                                         </td>
                                                         <td className="p-3">{t.description}</td>
-                                                        <td className="p-3 text-right font-medium">฿{t.laborStatus === 'OT' ? (t.otAmount || 0) : t.laborStatus === 'Advance' ? (t.advanceAmount || 0) : viewingEmp.baseWage}</td>
+                                                        <td className="p-3 text-right font-medium">฿{t.laborStatus === 'OT' ? (t.otAmount || 0) : t.laborStatus === 'Advance' ? (t.advanceAmount || 0) : (viewingEmp.baseWage ?? 0)}</td>
                                                     </tr>
                                                 ))}
                                                 {laborHistory.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-400">ไม่มีประวัติการทำงาน</td></tr>}

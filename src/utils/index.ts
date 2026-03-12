@@ -1,5 +1,8 @@
 export const getToday = () => new Date().toISOString().split('T')[0];
 
+/** ทำให้วันที่เป็นรูปแบบ YYYY-MM-DD เสมอ (รองรับทั้ง ISO string จาก DB) */
+export const normalizeDate = (d: string | undefined): string => (d && d.length >= 10 ? d.slice(0, 10) : d || '');
+
 export const getFirstDayOfMonth = () => {
     const d = new Date();
     d.setDate(1);

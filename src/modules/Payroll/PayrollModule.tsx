@@ -50,15 +50,21 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
 
     const calculatePayroll = (emp: Employee) => {
         const empTrans = transactions.filter(t => t.date >= range.start && t.date <= range.end && (t.employeeId === emp.id || t.employeeIds?.includes(emp.id)));
-        const fullDays = empTrans.filter(t => t.laborStatus === 'Work' && (t.workType === 'FullDay' || !t.workType)).length;
-        const halfDays = empTrans.filter(t => t.laborStatus === 'Work' && t.workType === 'HalfDay').length;
+        const isHalfDay = (t: Transaction) => {
+            if (t.laborStatus !== 'Work') return false;
+            if (t.workTypeByEmployee && emp.id in t.workTypeByEmployee) return t.workTypeByEmployee[emp.id] === 'HalfDay';
+            return t.workType === 'HalfDay';
+        };
+        const fullDays = empTrans.filter(t => t.laborStatus === 'Work' && !isHalfDay(t)).length;
+        const halfDays = empTrans.filter(t => isHalfDay(t)).length;
         const ot = empTrans.reduce((s, t) => s + (t.otAmount || 0), 0);
         const adv = empTrans.reduce((s, t) => s + (t.advanceAmount || 0), 0);
         const special = empTrans.reduce((s, t) => s + (t.specialAmount || 0), 0);
 
         const adj = adjustments[emp.id] || { bonus: 0, deduction: 0, note: '' };
 
-        let basePay = emp.type === 'Monthly' ? emp.baseWage : (fullDays * emp.baseWage) + (halfDays * (emp.baseWage / 2));
+        const base = emp.baseWage ?? 0;
+        let basePay = emp.type === 'Monthly' ? base : (fullDays * base) + (halfDays * (base / 2));
         const totalIncome = basePay + ot + special + adj.bonus;
         const totalDeductions = adv + adj.deduction;
         const netPay = totalIncome - totalDeductions;
@@ -214,7 +220,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-bold text-lg text-slate-800 truncate">{p.nickname}</h4>
-                                            <p className="text-sm text-slate-500 truncate">{p.type === 'Monthly' ? 'รายเดือน' : 'รายวัน'} • ฐาน ฿{p.baseWage}</p>
+                                            <p className="text-sm text-slate-500 truncate">{p.type === 'Monthly' ? 'รายเดือน' : 'รายวัน'} • ฐาน ฿{p.baseWage ?? 0}</p>
                                             {p.isPaid && <span className="inline-flex text-xs bg-emerald-100 text-emerald-700 font-bold items-center gap-1 px-2 py-0.5 rounded-full mt-1"><CheckCircle2 size={12} /> ยืนยันจ่ายแล้ว</span>}
                                         </div>
                                     </div>
@@ -424,7 +430,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                         <td className="p-4"><span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">{t.category}</span></td>
                                         <td className="p-4 text-slate-600">{t.description}</td>
                                         <td className="p-4 text-right font-bold text-slate-800">
-                                            {t.laborStatus === 'Work' ? (t.workType === 'HalfDay' ? <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded">0.5 วัน</span> : <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">1 วัน</span>) : (t.amount > 0 ? t.amount.toLocaleString() : '-')}
+                                            {t.laborStatus === 'Work' ? ((t.workTypeByEmployee && selectedEmp.id in t.workTypeByEmployee ? t.workTypeByEmployee[selectedEmp.id] === 'HalfDay' : t.workType === 'HalfDay') ? <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded">0.5 วัน</span> : <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">1 วัน</span>) : (t.amount > 0 ? t.amount.toLocaleString() : '-')}
                                         </td>
                                     </tr>
                                 ))
@@ -496,7 +502,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                     </h4>
                                     <div className="space-y-4 text-sm font-medium text-slate-600">
                                         <div className="flex justify-between items-center bg-slate-50/50 p-2 rounded">
-                                            <span>ค่าแรงปกติ <span className="text-xs text-slate-400 block font-normal">{slipEmp.fullDays} วัน, {slipEmp.halfDays} ครึ่ง (ฐาน ฿{slipEmp.baseWage})</span></span>
+                                            <span>ค่าแรงปกติ <span className="text-xs text-slate-400 block font-normal">{slipEmp.fullDays} วัน, {slipEmp.halfDays} ครึ่ง (ฐาน ฿{slipEmp.baseWage ?? 0})</span></span>
                                             <span className="font-bold text-slate-800 text-base">{slipEmp.basePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="flex justify-between items-center p-2">

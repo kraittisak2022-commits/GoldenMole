@@ -232,13 +232,42 @@ function App() {
     const handleSetEmployees = useCallback((updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
         setEmployees(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            // Persist changes: save any new/updated employees
             next.forEach(emp => db.saveEmployee(emp));
-            // Delete removed employees
             const nextIds = new Set(next.map(e => e.id));
             prev.forEach(emp => { if (!nextIds.has(emp.id)) db.deleteEmployee(emp.id); });
             return next;
         });
+    }, []);
+
+    const wagePromptRef = useRef<{ resolve: (w: number) => void; reject: () => void } | null>(null);
+    const [wagePromptEmp, setWagePromptEmp] = useState<Employee | null>(null);
+    const [wagePromptValue, setWagePromptValue] = useState('');
+    const ensureEmployeeWage = useCallback((emp: Employee): Promise<number> => {
+        if (emp.baseWage != null && emp.baseWage > 0) return Promise.resolve(emp.baseWage);
+        return new Promise<number>((resolve, reject) => {
+            wagePromptRef.current = { resolve, reject };
+            setWagePromptEmp(emp);
+            setWagePromptValue('');
+        });
+    }, []);
+    const submitWagePrompt = useCallback(() => {
+        const wage = Number(wagePromptValue);
+        if (!wagePromptEmp || !(wage > 0)) return;
+        setEmployees(prev => {
+            const next = prev.map(e => e.id === wagePromptEmp.id ? { ...e, baseWage: wage } : e);
+            next.forEach(emp => db.saveEmployee(emp));
+            return next;
+        });
+        wagePromptRef.current?.resolve(wage);
+        wagePromptRef.current = null;
+        setWagePromptEmp(null);
+        setWagePromptValue('');
+    }, [wagePromptEmp, wagePromptValue]);
+    const cancelWagePrompt = useCallback(() => {
+        wagePromptRef.current?.reject();
+        wagePromptRef.current = null;
+        setWagePromptEmp(null);
+        setWagePromptValue('');
     }, []);
 
     const handleSetTransactions = useCallback((updater: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
@@ -284,11 +313,28 @@ function App() {
         });
     }, []);
 
+    /** ล้างข้อมูลที่บันทึกทั้งหมด (ธุรกรรม + โครงการที่ดิน) ไม่ลบพนักงานและตั้งค่า */
+    const handleClearAllData = useCallback(async () => {
+        if (!confirm('ต้องการล้างข้อมูลที่บันทึกทั้งหมด (รายการธุรกรรม + โครงการที่ดิน) หรือไม่?\n\nข้อมูลพนักงานและตั้งค่าจะไม่ถูกลบ')) return;
+        try {
+            await db.deleteAllTransactions();
+            await db.deleteAllProjects();
+            setTransactions([]);
+            setProjects([]);
+            setToast('ล้างข้อมูลที่บันทึกทั้งหมดแล้ว');
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            console.error(e);
+            setToast('เกิดข้อผิดพลาดในการล้างข้อมูล');
+            setTimeout(() => setToast(null), 3000);
+        }
+    }, []);
+
     const renderContent = () => {
         switch (activeMenu) {
             case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} transactions={transactions} setTransactions={handleSetTransactions} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} onSave={handleSave} />;
             case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} onSave={handleSave} transactions={transactions} />;
             case 'Maintenance': return <GeneralEntry type="Maintenance" settings={settings} onSave={handleSave} transactions={transactions} />;
@@ -298,9 +344,9 @@ function App() {
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} setTransactions={handleSetTransactions} />;
             case 'DailyLog': return <DailyLogModule settings={settings} onSaveTransaction={handleSave} transactions={transactions} employees={employees} />;
-            case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
+            case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'AdminManagement': return currentAdmin ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : null;
-            case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} />;
+            case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} onClearAllData={handleClearAllData} />;
             default: return <div className="p-8 text-center text-slate-400">Coming Soon</div>;
         }
     };
@@ -338,6 +384,21 @@ function App() {
             )}
 
             {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+
+            {/* Popup ใส่ค่าแรงเมื่อใช้พนักงานที่ยังไม่มีค่าแรง */}
+            {wagePromptEmp && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+                    <Card className="w-full max-w-sm p-6 shadow-xl">
+                        <h3 className="font-bold text-lg text-slate-800 mb-2">ระบุค่าแรง</h3>
+                        <p className="text-sm text-slate-600 mb-4">พนักงาน <span className="font-semibold">{wagePromptEmp.nickname || wagePromptEmp.name || 'คนนี้'}</span> ยังไม่มีค่าแรง — กรุณาใส่ค่าแรง (บาท)</p>
+                        <input type="number" min="1" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-lg font-bold text-slate-800 mb-4" placeholder="บาท" value={wagePromptValue} onChange={e => setWagePromptValue(e.target.value)} />
+                        <div className="flex gap-2">
+                            <Button variant="outline" className="flex-1" onClick={cancelWagePrompt}>ยกเลิก</Button>
+                            <Button className="flex-1" onClick={submitWagePrompt}>บันทึก</Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
 
             {/* Mobile Overlay Backdrop */}
             {isMobile && isSidebarOpen && (

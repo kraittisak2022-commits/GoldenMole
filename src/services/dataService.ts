@@ -80,6 +80,13 @@ export const deleteTransaction = async (id: string): Promise<boolean> => {
     return true;
 };
 
+/** ลบรายการธุรกรรมทั้งหมด (ใช้ตอนล้างข้อมูลที่บันทึก) */
+export const deleteAllTransactions = async (): Promise<void> => {
+    const { data } = await supabase.from('transactions').select('id');
+    const ids = (data || []).map((r: any) => r.id);
+    for (const id of ids) await deleteTransaction(id);
+};
+
 // ============================================
 // LAND PROJECTS
 // ============================================
@@ -116,6 +123,13 @@ export const deleteProject = async (id: string): Promise<boolean> => {
     const { error } = await supabase.from('land_projects').delete().eq('id', id);
     if (error) { console.error('deleteProject error:', error); return false; }
     return true;
+};
+
+/** ลบโครงการที่ดินทั้งหมด (ใช้ตอนล้างข้อมูลที่บันทึก) */
+export const deleteAllProjects = async (): Promise<void> => {
+    const { data } = await supabase.from('land_projects').select('id');
+    const ids = (data || []).map((r: any) => r.id);
+    for (const id of ids) await deleteProject(id);
 };
 
 // ============================================

@@ -374,25 +374,26 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
     // SAND ANALYTICS (ทรายล้าง / ทรายขน / ทรายคงเหลือ)
     // ==============================================
     const sandAnalytics = useMemo(() => {
-        // Simulate sand data from transactions
-        // In production, this would come from a dedicated sand module
+        // วิเคราะห์ทรายจากข้อมูลธุรกรรมจริงเท่านั้น
+        // (ถ้าไม่มีข้อมูล จะถือว่าเป็น 0 ไม่จำลองด้วยค่าการสุ่ม)
         const days = 7;
 
-        // Sand washed per day (simulate from income transactions - "ขายทราย" entries)
+        // Sand washed per day (ประมาณจากรายการรายรับที่เกี่ยวกับทราย เช่น "ขายทราย")
         const sandWashedPerDay = Array.from({ length: days }, (_, i) => {
             const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
             const dateStr = d.toISOString().split('T')[0];
             const dayIncome = filtered.filter(t => t.date === dateStr && t.type === 'Income');
-            // Estimate: each income transaction represents ~30 cubic meters of sand
-            return dayIncome.length > 0 ? dayIncome.reduce((s, t) => s + (t.quantity || 30), 0) : Math.floor(Math.random() * 20 + 15);
+            // หากไม่มีข้อมูล ให้ใช้ 0 แทน (เพื่อให้ตรงกับการล้างข้อมูล)
+            return dayIncome.length > 0 ? dayIncome.reduce((s, t) => s + (t.quantity || 0), 0) : 0;
         });
 
-        // Sand transported per trip per day
+        // Sand transported per trip per day (ประมาณจากรายการใช้รถ)
         const sandTransportedPerDay = Array.from({ length: days }, (_, i) => {
             const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
             const dateStr = d.toISOString().split('T')[0];
             const dayVehicle = filtered.filter(t => t.date === dateStr && t.category === 'Vehicle');
-            return dayVehicle.length > 0 ? dayVehicle.length * 12 : Math.floor(Math.random() * 15 + 8);
+            // หากไม่มีข้อมูล ให้ใช้ 0 แทน (เพื่อให้ตรงกับการล้างข้อมูล)
+            return dayVehicle.length > 0 ? dayVehicle.length * 12 : 0;
         });
 
         // Calculate totals

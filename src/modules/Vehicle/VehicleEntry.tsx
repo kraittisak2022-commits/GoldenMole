@@ -21,8 +21,12 @@ const VEHICLE_DEFAULT_RATES: Record<string, number> = {
     'รถดรัมนายกนิต': 3000
 };
 
+const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
+const driverEmployees = (employees: Employee[]) => employees.filter(e => getEmpPositions(e).includes('คนขับรถ'));
+
 const VehicleEntry = ({ settings, employees, onSave }: VehicleEntryProps) => {
-    const [form, setForm] = useState({ date: getToday(), car: '', driver: '', location: '', wage: '', vehicleWage: '', workDetails: '' }); // Added workDetails
+    const [form, setForm] = useState({ date: getToday(), car: '', driver: '', location: '', wage: '', vehicleWage: '', workDetails: '' });
+    const drivers = driverEmployees(employees);
 
     useEffect(() => {
         if (form.car) {
@@ -62,9 +66,9 @@ const VehicleEntry = ({ settings, employees, onSave }: VehicleEntryProps) => {
                     {settings.cars.map((c: string) => <option key={c}>{c}</option>)}
                 </Select>
                 <div className="grid grid-cols-2 gap-4">
-                    <Select label="คนขับ" value={form.driver} onChange={(e: any) => setForm({ ...form, driver: e.target.value })}>
+                    <Select label="คนขับ (เฉพาะตำแหน่งคนขับรถ)" value={form.driver} onChange={(e: any) => setForm({ ...form, driver: e.target.value })}>
                         <option value="">-- เลือกคนขับ --</option>
-                        {employees.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname}</option>)}
+                        {drivers.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname || e.name}</option>)}
                     </Select>
                     <Input label="ค่าเบี้ยเลี้ยงคนขับ" type="number" value={form.wage} onChange={(e: any) => setForm({ ...form, wage: e.target.value })} />
                 </div>

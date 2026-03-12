@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDateBE } from '../../utils';
 
@@ -11,6 +12,7 @@ interface DatePickerProps {
 
 const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, className = '' }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
     const [currentMonth, setCurrentMonth] = useState(() => {
         const d = value ? new Date(value) : new Date();
         return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -25,11 +27,29 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
     }, [value, isOpen]);
 
     const containerRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLDivElement>(null);
 
-    // Close on click outside
+    const openCalendar = () => {
+        if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropdownPosition({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
+        }
+        setIsOpen(true);
+    };
+
+    // Keep position in sync on scroll/resize while open
+    useLayoutEffect(() => {
+        if (!isOpen || !triggerRef.current) return;
+        const rect = triggerRef.current.getBoundingClientRect();
+        setDropdownPosition({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
+    }, [isOpen]);
+
+    // Close on click outside (ไม่ปิดเมื่อคลิกภายในปฏิทินที่แสดงใน portal)
     useEffect(() => {
         const handleOutsideClick = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            if ((target as Element).closest?.('[data-datepicker-dropdown]')) return;
+            if (containerRef.current && !containerRef.current.contains(target)) {
                 setIsOpen(false);
             }
         };
@@ -83,8 +103,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
             {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
 
             <div
+                ref={triggerRef}
                 className="relative cursor-pointer"
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={() => (isOpen ? setIsOpen(false) : openCalendar())}
             >
                 <div className="flex items-center w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 hover:border-emerald-400 transition-colors shadow-sm">
                     <span className="flex-1 text-center font-bold text-lg">{value ? formatDateBE(value) : 'เลือกวันที่'}</span>
@@ -92,8 +113,16 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                 </div>
             </div>
 
-            {isOpen && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-6 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 w-[360px] animate-fade-in shadow-emerald-500/10">
+            {isOpen && typeof document !== 'undefined' && createPortal(
+                <div
+                    data-datepicker-dropdown
+                    className="fixed p-6 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[9999] w-[360px] animate-fade-in shadow-emerald-500/10"
+                    style={{
+                        top: dropdownPosition.top,
+                        left: dropdownPosition.left,
+                        transform: 'translateX(-50%)'
+                    }}
+                >
                     <div className="flex justify-between items-center mb-6">
                         <button
                             type="button"
@@ -159,7 +188,8 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                             วันนี้: {formatDateBE(new Date().toISOString().split('T')[0])}
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

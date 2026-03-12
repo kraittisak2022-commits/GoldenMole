@@ -13,9 +13,10 @@ interface LaborModuleProps {
     onSaveTransaction: (t: any) => void;
     transactions: Transaction[];
     setTransactions: (t: any) => void;
+    ensureEmployeeWage?: (emp: Employee) => Promise<number>;
 }
 
-const LaborModule = ({ employees, settings, onSaveTransaction }: LaborModuleProps) => {
+const LaborModule = ({ employees, settings, onSaveTransaction, transactions, ensureEmployeeWage }: LaborModuleProps) => {
     const [activeTab, setActiveTab] = useState<'Attendance' | 'OT' | 'Advance' | 'Leave'>('Attendance');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [formDate, setFormDate] = useState(getToday());
@@ -41,20 +42,35 @@ const LaborModule = ({ employees, settings, onSaveTransaction }: LaborModuleProp
 
     const triggerSuccess = () => { setSuccessAnim(true); setTimeout(() => setSuccessAnim(false), 1000); };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (selectedIds.length === 0) return alert('เลือกพนักงาน');
         const base = { id: Date.now().toString(), date: formDate, employeeIds: selectedIds };
 
+        if (activeTab === 'Attendance' || activeTab === 'OT') {
+            const existingLaborIds = (transactions || [])
+                .filter((t: Transaction) => t.date === formDate && t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
+                .flatMap((t: Transaction) => t.employeeIds || []);
+            const alreadyRecorded = selectedIds.filter((id: string) => existingLaborIds.includes(id));
+            if (alreadyRecorded.length > 0) {
+                const names = alreadyRecorded.map((id: string) => employees.find((e: Employee) => e.id === id)?.nickname || id).join(', ');
+                return alert(`ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้มีรายการค่าแรง/OT วันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "บันทึกงานประจำวัน" หรือลบรายการเดิมก่อน`);
+            }
+        }
+
         if (activeTab === 'Attendance') {
-            let total = 0;
             const special = Number(specialPay);
-            selectedIds.forEach((id: string) => {
-                const emp = employees.find((e: Employee) => e.id === id);
-                if (emp) {
-                    const daily = emp.type === 'Monthly' ? emp.baseWage / 30 : emp.baseWage;
+            let total = 0;
+            try {
+                for (const id of selectedIds) {
+                    const emp = employees.find((e: Employee) => e.id === id);
+                    if (!emp) continue;
+                    const wage = ensureEmployeeWage ? await ensureEmployeeWage(emp) : (emp.baseWage ?? 0);
+                    const daily = emp.type === 'Monthly' ? wage / 30 : wage;
                     total += (workType === 'HalfDay' ? daily / 2 : daily) + special;
                 }
-            });
+            } catch {
+                return;
+            }
             onSaveTransaction({
                 ...base, type: 'Expense', category: 'Labor', subCategory: 'Attendance',
                 laborStatus: 'Work', workType,

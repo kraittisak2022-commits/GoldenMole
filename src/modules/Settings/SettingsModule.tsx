@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -8,17 +8,45 @@ import { AppSettings } from '../../types';
 interface SettingsModuleProps {
     settings: AppSettings;
     setSettings: (settings: AppSettings) => void;
+    onClearAllData?: () => Promise<void>;
 }
 
-const SettingsModule = ({ settings, setSettings }: SettingsModuleProps) => {
+const POSITIONS_STORAGE_KEY = 'app_employee_positions';
+
+const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModuleProps) => {
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
 
     // General Form
     const [generalForm, setGeneralForm] = useState({ name: settings.appName, icon: settings.appIcon, iconDark: settings.appIconDark || '' });
 
-    const handleAdd = () => { if (!newItem) return; setSettings({ ...settings, [activeTab]: [...(settings as any)[activeTab], newItem] }); setNewItem(''); };
-    const handleDelete = (index: number) => { if (confirm('ยืนยันลบ?')) { const newList = [...(settings as any)[activeTab]]; newList.splice(index, 1); setSettings({ ...settings, [activeTab]: newList }); } };
+    const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
+    const [positions, setPositions] = useState<string[]>(() => {
+        try {
+            const s = localStorage.getItem(POSITIONS_STORAGE_KEY);
+            if (s) return JSON.parse(s);
+            return [...DEFAULT_POSITIONS];
+        } catch { return [...DEFAULT_POSITIONS]; }
+    });
+    const [newPosition, setNewPosition] = useState('');
+
+    useEffect(() => {
+        try { localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions)); } catch { }
+    }, [positions]);
+
+    const handleAdd = () => {
+        if (!newItem || activeTab === 'positionsLocal') return;
+        setSettings({ ...settings, [activeTab]: [...(settings as any)[activeTab], newItem] });
+        setNewItem('');
+    };
+    const handleDelete = (index: number) => {
+        if (activeTab === 'positionsLocal') return;
+        if (confirm('ยืนยันลบ?')) {
+            const newList = [...(settings as any)[activeTab]];
+            newList.splice(index, 1);
+            setSettings({ ...settings, [activeTab]: newList });
+        }
+    };
 
     const saveGeneral = () => {
         setSettings({ ...settings, appName: generalForm.name, appIcon: generalForm.icon, appIconDark: generalForm.iconDark || undefined });
@@ -33,7 +61,9 @@ const SettingsModule = ({ settings, setSettings }: SettingsModuleProps) => {
         { key: 'expenseTypes', l: 'สาธารณูปโภค (Utilities)' },
         { key: 'maintenanceTypes', l: 'ประเภทซ่อมบำรุง' },
         { key: 'locations', l: 'สถานที่/หน้างาน' },
-        { key: 'landGroups', l: 'กลุ่มที่ดิน' }
+        { key: 'landGroups', l: 'กลุ่มที่ดิน' },
+        { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
+        { key: 'clearData', l: 'ล้างข้อมูล' }
     ];
 
     return (
@@ -78,6 +108,39 @@ const SettingsModule = ({ settings, setSettings }: SettingsModuleProps) => {
                             </div>
 
                             <Button onClick={saveGeneral} className="mt-4">บันทึกการเปลี่ยนแปลง</Button>
+                        </div>
+                    ) : activeTab === 'clearData' ? (
+                        <div className="space-y-6 max-w-lg">
+                            <h3 className="font-bold text-lg mb-2 text-red-600">ล้างข้อมูลที่บันทึกทั้งหมด</h3>
+                            <p className="text-sm text-slate-600">
+                                การกระทำนี้จะลบ <strong>รายการธุรกรรมทั้งหมด</strong> และ <strong>โครงการที่ดินทั้งหมด</strong> ออกจากระบบ
+                                <br />ข้อมูล <strong>พนักงาน</strong> และ <strong>ตั้งค่าทั้งหมด</strong> จะไม่ถูกลบ
+                            </p>
+                            {onClearAllData && (
+                                <Button onClick={onClearAllData} className="bg-red-600 hover:bg-red-700 text-white border-0">
+                                    ล้างข้อมูลที่บันทึกทั้งหมด
+                                </Button>
+                            )}
+                        </div>
+                    ) : activeTab === 'positionsLocal' ? (
+                        <div className="space-y-6 max-w-lg">
+                            <h3 className="font-bold text-lg mb-2">ตั้งค่าตำแหน่งพนักงาน</h3>
+                            <p className="text-sm text-slate-500 mb-4">เพิ่ม/ลบชื่อตำแหน่งที่ใช้กำหนดให้พนักงาน เช่น คนงาน, ช่างเชื่อม, หัวหน้าทีม ฯลฯ</p>
+                            <div className="flex gap-2 mb-4">
+                                <Input placeholder="ชื่อตำแหน่งใหม่..." value={newPosition} onChange={(e: any) => setNewPosition(e.target.value)} />
+                                <Button onClick={() => { if (!newPosition.trim()) return; setPositions(prev => [...prev, newPosition.trim()]); setNewPosition(''); }}><Plus size={18} /> เพิ่ม</Button>
+                            </div>
+                            <div className="space-y-2">
+                                {positions.map((p, idx) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg group">
+                                        <span className="text-slate-700">{p}</span>
+                                        <button onClick={() => { if (confirm('ลบตำแหน่งนี้?')) setPositions(prev => prev.filter((_, i) => i !== idx)); }} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {positions.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีตำแหน่งที่บันทึกไว้</p>}
+                            </div>
                         </div>
                     ) : (
                         <>

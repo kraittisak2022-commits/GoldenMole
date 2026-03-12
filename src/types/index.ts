@@ -23,7 +23,11 @@ export interface KPIEvaluation {
 }
 
 export interface Employee {
-    id: string; name: string; nickname: string; type: EmployeeType; baseWage: number; phone?: string; startDate?: string;
+    id: string; name: string; nickname: string; type: EmployeeType; baseWage?: number; phone?: string; startDate?: string;
+    /** ตำแหน่งเดียว (เก่า) — ใช้ positions แทนได้ */
+    position?: string;
+    /** หลายตำแหน่ง เช่น ['คนขับรถ', 'รับจ้างรายวัน'] */
+    positions?: string[];
     salaryHistory?: SalaryHistoryItem[];
     kpiHistory?: KPIEvaluation[];
     // Computed fields often added in runtime
@@ -48,6 +52,8 @@ export interface Transaction {
     quantity?: number; unit?: string; unitPrice?: number; projectId?: string; mileage?: number; imageUrl?: string; location?: string;
     laborStatus?: 'Work' | 'Leave' | 'Sick' | 'Personal' | 'OT' | 'Advance';
     workType?: WorkType;
+    /** กำหนดเต็มวัน/ครึ่งวันรายคน (บันทึกงานประจำวัน) — ไม่มี = เต็มวัน */
+    workTypeByEmployee?: Record<string, WorkType>;
     otAmount?: number; advanceAmount?: number; specialAmount?: number;
     otHours?: number; // Added for detailed OT tracking
     otDescription?: string; // Added for detailed OT tracking
@@ -66,6 +72,18 @@ export interface Transaction {
     sandMachineType?: 'Old' | 'New';
     sandOperators?: string[];
     sandTransport?: number;
+    /** จำนวนถังที่ได้วันนี้ (จากบันทึกการล้างทราย) */
+    drumsObtained?: number;
+    /** จำนวนถังที่ล้างที่บ้านวันนี้ (จากขั้นค่าแรง เมื่อมีงานล้างทรายที่บ้าน) */
+    drumsWashedAtHome?: number;
+    /** บันทึกการล้างทราย: วันเวลาเริ่มงาน (HH:mm) */
+    sandWorkStart?: string;
+    /** บันทึกการล้างทราย: ช่วงเช้าเริ่มงาน น. (HH:mm) */
+    sandMorningStart?: string;
+    /** บันทึกการล้างทราย: ช่วงบ่ายเริ่มงาน น. (HH:mm) */
+    sandAfternoonStart?: string;
+    /** บันทึกการล้างทราย: เย็นหยุดล้าง กี่โมง (HH:mm) */
+    sandEveningEnd?: string;
     eventTime?: string;
 }
 
