@@ -109,11 +109,11 @@ const SandProductionLog = ({ onSave, transactions, employees }: SandProductionLo
                             <div className="grid grid-cols-2 gap-3">
                                 <Select label="คนที่ 1" value={oldMachine.op1} onChange={(e: any) => setOldMachine({ ...oldMachine, op1: e.target.value })}>
                                     <option value="">-- เลือก --</option>
-                                    {employees.map(e => <option key={e.id} value={e.nickname || e.name}>{e.nickname || e.name}</option>)}
+                                    {employees.map(e => <option key={e.id} value={e.nickname}>{e.nickname}</option>)}
                                 </Select>
                                 <Select label="คนที่ 2" value={oldMachine.op2} onChange={(e: any) => setOldMachine({ ...oldMachine, op2: e.target.value })}>
                                     <option value="">-- เลือก --</option>
-                                    {employees.map(e => <option key={e.id} value={e.nickname || e.name}>{e.nickname || e.name}</option>)}
+                                    {employees.map(e => <option key={e.id} value={e.nickname}>{e.nickname}</option>)}
                                 </Select>
                             </div>
                         </div>
@@ -142,11 +142,11 @@ const SandProductionLog = ({ onSave, transactions, employees }: SandProductionLo
                             <div className="grid grid-cols-2 gap-3">
                                 <Select label="คนที่ 1" value={newMachine.op1} onChange={(e: any) => setNewMachine({ ...newMachine, op1: e.target.value })}>
                                     <option value="">-- เลือก --</option>
-                                    {employees.map(e => <option key={e.id} value={e.nickname || e.name}>{e.nickname || e.name}</option>)}
+                                    {employees.map(e => <option key={e.id} value={e.nickname}>{e.nickname}</option>)}
                                 </Select>
                                 <Select label="คนที่ 2" value={newMachine.op2} onChange={(e: any) => setNewMachine({ ...newMachine, op2: e.target.value })}>
                                     <option value="">-- เลือก --</option>
-                                    {employees.map(e => <option key={e.id} value={e.nickname || e.name}>{e.nickname || e.name}</option>)}
+                                    {employees.map(e => <option key={e.id} value={e.nickname}>{e.nickname}</option>)}
                                 </Select>
                             </div>
                         </div>

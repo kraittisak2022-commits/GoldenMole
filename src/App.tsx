@@ -31,7 +31,7 @@ const DEFAULT_ADMINS: AdminUser[] = [
     { id: 'admin-1', username: 'admin', password: '1234', displayName: 'ผู้ดูแลระบบ', role: 'SuperAdmin', createdAt: '2024-01-01' }
 ];
 
-// --- Mock Data ---
+// --- Mock Data (Note: Name now primarily uses nickname per requirement) ---
 const MOCK_EMPLOYEES: Employee[] = [
     { id: '1', name: 'นายสมชาย ใจดี', nickname: 'ชาย', type: 'Daily', baseWage: 500 },
     { id: '2', name: 'นายอาทิตย์ สดใส', nickname: 'ซัน', type: 'Daily', baseWage: 450 },

@@ -90,8 +90,8 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                     <Card key={emp.id} className="p-4">
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">{(emp.nickname || emp.name || '?').charAt(0)}</div>
-                                <div><h4 className="font-bold">{emp.nickname || '-'} ({emp.name})</h4><p className="text-xs text-slate-500">{emp.type} • ฿{emp.baseWage}</p></div>
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">{(emp.nickname || '?').charAt(0)}</div>
+                                <div><h4 className="font-bold">{emp.nickname}</h4><p className="text-xs text-slate-500">{emp.type} • ฿{emp.baseWage}</p></div>
                             </div>
                             <div className="flex gap-1">
                                 <button onClick={() => { setEditingEmp(emp); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-amber-500"><Edit2 size={16} /></button>
@@ -128,9 +128,9 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                     <Card className="w-full max-w-4xl p-0 overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="bg-slate-800 text-white p-6 flex justify-between items-start shrink-0">
                             <div className="flex gap-4 items-center">
-                                <div className="w-16 h-16 rounded-full bg-slate-700 font-bold text-2xl flex items-center justify-center">{(viewingEmp.nickname || viewingEmp.name || '?').charAt(0)}</div>
+                                <div className="w-16 h-16 rounded-full bg-slate-700 font-bold text-2xl flex items-center justify-center">{(viewingEmp.nickname || '?').charAt(0)}</div>
                                 <div>
-                                    <h3 className="font-bold text-2xl">{viewingEmp.name} ({viewingEmp.nickname})</h3>
+                                    <h3 className="font-bold text-2xl">{viewingEmp.nickname}</h3>
                                     <p className="text-slate-300">{viewingEmp.type === 'Daily' ? 'รายวัน' : 'รายเดือน'} • ฿{viewingEmp.baseWage} • 📞 {viewingEmp.phone || '-'}</p>
                                 </div>
                             </div>

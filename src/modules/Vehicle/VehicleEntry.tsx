@@ -64,7 +64,7 @@ const VehicleEntry = ({ settings, employees, onSave }: VehicleEntryProps) => {
                 <div className="grid grid-cols-2 gap-4">
                     <Select label="คนขับ" value={form.driver} onChange={(e: any) => setForm({ ...form, driver: e.target.value })}>
                         <option value="">-- เลือกคนขับ --</option>
-                        {employees.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname} ({e.name})</option>)}
+                        {employees.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname}</option>)}
                     </Select>
                     <Input label="ค่าเบี้ยเลี้ยงคนขับ" type="number" value={form.wage} onChange={(e: any) => setForm({ ...form, wage: e.target.value })} />
                 </div>

@@ -213,7 +213,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                             {p.nickname.charAt(0)}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="font-bold text-lg text-slate-800 truncate">{p.name}</h4>
+                                            <h4 className="font-bold text-lg text-slate-800 truncate">{p.nickname}</h4>
                                             <p className="text-sm text-slate-500 truncate">{p.type === 'Monthly' ? 'รายเดือน' : 'รายวัน'} • ฐาน ฿{p.baseWage}</p>
                                             {p.isPaid && <span className="inline-flex text-xs bg-emerald-100 text-emerald-700 font-bold items-center gap-1 px-2 py-0.5 rounded-full mt-1"><CheckCircle2 size={12} /> ยืนยันจ่ายแล้ว</span>}
                                         </div>
@@ -479,7 +479,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                             <div className="px-6 sm:px-8 py-6 bg-slate-50 border-b flex flex-col sm:flex-row gap-6 print:bg-white justify-between">
                                 <div className="flex flex-col">
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 mt-0">ชื่อพนักงาน</p>
-                                    <p className="text-xl font-bold text-slate-800">{slipEmp.name} <span className="text-sm font-normal text-slate-500">({slipEmp.nickname})</span></p>
+                                    <p className="text-xl font-bold text-slate-800">{slipEmp.nickname}</p>
                                 </div>
                                 <div className="flex flex-col text-left sm:text-right">
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 mt-0">งวดที่จ่าย (Period)</p>
