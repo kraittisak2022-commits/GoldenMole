@@ -1,399 +1,299 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Sparkles, TrendingUp, Wallet, Activity, Send, Bot, PieChart, Cpu } from 'lucide-react';
-import FormatNumber from '../../components/ui/FormatNumber';
-import { Transaction } from '../../types';
+import { useMemo, useState } from 'react';
+import {
+    ClipboardList,
+    Wallet,
+    CreditCard,
+    ChevronDown,
+    ChevronUp,
+    Users,
+    Truck,
+    Droplets,
+    Fuel,
+    AlertCircle,
+    Calendar,
+    Activity,
+    TrendingUp,
+    BarChart3,
+} from 'lucide-react';
+import Card from '../../components/ui/Card';
+import { Transaction, Employee, AppSettings } from '../../types';
+import { normalizeDate } from '../../utils';
 
-// --- Components ---
-
-const GlassCard = ({ children, className = '', glow = false }: { children: React.ReactNode, className?: string, glow?: boolean }) => (
-    <div className={`glass-panel rounded-3xl p-6 transition-all duration-500 ${glow ? 'shadow-[0_0_30px_-10px_rgba(168,85,247,0.3)] border-purple-500/30' : 'hover:border-slate-700/50'} ${className}`}>
-        {children}
-    </div>
-);
-
-const NeuralCore = ({ isActive }: { isActive: boolean }) => {
-    // Generate static nodes for consistency
-    const nodes = useMemo(() => Array.from({ length: 12 }).map((_, i) => ({
-        id: i,
-        x: 100 + Math.cos(i * 0.5) * 60 + Math.random() * 20,
-        y: 100 + Math.sin(i * 0.5) * 60 + Math.random() * 20,
-        r: Math.random() * 2 + 2
-    })), []);
-
-    // Generate connections
-    const links = useMemo(() => {
-        const lines = [];
-        for (let i = 0; i < nodes.length; i++) {
-            for (let j = i + 1; j < nodes.length; j++) {
-                if (Math.random() > 0.6) { // 40% chance of connection
-                    lines.push({ source: nodes[i], target: nodes[j] });
-                }
-            }
-        }
-        return lines;
-    }, [nodes]);
-
-    return (
-        <div className="relative w-40 h-40 sm:w-52 sm:h-52 lg:w-64 lg:h-64 flex items-center justify-center">
-            {/* Background Glow */}
-            <div className={`absolute inset-0 bg-indigo-500/10 rounded-full blur-3xl transition-all duration-1000 ${isActive ? 'scale-125 opacity-80' : 'scale-100 opacity-40'}`}></div>
-
-            <svg viewBox="0 0 200 200" className={`w-full h-full drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-700 ${isActive ? 'animate-spin-slow' : ''}`} style={{ animationDuration: '20s' }}>
-                <defs>
-                    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#818cf8" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="#c084fc" stopOpacity="0.8" />
-                    </linearGradient>
-                </defs>
-
-                {/* Connecting Lines */}
-                {links.map((link, i) => (
-                    <line
-                        key={i}
-                        x1={link.source.x} y1={link.source.y}
-                        x2={link.target.x} y2={link.target.y}
-                        stroke="url(#grad)"
-                        strokeWidth="0.5"
-                        className={`transition-all duration-300 ${isActive ? 'animate-dash opacity-80' : 'opacity-20'}`}
-                        style={{ animationDuration: `${Math.random() * 2 + 1}s` }}
-                    />
-                ))}
-
-                {/* Nodes */}
-                {nodes.map((node, i) => (
-                    <circle
-                        key={i}
-                        cx={node.x} cy={node.y} r={node.r}
-                        fill="#fff"
-                        className={`transition-all duration-500 ${isActive ? 'animate-pulse' : ''}`}
-                        style={{ animationDelay: `${i * 0.1}s` }}
-                    />
-                ))}
-
-                {/* Central Core */}
-                <circle cx="100" cy="100" r="15" fill="none" stroke="#6366f1" strokeWidth="1" className={`animate-ping ${isActive ? 'opacity-100' : 'opacity-0'}`} style={{ animationDuration: '3s' }} />
-                <circle cx="100" cy="100" r="8" fill="#4f46e5" className="animate-pulse-slow" />
-            </svg>
-
-            {/* Overlay Icon */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className={`bg-slate-900/80 p-3 rounded-full border border-indigo-500/50 backdrop-blur-sm transition-all duration-300 ${isActive ? 'scale-110 shadow-[0_0_20px_rgba(99,102,241,0.6)]' : ''}`}>
-                    <Cpu size={24} className="text-white" />
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AnimatedStats = ({ value }: { value: number }) => {
-    const [display, setDisplay] = useState(0);
-    useEffect(() => {
-        let start = display;
-        const end = value;
-        if (start === end) return;
-        const duration = 1500;
-        const startTime = performance.now();
-
-        const animate = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const ease = 1 - Math.pow(1 - progress, 3);
-            setDisplay(start + (end - start) * ease);
-            if (progress < 1) requestAnimationFrame(animate);
-        };
-        requestAnimationFrame(animate);
-    }, [value]);
-    return <FormatNumber value={display} />;
-};
-
-// --- Chat Logic ---
-
-interface ChatMessage {
-    id: string;
-    role: 'user' | 'assistant';
-    text: string;
-    timestamp: Date;
+interface DashboardV4Props {
+    transactions: Transaction[];
+    dateFilter: { start: string; end: string };
+    employees?: Employee[];
+    settings?: AppSettings;
 }
 
-const processAIQuery = (query: string, transactions: Transaction[]): string => {
-    const q = query.toLowerCase().trim();
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    const currentDateTh = today.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-
-    // Filter Helpers
-    const getMonthTrans = () => transactions.filter(t => {
-        const d = new Date(t.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+const formatThaiDate = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('th-TH', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
     });
 
-    const getTodayTrans = () => transactions.filter(t => t.date === todayStr);
+const isDailyWizardTx = (t: Transaction) =>
+    t.category === 'Labor' ||
+    t.category === 'Vehicle' ||
+    (t.category === 'DailyLog' && (t.subCategory === 'VehicleTrip' || t.subCategory === 'Sand' || t.subCategory === 'Event')) ||
+    t.category === 'Fuel';
 
-    const sumAmount = (trans: Transaction[]) => trans.reduce((s, t) => s + t.amount, 0);
+const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: DashboardV4Props) => {
+    const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
-    // --- Time Analysis ---
-    if (q.includes('วันนี้เดือนอะไร') || q.includes('วันที่เท่าไหร่')) {
-        return `วันนี้คือวันที่ ${currentDateTh} ครับ`;
-    }
+    const filteredByRange = useMemo(() => {
+        const start = new Date(dateFilter.start);
+        const end = new Date(dateFilter.end);
+        end.setHours(23, 59, 59, 999);
+        return transactions.filter((t) => {
+            const tDate = new Date(normalizeDate(t.date));
+            return tDate >= start && tDate <= end;
+        });
+    }, [transactions, dateFilter]);
 
-    // --- Complex Queries ---
+    const byDate = useMemo(() => {
+        const map: Record<string, Transaction[]> = {};
+        filteredByRange.forEach((t) => {
+            const d = normalizeDate(t.date);
+            if (!map[d]) map[d] = [];
+            map[d].push(t);
+        });
+        return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
+    }, [filteredByRange]);
 
-    // 1. Profit / Overview
-    if (q.includes('กำไร') || q.includes('สถานะการเงิน') || q.includes('profit')) {
-        const income = sumAmount(transactions.filter(t => t.type === 'Income'));
-        const expense = sumAmount(transactions.filter(t => t.type === 'Expense'));
-        const prof = income - expense;
-        const monthIncome = sumAmount(getMonthTrans().filter(t => t.type === 'Income'));
-        const monthExpense = sumAmount(getMonthTrans().filter(t => t.type === 'Expense'));
-        return `กำไรสุทธิรวมทั้งหมดอยู่ที่ ${prof.toLocaleString()} บาทครับ (รับรวม: ${income.toLocaleString()} - จ่ายรวม: ${expense.toLocaleString()}) สำหรับเดือนนี้มีรายได้ ${monthIncome.toLocaleString()} บาท และรายจ่าย ${monthExpense.toLocaleString()} บาทครับ`;
-    }
-
-    // 2. Today's Summary
-    if (q.includes('วันนี้เรา') || q.includes('ยอดวันนี้') || (q.includes('วันนี้') && (q.includes('สรุป') || q.includes('ทั้งหมด')))) {
-        const todayTrans = getTodayTrans();
-        if (todayTrans.length === 0) return 'วันนี้ยังไม่มีการบันทึกข้อมูลใดๆ เข้าระบบเลยครับ';
-
-        const inToday = sumAmount(todayTrans.filter(t => t.type === 'Income'));
-        const exToday = sumAmount(todayTrans.filter(t => t.type === 'Expense'));
-        const sand = todayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-        return `📅 สรุปข้อมูลวันนี้ (${todayStr}): มีรายรับ ${inToday.toLocaleString()} บาท, รายจ่าย ${exToday.toLocaleString()} บาท, และล้างทรายได้ ${sand} คิวครับ`;
-    }
-
-    // 3. Specific Categories (Fuel)
-    if (q.includes('น้ำมัน') || q.includes('fuel')) {
-        const fuelTrans = transactions.filter(t => t.category === 'Fuel');
-        const fuelTotal = sumAmount(fuelTrans);
-        const fuelLiters = fuelTrans.reduce((s, t) => s + (t.quantity || 0), 0);
-
-        if (q.includes('วันนี้')) {
-            const todayFuel = fuelTrans.filter(t => t.date === todayStr);
-            const todayLiters = todayFuel.reduce((s, t) => s + (t.quantity || 0), 0);
-            return `วันนี้เราเติมน้ํามันไปทั้งหมด ${todayLiters.toLocaleString()} ลิตร เป็นเงิน ${sumAmount(todayFuel).toLocaleString()} บาทครับ`;
-        }
-        return `ยอดใช้จ่ายน้ำมันรวมทั้งหมดตั้งแต่เริ่มโครงการคือ ${fuelTotal.toLocaleString()} บาทครับ ใช้น้ำมันไปแล้ว ${fuelLiters.toLocaleString()} ลิตร`;
-    }
-
-    // 4. Sand Production
-    if (q.includes('ทราย') || q.includes('ล้างทราย')) {
-        const dLogs = transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
-        const totalQ = dLogs.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-        if (q.includes('วันนี้')) {
-            const todayQ = dLogs.filter(t => t.date === todayStr).reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-            return `วันนี้เราล้างทรายได้ทั้งหมด ${todayQ} คิวครับ 🌊`;
-        }
-        return `ปริมาณทรายที่ล้างได้ทั้งหมดตามที่บันทึกไว้ในระบบคือ ${totalQ} คิวครับ`;
-    }
-
-    // 5. Labor / Workers
-    if (q.includes('คนงาน') || q.includes('แรงงาน') || q.includes('พนักงาน')) {
-        const labor = sumAmount(transactions.filter(t => t.category === 'Labor'));
-        if (q.includes('วันนี้')) {
-            const todayWorkers = getTodayTrans().filter(t => t.category === 'Labor' && t.laborStatus === 'Work').reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
-            return `วันนี้มีคนงานมาทำงานทั้งหมด ${todayWorkers} คนครับ`;
-        }
-        return `เราจ่ายค่าแรงไปแล้วรวมทั้งสิ้น ${labor.toLocaleString()} บาทครับ`;
-    }
-
-    // 6. Vehicles
-    if (q.includes('รถ') || q.includes('เครื่องจักร')) {
-        const veh = transactions.filter(t => t.category === 'Vehicle');
-        if (q.includes('วันนี้มา')) {
-            const tVeh = getTodayTrans().filter(t => t.category === 'Vehicle');
-            if (tVeh.length === 0) return 'ไม่ได้บันทึกข้อมูลรถเข้าทำงานในวันนี้ครับ';
-            const vNames = tVeh.map(t => t.vehicleId).join(', ');
-            return `วันนี้มีรถเข้าทำงาน ${tVeh.length} คัน ได้แก่: ${vNames} ครับ`;
-        }
-        return `มีการบันทึกการทำงานของรถ/เครื่องจักรในระบบทั้งหมด ${veh.length} รายการ`;
-    }
-
-    // 7. Salary / Payroll
-    if (q.includes('เงินเดือน') || q.includes('ค่าจ้าง')) {
-        const pRoll = sumAmount(transactions.filter(t => t.category === 'Payroll'));
-        return `ยอดรวมการจ่ายเงินเดือนพนักงานในระบบที่ตัดยอดแล้วคือ ${pRoll.toLocaleString()} บาทครับ`;
-    }
-
-    // 8. General Greetings & Help
-    if (q.includes('สวัสดี') || q.includes('hi') || q.includes('ทำอะไรได้บ้าง')) {
-        return `สวัสดีครับ! 🤖 ผมคือ AI Manager ประจำโครงการครับ\nผมสามารถอ่านข้อมูลทุกอย่างในระบบและสรุปให้คุณได้ทันที เช่น:\n- "ยอดสรุปวันนี้"\n- "เราล้างทรายได้กี่คิวแล้ว"\n- "วันนี้ใช้น้ำมันไปเท่าไหร่"\n- "กำไรเดือนนี้เท่าไหร่"\nลองถามผมมาได้เลยครับ!`;
-    }
-
-    return 'ผมกำลังรวบรวมข้อมูลส่วนนี้อยู่ อาจจะยังไม่มีในฐานข้อมูลที่ผมเข้าถึงได้ ลองถามเกี่ยวกับ "สรุปยอดวันนี้", "กำไรทั้งหมด", "ทรายที่ล้างได้", "รถที่มาทำงาน" หรือ "ยอดน้ำมัน" ดูก่อนนะครับ';
-};
-
-// --- Main Dashboard ---
-
-const DashboardV4 = ({ transactions }: { transactions: Transaction[] }) => {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: '1', role: 'assistant', text: 'สวัสดีครับ ผมพร้อมให้ข้อมูลสรุปสถานะโครงการแล้วครับ ถามข้อมูลการเงินได้เลย!', timestamp: new Date() }
-    ]);
-    const [input, setInput] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
-
-    // Auto-scroll chat
-    useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }, [messages, isTyping]);
-
-    const handleSend = () => {
-        if (!input.trim()) return;
-
-        const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: input, timestamp: new Date() };
-        setMessages(prev => [...prev, userMsg]);
-        setInput('');
-        setIsTyping(true);
-
-        // Simulate AI Delay
-        setTimeout(() => {
-            const replyText = processAIQuery(userMsg.text, transactions);
-            const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'assistant', text: replyText, timestamp: new Date() };
-            setMessages(prev => [...prev, aiMsg]);
-            setIsTyping(false);
-        }, 1500); // Slightly longer for brain animation
-    };
-
-    // Stats
-    const totalIncome = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-    const totalExpense = transactions.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
-    const netProfit = totalIncome - totalExpense;
+    const summary = useMemo(() => {
+        const totalExpense = filteredByRange.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+        const totalIncome = filteredByRange.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+        const wizardCount = filteredByRange.filter(isDailyWizardTx).length;
+        return {
+            days: byDate.length,
+            totalExpense,
+            totalIncome,
+            net: totalIncome - totalExpense,
+            wizardCount,
+        };
+    }, [filteredByRange, byDate.length]);
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-hidden relative p-3 sm:p-5 lg:p-8">
-            <div className="bg-mesh absolute inset-0 opacity-40 pointer-events-none"></div>
-
+        <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-4 mb-6 sm:mb-8 animate-slide-up">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-light tracking-tight text-white mb-2">
-                        สวัสดี, <span className="font-medium text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">ผู้ดูแลระบบ</span>
-                    </h1>
-                    <p className="text-slate-400 text-sm flex items-center gap-2">
-                        <Sparkles size={14} className="text-indigo-400" /> ระบบ AI พร้อมทำงาน (Gemini Integration Ready)
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+                            <Activity size={18} />
+                        </span>
+                        Real-time V.4
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                        บันทึกงานประจำวัน • ค่าใช้จ่าย • รายรับ • อัปเดตรายวัน
                     </p>
                 </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 lg:h-[calc(100vh-180px)]">
-
-                {/* Left: Stats & Core (7 cols) */}
-                <div className="lg:col-span-7 flex flex-col gap-6">
-                    {/* Main Stats Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <GlassCard className="animate-float" glow>
-                            <div className="flex items-center gap-3 mb-4 text-slate-400">
-                                <div className="p-2 bg-indigo-500/10 rounded-xl"><Wallet size={18} className="text-indigo-400" /></div>
-                                <span className="text-sm font-medium">กำไรสุทธิ (Net Profit)</span>
-                            </div>
-                            <div className="text-2xl sm:text-3xl lg:text-4xl font-medium text-white mb-2">
-                                ฿<AnimatedStats value={netProfit} />
-                            </div>
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">
-                                <TrendingUp size={12} /> สถานะการเงินแข็งแกร่ง
-                            </div>
-                        </GlassCard>
-
-                        <div className="space-y-4">
-                            <GlassCard className="flex-1 py-4">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">รายรับรวม (Income)</p>
-                                <p className="text-2xl font-medium text-white mb-1">฿<AnimatedStats value={totalIncome} /></p>
-                                <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden mt-2">
-                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: '70%' }}></div>
-                                </div>
-                            </GlassCard>
-                            <GlassCard className="flex-1 py-4">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">รายจ่ายรวม (Expense)</p>
-                                <p className="text-2xl font-medium text-white mb-1">฿<AnimatedStats value={totalExpense} /></p>
-                                <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden mt-2">
-                                    <div className="h-full bg-purple-500 rounded-full" style={{ width: '45%' }}></div>
-                                </div>
-                            </GlassCard>
+            {/* Summary Cards — แดชบอร์ดสรุปทันสมัย */}
+            {byDate.length > 0 && (
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+                    <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 text-white shadow-xl shadow-slate-900/20 border border-white/5">
+                        <div className="flex items-center justify-between">
+                            <Calendar size={20} className="text-slate-400" />
+                            <span className="text-2xl sm:text-3xl font-bold tabular-nums">{summary.days}</span>
                         </div>
+                        <p className="text-xs sm:text-sm text-slate-400 mt-1">วันที่มีข้อมูล</p>
                     </div>
-
-                    {/* AI Visualization */}
-                    <GlassCard className="flex-1 flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-500" glow={isTyping}>
-                        <div className="absolute top-4 left-4 text-xs font-medium text-slate-500 flex items-center gap-2">
-                            <Activity size={14} className={isTyping ? "text-indigo-400 animate-spin" : "text-indigo-400"} />
-                            {isTyping ? "PROCESSING DATA..." : "SYSTEM IDLE"}
+                    <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 p-4 sm:p-5 text-white shadow-xl shadow-indigo-500/25 border border-white/10">
+                        <div className="flex items-center justify-between">
+                            <ClipboardList size={20} className="text-indigo-200" />
+                            <span className="text-xl sm:text-2xl font-bold tabular-nums">{summary.wizardCount}</span>
                         </div>
-
-                        <NeuralCore isActive={isTyping} />
-
-                        <div className="mt-4 text-center">
-                            <h3 className={`text-lg font-medium transition-colors ${isTyping ? 'text-indigo-300' : 'text-white opacity-90'}`}>
-                                {isTyping ? 'AI is converting data to knowledge...' : 'Neural Network Standby'}
-                            </h3>
-                            <p className="text-sm text-slate-400 mt-1">
-                                {isTyping ? 'Analyzing 42 data points...' : 'Ready for query'}
-                            </p>
+                        <p className="text-xs sm:text-sm text-indigo-200 mt-1">รายการบันทึกงาน</p>
+                    </div>
+                    <div className="rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 p-4 sm:p-5 text-white shadow-xl shadow-rose-500/25 border border-white/10">
+                        <div className="flex items-center justify-between">
+                            <CreditCard size={20} className="text-rose-200" />
+                            <span className="text-lg sm:text-xl font-bold tabular-nums truncate">฿{(summary.totalExpense / 1000).toFixed(0)}k</span>
                         </div>
-                    </GlassCard>
+                        <p className="text-xs sm:text-sm text-rose-200 mt-1">ค่าใช้จ่ายรวม</p>
+                    </div>
+                    <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-4 sm:p-5 text-white shadow-xl shadow-emerald-500/25 border border-white/10">
+                        <div className="flex items-center justify-between">
+                            <Wallet size={20} className="text-emerald-200" />
+                            <span className="text-lg sm:text-xl font-bold tabular-nums truncate">฿{(summary.totalIncome / 1000).toFixed(0)}k</span>
+                        </div>
+                        <p className="text-xs sm:text-sm text-emerald-200 mt-1">รายรับรวม</p>
+                    </div>
+                    <div className="col-span-2 lg:col-span-1 rounded-2xl p-4 sm:p-5 border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col justify-center">
+                        <div className="flex items-center gap-2 text-slate-600">
+                            <TrendingUp size={18} />
+                            <span className="text-sm font-medium">กำไรสุทธิ</span>
+                        </div>
+                        <p className={`text-xl sm:text-2xl font-bold tabular-nums mt-0.5 ${summary.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            ฿{summary.net.toLocaleString()}
+                        </p>
+                    </div>
                 </div>
+            )}
 
-                {/* Right: AI Chat Interface (5 cols) */}
-                <div className="lg:col-span-5 flex flex-col">
-                    <GlassCard className="flex-1 flex flex-col p-0 overflow-hidden border-indigo-500/30" glow>
-                        {/* Chat Header */}
-                        <div className="p-4 border-b border-white/5 bg-white/5 backdrop-blur-md flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white"><Bot size={18} /></div>
-                                <div>
-                                    <h3 className="font-medium text-white text-sm">Gemini Assistant</h3>
-                                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Online
-                                    </div>
-                                </div>
-                            </div>
-                            <button className="p-2 hover:bg-white/10 rounded-full text-slate-400 transition-colors"><PieChart size={18} /></button>
-                        </div>
+            {byDate.length === 0 ? (
+                <Card className="p-10 sm:p-12 text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-200/80 flex items-center justify-center mx-auto mb-4">
+                        <Calendar size={28} className="text-slate-500" />
+                    </div>
+                    <p className="text-slate-600 font-medium">ไม่มีข้อมูลในช่วงวันที่เลือก</p>
+                    <p className="text-sm text-slate-400 mt-1">ลองเปลี่ยนช่วงวันที่หรือบันทึกข้อมูลใหม่</p>
+                </Card>
+            ) : (
+                <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                        <BarChart3 size={16} />
+                        รายวัน
+                    </h3>
+                    <div className="space-y-3">
+                        {byDate.map(([dateStr, txs]) => {
+                            const wizardTx = txs.filter(isDailyWizardTx);
+                            const expenses = txs.filter((t) => t.type === 'Expense');
+                            const incomes = txs.filter((t) => t.type === 'Income');
+                            const expenseTotal = expenses.reduce((s, t) => s + t.amount, 0);
+                            const incomeTotal = incomes.reduce((s, t) => s + t.amount, 0);
+                            const isExpanded = expandedDate === dateStr;
 
-                        {/* Messages Area */}
-                        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                                        ? 'bg-indigo-600 text-white rounded-br-none shadow-lg shadow-indigo-500/20'
-                                        : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}`}>
-                                        {msg.text}
-                                    </div>
-                                </div>
-                            ))}
-                            {isTyping && (
-                                <div className="flex justify-start">
-                                    <div className="bg-slate-800 rounded-2xl rounded-bl-none px-4 py-3 border border-slate-700 flex gap-1">
-                                        <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></span>
-                                        <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                                        <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                            const laborTx = wizardTx.filter((t) => t.category === 'Labor');
+                            const vehicleTx = wizardTx.filter((t) => t.category === 'Vehicle');
+                            const tripTx = wizardTx.filter((t) => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
+                            const sandTx = wizardTx.filter((t) => t.category === 'DailyLog' && t.subCategory === 'Sand');
+                            const fuelTx = wizardTx.filter((t) => t.category === 'Fuel');
+                            const eventTx = wizardTx.filter((t) => t.category === 'DailyLog' && t.subCategory === 'Event');
 
-                        {/* Input Area */}
-                        <div className="p-4 border-t border-white/5 bg-white/5">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                    placeholder="ถามข้อมูลการเงินได้เลยครับ..."
-                                    className="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-slate-500"
-                                />
-                                <button
-                                    onClick={handleSend}
-                                    className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    disabled={!input.trim()}
+                            return (
+                                <div
+                                    key={dateStr}
+                                    className="rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden"
                                 >
-                                    <Send size={18} />
-                                </button>
-                            </div>
-                        </div>
-                    </GlassCard>
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedDate(isExpanded ? null : dateStr)}
+                                        className="w-full flex justify-between items-center p-4 sm:p-5 text-left hover:bg-slate-50/80 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <span className="font-bold text-slate-800">{formatThaiDate(dateStr)}</span>
+                                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+                                                {wizardTx.length} รายการ
+                                            </span>
+                                            <span className="text-xs bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full font-medium">
+                                                ฿{expenseTotal.toLocaleString()}
+                                            </span>
+                                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                                                ฿{incomeTotal.toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <span className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                            <ChevronDown size={20} />
+                                        </span>
+                                    </button>
+
+                                    {isExpanded && (
+                                        <div className="px-4 sm:px-5 pb-5 pt-0 space-y-5 border-t border-slate-100 bg-slate-50/50">
+                                            <div>
+                                                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                    <ClipboardList size={14} className="text-indigo-500" />
+                                                    บันทึกงานประจำวัน
+                                                </h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                    {laborTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-emerald-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
+                                                                <Users size={14} /> ค่าแรง ({laborTx.length})
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mt-1">฿{laborTx.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                                                        </div>
+                                                    )}
+                                                    {vehicleTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-amber-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-amber-700 font-medium text-sm">
+                                                                <Truck size={14} /> ใช้รถ ({vehicleTx.length})
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mt-1">฿{vehicleTx.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                                                        </div>
+                                                    )}
+                                                    {tripTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-blue-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
+                                                                <Truck size={14} /> เที่ยวรถ ({tripTx.length})
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mt-1">฿{tripTx.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                                                        </div>
+                                                    )}
+                                                    {sandTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-cyan-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-cyan-700 font-medium text-sm">
+                                                                <Droplets size={14} /> ล้างทราย ({sandTx.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0)} คิว)
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mt-1">฿{sandTx.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                                                        </div>
+                                                    )}
+                                                    {fuelTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-red-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-red-700 font-medium text-sm">
+                                                                <Fuel size={14} /> น้ำมัน ({fuelTx.length})
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mt-1">฿{fuelTx.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                                                        </div>
+                                                    )}
+                                                    {eventTx.length > 0 && (
+                                                        <div className="bg-white rounded-xl p-3 border border-orange-200/80 shadow-sm">
+                                                            <div className="flex items-center gap-2 text-orange-700 font-medium text-sm">
+                                                                <AlertCircle size={14} /> เหตุการณ์ ({eventTx.length})
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {wizardTx.length === 0 && (
+                                                        <p className="text-sm text-slate-400 col-span-full py-2">ไม่มีบันทึกงานประจำวันในวันนี้</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                <div>
+                                                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                        <CreditCard size={14} className="text-rose-500" />
+                                                        ค่าใช้จ่าย ({expenses.length}) — ฿{expenseTotal.toLocaleString()}
+                                                    </h4>
+                                                    <div className="space-y-1 max-h-40 overflow-y-auto rounded-xl bg-white border border-slate-200 p-2">
+                                                        {expenses.map((t) => (
+                                                            <div key={t.id} className="flex justify-between items-center py-1.5 px-2 rounded-lg hover:bg-slate-50 text-sm">
+                                                                <span className="text-slate-600 truncate flex-1 mr-2">[{t.category}] {t.description}</span>
+                                                                <span className="font-semibold text-slate-800 shrink-0">฿{t.amount.toLocaleString()}</span>
+                                                            </div>
+                                                        ))}
+                                                        {expenses.length === 0 && <p className="text-sm text-slate-400 py-3 text-center">ไม่มี</p>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                        <Wallet size={14} className="text-emerald-500" />
+                                                        รายรับ ({incomes.length}) — ฿{incomeTotal.toLocaleString()}
+                                                    </h4>
+                                                    <div className="space-y-1 max-h-40 overflow-y-auto rounded-xl bg-white border border-slate-200 p-2">
+                                                        {incomes.map((t) => (
+                                                            <div key={t.id} className="flex justify-between items-center py-1.5 px-2 rounded-lg hover:bg-slate-50 text-sm">
+                                                                <span className="text-slate-600 truncate flex-1 mr-2">[{t.category}] {t.description}</span>
+                                                                <span className="font-semibold text-emerald-700 shrink-0">฿{t.amount.toLocaleString()}</span>
+                                                            </div>
+                                                        ))}
+                                                        {incomes.length === 0 && <p className="text-sm text-slate-400 py-3 text-center">ไม่มี</p>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

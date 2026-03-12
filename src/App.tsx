@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, User, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog } from './types';
 import Toast from './components/ui/Toast';
@@ -16,12 +16,12 @@ import LandModule from './modules/Land/LandModule';
 import IncomeEntry from './modules/IncomeEntry';
 import PayrollModule from './modules/Payroll/PayrollModule';
 import SettingsModule from './modules/Settings/SettingsModule';
-import DailyLogModule from './modules/DailyLog';
+import MaintenanceModule from './modules/Maintenance/MaintenanceModule';
 import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
 import LoginPage from './modules/Auth/LoginPage';
 import AdminModule from './modules/Admin/AdminModule';
 
-import { getToday, formatDateBE } from './utils';
+import { getToday, formatDateBE, normalizeDate } from './utils';
 
 // Supabase Services
 import * as db from './services/dataService';
@@ -63,7 +63,6 @@ const MENU_ITEMS = [
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
     { id: 'Labor', icon: Users, l: 'ค่าแรง/ลา' },
     { id: 'Vehicle', icon: Truck, l: 'การใช้รถ' },
-    { id: 'DailyLog', icon: ClipboardList, l: 'บันทึกประจำวัน' },
     { id: 'Fuel', icon: Fuel, l: 'น้ำมัน' },
     { id: 'Maintenance', icon: Wrench, l: 'ซ่อมบำรุง' },
     { id: 'Land', icon: MapPin, l: 'ที่ดิน' },
@@ -75,28 +74,176 @@ const MENU_ITEMS = [
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];
 
-const RecordManager = ({ transactions, setTransactions }: { transactions: Transaction[], setTransactions: any }) => (
-    <Card className="p-0 overflow-hidden animate-fade-in">
-        <div className="p-3 sm:p-4 bg-slate-50 border-b"><h3 className="font-bold">รายการบันทึกทั้งหมด</h3></div>
-        <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[500px]">
-                <thead className="bg-white sticky top-0"><tr><th className="p-2 sm:p-4">Date</th><th className="p-2 sm:p-4">Desc</th><th className="p-2 sm:p-4 text-right">Amount</th><th className="p-2 sm:p-4"></th></tr></thead>
-                <tbody>
-                    {transactions.map(t => (
-                        <tr key={t.id} className="border-b hover:bg-slate-50">
-                            <td className="p-2 sm:p-4 whitespace-nowrap">{formatDateBE(t.date)}</td>
-                            <td className="p-2 sm:p-4">{t.description}</td>
-                            <td className={`p-2 sm:p-4 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600' : 'text-red-500'}`}><FormatNumber value={t.amount} /></td>
-                            <td className="p-2 sm:p-4 text-center">
-                                <button onClick={() => { if (confirm('Delete?')) setTransactions(transactions.filter(x => x.id !== t.id)) }}><Trash2 size={16} className="text-slate-400 hover:text-red-500" /></button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+const CATEGORY_LABELS: Record<string, string> = {
+    Labor: 'ค่าแรง/ลา',
+    Vehicle: 'รถ',
+    Fuel: 'น้ำมัน',
+    Maintenance: 'ซ่อมบำรุง',
+    Income: 'รายรับ',
+    Leave: 'ลา',
+    DailyLog: 'บันทึกงาน',
+    Land: 'ที่ดิน',
+    Utilities: 'สาธารณูปโภค',
+};
+
+const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Transaction[]; onDeleteTransaction?: (id: string) => void }) => {
+    const [filterMode, setFilterMode] = useState<'all' | 'month' | 'date'>('all');
+    const [filterMonth, setFilterMonth] = useState(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [filterDate, setFilterDate] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filtered = useMemo(() => {
+        let list = [...transactions];
+        if (filterMode === 'month' && filterMonth) {
+            const [y, m] = filterMonth.split('-').map(Number);
+            const first = `${y}-${String(m).padStart(2, '0')}-01`;
+            const lastDay = new Date(y, m, 0).getDate();
+            const last = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            list = list.filter(t => {
+                const d = normalizeDate(t.date);
+                return d >= first && d <= last;
+            });
+        } else if (filterMode === 'date' && filterDate) {
+            const d = normalizeDate(filterDate);
+            list = list.filter(t => normalizeDate(t.date) === d);
+        }
+        const q = searchQuery.trim().toLowerCase();
+        if (q) {
+            list = list.filter(t =>
+                (t.description || '').toLowerCase().includes(q) ||
+                (t.category || '').toLowerCase().includes(q) ||
+                (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [transactions, filterMode, filterMonth, filterDate, searchQuery]);
+
+    const byDay = useMemo(() => {
+        const map = new Map<string, Transaction[]>();
+        filtered.forEach(t => {
+            const d = normalizeDate(t.date);
+            if (!map.has(d)) map.set(d, []);
+            map.get(d)!.push(t);
+        });
+        const entries = Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+        return entries;
+    }, [filtered]);
+
+    const formatDayHeader = (dateStr: string) => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const date = new Date(y, (m || 1) - 1, d || 1);
+        const th = date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return th;
+    };
+
+    return (
+        <div className="space-y-4 animate-fade-in">
+            <Card className="p-0 overflow-hidden">
+                <div className="p-3 sm:p-4 bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-4">รายการบันทึก</h3>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">ช่วงเวลา:</span>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="period" checked={filterMode === 'all'} onChange={() => setFilterMode('all')} className="accent-slate-700" />
+                                <span className="text-sm text-slate-700 dark:text-slate-300">ทั้งหมด</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="period" checked={filterMode === 'month'} onChange={() => setFilterMode('month')} className="accent-slate-700" />
+                                <span className="text-sm text-slate-700 dark:text-slate-300">เดือน</span>
+                            </label>
+                            {filterMode === 'month' && (
+                                <input
+                                    type="month"
+                                    value={filterMonth}
+                                    onChange={(e) => setFilterMonth(e.target.value)}
+                                    className="border border-slate-300 dark:border-white/20 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200"
+                                />
+                            )}
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="period" checked={filterMode === 'date'} onChange={() => setFilterMode('date')} className="accent-slate-700" />
+                                <span className="text-sm text-slate-700 dark:text-slate-300">วันที่</span>
+                            </label>
+                            {filterMode === 'date' && (
+                                <input
+                                    type="date"
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    className="border border-slate-300 dark:border-white/20 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200"
+                                />
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-[180px]">
+                            <input
+                                type="text"
+                                placeholder="ค้นหา (รายละเอียด, ประเภท)..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full border border-slate-300 dark:border-white/20 rounded-lg px-3 py-2 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder-slate-400"
+                            />
+                        </div>
+                    </div>
+                    {filtered.length > 0 && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                            แสดง {filtered.length} รายการ {byDay.length > 0 && `ใน ${byDay.length} วัน`}
+                        </p>
+                    )}
+                </div>
+                <div className="max-h-[calc(100vh-280px)] min-h-[200px] overflow-y-auto">
+                    {byDay.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">ไม่มีรายการที่ตรงกับเงื่อนไข</div>
+                    ) : (
+                        <div className="divide-y divide-slate-200 dark:divide-white/10">
+                            {byDay.map(([day, list]) => (
+                                <div key={day} className="bg-white dark:bg-white/[0.02]">
+                                    <div className="sticky top-0 z-10 px-3 sm:px-4 py-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+                                        <span className="font-bold text-slate-800 dark:text-slate-100">{formatDayHeader(day)}</span>
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">{list.length} รายการ</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left min-w-[400px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-100 dark:border-white/5">
+                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium">ประเภท</th>
+                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium">รายละเอียด</th>
+                                                    <th className="p-2 sm:p-3 text-right text-slate-500 dark:text-slate-400 font-medium">จำนวนเงิน</th>
+                                                    {onDeleteTransaction && <th className="p-2 sm:p-3 w-10"></th>}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {list.map(t => (
+                                                    <tr key={t.id} className="border-b border-slate-50 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
+                                                        <td className="p-2 sm:p-3 whitespace-nowrap">
+                                                            <span className="text-xs px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200">
+                                                                {CATEGORY_LABELS[t.category] || t.category}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-2 sm:p-3 text-slate-700 dark:text-slate-300 max-w-[200px] sm:max-w-none truncate sm:truncate-none" title={t.description}>{t.description}</td>
+                                                        <td className={`p-2 sm:p-3 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                                                            {t.type === 'Income' ? '+' : ''}<FormatNumber value={t.amount} />
+                                                        </td>
+                                                        {onDeleteTransaction && (
+                                                            <td className="p-2 sm:p-3 text-center">
+                                                                <button onClick={() => { if (confirm('ลบรายการนี้?')) onDeleteTransaction(t.id); }} className="p-1.5 rounded text-slate-400 hover:text-red-500 dark:hover:text-red-400" title="ลบ"><Trash2 size={14} /></button>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Card>
         </div>
-    </Card>
-);
+    );
+};
 
 function App() {
     // --- Auth State ---
@@ -160,6 +307,15 @@ function App() {
         };
         loadData();
     }, []);
+
+    // Sync dark mode to <html> for full-page background and Tailwind dark:
+    useEffect(() => {
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, [darkMode]);
 
     // Detect mobile vs desktop
     useEffect(() => {
@@ -334,20 +490,19 @@ function App() {
         switch (activeMenu) {
             case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} onSave={handleSave} />;
-            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} onSave={handleSave} transactions={transactions} />;
-            case 'Maintenance': return <GeneralEntry type="Maintenance" settings={settings} onSave={handleSave} transactions={transactions} />;
-            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} transactions={transactions} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
+            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
+            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
+            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={transactions} />;
-            case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} transactions={transactions} />;
+            case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
-            case 'DataList': return <RecordManager transactions={transactions} setTransactions={handleSetTransactions} />;
-            case 'DailyLog': return <DailyLogModule settings={settings} onSaveTransaction={handleSave} transactions={transactions} employees={employees} />;
+            case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
             case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'AdminManagement': return currentAdmin ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : null;
             case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} onClearAllData={handleClearAllData} />;
-            default: return <div className="p-8 text-center text-slate-400">Coming Soon</div>;
+            default: return <div className="p-8 text-center text-slate-400 dark:text-slate-500">Coming Soon</div>;
         }
     };
 
@@ -387,11 +542,11 @@ function App() {
 
             {/* Popup ใส่ค่าแรงเมื่อใช้พนักงานที่ยังไม่มีค่าแรง */}
             {wagePromptEmp && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-[100] p-4">
                     <Card className="w-full max-w-sm p-6 shadow-xl">
-                        <h3 className="font-bold text-lg text-slate-800 mb-2">ระบุค่าแรง</h3>
-                        <p className="text-sm text-slate-600 mb-4">พนักงาน <span className="font-semibold">{wagePromptEmp.nickname || wagePromptEmp.name || 'คนนี้'}</span> ยังไม่มีค่าแรง — กรุณาใส่ค่าแรง (บาท)</p>
-                        <input type="number" min="1" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-lg font-bold text-slate-800 mb-4" placeholder="บาท" value={wagePromptValue} onChange={e => setWagePromptValue(e.target.value)} />
+                        <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">ระบุค่าแรง</h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">พนักงาน <span className="font-semibold text-slate-800 dark:text-slate-200">{wagePromptEmp.nickname || wagePromptEmp.name || 'คนนี้'}</span> ยังไม่มีค่าแรง — กรุณาใส่ค่าแรง (บาท)</p>
+                        <input type="number" min="1" className="w-full border border-slate-300 dark:border-white/20 rounded-lg px-4 py-3 text-lg font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 mb-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:focus:ring-amber-400/30" placeholder="บาท" value={wagePromptValue} onChange={e => setWagePromptValue(e.target.value)} />
                         <div className="flex gap-2">
                             <Button variant="outline" className="flex-1" onClick={cancelWagePrompt}>ยกเลิก</Button>
                             <Button className="flex-1" onClick={submitWagePrompt}>บันทึก</Button>
@@ -472,7 +627,7 @@ function App() {
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
                                 <MoreHorizontal size={18} />
                             </button>
-                            <button onClick={handleLogout} className="flex items-center justify-center p-2 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors" title="ออกจากระบบ">
+                            <button onClick={handleLogout} className="flex items-center justify-center p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="ออกจากระบบ">
                                 <LogOut size={18} />
                             </button>
                         </div>
@@ -493,7 +648,7 @@ function App() {
                                 </div>
                             </div>
                         )}
-                        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors">
+                        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
                             <LogOut size={16} /> ออกจากระบบ
                         </button>
                     </div>
@@ -501,14 +656,14 @@ function App() {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 min-w-0 overflow-y-auto">
+            <main className={`flex-1 min-w-0 overflow-y-auto min-h-screen min-h-[100dvh] ${darkMode ? 'bg-transparent' : ''}`}>
                 {/* Header */}
                 <header className="flex justify-between items-center p-3 sm:p-4 lg:p-8 lg:pb-0 mb-2 lg:mb-8">
                     <div className="flex items-center gap-3">
                         {isMobile && (
                             <button
                                 onClick={() => setIsSidebarOpen(true)}
-                                className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl text-slate-600 dark:text-slate-400 transition-colors"
                             >
                                 <Menu size={24} />
                             </button>
@@ -531,7 +686,7 @@ function App() {
                         {currentAdmin && (
                             <div className={`hidden sm:flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-stone-500'}`}>
                                 <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{currentAdmin.displayName}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${currentAdmin.role === 'SuperAdmin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${currentAdmin.role === 'SuperAdmin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300' : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'}`}>
                                     {currentAdmin.role}
                                 </span>
                             </div>

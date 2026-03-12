@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -17,8 +17,15 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
 
-    // General Form
-    const [generalForm, setGeneralForm] = useState({ name: settings.appName, icon: settings.appIcon, iconDark: settings.appIconDark || '' });
+    // General Form (รวม appSubtext)
+    const [generalForm, setGeneralForm] = useState({
+        name: settings.appName,
+        subtext: settings.appSubtext,
+        icon: settings.appIcon,
+        iconDark: settings.appIconDark || ''
+    });
+    // แก้ไขรายการใน list: { tabKey: { index: number, value: string } }
+    const [editingItem, setEditingItem] = useState<{ index: number; value: string } | null>(null);
 
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
     const [positions, setPositions] = useState<string[]>(() => {
@@ -33,6 +40,16 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     useEffect(() => {
         try { localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions)); } catch { }
     }, [positions]);
+
+    // sync general form เมื่อ settings เปลี่ยน
+    useEffect(() => {
+        setGeneralForm({
+            name: settings.appName,
+            subtext: settings.appSubtext,
+            icon: settings.appIcon,
+            iconDark: settings.appIconDark || ''
+        });
+    }, [settings.appName, settings.appSubtext, settings.appIcon, settings.appIconDark]);
 
     const handleAdd = () => {
         if (!newItem || activeTab === 'positionsLocal') return;
@@ -49,8 +66,36 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     };
 
     const saveGeneral = () => {
-        setSettings({ ...settings, appName: generalForm.name, appIcon: generalForm.icon, appIconDark: generalForm.iconDark || undefined });
+        setSettings({
+            ...settings,
+            appName: generalForm.name,
+            appSubtext: generalForm.subtext,
+            appIcon: generalForm.icon,
+            appIconDark: generalForm.iconDark || undefined
+        });
         alert('บันทึกตั้งค่าทั่วไปแล้ว');
+    };
+
+    const startEdit = (index: number, value: string) => {
+        setEditingItem({ index, value });
+    };
+    const cancelEdit = () => setEditingItem(null);
+    const saveEdit = () => {
+        if (editingItem == null || activeTab === 'positionsLocal' || activeTab === 'general' || activeTab === 'clearData') return;
+        const key = activeTab as keyof AppSettings;
+        const arr = [...(settings[key] as string[])];
+        if (editingItem.index >= 0 && editingItem.index < arr.length) {
+            arr[editingItem.index] = editingItem.value.trim();
+            if (arr[editingItem.index]) {
+                setSettings({ ...settings, [key]: arr });
+                setEditingItem(null);
+            }
+        }
+    };
+
+    const clearEditOnTabChange = (key: string) => {
+        setEditingItem(null);
+        setActiveTab(key);
     };
 
     const tabs = [
@@ -69,12 +114,13 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     return (
         <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold">ตั้งค่า</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card className="p-4 h-fit md:col-span-1"><div className="flex flex-col gap-2">{tabs.map(t => (<button key={t.key} onClick={() => setActiveTab(t.key)} className={`text-left px-4 py-3 rounded-lg text-sm font-medium ${activeTab === t.key ? 'bg-slate-800 text-white' : 'hover:bg-slate-50'}`}>{t.l}</button>))}</div></Card>
+                <Card className="p-4 h-fit md:col-span-1"><div className="flex flex-col gap-2">{tabs.map(t => (<button key={t.key} onClick={() => clearEditOnTabChange(t.key)} className={`text-left px-4 py-3 rounded-lg text-sm font-medium ${activeTab === t.key ? 'bg-slate-800 text-white' : 'hover:bg-slate-50'}`}>{t.l}</button>))}</div></Card>
                 <Card className="p-6 md:col-span-3 min-h-[500px]">
                     {activeTab === 'general' ? (
                         <div className="space-y-6 max-w-lg">
                             <h3 className="font-bold text-lg mb-4">ตั้งค่าทั่วไป</h3>
                             <Input label="ชื่อเว็บไซต์/แอพ" value={generalForm.name} onChange={(e: any) => setGeneralForm({ ...generalForm, name: e.target.value })} />
+                            <Input label="ข้อความใต้ชื่อ (Subtext)" value={generalForm.subtext} onChange={(e: any) => setGeneralForm({ ...generalForm, subtext: e.target.value })} placeholder="เช่น ระบบจัดการ" />
 
                             {/* Logo Light Mode */}
                             <div className="flex flex-col gap-1.5">
@@ -125,27 +171,72 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
                     ) : activeTab === 'positionsLocal' ? (
                         <div className="space-y-6 max-w-lg">
                             <h3 className="font-bold text-lg mb-2">ตั้งค่าตำแหน่งพนักงาน</h3>
-                            <p className="text-sm text-slate-500 mb-4">เพิ่ม/ลบชื่อตำแหน่งที่ใช้กำหนดให้พนักงาน เช่น คนงาน, ช่างเชื่อม, หัวหน้าทีม ฯลฯ</p>
+                            <p className="text-sm text-slate-500 mb-4">เพิ่ม/แก้ไข/ลบชื่อตำแหน่งที่ใช้กำหนดให้พนักงาน เช่น คนงาน, ช่างเชื่อม, หัวหน้าทีม ฯลฯ</p>
                             <div className="flex gap-2 mb-4">
                                 <Input placeholder="ชื่อตำแหน่งใหม่..." value={newPosition} onChange={(e: any) => setNewPosition(e.target.value)} />
                                 <Button onClick={() => { if (!newPosition.trim()) return; setPositions(prev => [...prev, newPosition.trim()]); setNewPosition(''); }}><Plus size={18} /> เพิ่ม</Button>
                             </div>
                             <div className="space-y-2">
-                                {positions.map((p, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg group">
-                                        <span className="text-slate-700">{p}</span>
-                                        <button onClick={() => { if (confirm('ลบตำแหน่งนี้?')) setPositions(prev => prev.filter((_, i) => i !== idx)); }} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                ))}
+                                {positions.map((p, idx) => {
+                                    const isEditingPos = editingItem?.index === idx && activeTab === 'positionsLocal';
+                                    return (
+                                        <div key={idx} className="flex justify-between items-center gap-2 p-3 bg-slate-50 rounded-lg group">
+                                            {isEditingPos ? (
+                                                <>
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={editingItem.value}
+                                                        onChange={(e: any) => setEditingItem({ ...editingItem, value: e.target.value })}
+                                                        onKeyDown={(e: any) => { if (e.key === 'Enter') { const v = editingItem.value.trim(); if (v) { setPositions(prev => { const n = [...prev]; n[idx] = v; return n; }); setEditingItem(null); } } if (e.key === 'Escape') setEditingItem(null); }}
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={() => { const v = editingItem.value.trim(); if (v) { setPositions(prev => { const n = [...prev]; n[idx] = v; return n; }); setEditingItem(null); }}} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
+                                                    <button onClick={() => setEditingItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="ยกเลิก"><X size={18} /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="text-slate-700 flex-1">{p}</span>
+                                                    <button onClick={() => setEditingItem({ index: idx, value: p })} className="p-1.5 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100" title="แก้ไข"><Pencil size={16} /></button>
+                                                    <button onClick={() => { if (confirm('ลบตำแหน่งนี้?')) setPositions(prev => prev.filter((_, i) => i !== idx)); }} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100" title="ลบ"><Trash2 size={16} /></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                                 {positions.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีตำแหน่งที่บันทึกไว้</p>}
                             </div>
                         </div>
                     ) : (
                         <>
                             <div className="flex gap-2 mb-6"><Input placeholder="รายการใหม่..." value={newItem} onChange={(e: any) => setNewItem(e.target.value)} /><Button onClick={handleAdd}><Plus size={18} /> เพิ่ม</Button></div>
-                            <div className="space-y-2">{(settings as any)[activeTab].map((item: string, idx: number) => (<div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg group"><span className="text-slate-700">{item}</span><button onClick={() => handleDelete(idx)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button></div>))}</div>
+                            <div className="space-y-2">
+                                {(settings as any)[activeTab].map((item: string, idx: number) => {
+                                    const isEditing = editingItem?.index === idx;
+                                    return (
+                                        <div key={idx} className="flex justify-between items-center gap-2 p-3 bg-slate-50 rounded-lg group">
+                                            {isEditing ? (
+                                                <>
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={editingItem.value}
+                                                        onChange={(e: any) => setEditingItem({ ...editingItem, value: e.target.value })}
+                                                        onKeyDown={(e: any) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={saveEdit} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
+                                                    <button onClick={cancelEdit} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="ยกเลิก"><X size={18} /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="text-slate-700 flex-1">{item}</span>
+                                                    <button onClick={() => startEdit(idx, item)} className="p-1.5 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100" title="แก้ไข"><Pencil size={16} /></button>
+                                                    <button onClick={() => handleDelete(idx)} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100" title="ลบ"><Trash2 size={16} /></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </>
                     )}
                 </Card>

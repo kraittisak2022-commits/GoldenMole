@@ -8,13 +8,31 @@
 @layer base {
     html {
         font-size: 16px;
-        /* Base */
+        min-height: 100%;
+        min-height: 100dvh;
+    }
+
+    body {
+        min-height: 100%;
+        min-height: 100dvh;
+        background: #fafaf8;
+        transition: background-color 0.3s ease;
+    }
+
+    /* Dark mode: apply when .dark is on html (synced from App) */
+    html.dark,
+    html.dark body {
+        background: #0a0a0f;
+    }
+
+    #root {
+        min-height: 100%;
+        min-height: 100dvh;
     }
 
     @media (min-width: 1024px) {
         html {
             font-size: 18px;
-            /* Slightly larger on desktop */
         }
     }
 }

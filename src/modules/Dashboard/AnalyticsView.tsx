@@ -19,39 +19,47 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
         const totalExpense = expenses.reduce((s, t) => s + t.amount, 0);
         const totalIncome = incomes.reduce((s, t) => s + t.amount, 0);
 
-        // --- Daily Expenses (last 10 days) ---
-        const dailyExpenses = Array.from({ length: 10 }, (_, i) => {
-            const d = new Date(dateFilter.end);
-            d.setDate(d.getDate() - (9 - i));
+        // --- Daily Expenses (ตามช่วง dateFilter) ---
+        const numDays = Math.max(1, Math.ceil((new Date(dateFilter.end).getTime() - new Date(dateFilter.start).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        const dailyExpenses: { date: string; label: string; total: number; labor: number; fuel: number; vehicle: number; maintenance: number; land: number }[] = [];
+        for (let i = 0; i < numDays; i++) {
+            const d = new Date(dateFilter.start);
+            d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
-            return {
+            if (dateStr > dateFilter.end) break;
+            dailyExpenses.push({
                 date: dateStr,
                 label: `${d.getDate()}/${d.getMonth() + 1}`,
                 total: expenses.filter(t => t.date === dateStr).reduce((s, t) => s + t.amount, 0),
                 labor: expenses.filter(t => t.date === dateStr && t.category === 'Labor').reduce((s, t) => s + t.amount, 0),
                 fuel: expenses.filter(t => t.date === dateStr && t.category === 'Fuel').reduce((s, t) => s + t.amount, 0),
-                vehicle: expenses.filter(t => t.date === dateStr && t.category === 'Vehicle').reduce((s, t) => s + t.amount, 0),
+                vehicle: expenses.filter(t => t.date === dateStr && (t.category === 'Vehicle' || (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip'))).reduce((s, t) => s + t.amount, 0),
                 maintenance: expenses.filter(t => t.date === dateStr && t.category === 'Maintenance').reduce((s, t) => s + t.amount, 0),
-            };
-        });
+                land: expenses.filter(t => t.date === dateStr && t.category === 'Land').reduce((s, t) => s + t.amount, 0),
+            });
+        }
 
-        // --- Weekly Expenses ---
-        const weeklyExpenses: { label: string; total: number; labor: number; fuel: number; vehicle: number }[] = [];
+        // --- Weekly Expenses (ตามช่วง dateFilter) ---
+        const weeklyExpenses: { label: string; total: number; labor: number; fuel: number; vehicle: number; land: number }[] = [];
         const endDate = new Date(dateFilter.end);
-        for (let w = 0; w < 4; w++) {
-            const weekEnd = new Date(endDate);
-            weekEnd.setDate(endDate.getDate() - (w * 7));
-            const weekStart = new Date(weekEnd);
-            weekStart.setDate(weekEnd.getDate() - 6);
+        const startDate = new Date(dateFilter.start);
+        const totalWeeks = Math.max(1, Math.ceil(numDays / 7));
+        for (let w = 0; w < totalWeeks; w++) {
+            const weekStart = new Date(startDate);
+            weekStart.setDate(startDate.getDate() + (w * 7));
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
             const wStart = weekStart.toISOString().split('T')[0];
-            const wEnd = weekEnd.toISOString().split('T')[0];
+            let wEnd = weekEnd.toISOString().split('T')[0];
+            if (wEnd > dateFilter.end) wEnd = dateFilter.end;
             const weekExpenses = expenses.filter(t => t.date >= wStart && t.date <= wEnd);
-            weeklyExpenses.unshift({
-                label: `สัปดาห์ ${4 - w}`,
+            weeklyExpenses.push({
+                label: `สัปดาห์ ${w + 1}`,
                 total: weekExpenses.reduce((s, t) => s + t.amount, 0),
                 labor: weekExpenses.filter(t => t.category === 'Labor').reduce((s, t) => s + t.amount, 0),
                 fuel: weekExpenses.filter(t => t.category === 'Fuel').reduce((s, t) => s + t.amount, 0),
-                vehicle: weekExpenses.filter(t => t.category === 'Vehicle').reduce((s, t) => s + t.amount, 0),
+                vehicle: weekExpenses.filter(t => t.category === 'Vehicle' || (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip')).reduce((s, t) => s + t.amount, 0),
+                land: weekExpenses.filter(t => t.category === 'Land').reduce((s, t) => s + t.amount, 0),
             });
         }
 
@@ -65,7 +73,7 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
             color: catColors[i]
         })).filter(d => d.value > 0);
 
-        // --- Vehicle Cost Breakdown ---
+        // --- Vehicle Cost Breakdown (เฉพาะข้อมูลจริง ไม่จำลอง) ---
         const vehicleCosts = (settings.cars || []).map((car, i) => ({
             name: car,
             fuel: expenses.filter(t => t.category === 'Fuel' && t.description?.includes(car)).reduce((s, t) => s + t.amount, 0),
@@ -73,19 +81,10 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
             total: expenses.filter(t => (t.category === 'Fuel' || t.category === 'Maintenance' || t.category === 'Vehicle') && t.description?.includes(car)).reduce((s, t) => s + t.amount, 0),
             color: ['#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899'][i % 5]
         }));
-
-        // Calculate simulated vehicle costs if no matching transactions
-        const hasVehicleData = vehicleCosts.some(v => v.total > 0);
-        const vehicleDisplay = hasVehicleData ? vehicleCosts.filter(v => v.total > 0) : vehicleCosts.map((v, i) => ({
-            ...v,
-            fuel: Math.round(totalExpense * 0.15 / Math.max(vehicleCosts.length, 1) * (1 + (i % 3) * 0.3)),
-            maintenance: Math.round(totalExpense * 0.05 / Math.max(vehicleCosts.length, 1) * (1 + (i % 2) * 0.5)),
-            total: Math.round(totalExpense * 0.2 / Math.max(vehicleCosts.length, 1) * (1 + (i % 3) * 0.3)),
-        }));
+        const vehicleDisplay = vehicleCosts.filter(v => v.total > 0);
 
         // --- Average per day ---
-        const numDays = Math.max(1, Math.ceil((new Date(dateFilter.end).getTime() - new Date(dateFilter.start).getTime()) / (1000 * 60 * 60 * 24)) + 1);
-        const avgPerDay = Math.round(totalExpense / numDays);
+        const avgPerDay = numDays > 0 ? Math.round(totalExpense / numDays) : 0;
         const avgPerWeek = Math.round(totalExpense / Math.max(1, numDays / 7));
 
         // Today vs yesterday comparison
@@ -174,18 +173,20 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
                                         <th className="text-right py-2 text-slate-500 font-medium">ค่าแรง</th>
                                         <th className="text-right py-2 text-slate-500 font-medium">น้ำมัน</th>
                                         <th className="text-right py-2 text-slate-500 font-medium">รถ</th>
-                                        <th className="text-right py-2 text-slate-500 font-medium pr-1">ซ่อม</th>
+                                        <th className="text-right py-2 text-slate-500 font-medium">ซ่อม</th>
+                                        <th className="text-right py-2 text-slate-500 font-medium">ที่ดิน</th>
                                         <th className="text-right py-2 text-slate-700 font-bold">รวม</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {analytics.dailyExpenses.slice(-5).map((d, i) => (
+                                    {analytics.dailyExpenses.slice(-Math.min(10, analytics.dailyExpenses.length)).map((d, i) => (
                                         <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
                                             <td className="py-2 text-slate-600">{d.label}</td>
                                             <td className="text-right text-emerald-600">{d.labor > 0 ? `฿${d.labor.toLocaleString()}` : '-'}</td>
                                             <td className="text-right text-orange-600">{d.fuel > 0 ? `฿${d.fuel.toLocaleString()}` : '-'}</td>
                                             <td className="text-right text-amber-600">{d.vehicle > 0 ? `฿${d.vehicle.toLocaleString()}` : '-'}</td>
-                                            <td className="text-right text-slate-600 pr-1">{d.maintenance > 0 ? `฿${d.maintenance.toLocaleString()}` : '-'}</td>
+                                            <td className="text-right text-slate-600">{d.maintenance > 0 ? `฿${d.maintenance.toLocaleString()}` : '-'}</td>
+                                            <td className="text-right text-purple-600">{d.land > 0 ? `฿${d.land.toLocaleString()}` : '-'}</td>
                                             <td className="text-right font-bold text-slate-800">฿{d.total.toLocaleString()}</td>
                                         </tr>
                                     ))}
@@ -223,6 +224,10 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
                                             <span className="text-amber-600">รถ</span>
                                             <span className="font-bold">฿{w.vehicle.toLocaleString()}</span>
                                         </div>
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="text-purple-600">ที่ดิน</span>
+                                            <span className="font-bold">฿{w.land.toLocaleString()}</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -255,9 +260,11 @@ const AnalyticsView = ({ transactions, settings, dateFilter }: { transactions: T
                             <Truck size={18} className="text-amber-500" />
                             ค่าใช้จ่ายต่อรถ
                         </h3>
-                        <p className="text-xs text-slate-400 mb-4">รวมน้ำมัน + ซ่อมบำรุง</p>
+                        <p className="text-xs text-slate-400 mb-4">รวมน้ำมัน + ซ่อมบำรุง (เฉพาะข้อมูลที่บันทึก)</p>
                         <div className="space-y-3">
-                            {analytics.vehicleDisplay.slice(0, 5).map((v, i) => {
+                            {analytics.vehicleDisplay.length === 0 ? (
+                                <p className="text-sm text-slate-400 py-2">ไม่มีข้อมูลค่าใช้จ่ายต่อรถในช่วงนี้</p>
+                            ) : analytics.vehicleDisplay.slice(0, 5).map((v, i) => {
                                 const maxCost = Math.max(...analytics.vehicleDisplay.map(x => x.total), 1);
                                 const pct = Math.round((v.total / maxCost) * 100);
                                 return (

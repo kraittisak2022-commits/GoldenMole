@@ -7,21 +7,25 @@ import { Transaction, Employee } from '../../types';
 const CalendarView = ({ transactions, employees }: { transactions: Transaction[], employees: Employee[] }) => {
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-    const daysInMonth = Array.from({ length: 31 }, (_, i) => {
-        const d = i + 1;
-        const today = new Date();
-        const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    // จำนวนวันจริงในเดือนปัจจุบัน
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
 
-        const dayTrans = transactions.filter(t => t.date === dateStr);
+    const daysInMonth = Array.from({ length: daysInCurrentMonth }, (_, i) => {
+        const d = i + 1;
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+        const dayTrans = transactions.filter(t => (t.date || '').slice(0, 10) === dateStr);
         const inc = dayTrans.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
         const exp = dayTrans.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
 
-        // Count Attendance & Get Leave Names
-        const workingEmpIds = new Set(dayTrans.filter(t => t.category === 'Labor' && t.laborStatus === 'Work').flatMap(t => t.employeeIds || []));
-        const leaveTrans = dayTrans.filter(t => t.category === 'Leave');
+        // การมาทำงาน: Labor ที่ laborStatus = Work หรือ OT = มา, Leave/Sick/Personal = ลา
+        const workingEmpIds = new Set(dayTrans.filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT')).flatMap(t => t.employeeIds || []));
+        const leaveTrans = dayTrans.filter(t => t.category === 'Labor' && (t.laborStatus === 'Leave' || t.laborStatus === 'Sick' || t.laborStatus === 'Personal'));
         const leaveEmpIds = new Set(leaveTrans.flatMap(t => t.employeeIds || []));
 
-        // Map leave IDs to names
         const leaveNames = Array.from(leaveEmpIds).map(id => {
             const emp = employees.find(e => e.id === id);
             return emp ? (emp.nickname || emp.name) : 'Unknown';
@@ -29,12 +33,12 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
 
         const presentCount = workingEmpIds.size;
         const leaveCount = leaveEmpIds.size;
-        const missingCount = employees.length - presentCount - leaveCount;
+        const missingCount = Math.max(0, employees.length - presentCount - leaveCount);
 
-        // Get Daily Logs
-        const machineLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'MachineWork');
-        const sandLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'SandProduction');
-        const eventLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'GeneralEvent');
+        // บันทึกประจำวัน: ใช้ subCategory ตามที่ระบบบันทึก (Sand, VehicleTrip, Event)
+        const machineLogs = dayTrans.filter(t => t.category === 'DailyLog' && (t.subCategory === 'MachineWork' || t.subCategory === 'VehicleTrip'));
+        const sandLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+        const eventLogs = dayTrans.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event');
 
         return { day: d, inc, exp, net: inc - exp, date: dateStr, presentCount, leaveCount, missingCount, transactions: dayTrans, leaveNames, machineLogs, sandLogs, eventLogs };
     });
@@ -76,12 +80,15 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
                 </div>
             </div>
 
-            {/* Calendar Grid */}
+            {/* Calendar Grid — วันแรกของเดือนให้ตรงกับวันในสัปดาห์ */}
             <div className="overflow-x-auto pb-4">
                 <div className="grid grid-cols-7 gap-2 lg:gap-3 mb-3 text-center text-sm font-bold text-slate-400 min-w-[500px]">
                     {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์'].map((d, i) => <div key={i}>{d}</div>)}
                 </div>
                 <div className="grid grid-cols-7 gap-2 lg:gap-3 min-w-[500px]">
+                    {Array.from({ length: new Date(year, month, 1).getDay() }, (_, i) => (
+                        <div key={`empty-${i}`} className="aspect-[4/3] sm:aspect-square rounded-2xl bg-slate-50/50 border border-slate-100" />
+                    ))}
                     {daysInMonth.map((d, i) => {
                         // Determine heatmap background
                         let bgClass = "bg-white border-slate-200 hover:shadow-lg";
@@ -210,41 +217,60 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
                                     </h4>
 
                                     <div className="space-y-3">
-                                        {/* Machine Logs */}
+                                        {/* Machine / เที่ยวรถ */}
                                         {(dayDetails.machineLogs || []).map(t => (
                                             <div key={t.id} className="flex gap-4 p-4 border border-slate-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow">
                                                 <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center text-2xl shrink-0">🚜</div>
-                                                <div>
-                                                    <div className="font-bold text-lg text-slate-800">
-                                                        {t.machineId} <span className="text-orange-500 font-medium">({t.machineHours} ชม.)</span>
-                                                    </div>
-                                                    <div className="text-slate-600 mt-1">{t.note || t.description}</div>
-                                                    {t.location && <div className="text-sm text-slate-400 mt-2 flex items-center gap-1">📍 {t.location}</div>}
+                                                <div className="flex-1">
+                                                    {t.subCategory === 'VehicleTrip' ? (
+                                                        <>
+                                                            <div className="font-bold text-slate-800">{t.description || 'เที่ยวรถ'}</div>
+                                                            {t.workDetails && <div className="text-slate-600 mt-1">{t.workDetails}</div>}
+                                                            {t.amount > 0 && <div className="text-amber-600 font-medium mt-1">฿{t.amount.toLocaleString()}</div>}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="font-bold text-lg text-slate-800">
+                                                                {t.machineId || 'เครื่องจักร'} <span className="text-orange-500 font-medium">({t.machineHours ?? 0} ชม.)</span>
+                                                            </div>
+                                                            <div className="text-slate-600 mt-1">{t.note || t.description}</div>
+                                                            {t.location && <div className="text-sm text-slate-400 mt-2 flex items-center gap-1">📍 {t.location}</div>}
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))}
 
-                                        {/* Sand Logs */}
+                                        {/* Sand Logs — จาก DailyLog subCategory Sand */}
                                         {(dayDetails.sandLogs || []).map(t => (
                                             <div key={t.id} className="flex gap-4 p-4 border border-slate-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow">
                                                 <div className="w-12 h-12 rounded-2xl bg-cyan-100 flex items-center justify-center text-2xl shrink-0">🌊</div>
                                                 <div className="flex-1">
                                                     <div className="flex justify-between items-start">
                                                         <div className="font-bold text-lg text-slate-800">
-                                                            ผลผลิตทราย <span className="text-cyan-600 font-medium">{t.quantity} คิว</span>
+                                                            ล้างทราย <span className="text-cyan-600 font-medium">{(t.sandMorning || 0) + (t.sandAfternoon || 0)} คิว</span>
                                                         </div>
                                                         <span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-600">
-                                                            {(t as any).sandMachineType === 'Old' ? 'เครื่องเก่า' : 'เครื่องใหม่'}
+                                                            {t.sandMachineType === 'Old' ? 'เครื่องเก่า' : t.sandMachineType === 'New' ? 'เครื่องใหม่' : '-'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-slate-600 mt-1">เช้า: {(t as any).sandMorning} คิว / บ่าย: {(t as any).sandAfternoon} คิว</div>
-                                                    {(t as any).sandTransport > 0 && <div className="text-slate-500 text-sm mt-1">🚛 ทรายที่ขน: {(t as any).sandTransport} คิว</div>}
+                                                    <div className="text-slate-600 mt-1">เช้า: {t.sandMorning ?? 0} คิว / บ่าย: {t.sandAfternoon ?? 0} คิว</div>
+                                                    {t.sandTransport != null && t.sandTransport > 0 && <div className="text-slate-500 text-sm mt-1">🚛 ขน: {t.sandTransport} คิว</div>}
+                                                    {t.amount > 0 && <div className="text-slate-500 text-sm mt-1">฿{t.amount.toLocaleString()}</div>}
                                                 </div>
                                             </div>
                                         ))}
 
+                                        {/* Event Logs */}
+                                        {(dayDetails.eventLogs || []).map(t => (
+                                            <div key={t.id} className="flex gap-4 p-4 border border-orange-100 rounded-2xl bg-amber-50/50 shadow-sm">
+                                                <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-2xl shrink-0">📌</div>
+                                                <div className="font-medium text-slate-800">{t.description}</div>
+                                            </div>
+                                        ))}
+
                                         {/* Empty State */}
-                                        {!(dayDetails.machineLogs?.length) && !(dayDetails.sandLogs?.length) && (
+                                        {!(dayDetails.machineLogs?.length) && !(dayDetails.sandLogs?.length) && !(dayDetails.eventLogs?.length) && (
                                             <div className="text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-slate-400">
                                                 ไม่มีบันทึกกิจกรรมพิเศษสำหรับวันนี้
                                             </div>

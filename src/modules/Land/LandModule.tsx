@@ -74,21 +74,28 @@ const LandModule = ({ projects, setProjects, onSave, transactions }: LandModuleP
                         </div>
                     </div>
                 </Card>
-                <Card className="p-0 overflow-hidden">
-                    <div className="p-4 bg-slate-50 border-b font-bold text-sm">ประวัติการทำรายการ (History)</div>
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-slate-400"><tr><th className="p-3">วันที่</th><th className="p-3">รายการ</th><th className="p-3 text-right">จำนวนเงิน</th></tr></thead>
-                        <tbody>
-                            <tr className="border-b"><td className="p-3">{formatDateBE(selectedProject.purchaseDate)}</td><td className="p-3">วางมัดจำตั้งต้น</td><td className="p-3 text-right">฿{selectedProject.deposit.toLocaleString()}</td></tr>
-                            {projTrans.map((t: Transaction) => (
-                                <tr key={t.id} className="border-b hover:bg-slate-50">
-                                    <td className="p-3">{formatDateBE(t.date)}</td>
-                                    <td className="p-3">{t.description} <span className="bg-slate-100 text-xs px-1 rounded">{t.subCategory}</span></td>
-                                    <td className="p-3 text-right">฿{t.amount.toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <Card className="p-0 overflow-hidden border border-slate-200 shadow-sm">
+                    <div className="p-4 bg-gradient-to-r from-slate-50 to-slate-100 border-b flex items-center gap-2">
+                        <FileText size={18} className="text-slate-500" />
+                        <span className="font-bold text-slate-700">ประวัติการทำรายการ</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                <tr><th className="p-3 font-semibold">วันที่</th><th className="p-3 font-semibold">รายการ</th><th className="p-3 text-right font-semibold">จำนวนเงิน</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                <tr className="hover:bg-emerald-50/50"><td className="p-3 font-medium text-slate-600">{formatDateBE(selectedProject.purchaseDate)}</td><td className="p-3">วางมัดจำตั้งต้น</td><td className="p-3 text-right font-bold text-emerald-600">฿{selectedProject.deposit.toLocaleString()}</td></tr>
+                                {projTrans.map((t: Transaction) => (
+                                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="p-3 text-slate-600">{formatDateBE(t.date)}</td>
+                                        <td className="p-3">{t.description} <span className="bg-slate-200/80 text-slate-600 text-xs px-1.5 py-0.5 rounded">{t.subCategory}</span></td>
+                                        <td className="p-3 text-right font-semibold text-slate-800">฿{t.amount.toLocaleString()}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </Card>
             </div>
         );

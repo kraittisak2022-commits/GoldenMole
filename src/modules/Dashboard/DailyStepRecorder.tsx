@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -12,6 +12,7 @@ interface DailyStepRecorderProps {
     employees: Employee[];
     settings: AppSettings;
     transactions: Transaction[];
+    dateFilter?: { start: string; end: string };
     onSaveTransaction: (t: Transaction) => void;
     onDeleteTransaction?: (id: string) => void;
     ensureEmployeeWage?: (emp: Employee) => Promise<number>;
@@ -36,9 +37,10 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'other', label: 'ทำอื่นๆ', color: 'bg-slate-500', bgLight: 'bg-slate-50 border-slate-200' },
 ];
 
-const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage }: DailyStepRecorderProps) => {
+const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage }: DailyStepRecorderProps) => {
     const [step, setStep] = useState(0);
     const [date, setDate] = useState(getToday());
+    const [viewMode, setViewMode] = useState<'record' | 'report'>('record');
 
     // Derived: Transactions for the selected date (normalize date so DB ISO string matches YYYY-MM-DD)
     const dayTransactions = useMemo(() => {
@@ -228,24 +230,154 @@ const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransactio
     const nextStep = () => setStep(s => Math.min(s + 1, STEPS.length - 1));
     const prevStep = () => setStep(s => Math.max(s - 1, 0));
 
+    const isWizardTx = (t: Transaction) =>
+        t.category === 'Labor' || t.category === 'Vehicle' ||
+        (t.category === 'DailyLog' && (t.subCategory === 'VehicleTrip' || t.subCategory === 'Sand' || t.subCategory === 'Event')) ||
+        t.category === 'Fuel';
+
+    const reportData = useMemo(() => {
+        const rangeStart = dateFilter?.start || getToday();
+        const rangeEnd = dateFilter?.end || getToday();
+        const byDate: Record<string, Transaction[]> = {};
+        transactions.filter(isWizardTx).forEach(t => {
+            const d = normalizeDate(t.date);
+            if (d >= rangeStart && d <= rangeEnd) {
+                if (!byDate[d]) byDate[d] = [];
+                byDate[d].push(t);
+            }
+        });
+        return Object.entries(byDate).sort(([a], [b]) => b.localeCompare(a));
+    }, [transactions, dateFilter]);
+
+    const formatReportDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
     return (
         <div className="min-h-screen bg-slate-50 p-3 sm:p-4 lg:p-6 animate-fade-in relative">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-8 gap-3">
-                <div>
-                    <h2 className="text-lg sm:text-2xl font-bold text-slate-800">บันทึกงานประจำวัน (Daily Wizard)</h2>
-                    <p className="text-slate-500 text-xs sm:text-sm">ระบบช่วยบันทึกข้อมูลแบบทีละขั้นตอน</p>
+            {/* Header + โหมด บันทึก | รายงาน */}
+            <div className="flex flex-col gap-4 mb-4 sm:mb-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-lg sm:text-2xl font-bold text-slate-800">บันทึกงานประจำวัน (Daily Wizard)</h2>
+                        <p className="text-slate-500 text-xs sm:text-sm">
+                            {viewMode === 'record' ? 'ระบบช่วยบันทึกข้อมูลแบบทีละขั้นตอน' : 'รายงานสรุปข้อมูลที่บันทึกในแต่ละวัน'}
+                        </p>
+                    </div>
+                    <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('record')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            <ClipboardList size={16} />
+                            บันทึก
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('report')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            <FileText size={16} />
+                            รายงาน
+                        </button>
+                    </div>
                 </div>
-                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar w-full sm:w-auto">
-                    {STEPS.map((s, i) => (
-                        <div key={s.id} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                            <s.icon size={12} />
-                            <span className="hidden sm:inline">{s.label}</span>
-                        </div>
-                    ))}
-                </div>
+                {viewMode === 'record' && (
+                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar w-full sm:w-auto">
+                        {STEPS.map((s, i) => (
+                            <div key={s.id} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                                <s.icon size={12} />
+                                <span className="hidden sm:inline">{s.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
+            {/* มุมมองรายงาน: แสดงข้อมูลที่บันทึกในแต่ละวันแบบรายงาน */}
+            {viewMode === 'report' && (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                        <p className="text-sm text-slate-500">
+                            ช่วงวันที่ {dateFilter?.start ? new Date(dateFilter.start).toLocaleDateString('th-TH') : '-'} ถึง {dateFilter?.end ? new Date(dateFilter.end).toLocaleDateString('th-TH') : '-'}
+                        </p>
+                        <span className="text-xs font-medium text-slate-400 bg-slate-100 px-3 py-1 rounded-full">{reportData.length} วันที่มีข้อมูล</span>
+                    </div>
+                    <div className="space-y-4">
+                        {reportData.length === 0 ? (
+                            <Card className="p-12 text-center">
+                                <FileText size={48} className="mx-auto text-slate-300 mb-3" />
+                                <p className="text-slate-500 font-medium">ไม่มีข้อมูลบันทึกงานในช่วงนี้</p>
+                                <p className="text-sm text-slate-400 mt-1">ลองเลือกช่วงวันที่อื่นหรือไปที่โหมด บันทึก เพื่อกรอกข้อมูล</p>
+                            </Card>
+                        ) : reportData.map(([dateStr, txs]) => {
+                            const labor = txs.filter(t => t.category === 'Labor');
+                            const vehicle = txs.filter(t => t.category === 'Vehicle');
+                            const trips = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
+                            const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+                            const fuel = txs.filter(t => t.category === 'Fuel');
+                            const events = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event');
+                            const laborSum = labor.reduce((s, t) => s + t.amount, 0);
+                            const vehicleSum = vehicle.reduce((s, t) => s + t.amount, 0);
+                            const tripsSum = trips.reduce((s, t) => s + t.amount, 0);
+                            const sandCubic = sand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+                            const fuelSum = fuel.reduce((s, t) => s + t.amount, 0);
+                            const workerCount = new Set(labor.flatMap(t => t.employeeIds || [])).size;
+                            return (
+                                <Card key={dateStr} className="overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                    <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white">
+                                        <h3 className="font-bold text-lg">{formatReportDate(dateStr)}</h3>
+                                        <p className="text-slate-300 text-sm mt-0.5">สรุปบันทึกงานประจำวัน</p>
+                                    </div>
+                                    <div className="p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                                        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                                            <div className="flex items-center gap-2 text-emerald-700 font-semibold text-sm mb-1"><Users size={16} /> ค่าแรง</div>
+                                            <p className="text-lg font-bold text-emerald-800">฿{laborSum.toLocaleString()}</p>
+                                            <p className="text-xs text-emerald-600 mt-0.5">{workerCount} คน • {labor.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                                            <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-1"><Truck size={16} /> ใช้รถ</div>
+                                            <p className="text-lg font-bold text-amber-800">฿{vehicleSum.toLocaleString()}</p>
+                                            <p className="text-xs text-amber-600 mt-0.5">{vehicle.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                            <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm mb-1"><Truck size={16} /> เที่ยวรถ</div>
+                                            <p className="text-lg font-bold text-blue-800">฿{tripsSum.toLocaleString()}</p>
+                                            <p className="text-xs text-blue-600 mt-0.5">{trips.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
+                                            <div className="flex items-center gap-2 text-cyan-700 font-semibold text-sm mb-1"><Droplets size={16} /> ล้างทราย</div>
+                                            <p className="text-lg font-bold text-cyan-800">{sandCubic} คิว</p>
+                                            <p className="text-xs text-cyan-600 mt-0.5">{sand.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-red-50 rounded-xl p-4 border border-red-100">
+                                            <div className="flex items-center gap-2 text-red-700 font-semibold text-sm mb-1"><Fuel size={16} /> น้ำมัน</div>
+                                            <p className="text-lg font-bold text-red-800">฿{fuelSum.toLocaleString()}</p>
+                                            <p className="text-xs text-red-600 mt-0.5">{fuel.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                                            <div className="flex items-center gap-2 text-orange-700 font-semibold text-sm mb-1"><AlertTriangle size={16} /> เหตุการณ์</div>
+                                            <p className="text-lg font-bold text-orange-800">{events.length} รายการ</p>
+                                            {events.length > 0 && (
+                                                <ul className="text-xs text-orange-600 mt-1 space-y-0.5 truncate max-h-12 overflow-hidden">
+                                                    {events.slice(0, 2).map(t => <li key={t.id}>• {t.description}</li>)}
+                                                    {events.length > 2 && <li>+ อีก {events.length - 2}</li>}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="px-5 pb-4 pt-0">
+                                        <div className="flex flex-wrap gap-2 text-xs">
+                                            <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">รวมค่าใช้จ่ายวันนี้: ฿{(laborSum + vehicleSum + tripsSum + fuelSum).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {viewMode === 'record' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
                 {/* Left: Wizard Form */}
                 <div className="lg:col-span-8 space-y-6">
@@ -1401,6 +1533,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, onSaveTransactio
                     </Card>
                 </div>
             </div>
+            )}
         </div>
     );
 };

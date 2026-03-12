@@ -35,9 +35,10 @@ interface InteractiveChartProps {
     wData: number[]; tData: number[]; labels: string[];
     maxV: number; minV: number; range: number; days: number;
     filtered: Transaction[];
+    dateStrings?: string[];
 }
 
-const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered }: InteractiveChartProps) => {
+const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStrings }: InteractiveChartProps) => {
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
     const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -54,10 +55,11 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered }: Intera
     const getY = useCallback((v: number) => pad.top + ((maxY - v) / maxY) * chartH, [maxY, chartH, pad.top]);
 
     const getDateStr = useCallback((dayIdx: number) => {
+        if (dateStrings && dateStrings[dayIdx]) return dateStrings[dayIdx];
         const d = new Date();
         d.setDate(d.getDate() - (days - 1 - dayIdx));
         return d.toISOString().split('T')[0];
-    }, [days]);
+    }, [days, dateStrings]);
 
     const getDayTransactions = useCallback((dayIdx: number) => {
         const dateStr = getDateStr(dayIdx);
@@ -352,76 +354,95 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered }: Intera
 };
 
 const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transaction[], dateFilter: any }) => {
-    const filtered = transactions.filter(t => t.date >= dateFilter.start && t.date <= dateFilter.end);
+    const start = new Date(dateFilter.start);
+    const end = new Date(dateFilter.end);
+    const filtered = transactions.filter(t => {
+        const d = t.date.slice(0, 10);
+        return d >= dateFilter.start && d <= dateFilter.end;
+    });
     const income = filtered.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
     const expense = filtered.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
 
-    // Charts Data
-    const categories = ['Labor', 'Fuel', 'Vehicle', 'Maintenance', 'Land'];
-    const catData = categories.map((cat, i) => ({
-        label: cat,
-        value: filtered.filter(t => t.category === cat && t.type === 'Expense').reduce((s, t) => s + t.amount, 0),
-        color: ['#10b981', '#ea580c', '#f59e0b', '#64748b', '#8b5cf6'][i % 5]
-    })).filter(d => d.value > 0);
+    // จำนวนวันในช่วงที่เลือก
+    const numDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
-    const dailyData = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() - (6 - i));
-        const dateStr = d.toISOString().split('T')[0];
-        return filtered.filter(t => t.date === dateStr && t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
-    });
+    // Cost Breakdown — ครบทุกหมวด: ค่าแรง, รถ, น้ำมัน, ซ่อมบำรุง, ที่ดิน, งานประจำวัน (DailyLog)
+    const categories = [
+        { key: 'Labor', label: 'ค่าแรง', color: '#10b981' },
+        { key: 'Vehicle', label: 'การใช้รถ', color: '#f59e0b' },
+        { key: 'Fuel', label: 'น้ำมัน', color: '#ea580c' },
+        { key: 'Maintenance', label: 'ซ่อมบำรุง', color: '#64748b' },
+        { key: 'Land', label: 'ที่ดิน', color: '#8b5cf6' },
+        { key: 'DailyLog', label: 'งานประจำวัน (เที่ยวรถ/ทราย/เหตุการณ์)', color: '#0ea5e9' },
+    ];
+    const catData = categories.map(({ key, label, color }) => {
+        const value = key === 'DailyLog'
+            ? filtered.filter(t => t.category === 'DailyLog' && t.type === 'Expense').reduce((s, t) => s + t.amount, 0)
+            : filtered.filter(t => t.category === key && t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+        return { label, value, color };
+    }).filter(d => d.value > 0);
+
+    // แนวโน้มรายจ่ายตามช่วงวันที่เลือก (แต่ละวัน)
+    const dailyData = useMemo(() => {
+        const out: number[] = [];
+        const labels: string[] = [];
+        for (let i = 0; i < numDays; i++) {
+            const d = new Date(start);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            if (dateStr > dateFilter.end) break;
+            labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
+            out.push(filtered.filter(t => t.date.slice(0, 10) === dateStr && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
+        }
+        return { data: out, labels };
+    }, [filtered, dateFilter, numDays, start]);
 
     // ==============================================
-    // SAND ANALYTICS (ทรายล้าง / ทรายขน / ทรายคงเหลือ)
+    // SAND ANALYTICS (ทรายล้าง / ทรายขน / ทรายคงเหลือ) — จากข้อมูล DailyLog จริง
     // ==============================================
     const sandAnalytics = useMemo(() => {
-        // วิเคราะห์ทรายจากข้อมูลธุรกรรมจริงเท่านั้น
-        // (ถ้าไม่มีข้อมูล จะถือว่าเป็น 0 ไม่จำลองด้วยค่าการสุ่ม)
-        const days = 7;
+        const days = numDays;
+        const sandWashedPerDay: number[] = [];
+        const sandTransportedPerDay: number[] = [];
+        const dayLabels: string[] = [];
 
-        // Sand washed per day (ประมาณจากรายการรายรับที่เกี่ยวกับทราย เช่น "ขายทราย")
-        const sandWashedPerDay = Array.from({ length: days }, (_, i) => {
-            const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
+        const dateStrings: string[] = [];
+        for (let i = 0; i < days; i++) {
+            const d = new Date(start);
+            d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
-            const dayIncome = filtered.filter(t => t.date === dateStr && t.type === 'Income');
-            // หากไม่มีข้อมูล ให้ใช้ 0 แทน (เพื่อให้ตรงกับการล้างข้อมูล)
-            return dayIncome.length > 0 ? dayIncome.reduce((s, t) => s + (t.quantity || 0), 0) : 0;
-        });
+            if (dateStr > dateFilter.end) break;
+            dateStrings.push(dateStr);
+            dayLabels.push(`${d.getDate()}/${d.getMonth() + 1}`);
 
-        // Sand transported per trip per day (ประมาณจากรายการใช้รถ)
-        const sandTransportedPerDay = Array.from({ length: days }, (_, i) => {
-            const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
-            const dateStr = d.toISOString().split('T')[0];
-            const dayVehicle = filtered.filter(t => t.date === dateStr && t.category === 'Vehicle');
-            // หากไม่มีข้อมูล ให้ใช้ 0 แทน (เพื่อให้ตรงกับการล้างข้อมูล)
-            return dayVehicle.length > 0 ? dayVehicle.length * 12 : 0;
-        });
+            // ล้างทราย: จาก DailyLog subCategory Sand (sandMorning + sandAfternoon)
+            const daySand = filtered.filter(t => t.date?.slice(0, 10) === dateStr && t.category === 'DailyLog' && t.subCategory === 'Sand');
+            const washed = daySand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+            sandWashedPerDay.push(washed);
 
-        // Calculate totals
+            // ขนทราย: จาก DailyLog VehicleTrip (จำนวนเที่ยว * ประมาณคิวต่อเที่ยว) หรือ Vehicle
+            const dayTrips = filtered.filter(t => t.date?.slice(0, 10) === dateStr && (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip' || t.category === 'Vehicle'));
+            const cubicPerTrip = 3;
+            const transported = dayTrips.length * cubicPerTrip;
+            sandTransportedPerDay.push(transported);
+        }
+
         const totalWashed = sandWashedPerDay.reduce((s, v) => s + v, 0);
         const totalTransported = sandTransportedPerDay.reduce((s, v) => s + v, 0);
-        const avgWashedPerDay = Math.round(totalWashed / days);
-        const avgTransportedPerDay = Math.round(totalTransported / days);
+        const avgWashedPerDay = days > 0 ? Math.round(totalWashed / days) : 0;
+        const avgTransportedPerDay = days > 0 ? Math.round(totalTransported / days) : 0;
         const sandRemaining = totalWashed - totalTransported;
-
-        // Prediction: how many days sand will last
-        // net production per day = avg washed - avg transported
         const netPerDay = avgWashedPerDay - avgTransportedPerDay;
         const daysRemaining = netPerDay > 0 ? '∞ (ผลิตเกินขน)' :
             netPerDay === 0 ? '0 (สมดุล)' :
                 `${Math.max(0, Math.ceil(Math.abs(sandRemaining) / Math.abs(netPerDay)))} วัน`;
 
-        // Day labels
-        const dayLabels = Array.from({ length: days }, (_, i) => {
-            const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
-            return `${d.getDate()}/${d.getMonth() + 1}`;
-        });
-
         return {
-            sandWashedPerDay, sandTransportedPerDay, dayLabels,
+            sandWashedPerDay, sandTransportedPerDay, dayLabels, dateStrings,
             totalWashed, totalTransported, avgWashedPerDay, avgTransportedPerDay,
             sandRemaining, daysRemaining, netPerDay
         };
-    }, [filtered]);
+    }, [filtered, dateFilter, numDays, start]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -446,8 +467,8 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                     </div>
                 </Card>
                 <Card className="p-6 h-80">
-                    <h3 className="font-bold mb-6 text-slate-700 dark:text-slate-200">แนวโน้มรายจ่าย (7 วันล่าสุด)</h3>
-                    <BarChart data={dailyData} labels={Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return `${d.getDate()}` })} color="#ef4444" />
+                    <h3 className="font-bold mb-6 text-slate-700 dark:text-slate-200">แนวโน้มรายจ่าย ({numDays} วัน)</h3>
+                    <BarChart data={dailyData.data} labels={dailyData.labels} color="#ef4444" />
                 </Card>
             </div>
 
@@ -509,7 +530,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                 {/* Interactive Dual Line Chart */}
                 <Card className="p-0 overflow-visible">
                     <div className="px-6 pt-6 flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
-                        <h3 className="font-bold text-slate-700 dark:text-slate-200">📈 กราฟเส้น: ล้างทราย vs ขนทราย (7 วัน)</h3>
+                        <h3 className="font-bold text-slate-700 dark:text-slate-200">📈 กราฟเส้น: ล้างทราย vs ขนทราย ({sandAnalytics.dayLabels.length} วัน)</h3>
                         <div className="flex gap-4">
                             <span className="flex items-center gap-1.5 text-xs dark:text-slate-300">
                                 <div className="w-8 h-[3px] rounded-full bg-blue-500" /> ล้างทราย
@@ -529,7 +550,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                         const range = maxV - minV || 1;
                         const days = 7;
 
-                        return <InteractiveChart wData={wData} tData={tData} labels={labels} maxV={maxV} minV={minV} range={range} days={days} filtered={filtered} />;
+                        return <InteractiveChart wData={wData} tData={tData} labels={labels} maxV={maxV} minV={minV} range={range} days={wData.length} filtered={filtered} dateStrings={sandAnalytics.dateStrings} />;
                     })()}
 
                     {/* Overall % Summary */}
@@ -545,14 +566,14 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                                 <>
                                     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-500/10 px-4 py-2 rounded-xl">
                                         <Droplets size={16} className="text-blue-500" />
-                                        <span className="text-xs text-blue-700 dark:text-blue-300">ล้างทราย 7 วัน:</span>
+                                        <span className="text-xs text-blue-700 dark:text-blue-300">ล้างทราย {sandAnalytics.dayLabels.length} วัน:</span>
                                         <span className={`text-sm font-bold ${wPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                             {wPct > 0 ? '↑' : wPct < 0 ? '↓' : '−'}{Math.abs(wPct)}%
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-xl">
                                         <Truck size={16} className="text-amber-500" />
-                                        <span className="text-xs text-amber-700 dark:text-amber-300">ขนทราย 7 วัน:</span>
+                                        <span className="text-xs text-amber-700 dark:text-amber-300">ขนทราย {sandAnalytics.dayLabels.length} วัน:</span>
                                         <span className={`text-sm font-bold ${tPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                             {tPct > 0 ? '↑' : tPct < 0 ? '↓' : '−'}{Math.abs(tPct)}%
                                         </span>
@@ -567,7 +588,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Bar Comparison: Washed vs Transported */}
                 <Card className="p-6">
-                    <h3 className="font-bold mb-4 text-slate-700 dark:text-slate-200">เปรียบเทียบ: ล้างทราย vs ขนทราย (7 วัน)</h3>
+                    <h3 className="font-bold mb-4 text-slate-700 dark:text-slate-200">เปรียบเทียบ: ล้างทราย vs ขนทราย ({sandAnalytics.dayLabels.length} วัน)</h3>
                     <div className="h-60">
                         <div className="flex gap-4 mb-3">
                             <span className="flex items-center gap-1 text-xs dark:text-slate-300"><div className="w-3 h-3 rounded-sm bg-blue-500" /> ล้างทราย (คิว)</span>
