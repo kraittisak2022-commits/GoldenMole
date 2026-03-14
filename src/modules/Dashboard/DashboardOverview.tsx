@@ -68,10 +68,8 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
 
     const getFullDate = useCallback((dateStr: string) => {
         if (!dateStr) return '';
-        const d = new Date(dateStr);
-        const thaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
-        const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-        return `วัน${thaiDays[d.getDay()]}ที่ ${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+        const d = new Date(dateStr + 'T12:00:00+07:00');
+        return d.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
     }, []);
 
     const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {

@@ -151,7 +151,7 @@ const CalendarView = ({ transactions, employees }: { transactions: Transaction[]
                             <div className="p-6 sm:p-8 flex justify-between items-center border-b border-slate-100 bg-slate-50">
                                 <div>
                                     <h3 className="font-bold text-2xl sm:text-3xl text-slate-800">
-                                        {dayDate.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                        {dayDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'long' })}
                                     </h3>
                                     <p className="text-slate-500 mt-1 flex items-center gap-2">
                                         <Activity size={16} /> สรุปกิจกรรมและข้อมูลการเงิน

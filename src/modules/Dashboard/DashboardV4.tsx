@@ -27,7 +27,7 @@ interface DashboardV4Props {
 }
 
 const formatThaiDate = (d: string) =>
-    new Date(d + 'T12:00:00').toLocaleDateString('th-TH', {
+    new Date(d + 'T12:00:00+07:00').toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok',
         weekday: 'short',
         day: 'numeric',
         month: 'short',

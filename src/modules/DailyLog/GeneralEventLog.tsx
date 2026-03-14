@@ -3,7 +3,7 @@ import { FileText } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { getToday, formatDateBE } from '../../utils';
+import { getToday, formatDateBE, getCurrentTimeTH } from '../../utils';
 import { Transaction } from '../../types';
 
 interface GeneralEventLogProps {
@@ -12,7 +12,7 @@ interface GeneralEventLogProps {
 }
 
 const GeneralEventLog = ({ onSave, transactions }: GeneralEventLogProps) => {
-    const [form, setForm] = useState({ date: getToday(), time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }), description: '' });
+    const [form, setForm] = useState({ date: getToday(), time: getCurrentTimeTH(), description: '' });
     const history = transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'GeneralEvent').slice(-5).reverse();
 
     const handleSave = () => {

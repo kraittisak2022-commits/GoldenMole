@@ -21,7 +21,7 @@ import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
 import LoginPage from './modules/Auth/LoginPage';
 import AdminModule from './modules/Admin/AdminModule';
 
-import { getToday, formatDateBE, normalizeDate } from './utils';
+import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 
 // Supabase Services
 import * as db from './services/dataService';
@@ -135,7 +135,7 @@ const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Tr
     const formatDayHeader = (dateStr: string) => {
         const [y, m, d] = dateStr.split('-').map(Number);
         const date = new Date(y, (m || 1) - 1, d || 1);
-        const th = date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const th = date.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         return th;
     };
 
@@ -338,14 +338,14 @@ function App() {
             adminName: currentAdmin.displayName,
             action,
             details,
-            timestamp: new Date().toLocaleString('th-TH'),
+            timestamp: formatDateTimeTH(),
         };
         setAdminLogs(prev => [log, ...prev]);
         db.saveAdminLog(log);
     }, [currentAdmin]);
 
     const handleLogin = (admin: AdminUser) => {
-        const updatedAdmin = { ...admin, lastLogin: new Date().toLocaleString('th-TH') };
+        const updatedAdmin = { ...admin, lastLogin: formatDateTimeTH() };
         setAdmins(prev => prev.map(a => a.id === admin.id ? updatedAdmin : a));
         setCurrentAdmin(updatedAdmin);
         setIsLoggedIn(true);
@@ -357,7 +357,7 @@ function App() {
             adminName: admin.displayName,
             action: 'login',
             details: `เข้าสู่ระบบสำเร็จ`,
-            timestamp: new Date().toLocaleString('th-TH'),
+            timestamp: formatDateTimeTH(),
         };
         setAdminLogs(prev => [log, ...prev]);
         db.saveAdminLog(log);

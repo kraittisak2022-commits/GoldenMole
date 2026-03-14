@@ -954,19 +954,46 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <span className="text-xs text-slate-400">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                                 </div>
 
-                                {/* Saved sand entries */}
-                                {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').length > 0 && (
-                                    <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
-                                        {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').map(t => (
-                                            <div key={t.id} className="min-w-[180px] p-2.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs relative">
-                                                <div className="font-bold text-cyan-800">🌊 {t.description}</div>
-                                                <div className="text-cyan-700 font-semibold">เช้า {(t as any).sandMorning || 0} + บ่าย {(t as any).sandAfternoon || 0} = {((t as any).sandMorning || 0) + ((t as any).sandAfternoon || 0)} คิว</div>
-                                                {(t as any).drumsObtained != null && (t as any).drumsObtained > 0 && <div className="text-teal-700 font-medium mt-1">🪣 {(t as any).drumsObtained} ถัง</div>}
-                                                {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-cyan-300 hover:text-red-500"><Trash2 size={10} /></button>}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                {/* Saved sand entries + จำนวนถังรวม 1 วัน (เช้า+บ่าย) */}
+                                {(() => {
+                                    const sandTxToday = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+                                    const totalDrumsDay = sandTxToday.length > 0
+                                        ? Math.max(0, ...sandTxToday.map(t => (t as any).drumsObtained ?? 0))
+                                        : (Number(sandDrumsObtained) || 0);
+                                    const drumsDisplay = totalDrumsDay > 0;
+                                    return (
+                                        <>
+                                            {sandTxToday.length > 0 && (
+                                                <>
+                                                    {drumsDisplay && (
+                                                        <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3">
+                                                            <span className="text-sm font-bold text-amber-800">🪣 จำนวนถังที่ได้วันนี้</span>
+                                                            <span className="text-xl font-black text-amber-700">{totalDrumsDay} ถัง</span>
+                                                            <span className="text-[10px] text-amber-600">(รวมทั้งวัน ช่วงเช้า+บ่าย)</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
+                                                        {sandTxToday.map(t => {
+                                                            const sandTotal = ((t as any).sandMorning || 0) + ((t as any).sandAfternoon || 0);
+                                                            const drums = (t as any).drumsObtained ?? 0;
+                                                            const isDrumsOnly = sandTotal === 0 && drums > 0;
+                                                            return (
+                                                            <div key={t.id} className="min-w-[180px] p-2.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs relative">
+                                                                <div className="font-bold text-cyan-800">🌊 {t.description}</div>
+                                                                {isDrumsOnly ? (
+                                                                    <div className="text-teal-700 font-semibold">🪣 {drums} ถัง</div>
+                                                                ) : (
+                                                                    <div className="text-cyan-700 font-semibold">เช้า {(t as any).sandMorning || 0} + บ่าย {(t as any).sandAfternoon || 0} = {sandTotal} คิว</div>
+                                                                )}
+                                                                {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-cyan-300 hover:text-red-500"><Trash2 size={10} /></button>}
+                                                            </div>
+                                                        );})}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </>
+                                    );
+                                })()}
 
                                 <div className="flex-1 space-y-3 overflow-y-auto">
                                     {/* Machine 1 */}
