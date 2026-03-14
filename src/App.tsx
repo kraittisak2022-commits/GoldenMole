@@ -377,10 +377,14 @@ function App() {
         if (isMobile) setIsSidebarOpen(false);
     }, [isMobile]);
 
-    const handleSave = (t: Transaction) => {
+    const handleSave = async (t: Transaction) => {
         setTransactions(p => [...p, t]);
-        db.saveTransaction(t);
-        setToast('บันทึกสำเร็จ');
+        const ok = await db.saveTransaction(t);
+        if (ok) {
+            setToast('บันทึกสำเร็จ');
+        } else {
+            setToast('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+        }
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -500,7 +504,7 @@ function App() {
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
             case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'AdminManagement': return currentAdmin ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : null;
+            case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} onClearAllData={handleClearAllData} />;
             default: return <div className="p-8 text-center text-slate-400 dark:text-slate-500">Coming Soon</div>;
         }
@@ -594,7 +598,7 @@ function App() {
                     )}
                 </div>
                 <nav className="flex-1 py-4 sm:py-6 px-2 sm:px-3 space-y-1 overflow-y-auto hide-scrollbar">
-                    {MENU_ITEMS.map(m => (
+                    {MENU_ITEMS.filter(m => m.id !== 'AdminManagement' || currentAdmin?.role === 'SuperAdmin').map(m => (
                         <button
                             key={m.id}
                             onClick={() => handleMenuClick(m.id)}

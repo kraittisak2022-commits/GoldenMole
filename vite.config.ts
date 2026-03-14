@@ -19,5 +19,8 @@ export default defineConfig(({ mode }) => {
         server: {
             allowedHosts: ['goldenmole.pro', 'www.goldenmole.pro'],
         },
+        build: {
+            chunkSizeWarningLimit: 1000,
+        },
     }
 })
