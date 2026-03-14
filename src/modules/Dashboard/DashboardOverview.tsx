@@ -17,11 +17,11 @@ interface StatCardProps {
 }
 
 export const StatCard = ({ title, value, icon: Icon, color, subValue, unit = '฿' }: StatCardProps) => (
-    <Card className="p-5 flex flex-col justify-between h-32 relative overflow-hidden">
+    <Card className="p-4 sm:p-5 flex flex-col justify-between min-h-[110px] sm:h-32 relative overflow-hidden">
         <div className={`absolute top-0 right-0 p-3 opacity-10`}><Icon size={80} color={color} /></div>
         <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 mb-1"><Icon size={18} color={color} /> <span className="text-sm font-medium">{title}</span></div>
         <div>
-            <h3 className="text-3xl font-bold text-slate-800 dark:text-white">
+            <h3 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white break-words">
                 {unit === '฿' ? <FormatNumber value={value} /> : <>{value.toLocaleString()} {unit}</>}
             </h3>
             {subValue && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subValue}</p>}
@@ -117,7 +117,7 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
     return (
         <div>
             {/* Chart Container */}
-            <div className="relative px-2" style={{ height: '300px' }}>
+            <div className="relative px-1 sm:px-2 h-[260px] sm:h-[300px]">
                 <svg
                     ref={svgRef}
                     viewBox={`0 0 ${W} ${H}`}
@@ -301,7 +301,7 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
                         </div>
 
                         {/* Summary cards */}
-                        <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
                             <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-3 text-center border border-blue-100 dark:border-blue-500/20">
                                 <div className="text-xl font-bold text-blue-600">{wData[selectedIdx]}</div>
                                 <div className="text-[10px] text-blue-500 mt-0.5">คิว ล้างทราย</div>
@@ -455,7 +455,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
 
             {/* Cost Breakdown + Expense Trend */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="p-6 h-80 flex flex-col justify-center items-center">
+                <Card className="p-4 sm:p-6 min-h-[320px] sm:h-80 flex flex-col justify-center items-center">
                     <h3 className="font-bold mb-4 w-full text-left text-slate-700 dark:text-slate-200">สัดส่วนค่าใช้จ่าย (Cost Breakdown)</h3>
                     <DonutChartSimple data={catData} />
                     <div className="flex flex-wrap gap-4 mt-4 justify-center">
@@ -466,7 +466,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                         ))}
                     </div>
                 </Card>
-                <Card className="p-6 h-80">
+                <Card className="p-4 sm:p-6 min-h-[320px] sm:h-80">
                     <h3 className="font-bold mb-6 text-slate-700 dark:text-slate-200">แนวโน้มรายจ่าย ({numDays} วัน)</h3>
                     <BarChart data={dailyData.data} labels={dailyData.labels} color="#ef4444" />
                 </Card>

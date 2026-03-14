@@ -284,10 +284,10 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
 
                         {/* Title */}
                         <div className="text-center mb-8">
-                            <h1 className={`text-2xl sm:text-3xl font-bold mb-2 transition-all duration-700 delay-200 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'} ${darkMode ? 'bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent' : 'gold-gradient-text'}`}>
+                            <h1 className={`text-2xl sm:text-3xl font-bold mb-2 transition-all duration-700 delay-200 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'} ${darkMode ? 'bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent' : 'text-black'}`}>
                                 {appName}
                             </h1>
-                            <p className={`text-sm transition-all duration-700 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'} ${darkMode ? 'text-cyan-300/50' : 'text-stone-500'}`}>
+                            <p className={`text-sm transition-all duration-700 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'} ${darkMode ? 'text-cyan-300/50' : 'text-black/70'}`}>
                                 ระบบจัดการโครงการก่อสร้าง
                             </p>
 
@@ -296,9 +296,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                                 {['📊 วิเคราะห์', '🏗️ จัดการงาน', '💰 รายรับ-จ่าย'].map((feat, i) => (
                                     <span key={i} className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode
                                         ? 'bg-cyan-500/10 text-cyan-400/70 border border-cyan-500/15'
-                                        : `bg-amber-500/10 border border-amber-500/15`
+                                        : 'bg-black/5 text-black/80 border border-black/10'
                                         }`}
-                                        style={{ color: darkMode ? undefined : `${gold}cc`, animationDelay: `${i * 0.1}s` }}>
+                                        style={{ animationDelay: `${i * 0.1}s` }}>
                                         {feat}
                                     </span>
                                 ))}
@@ -309,7 +309,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                         <form onSubmit={handleSubmit} className="space-y-5">
                             {/* Username */}
                             <div className={`transition-all duration-700 delay-[400ms] ${mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'}`}>
-                                <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-black'}`}>
                                     ชื่อผู้ใช้ (Username)
                                 </label>
                                 <div className="relative group">
@@ -323,7 +323,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                                         onChange={(e) => setUsername(e.target.value)}
                                         className={`w-full rounded-xl pl-12 pr-4 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
                                             ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
-                                            : 'bg-white/60 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
+                                            : 'bg-white/60 border border-stone-200 text-black placeholder:text-black/40 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="username" />
                                     {/* Focus glow effect */}
@@ -336,7 +336,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
 
                             {/* Password */}
                             <div className={`transition-all duration-700 delay-[500ms] ${mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`}>
-                                <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-black'}`}>
                                     รหัสผ่าน (Password)
                                 </label>
                                 <div className="relative group">
@@ -350,7 +350,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                                         onChange={(e) => setPassword(e.target.value)}
                                         className={`w-full rounded-xl pl-12 pr-12 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
                                             ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
-                                            : 'bg-white/60 border border-stone-200 text-gray-900 placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
+                                            : 'bg-white/60 border border-stone-200 text-black placeholder:text-black/40 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="current-password" />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -371,9 +371,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                             <div className={`flex justify-between items-center transition-all duration-700 delay-[600ms] ${mounted ? 'opacity-100' : 'opacity-0'}`}>
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" className="w-4 h-4 rounded border-gray-300 accent-amber-500" />
-                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>จดจำฉัน</span>
+                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-black/70'}`}>จดจำฉัน</span>
                                 </label>
-                                <span className={`text-xs cursor-pointer hover:underline ${darkMode ? 'text-cyan-500/70 hover:text-cyan-400' : 'text-amber-700/70 hover:text-amber-700'}`}>
+                                <span className={`text-xs cursor-pointer hover:underline ${darkMode ? 'text-cyan-500/70 hover:text-cyan-400' : 'text-black/70 hover:text-black'}`}>
                                     ลืมรหัสผ่าน?
                                 </span>
                             </div>
@@ -413,10 +413,10 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
 
                 {/* Footer */}
                 <div className={`mt-6 text-center transition-all duration-700 delay-[800ms] ${mounted ? 'opacity-100' : 'opacity-0'}`}>
-                    <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-stone-400'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-black/60'}`}>
                         ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน
                     </p>
-                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-800' : 'text-stone-300'}`}>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-800' : 'text-black/50'}`}>
                         © 2024 {appName}. All rights reserved.
                     </p>
                 </div>
