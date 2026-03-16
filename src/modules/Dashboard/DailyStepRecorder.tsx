@@ -318,8 +318,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             const events = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event');
                             const laborSum = labor.reduce((s, t) => s + t.amount, 0);
                             const vehicleSum = vehicle.reduce((s, t) => s + t.amount, 0);
-                            const tripsSum = trips.reduce((s, t) => s + t.amount, 0);
+                            const tripsTotal = trips.reduce((s, t) => s + ((t as any).perCarTrips || (t as any).tripCount || 0), 0);
+                            const tripsCubic = trips.reduce((s, t) => s + ((t as any).perCarCubic || (t as any).totalCubic || 0), 0);
                             const sandCubic = sand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+                            const sandDrums = sand.reduce((s, t) => s + ((t as any).drumsObtained || 0), 0);
                             const fuelSum = fuel.reduce((s, t) => s + t.amount, 0);
                             const workerCount = new Set(labor.flatMap(t => t.employeeIds || [])).size;
                             return (
@@ -341,13 +343,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                         <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
                                             <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm mb-1"><Truck size={16} /> เที่ยวรถ</div>
-                                            <p className="text-lg font-bold text-blue-800">฿{tripsSum.toLocaleString()}</p>
-                                            <p className="text-xs text-blue-600 mt-0.5">{trips.length} รายการ</p>
+                                            <p className="text-lg font-bold text-blue-800">{tripsTotal} เที่ยว</p>
+                                            <p className="text-xs text-blue-600 mt-0.5">{tripsCubic} คิว • {trips.length} รายการ</p>
                                         </div>
                                         <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
                                             <div className="flex items-center gap-2 text-cyan-700 font-semibold text-sm mb-1"><Droplets size={16} /> ล้างทราย</div>
                                             <p className="text-lg font-bold text-cyan-800">{sandCubic} คิว</p>
-                                            <p className="text-xs text-cyan-600 mt-0.5">{sand.length} รายการ</p>
+                                            <p className="text-xs text-cyan-600 mt-0.5">
+                                                {sandDrums > 0 && <>🪣 {sandDrums} ถัง • </>}
+                                                {sand.length} รายการ
+                                            </p>
                                         </div>
                                         <div className="bg-red-50 rounded-xl p-4 border border-red-100">
                                             <div className="flex items-center gap-2 text-red-700 font-semibold text-sm mb-1"><Fuel size={16} /> น้ำมัน</div>
