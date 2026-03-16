@@ -518,7 +518,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     ))}
                                                 </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </Card>
                             );
