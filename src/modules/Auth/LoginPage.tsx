@@ -231,7 +231,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
 
             {/* Dark Mode Toggle */}
             <button onClick={onToggleDarkMode}
-                className={`fixed top-5 right-5 z-50 p-2.5 rounded-full transition-all duration-300 backdrop-blur-md ${darkMode
+                className={`fixed top-4 right-4 z-50 p-3 rounded-full transition-all duration-300 backdrop-blur-md ${darkMode
                     ? 'bg-white/10 text-cyan-400 hover:bg-white/20 border border-white/10 hover:border-cyan-500/40'
                     : 'bg-black/5 text-gray-600 hover:bg-black/10 border border-black/5 hover:border-amber-500/40'
                     }`}>

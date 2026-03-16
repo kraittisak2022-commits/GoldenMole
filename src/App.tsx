@@ -86,7 +86,7 @@ const CATEGORY_LABELS: Record<string, string> = {
     Utilities: 'สาธารณูปโภค',
 };
 
-const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Transaction[]; onDeleteTransaction?: (id: string) => void }) => {
+    const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Transaction[]; onDeleteTransaction?: (id: string) => void }) => {
     const [filterMode, setFilterMode] = useState<'all' | 'month' | 'date'>('all');
     const [filterMonth, setFilterMonth] = useState(() => {
         const d = new Date();
@@ -142,7 +142,7 @@ const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Tr
     return (
         <div className="space-y-4 animate-fade-in">
             <Card className="p-0 overflow-hidden">
-                <div className="p-3 sm:p-4 bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10">
+                <div className="p-3 sm:p-4 bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10 sticky top-0 z-10">
                     <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-4">รายการบันทึก</h3>
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-wrap">
                         <div className="flex flex-wrap items-center gap-2">
@@ -192,7 +192,7 @@ const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Tr
                         </p>
                     )}
                 </div>
-                <div className="max-h-[calc(100vh-280px)] min-h-[200px] overflow-y-auto">
+                <div className="max-h-[calc(100dvh-260px)] min-h-[200px] overflow-y-auto">
                     {byDay.length === 0 ? (
                         <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">ไม่มีรายการที่ตรงกับเงื่อนไข</div>
                     ) : (
@@ -204,11 +204,14 @@ const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Tr
                                         <span className="text-xs text-slate-500 dark:text-slate-400">{list.length} รายการ</span>
                                     </div>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left min-w-[400px]">
+                                        <div className="sm:hidden text-[11px] text-slate-400 dark:text-slate-500 px-3 pt-2 pb-1">
+                                            เลื่อนในแนวนอนเพื่อดูข้อมูลครบถ้วน
+                                        </div>
+                                        <table className="w-full text-sm text-left min-w-[480px]">
                                             <thead>
                                                 <tr className="border-b border-slate-100 dark:border-white/5">
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium">ประเภท</th>
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium">รายละเอียด</th>
+                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">ประเภท</th>
+                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium max-sm:w-1/2">รายละเอียด</th>
                                                     <th className="p-2 sm:p-3 text-right text-slate-500 dark:text-slate-400 font-medium">จำนวนเงิน</th>
                                                     {onDeleteTransaction && <th className="p-2 sm:p-3 w-10"></th>}
                                                 </tr>
@@ -221,7 +224,7 @@ const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Tr
                                                                 {CATEGORY_LABELS[t.category] || t.category}
                                                             </span>
                                                         </td>
-                                                        <td className="p-2 sm:p-3 text-slate-700 dark:text-slate-300 max-w-[200px] sm:max-w-none truncate sm:truncate-none" title={t.description}>{t.description}</td>
+                                                        <td className="p-2 sm:p-3 text-slate-700 dark:text-slate-300 max-w-[160px] sm:max-w-none truncate sm:whitespace-normal" title={t.description}>{t.description}</td>
                                                         <td className={`p-2 sm:p-3 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
                                                             {t.type === 'Income' ? '+' : ''}<FormatNumber value={t.amount} />
                                                         </td>
@@ -380,11 +383,22 @@ function App() {
     const handleSave = async (t: Transaction) => {
         setTransactions(p => [...p, t]);
         const ok = await db.saveTransaction(t);
-        if (ok) {
-            setToast('บันทึกสำเร็จ');
-        } else {
-            setToast('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+
+        // Audit log - create transaction (DailyLog / รายการอื่นๆ)
+        if (ok && currentAdmin) {
+            const summary = {
+                id: t.id,
+                date: normalizeDate(t.date),
+                type: t.type,
+                category: t.category,
+                subCategory: t.subCategory,
+                amount: t.amount,
+                description: t.description,
+            };
+            addLog('create_transaction', `สร้างรายการ: ${t.category}/${t.subCategory || '-'} วันที่ ${normalizeDate(t.date)} จำนวนเงิน ${t.amount || 0} รายละเอียด: ${t.description || '-'} | snapshot=${JSON.stringify(summary)}`);
         }
+
+        setToast(ok ? 'บันทึกสำเร็จ' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -441,9 +455,24 @@ function App() {
     }, []);
 
     const handleDeleteTransaction = useCallback((id: string) => {
-        setTransactions(prev => prev.filter(t => t.id !== id));
+        setTransactions(prev => {
+            const target = prev.find(t => t.id === id);
+            if (target && currentAdmin) {
+                const snap = {
+                    id: target.id,
+                    date: normalizeDate(target.date),
+                    type: target.type,
+                    category: target.category,
+                    subCategory: target.subCategory,
+                    amount: target.amount,
+                    description: target.description,
+                };
+                addLog('delete_transaction', `ลบรายการ: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | before=${JSON.stringify(snap)}`);
+            }
+            return prev.filter(t => t.id !== id);
+        });
         db.deleteTransaction(id);
-    }, []);
+    }, [addLog, currentAdmin]);
 
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
         setProjects(prev => {
@@ -477,6 +506,9 @@ function App() {
     const handleClearAllData = useCallback(async () => {
         if (!confirm('ต้องการล้างข้อมูลที่บันทึกทั้งหมด (รายการธุรกรรม + โครงการที่ดิน) หรือไม่?\n\nข้อมูลพนักงานและตั้งค่าจะไม่ถูกลบ')) return;
         try {
+            if (currentAdmin) {
+                addLog('clear_daily_data', 'ล้างข้อมูลธุรกรรมและโครงการที่ดินทั้งหมดจากหน้า Settings');
+            }
             await db.deleteAllTransactions();
             await db.deleteAllProjects();
             setTransactions([]);
@@ -513,7 +545,7 @@ function App() {
     // --- LOADING STATE ---
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f]">
+            <div className="flex items-center justify-center min-h-screen min-h-[100dvh] bg-[#0a0a0f]">
                 <div className="text-center">
                     <Loader2 className="w-12 h-12 text-amber-400 animate-spin mx-auto mb-4" />
                     <p className="text-gray-400 text-sm">กำลังโหลดข้อมูล...</p>
@@ -530,7 +562,7 @@ function App() {
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
 
     return (
-        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 relative overflow-hidden ${darkMode ? 'dark bg-[#0a0a0f] text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
+        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 relative overflow-hidden max-w-full ${darkMode ? 'dark bg-[#0a0a0f] text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
 
             {/* Global Darktech X Background Auras */}
             {darkMode && (
@@ -569,7 +601,7 @@ function App() {
 
             {/* Sidebar */}
             <aside className={`
-                fixed top-0 left-0 h-screen z-50 flex flex-col
+                fixed top-0 left-0 h-[100dvh] z-50 flex flex-col
                 transition-all duration-300 ease-in-out border-r
                 ${darkMode ? 'bg-[#0a0a0f]/40 backdrop-blur-xl border-white/[0.05]' : 'bg-white border-stone-100'}
                 ${isMobile
