@@ -502,7 +502,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 </div>
                                             </div>
                                         )}
-                                        {workGroups.length > 0 && (
+                                        {workGroups.length > 0 ? (
                                             <div>
                                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">
                                                     แบ่งตามประเภทงาน:
@@ -518,7 +518,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     ))}
                                                 </div>
                                             </div>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </Card>
                             );
