@@ -7,7 +7,7 @@ import { AdminUser, AdminLog } from '../../types';
 
 interface AdminModuleProps {
     admins: AdminUser[];
-    setAdmins: (admins: AdminUser[]) => void;
+    setAdmins: (updater: AdminUser[] | ((prev: AdminUser[]) => AdminUser[])) => void;
     currentAdmin: AdminUser;
     logs: AdminLog[];
     addLog: (action: string, details: string) => void;
@@ -29,28 +29,32 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
     const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
 
     const handleCreate = () => {
-        if (!createForm.username || !createForm.password || !createForm.displayName) return alert('กรุณากรอกข้อมูลให้ครบ');
+        const username = createForm.username.trim();
+        const displayName = createForm.displayName.trim();
+        if (!username || !createForm.password || !displayName) return alert('กรุณากรอกข้อมูลให้ครบ');
         if (createForm.password !== createForm.confirmPassword) return alert('รหัสผ่านไม่ตรงกัน');
-        if (admins.some(a => a.username === createForm.username)) return alert('ชื่อผู้ใช้ซ้ำ');
+        if (admins.some(a => a.username.toLowerCase() === username.toLowerCase())) return alert('ชื่อผู้ใช้ซ้ำ');
 
         const newAdmin: AdminUser = {
-            id: Date.now().toString(),
-            username: createForm.username,
+            id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : Date.now().toString(),
+            username,
             password: createForm.password,
-            displayName: createForm.displayName,
+            displayName,
             role: createForm.role,
-            createdAt: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
         };
-        setAdmins([...admins, newAdmin]);
+        setAdmins(prev => [...prev, newAdmin]);
         addLog('create_admin', `สร้างแอดมินใหม่: ${newAdmin.displayName} (@${newAdmin.username})`);
         setCreateForm({ username: '', password: '', confirmPassword: '', displayName: '', role: 'Admin' });
         setShowCreateModal(false);
     };
 
     const handleEdit = () => {
-        if (!showEditModal || !editForm.displayName) return;
-        const updated = admins.map(a => a.id === showEditModal.id ? { ...a, displayName: editForm.displayName, role: editForm.role } : a);
-        setAdmins(updated);
+        const displayName = editForm.displayName.trim();
+        if (!showEditModal || !displayName) return;
+        setAdmins(prev => prev.map(a => a.id === showEditModal.id ? { ...a, displayName, role: editForm.role } : a));
         addLog('edit_admin', `แก้ไขข้อมูล: ${showEditModal.displayName} → ${editForm.displayName}`);
         setShowEditModal(null);
     };
@@ -58,8 +62,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
     const handleChangePassword = () => {
         if (!showPasswordModal || !passwordForm.newPassword) return;
         if (passwordForm.newPassword !== passwordForm.confirmPassword) return alert('รหัสผ่านไม่ตรงกัน');
-        const updated = admins.map(a => a.id === showPasswordModal.id ? { ...a, password: passwordForm.newPassword } : a);
-        setAdmins(updated);
+        setAdmins(prev => prev.map(a => a.id === showPasswordModal.id ? { ...a, password: passwordForm.newPassword } : a));
         addLog('change_password', `เปลี่ยนรหัสผ่าน: ${showPasswordModal.displayName}`);
         setPasswordForm({ newPassword: '', confirmPassword: '' });
         setShowPasswordModal(null);
@@ -68,7 +71,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
     const handleDelete = (admin: AdminUser) => {
         if (admin.id === currentAdmin.id) return alert('ไม่สามารถลบตัวเองได้');
         if (!confirm(`ยืนยันลบ "${admin.displayName}"?`)) return;
-        setAdmins(admins.filter(a => a.id !== admin.id));
+        setAdmins(prev => prev.filter(a => a.id !== admin.id));
         addLog('delete_admin', `ลบแอดมิน: ${admin.displayName} (@${admin.username})`);
     };
 
