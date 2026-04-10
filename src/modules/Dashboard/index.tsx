@@ -1,13 +1,31 @@
 import { useState, useMemo } from 'react';
-import { LayoutDashboard, BarChart3, Calendar as CalIcon, Users, Truck, Fuel, MapPin, Wallet, CalendarDays, Activity, ClipboardList } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 import DashboardOverview from './DashboardOverview';
 import DashboardV4 from './DashboardV4';
+import DashboardV5 from './DashboardV5';
 import AnalyticsView from './AnalyticsView';
 import CalendarView from './CalendarView';
 import SpecificDashboard from './SpecificDashboard';
 import DailyStepRecorder from './DailyStepRecorder';
 import { getToday } from '../../utils';
 import { Transaction, AppSettings, Employee } from '../../types';
+
+const DASHBOARD_MAIN_TABS = [
+    { id: 'Overview', label: 'ภาพรวม (V.1)' },
+    { id: 'Analytics', label: 'วิเคราะห์ (V.2)' },
+    { id: 'Calendar', label: 'ปฏิทิน (V.3)' },
+    { id: 'V4', label: 'Real-time (V.4)' },
+    { id: 'V5', label: 'ภาพรวม (V.5)' },
+] as const;
+
+const DASHBOARD_DETAIL_TABS = [
+    { id: 'Labor', label: 'ค่าแรง' },
+    { id: 'Vehicle', label: 'การใช้รถ' },
+    { id: 'Fuel', label: 'น้ำมัน' },
+    { id: 'Land', label: 'ที่ดิน' },
+    { id: 'Income', label: 'รายรับ' },
+    { id: 'Wizard', label: 'บันทึกงาน' },
+] as const;
 
 const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDeleteTransaction }: { transactions: Transaction[], settings: AppSettings, employees: Employee[], onSaveTransaction: any, onDeleteTransaction: any }) => {
     const [subTab, setSubTab] = useState('Overview');
@@ -30,18 +48,31 @@ const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDel
     return (
         <div className="space-y-4 sm:space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex gap-2 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0 hide-scrollbar touch-scroll">
-                    {[{ id: 'Overview', label: 'ภาพรวม (V.1)', icon: LayoutDashboard }, { id: 'Analytics', label: 'วิเคราะห์ (V.2)', icon: BarChart3 }, { id: 'Calendar', label: 'ปฏิทิน (V.3)', icon: CalIcon }, { id: 'V4', label: 'Real-time (V.4)', icon: Activity }].map(t => (
-                        <button key={t.id} onClick={() => setSubTab(t.id)} className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl whitespace-nowrap transition-all border shrink-0 ${subTab === t.id ? 'bg-slate-800 dark:bg-amber-500/20 text-white dark:text-amber-300 border-slate-800 dark:border-amber-500/30 shadow-md' : 'bg-white dark:bg-white/[0.06] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/[0.1]'}`}>
-                            <t.icon size={18} className="shrink-0" /> <span className="text-xs sm:text-sm font-medium">{t.label}</span>
-                        </button>
-                    ))}
-                    <div className="w-px h-8 bg-slate-300 dark:bg-white/20 mx-2"></div>
-                    {[{ id: 'Labor', label: 'ค่าแรง', icon: Users }, { id: 'Vehicle', label: 'การใช้รถ', icon: Truck }, { id: 'Fuel', label: 'น้ำมัน', icon: Fuel }, { id: 'Land', label: 'ที่ดิน', icon: MapPin }, { id: 'Income', label: 'รายรับ', icon: Wallet }, { id: 'Wizard', label: 'บันทึกงาน', icon: ClipboardList }].map(t => (
-                        <button key={t.id} onClick={() => setSubTab(t.id)} className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl whitespace-nowrap transition-all border shrink-0 ${subTab === t.id ? 'bg-slate-800 dark:bg-amber-500/20 text-white dark:text-amber-300 border-slate-800 dark:border-amber-500/30 shadow-md' : 'bg-white dark:bg-white/[0.06] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/[0.1]'}`}>
-                            <t.icon size={18} className="shrink-0" /> <span className="text-xs sm:text-sm font-medium">{t.label}</span>
-                        </button>
-                    ))}
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center w-full md:flex-1 md:min-w-0">
+                    <label htmlFor="dashboard-tab-select" className="text-xs font-medium text-slate-600 dark:text-slate-400 shrink-0">
+                        เลือกหน้าแดชบอร์ด
+                    </label>
+                    <select
+                        id="dashboard-tab-select"
+                        value={subTab}
+                        onChange={(e) => setSubTab(e.target.value)}
+                        className="w-full sm:max-w-md rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-sm py-2.5 px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50"
+                    >
+                        <optgroup label="ภาพรวมและเครื่องมือ">
+                            {DASHBOARD_MAIN_TABS.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                    {t.label}
+                                </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="รายงานตามหมวด">
+                            {DASHBOARD_DETAIL_TABS.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                    {t.label}
+                                </option>
+                            ))}
+                        </optgroup>
+                    </select>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-white/[0.06] p-2 sm:p-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm shrink-0">
                     <CalendarDays size={18} className="text-slate-400 dark:text-slate-500 ml-0 sm:ml-2 shrink-0" />
@@ -62,8 +93,9 @@ const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDel
             </div>
             {subTab === 'Overview' ? <DashboardOverview transactions={transactions} dateFilter={dateFilter} /> :
                 subTab === 'Analytics' ? <AnalyticsView transactions={transactions} settings={settings} dateFilter={dateFilter} /> :
-                    subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} /> :
+                    subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
                         subTab === 'V4' ? <DashboardV4 transactions={transactions} dateFilter={dateFilter} employees={employees} settings={settings} /> :
+                            subTab === 'V5' ? <DashboardV5 transactions={transactions} dateFilter={dateFilter} /> :
                             subTab === 'Wizard' ? <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} dateFilter={dateFilter} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
                                 <SpecificDashboard type={subTab} transactions={transactions} settings={settings} employees={employees} dateFilter={dateFilter} />}
         </div>

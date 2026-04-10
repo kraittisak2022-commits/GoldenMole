@@ -42,6 +42,7 @@ const isDailyWizardTx = (t: Transaction) =>
 
 const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: DashboardV4Props) => {
     const [expandedDate, setExpandedDate] = useState<string | null>(null);
+    const [selectedDate, setSelectedDate] = useState('');
 
     const filteredByRange = useMemo(() => {
         const start = new Date(dateFilter.start);
@@ -53,20 +54,25 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
         });
     }, [transactions, dateFilter]);
 
+    const displayTransactions = useMemo(() => {
+        if (!selectedDate) return filteredByRange;
+        return filteredByRange.filter((t) => normalizeDate(t.date) === selectedDate);
+    }, [filteredByRange, selectedDate]);
+
     const byDate = useMemo(() => {
         const map: Record<string, Transaction[]> = {};
-        filteredByRange.forEach((t) => {
+        displayTransactions.forEach((t) => {
             const d = normalizeDate(t.date);
             if (!map[d]) map[d] = [];
             map[d].push(t);
         });
         return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
-    }, [filteredByRange]);
+    }, [displayTransactions]);
 
     const summary = useMemo(() => {
-        const totalExpense = filteredByRange.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
-        const totalIncome = filteredByRange.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-        const wizardCount = filteredByRange.filter(isDailyWizardTx).length;
+        const totalExpense = displayTransactions.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+        const totalIncome = displayTransactions.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+        const wizardCount = displayTransactions.filter(isDailyWizardTx).length;
         return {
             days: byDate.length,
             totalExpense,
@@ -74,7 +80,7 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
             net: totalIncome - totalExpense,
             wizardCount,
         };
-    }, [filteredByRange, byDate.length]);
+    }, [displayTransactions, byDate.length]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -89,6 +95,36 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
                     </h2>
                     <p className="text-sm text-slate-500 mt-1">
                         บันทึกงานประจำวัน • ค่าใช้จ่าย • รายรับ • อัปเดตรายวัน
+                    </p>
+                </div>
+            </div>
+
+            {/* Date selector for V4 detail view */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        <Calendar size={16} className="text-indigo-500" />
+                        เลือกวันที่ (Real-time)
+                    </label>
+                    <div className="flex flex-col xs:flex-row gap-2 w-full sm:w-auto">
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="w-full sm:w-auto px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700"
+                        />
+                        {selectedDate && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDate('')}
+                                className="px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50"
+                            >
+                                ล้างตัวกรองวัน
+                            </button>
+                        )}
+                    </div>
+                    <p className="text-xs text-slate-400 sm:ml-auto">
+                        {selectedDate ? `แสดงเฉพาะวันที่ ${formatThaiDate(selectedDate)}` : `แสดงตามช่วงวันที่ ${dateFilter.start} ถึง ${dateFilter.end}`}
                     </p>
                 </div>
             </div>

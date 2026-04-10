@@ -51,6 +51,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         return transactions.filter(t => normalizeDate(t.date) === norm);
     }, [transactions, date]);
 
+    /** สรุปวันนี้ (คอลัมน์ขวา) — คำนวณครั้งเดียว */
+    const atAGlanceStats = useMemo(() => {
+        const laborCount = dayTransactions
+            .filter(t => t.category === 'Labor' && t.laborStatus === 'Work')
+            .reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
+        const sandCubic = dayTransactions
+            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
+            .reduce((acc, t) => acc + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
+        const vehicleOrDailyCount = dayTransactions.filter(t => t.category === 'Vehicle' || t.category === 'DailyLog').length;
+        const fuelBaht = dayTransactions.filter(t => t.category === 'Fuel').reduce((acc, t) => acc + (t.amount || 0), 0);
+        return { laborCount, sandCubic, vehicleOrDailyCount, fuelBaht };
+    }, [dayTransactions]);
+
     const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
     const driverEmployees = useMemo(() => employees.filter(e => getEmpPositions(e).includes('คนขับรถ')), [employees]);
 
@@ -528,9 +541,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             )}
 
             {viewMode === 'record' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
-                {/* Left: Wizard Form */}
-                <div className="lg:col-span-8 space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
+                {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
+                <div className="xl:col-span-8 space-y-6 min-w-0">
                     <Card className="p-6 min-h-[500px] flex flex-col relative overflow-hidden">
 
                         {/* Step 0: Date */}
@@ -1623,60 +1636,100 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                     </Card>
                 </div>
 
-                {/* Right: Daily Dashboard (V.3 Enhancements) */}
-                <div className="lg:col-span-4 flex flex-col gap-4">
-                    {/* At-a-Glance Stats */}
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        <Card className="p-3 sm:p-4 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 flex flex-col">
-                            <div className="flex justify-between items-start mb-2">
-                                <Users size={16} className="text-emerald-500" />
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">คนงาน</span>
-                            </div>
-                            <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
-                                {dayTransactions.filter(t => t.category === 'Labor' && t.laborStatus === 'Work').reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0)} <span className="text-sm font-normal text-emerald-600/70">คน</span>
-                            </span>
-                        </Card>
-
-                        <Card className="p-3 sm:p-4 bg-cyan-50 dark:bg-cyan-500/10 border-cyan-100 dark:border-cyan-500/20 flex flex-col">
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-xl">🌊</span>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300">ทราย</span>
-                            </div>
-                            <span className="text-2xl font-bold text-cyan-700 dark:text-cyan-400">
-                                {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').reduce((acc, t) => acc + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0)} <span className="text-sm font-normal text-cyan-600/70">คิว</span>
-                            </span>
-                        </Card>
-
-                        <Card className="p-3 sm:p-4 bg-orange-50 dark:bg-orange-500/10 border-orange-100 dark:border-orange-500/20 flex flex-col">
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-xl">🚜</span>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300">รถ/จักร</span>
-                            </div>
-                            <span className="text-2xl font-bold text-orange-700 dark:text-orange-400">
-                                {dayTransactions.filter(t => t.category === 'Vehicle' || t.category === 'DailyLog').length} <span className="text-sm font-normal text-orange-600/70">คัน</span>
-                            </span>
-                        </Card>
-
-                        <Card className="p-3 sm:p-4 bg-red-50 dark:bg-rose-500/10 border-red-100 dark:border-rose-500/20 flex flex-col">
-                            <div className="flex justify-between items-start mb-2">
-                                <Fuel size={16} className="text-red-500" />
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 dark:bg-rose-500/20 text-red-700 dark:text-rose-300">น้ำมัน</span>
-                            </div>
-                            <span className="text-2xl font-bold text-red-700 dark:text-rose-400">
-                                ฿{dayTransactions.filter(t => t.category === 'Fuel').reduce((acc, t) => acc + (t.amount || 0), 0).toLocaleString()} <span className="text-sm font-normal text-red-600/70">บาท</span>
-                            </span>
-                        </Card>
+                {/* Right: Daily Dashboard — กว้างเต็มแถวจนถึง xl; จาก xl เป็นคอลัมน์ข้าง (~≥320px) */}
+                <div className="xl:col-span-4 flex flex-col gap-4 min-w-0 w-full">
+                    {/* สรุปด่วน: จอกลางลงมา = 2×2 เต็มความกว้าง; แถบข้าง xl = 1 คอลัมน์เพื่อไม่บีบข้อความ */}
+                    <div className="grid grid-cols-2 xl:grid-cols-1 gap-2.5 sm:gap-3 [contain:layout]">
+                        {[
+                            {
+                                label: 'คนงาน',
+                                unit: 'คน',
+                                display: String(atAGlanceStats.laborCount),
+                                Icon: Users,
+                                card: 'bg-emerald-50/90 dark:bg-emerald-500/10 border-emerald-100/90 dark:border-emerald-500/25',
+                                iconWrap: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400',
+                                labelClass: 'text-emerald-800/90 dark:text-emerald-200',
+                                valueClass: 'text-emerald-700 dark:text-emerald-300',
+                            },
+                            {
+                                label: 'ทรายล้าง',
+                                unit: 'คิว',
+                                display: atAGlanceStats.sandCubic.toLocaleString(),
+                                Icon: Droplets,
+                                card: 'bg-cyan-50/90 dark:bg-cyan-500/10 border-cyan-100/90 dark:border-cyan-500/25',
+                                iconWrap: 'bg-cyan-500/15 dark:bg-cyan-500/25 text-cyan-600 dark:text-cyan-400',
+                                labelClass: 'text-cyan-800/90 dark:text-cyan-200',
+                                valueClass: 'text-cyan-700 dark:text-cyan-300',
+                            },
+                            {
+                                label: 'รถ / รายวัน',
+                                unit: 'รายการ',
+                                display: String(atAGlanceStats.vehicleOrDailyCount),
+                                Icon: Truck,
+                                card: 'bg-orange-50/90 dark:bg-orange-500/10 border-orange-100/90 dark:border-orange-500/25',
+                                iconWrap: 'bg-orange-500/15 dark:bg-orange-500/25 text-orange-600 dark:text-orange-400',
+                                labelClass: 'text-orange-800/90 dark:text-orange-200',
+                                valueClass: 'text-orange-700 dark:text-orange-300',
+                            },
+                            {
+                                label: 'น้ำมัน',
+                                unit: 'บาท',
+                                display: atAGlanceStats.fuelBaht.toLocaleString(),
+                                Icon: Fuel,
+                                card: 'bg-rose-50/90 dark:bg-rose-500/10 border-rose-100/90 dark:border-rose-500/25',
+                                iconWrap: 'bg-rose-500/15 dark:bg-rose-500/25 text-rose-600 dark:text-rose-400',
+                                labelClass: 'text-rose-800/90 dark:text-rose-200',
+                                valueClass: 'text-rose-700 dark:text-rose-300',
+                                prefix: '฿',
+                            },
+                        ].map((item) => {
+                            const GlanceIcon = item.Icon;
+                            return (
+                            <Card
+                                key={item.label}
+                                className={`min-w-0 p-2.5 sm:p-3 ${item.card} flex flex-row items-center justify-between gap-2 sm:gap-3 border shadow-sm`}
+                            >
+                                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                    <div
+                                        className={`h-9 w-9 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center shrink-0 ${item.iconWrap}`}
+                                        aria-hidden
+                                    >
+                                        <GlanceIcon className="w-[18px] h-[18px] sm:w-5 sm:h-5" strokeWidth={2.25} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className={`text-[11px] sm:text-xs font-bold leading-tight ${item.labelClass}`} title={item.label}>{item.label}</p>
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0 pl-0.5 min-w-0">
+                                    <div className={`text-lg sm:text-xl font-bold tabular-nums tracking-tight leading-none ${item.valueClass}`}>
+                                        {'prefix' in item && item.prefix ? (
+                                            <span className="font-black">{item.prefix}</span>
+                                        ) : null}
+                                        {item.display}
+                                    </div>
+                                    <div className={`text-[9px] sm:text-[10px] font-semibold mt-0.5 opacity-85 ${item.labelClass}`}>{item.unit}</div>
+                                </div>
+                            </Card>
+                            );
+                        })}
                     </div>
 
-                    <Card className="flex-1 flex flex-col min-h-[400px] bg-white dark:bg-[#0f111a]/80 backdrop-blur-xl border-slate-200 dark:border-white/10 shadow-xl relative overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 dark:border-white/5 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-white/[0.02]">
-                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                <FileText size={16} className="text-indigo-500" /> รายการบันทึกวันนี้
-                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                                    ({date ? new Date(date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'})
-                                </span>
-                            </h3>
-                            <span className="text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 px-2 py-1 rounded-full">
+                    <Card className="flex-1 flex flex-col min-h-[min(400px,70vh)] xl:min-h-[400px] bg-white dark:bg-[#0f111a]/80 backdrop-blur-xl border-slate-200 dark:border-white/10 shadow-xl relative overflow-hidden">
+                        <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-white/5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between bg-slate-50/50 dark:bg-white/[0.02]">
+                            <div className="min-w-0">
+                                <h3 className="font-bold text-sm sm:text-base text-slate-800 dark:text-white flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span className="inline-flex items-center gap-1.5 shrink-0">
+                                        <FileText size={16} className="text-indigo-500 shrink-0" />
+                                        <span>รายการบันทึกวันนี้</span>
+                                    </span>
+                                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 block w-full sm:w-auto sm:inline sm:pl-0">
+                                        {date
+                                            ? `(${new Date(date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })})`
+                                            : '(—)'}
+                                    </span>
+                                </h3>
+                            </div>
+                            <span className="text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center">
                                 {dayTransactions.length} รายการ
                             </span>
                         </div>
@@ -1722,12 +1775,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         </div>
 
                         {/* Daily Total Expense Summary Footer */}
-                        <div className="p-4 bg-slate-50/80 dark:bg-black/20 border-t border-slate-100 dark:border-white/5 flex justify-between items-center backdrop-blur-md">
-                            <div>
+                        <div className="p-3 sm:p-4 bg-slate-50/80 dark:bg-black/20 border-t border-slate-100 dark:border-white/5 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center backdrop-blur-md">
+                            <div className="min-w-0">
                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-0.5">รวมค่าใช้จ่ายวันนี้</span>
-                                <span className="text-[10px] text-slate-400 dark:text-slate-500">ค่าแรง, รถ, น้ำมัน ฯลฯ</span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">ค่าแรง, รถ, น้ำมัน ฯลฯ</span>
                             </div>
-                            <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+                            <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight tabular-nums shrink-0 self-end sm:self-auto">
                                 ฿{dayTransactions.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0).toLocaleString()}
                             </span>
                         </div>
