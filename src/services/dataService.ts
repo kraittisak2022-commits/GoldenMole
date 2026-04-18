@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog } from '../types';
+import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme } from '../types';
 
 // ============================================
 // Helper: camelCase <-> snake_case conversion
@@ -155,6 +155,9 @@ export const fetchSettings = async (): Promise<AppSettings | null> => {
         maintenanceTypes: data.maintenance_types || [],
         locations: data.locations || [],
         landGroups: data.land_groups || [],
+        fuelOpeningStockLiters: data.fuel_opening_stock || undefined,
+        orgProfile: data.org_profile || undefined,
+        appDefaults: data.app_defaults || undefined,
     };
     return s;
 };
@@ -173,6 +176,9 @@ export const saveSettings = async (s: AppSettings): Promise<boolean> => {
         maintenance_types: s.maintenanceTypes,
         locations: s.locations,
         land_groups: s.landGroups,
+        fuel_opening_stock: s.fuelOpeningStockLiters ?? { Diesel: 0, Benzine: 0 },
+        org_profile: s.orgProfile ?? {},
+        app_defaults: s.appDefaults ?? {},
         updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('app_settings').upsert(row, { onConflict: 'id' });
@@ -195,6 +201,8 @@ export const fetchAdmins = async (): Promise<AdminUser[]> => {
         createdAt: row.created_at,
         lastLogin: row.last_login,
         avatar: row.avatar,
+        mustChangePassword: !!row.must_change_password,
+        uiTheme: (row.ui_theme as AdminUiTheme | undefined) || 'system',
     }));
 };
 
@@ -208,6 +216,8 @@ export const saveAdmin = async (admin: AdminUser): Promise<boolean> => {
         created_at: admin.createdAt,
         last_login: admin.lastLogin || null,
         avatar: admin.avatar || null,
+        must_change_password: admin.mustChangePassword ?? false,
+        ui_theme: admin.uiTheme ?? 'system',
     };
     const { error } = await supabase.from('admin_users').upsert(row, { onConflict: 'id' });
     if (error) { console.error('saveAdmin error:', error); return false; }

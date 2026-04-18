@@ -4,6 +4,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { AdminUser, AdminLog } from '../../types';
+import { hashPasswordForStorage, validateNewPasswordPolicy } from '../../utils/passwordAuth';
 
 interface AdminModuleProps {
     admins: AdminUser[];
@@ -28,25 +29,30 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
     // Password form
     const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         const username = createForm.username.trim();
         const displayName = createForm.displayName.trim();
         if (!username || !createForm.password || !displayName) return alert('กรุณากรอกข้อมูลให้ครบ');
         if (createForm.password !== createForm.confirmPassword) return alert('รหัสผ่านไม่ตรงกัน');
+        const policy = validateNewPasswordPolicy(createForm.password);
+        if (!policy.ok) return alert(policy.message);
         if (admins.some(a => a.username.toLowerCase() === username.toLowerCase())) return alert('ชื่อผู้ใช้ซ้ำ');
 
+        const hashed = await hashPasswordForStorage(createForm.password);
         const newAdmin: AdminUser = {
             id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
                 ? crypto.randomUUID()
                 : Date.now().toString(),
             username,
-            password: createForm.password,
+            password: hashed,
             displayName,
             role: createForm.role,
             createdAt: new Date().toISOString(),
+            mustChangePassword: true,
+            uiTheme: 'system',
         };
         setAdmins(prev => [...prev, newAdmin]);
-        addLog('create_admin', `สร้างแอดมินใหม่: ${newAdmin.displayName} (@${newAdmin.username})`);
+        addLog('create_admin', `สร้างแอดมินใหม่: ${newAdmin.displayName} (@${newAdmin.username}) — ต้องเปลี่ยนรหัสเมื่อเข้าครั้งแรก`);
         setCreateForm({ username: '', password: '', confirmPassword: '', displayName: '', role: 'Admin' });
         setShowCreateModal(false);
     };
@@ -59,10 +65,13 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
         setShowEditModal(null);
     };
 
-    const handleChangePassword = () => {
+    const handleChangePassword = async () => {
         if (!showPasswordModal || !passwordForm.newPassword) return;
         if (passwordForm.newPassword !== passwordForm.confirmPassword) return alert('รหัสผ่านไม่ตรงกัน');
-        setAdmins(prev => prev.map(a => a.id === showPasswordModal.id ? { ...a, password: passwordForm.newPassword } : a));
+        const policy = validateNewPasswordPolicy(passwordForm.newPassword);
+        if (!policy.ok) return alert(policy.message);
+        const hashed = await hashPasswordForStorage(passwordForm.newPassword);
+        setAdmins(prev => prev.map(a => a.id === showPasswordModal!.id ? { ...a, password: hashed, mustChangePassword: false } : a));
         addLog('change_password', `เปลี่ยนรหัสผ่าน: ${showPasswordModal.displayName}`);
         setPasswordForm({ newPassword: '', confirmPassword: '' });
         setShowPasswordModal(null);
@@ -199,6 +208,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
                                                         log.action === 'create_admin' ? 'bg-blue-100 text-blue-700' :
                                                             log.action === 'delete_admin' ? 'bg-red-100 text-red-700' :
                                                                 log.action === 'change_password' ? 'bg-amber-100 text-amber-700' :
+                                                                    log.action === 'profile_update' ? 'bg-teal-100 text-teal-700' :
                                                                     'bg-purple-100 text-purple-700'
                                                     }`}>
                                                     {log.action === 'login' ? 'เข้าสู่ระบบ' :
@@ -206,6 +216,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog }: AdminMod
                                                             log.action === 'create_admin' ? 'สร้างแอดมิน' :
                                                                 log.action === 'delete_admin' ? 'ลบแอดมิน' :
                                                                     log.action === 'change_password' ? 'เปลี่ยนรหัส' :
+                                                                        log.action === 'profile_update' ? 'โปรไฟล์' :
                                                                         log.action === 'edit_admin' ? 'แก้ไขข้อมูล' : log.action}
                                                 </span>
                                             </td>

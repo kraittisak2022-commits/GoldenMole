@@ -61,6 +61,7 @@ export interface Transaction {
     note?: string;
     workDetails?: string; // Added for Vehicle/General work details
     fuelType?: 'Diesel' | 'Benzine';
+    fuelMovement?: 'stock_in' | 'stock_out';
     payrollPeriod?: { start: string; end: string; };
     payrollSnapshot?: any;
     // Daily Log Fields
@@ -95,10 +96,26 @@ export interface DailyEvent {
     id: string; date: string; time: string; description: string; category?: string;
 }
 
+export interface OrgProfile {
+    name?: string;
+    phone?: string;
+    address?: string;
+    taxId?: string;
+}
+
+export interface AppDefaults {
+    sandCubicPerTrip?: number;
+}
+
 export interface AppSettings {
     appName: string; appSubtext: string; appIcon: string; appIconDark?: string;
     cars: string[]; jobDescriptions: string[]; incomeTypes: string[]; expenseTypes: string[]; maintenanceTypes: string[]; locations: string[]; landGroups: string[];
+    fuelOpeningStockLiters?: { Diesel?: number; Benzine?: number };
+    orgProfile?: OrgProfile;
+    appDefaults?: AppDefaults;
 }
+
+export type AdminUiTheme = 'light' | 'dark' | 'system';
 
 export interface AdminUser {
     id: string;
@@ -109,6 +126,8 @@ export interface AdminUser {
     createdAt: string;
     lastLogin?: string;
     avatar?: string;
+    mustChangePassword?: boolean;
+    uiTheme?: AdminUiTheme;
 }
 
 export interface AdminLog {

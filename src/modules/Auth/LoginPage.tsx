@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Lock, User, Eye, EyeOff, Shield, Loader2, Sun, Moon } from 'lucide-react';
 import { AdminUser } from '../../types';
+import { verifyStoredPassword } from '../../utils/passwordAuth';
 
 interface LoginPageProps {
     admins: AdminUser[];
-    onLogin: (admin: AdminUser) => void;
+    onLogin: (admin: AdminUser, plainPassword: string) => void | Promise<void>;
     appName: string;
     appIcon: string;
     darkMode: boolean;
@@ -188,18 +189,37 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
     const [isLoading, setIsLoading] = useState(false);
     const [shake, setShake] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [userKeyBurst, setUserKeyBurst] = useState(0);
+    const [passKeyBurst, setPassKeyBurst] = useState(0);
 
     useEffect(() => { setMounted(true); }, []);
+
+    const inputFillPct = (value: string, maxChars = 28) =>
+        Math.min(100, (value.length / maxChars) * 100);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); triggerShake(); return; }
+        const u = username.trim();
+        if (!u || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); triggerShake(); return; }
         setIsLoading(true);
-        await new Promise(r => setTimeout(r, 800));
-        const admin = admins.find(a => a.username === username && a.password === password);
-        if (admin) { onLogin(admin); } else { setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'); triggerShake(); }
-        setIsLoading(false);
+        try {
+            const admin = admins.find(a => a.username.toLowerCase() === u.toLowerCase());
+            if (!admin) {
+                setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                triggerShake();
+                return;
+            }
+            const ok = await verifyStoredPassword(admin.password, password);
+            if (!ok) {
+                setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                triggerShake();
+                return;
+            }
+            await onLogin(admin, password);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const triggerShake = () => { setShake(true); setTimeout(() => setShake(false), 600); };
@@ -313,24 +333,43 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                                     ชื่อผู้ใช้ (Username)
                                 </label>
                                 <div className="relative group">
-                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${darkMode
+                                    {userKeyBurst > 0 && (
+                                        <div
+                                            key={userKeyBurst}
+                                            className={`pointer-events-none absolute inset-0 z-[1] rounded-xl ${darkMode ? 'animate-login-keystroke-dark' : 'animate-login-keystroke-light'}`}
+                                            aria-hidden
+                                        />
+                                    )}
+                                    <div className={`absolute left-4 top-1/2 z-[2] -translate-y-1/2 transition-colors duration-300 ${darkMode
                                         ? 'text-gray-600 group-focus-within:text-cyan-400'
                                         : 'text-stone-400 group-focus-within:text-amber-600'
                                         }`}>
-                                        <User size={18} />
+                                        <span key={userKeyBurst} className="inline-flex login-icon-typing">
+                                            <User size={18} />
+                                        </span>
                                     </div>
                                     <input type="text" placeholder="กรอกชื่อผู้ใช้" value={username}
                                         onChange={(e) => setUsername(e.target.value)}
-                                        className={`w-full rounded-xl pl-12 pr-4 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
+                                        onKeyDown={() => setUserKeyBurst((k) => k + 1)}
+                                        className={`relative z-[2] w-full rounded-xl pl-12 pr-4 py-3.5 transition-all duration-300 focus:outline-none text-sm focus:scale-[1.01] motion-safe:transform-gpu ${darkMode
                                             ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
                                             : 'bg-white/60 border border-stone-200 text-black placeholder:text-black/40 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="username" />
                                     {/* Focus glow effect */}
-                                    <div className={`absolute inset-0 rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 pointer-events-none ${darkMode
+                                    <div className={`pointer-events-none absolute inset-0 z-[3] rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 ${darkMode
                                         ? 'shadow-[inset_0_0_0_1px_rgba(0,200,255,0.1)]'
                                         : 'shadow-[inset_0_0_0_1px_rgba(197,165,90,0.1)]'
                                         }`} />
+                                </div>
+                                <div
+                                    className={`mt-2 h-1 rounded-full overflow-hidden ${darkMode ? 'bg-white/[0.06]' : 'bg-stone-200/80'}`}
+                                    aria-hidden
+                                >
+                                    <div
+                                        className={`h-full rounded-full origin-left transition-[width] duration-200 ease-out ${darkMode ? 'bg-cyan-400/70' : 'bg-amber-500/80'} ${username.length > 0 ? 'login-input-bar-pulse' : ''}`}
+                                        style={{ width: `${inputFillPct(username)}%` }}
+                                    />
                                 </div>
                             </div>
 
@@ -340,23 +379,42 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                                     รหัสผ่าน (Password)
                                 </label>
                                 <div className="relative group">
-                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${darkMode
+                                    {passKeyBurst > 0 && (
+                                        <div
+                                            key={passKeyBurst}
+                                            className={`pointer-events-none absolute inset-0 z-[1] rounded-xl ${darkMode ? 'animate-login-keystroke-dark' : 'animate-login-keystroke-light'}`}
+                                            aria-hidden
+                                        />
+                                    )}
+                                    <div className={`absolute left-4 top-1/2 z-[2] -translate-y-1/2 transition-colors duration-300 ${darkMode
                                         ? 'text-gray-600 group-focus-within:text-cyan-400'
                                         : 'text-stone-400 group-focus-within:text-amber-600'
                                         }`}>
-                                        <Lock size={18} />
+                                        <span key={passKeyBurst} className="inline-flex login-icon-typing">
+                                            <Lock size={18} />
+                                        </span>
                                     </div>
                                     <input type={showPassword ? 'text' : 'password'} placeholder="กรอกรหัสผ่าน" value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className={`w-full rounded-xl pl-12 pr-12 py-3.5 transition-all duration-300 focus:outline-none text-sm ${darkMode
+                                        onKeyDown={() => setPassKeyBurst((k) => k + 1)}
+                                        className={`relative z-[2] w-full rounded-xl pl-12 pr-12 py-3.5 transition-all duration-300 focus:outline-none text-sm focus:scale-[1.01] motion-safe:transform-gpu ${darkMode
                                             ? 'bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-gray-600 focus:border-cyan-500/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-cyan-500/20 focus:shadow-[0_0_15px_rgba(0,200,255,0.08)]'
                                             : 'bg-white/60 border border-stone-200 text-black placeholder:text-black/40 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(197,165,90,0.1)]'
                                             }`}
                                         autoComplete="current-password" />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)}
-                                        className={`absolute right-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-500 hover:text-cyan-400' : 'text-stone-400 hover:text-stone-700'}`}>
+                                        className={`absolute right-4 top-1/2 z-[2] -translate-y-1/2 transition-colors ${darkMode ? 'text-gray-500 hover:text-cyan-400' : 'text-stone-400 hover:text-stone-700'}`}>
                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
+                                </div>
+                                <div
+                                    className={`mt-2 h-1 rounded-full overflow-hidden ${darkMode ? 'bg-white/[0.06]' : 'bg-stone-200/80'}`}
+                                    aria-hidden
+                                >
+                                    <div
+                                        className={`h-full rounded-full origin-left transition-[width] duration-200 ease-out ${darkMode ? 'bg-cyan-400/70' : 'bg-amber-500/80'} ${password.length > 0 ? 'login-input-bar-pulse' : ''}`}
+                                        style={{ width: `${inputFillPct(password)}%` }}
+                                    />
                                 </div>
                             </div>
 

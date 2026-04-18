@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, User, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
-import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog } from './types';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
+import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
 import FormatNumber from './components/ui/FormatNumber';
@@ -19,17 +19,37 @@ import SettingsModule from './modules/Settings/SettingsModule';
 import MaintenanceModule from './modules/Maintenance/MaintenanceModule';
 import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
 import LoginPage from './modules/Auth/LoginPage';
+import FirstLoginPasswordChange from './modules/Auth/FirstLoginPasswordChange';
 import AdminModule from './modules/Admin/AdminModule';
+import Button from './components/ui/Button';
+import AdminProfileModal from './components/AdminProfileModal';
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
+import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
 
 // Supabase Services
 import * as db from './services/dataService';
 
-// --- Default Admin Account ---
+// --- Default Admin Account (รหัสผ่านเก็บเป็น SHA-256 — ค่าเริ่มต้นเข้าได้ด้วย 1234) ---
 const DEFAULT_ADMINS: AdminUser[] = [
-    { id: 'admin-1', username: 'admin', password: '1234', displayName: 'ผู้ดูแลระบบ', role: 'SuperAdmin', createdAt: '2024-01-01' }
+    {
+        id: 'admin-1',
+        username: 'admin',
+        password: 'sha256$03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
+        displayName: 'ผู้ดูแลระบบ',
+        role: 'SuperAdmin',
+        createdAt: '2024-01-01',
+        mustChangePassword: false,
+        uiTheme: 'system',
+    },
 ];
+
+const resolveDarkFromUiTheme = (ui: AdminUiTheme | undefined): boolean => {
+    const t = ui ?? 'system';
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
 
 // --- Mock Data (Note: Name now primarily uses nickname per requirement) ---
 const MOCK_EMPLOYEES: Employee[] = [
@@ -49,10 +69,13 @@ const MOCK_SETTINGS: AppSettings = {
     expenseTypes: ['ค่าไฟ', 'ค่าน้ำ', 'ค่ากับแกล้ม', 'ค่าอุปกรณ์'],
     maintenanceTypes: ['เปลี่ยนถ่ายน้ำมันเครื่อง', 'ปะยาง', 'ซ่อมเครื่องยนต์', 'อะไหล่สิ้นเปลือง'],
     locations: ['หน้างาน A', 'บ่อทราย B', 'ออฟฟิศใหญ่'],
-    landGroups: ['โครงการหนองจอก', 'โครงการลาดกระบัง']
+    landGroups: ['โครงการหนองจอก', 'โครงการลาดกระบัง'],
+    fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
+    orgProfile: {},
+    appDefaults: { sandCubicPerTrip: 3 },
 };
 const MOCK_TRANSACTIONS: Transaction[] = [
-    { id: '1', date: getToday(), type: 'Expense', category: 'Fuel', description: 'เติมน้ำมัน (ดีเซล)', amount: 2000, quantity: 60, unit: 'ลิตร', vehicleId: 'รถดรัมโอเว่น', fuelType: 'Diesel' },
+    { id: '1', date: getToday(), type: 'Expense', category: 'Fuel', description: 'เติมน้ำมัน (ดีเซล)', amount: 2000, quantity: 60, unit: 'L', vehicleId: 'รถดรัมโอเว่น', fuelType: 'Diesel', fuelMovement: 'stock_out' },
     { id: '2', date: getToday(), type: 'Income', category: 'Income', description: 'ขายทราย 10 คิว', amount: 5000, quantity: 10, unit: 'คิว' },
     { id: '3', date: getToday(), type: 'Expense', category: 'Labor', subCategory: 'Attendance', description: 'งาน: ล้างทราย', amount: 1500, employeeIds: ['1', '2', '4'], laborStatus: 'Work', workType: 'FullDay' },
 ];
@@ -265,8 +288,14 @@ function App() {
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
     const [toast, setToast] = useState<string | null>(null);
+    const [accountModalOpen, setAccountModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
     const hasSeeded = useRef(false);
+    const currentAdminRef = useRef<AdminUser | null>(null);
+    useEffect(() => {
+        currentAdminRef.current = currentAdmin;
+    }, [currentAdmin]);
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
@@ -311,6 +340,10 @@ function App() {
         loadData();
     }, []);
 
+    const applyUiThemeToApp = useCallback((ui: AdminUiTheme | undefined) => {
+        setDarkMode(resolveDarkFromUiTheme(ui));
+    }, []);
+
     // Sync dark mode to <html> for full-page background and Tailwind dark:
     useEffect(() => {
         if (darkMode) {
@@ -319,6 +352,15 @@ function App() {
             document.documentElement.classList.remove('dark');
         }
     }, [darkMode]);
+
+    /** เมื่อเลือกโหมด system ให้ตามธีม OS */
+    useEffect(() => {
+        if (!isLoggedIn || !currentAdmin || (currentAdmin.uiTheme ?? 'system') !== 'system') return;
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const onChange = () => setDarkMode(mq.matches);
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, [isLoggedIn, currentAdmin?.id, currentAdmin?.uiTheme]);
 
     // Detect mobile vs desktop
     useEffect(() => {
@@ -347,33 +389,99 @@ function App() {
         db.saveAdminLog(log);
     }, [currentAdmin]);
 
-    const handleLogin = (admin: AdminUser) => {
-        const updatedAdmin = { ...admin, lastLogin: formatDateTimeTH() };
-        setAdmins(prev => prev.map(a => a.id === admin.id ? updatedAdmin : a));
+    const finalizeSuccessfulLogin = useCallback(async (updatedAdmin: AdminUser) => {
+        setAdmins(prev => prev.map(a => a.id === updatedAdmin.id ? updatedAdmin : a));
         setCurrentAdmin(updatedAdmin);
         setIsLoggedIn(true);
-        db.saveAdmin(updatedAdmin);
-        // Log the login event
+        await db.saveAdmin(updatedAdmin);
         const log: AdminLog = {
             id: Date.now().toString(),
-            adminId: admin.id,
-            adminName: admin.displayName,
+            adminId: updatedAdmin.id,
+            adminName: updatedAdmin.displayName,
             action: 'login',
-            details: `เข้าสู่ระบบสำเร็จ`,
+            details: `สถานะ: สำเร็จ | เหตุการณ์: เข้าสู่ระบบ`,
             timestamp: formatDateTimeTH(),
         };
         setAdminLogs(prev => [log, ...prev]);
         db.saveAdminLog(log);
+    }, []);
+
+    const handleLogin = async (admin: AdminUser, plainPassword: string) => {
+        if (admin.mustChangePassword) {
+            setPendingForcedPasswordAdmin(admin);
+            return;
+        }
+        let storedPassword = admin.password;
+        if (needsPasswordRehash(admin.password)) {
+            storedPassword = await hashPasswordForStorage(plainPassword);
+        }
+        const updatedAdmin = { ...admin, password: storedPassword, lastLogin: formatDateTimeTH() };
+        applyUiThemeToApp(updatedAdmin.uiTheme);
+        await finalizeSuccessfulLogin(updatedAdmin);
+    };
+
+    const handleForcedFirstLoginPassword = async (newPlain: string) => {
+        const admin = pendingForcedPasswordAdmin;
+        if (!admin) return;
+        const policy = validateNewPasswordPolicy(newPlain);
+        if (!policy.ok) throw new Error(policy.message);
+        const hashed = await hashPasswordForStorage(newPlain);
+        const updatedAdmin: AdminUser = {
+            ...admin,
+            password: hashed,
+            mustChangePassword: false,
+            lastLogin: formatDateTimeTH(),
+        };
+        setPendingForcedPasswordAdmin(null);
+        applyUiThemeToApp(updatedAdmin.uiTheme);
+        await finalizeSuccessfulLogin(updatedAdmin);
     };
 
     const handleLogout = () => {
         if (currentAdmin) {
-            addLog('logout', 'ออกจากระบบ');
+            addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
         }
         setIsLoggedIn(false);
         setCurrentAdmin(null);
         setActiveMenu('Dashboard');
     };
+
+    /** ออกจากระบบอัตโนมัติเมื่อไม่มีการใช้งาน (คลิก/พิมพ์/เลื่อน) เกินกำหนด */
+    const SESSION_IDLE_MS = 45 * 60 * 1000;
+    useEffect(() => {
+        if (!isLoggedIn) return;
+        const idleLastRef = { current: Date.now() };
+        const bump = () => {
+            idleLastRef.current = Date.now();
+        };
+        const events: (keyof WindowEventMap)[] = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+        events.forEach(ev => window.addEventListener(ev, bump as EventListener, { passive: true }));
+        const tick = window.setInterval(() => {
+            if (Date.now() - idleLastRef.current < SESSION_IDLE_MS) return;
+            const admin = currentAdminRef.current;
+            if (admin) {
+                const log: AdminLog = {
+                    id: `${Date.now()}_idle`,
+                    adminId: admin.id,
+                    adminName: admin.displayName,
+                    action: 'logout',
+                    details: `สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ (หมดเวลาเซสชันจากไม่มีการใช้งาน)`,
+                    timestamp: formatDateTimeTH(),
+                };
+                setAdminLogs(prev => [log, ...prev]);
+                db.saveAdminLog(log);
+            }
+            setIsLoggedIn(false);
+            setCurrentAdmin(null);
+            setActiveMenu('Dashboard');
+            setToast('ออกจากระบบอัตโนมัติ — ไม่มีการใช้งานเกิน 45 นาที กรุณาเข้าสู่ระบบใหม่');
+            setTimeout(() => setToast(null), 6000);
+        }, 30_000);
+        return () => {
+            events.forEach(ev => window.removeEventListener(ev, bump as EventListener));
+            window.clearInterval(tick);
+        };
+    }, [isLoggedIn]);
 
     const handleMenuClick = useCallback((menuId: string) => {
         setActiveMenu(menuId);
@@ -502,12 +610,63 @@ function App() {
         });
     }, []);
 
+    const handleUpdateAdminProfile = useCallback(async (updates: {
+        displayName?: string;
+        avatar?: string;
+        uiTheme?: AdminUiTheme;
+        currentPassword?: string;
+        newPassword?: string;
+    }): Promise<{ ok: boolean; message?: string }> => {
+        const admin = currentAdminRef.current;
+        if (!admin) return { ok: false, message: 'ไม่พบผู้ใช้' };
+        let next: AdminUser = { ...admin };
+
+        if (updates.displayName !== undefined) {
+            const d = updates.displayName.trim();
+            if (!d) return { ok: false, message: 'กรุณาระบุชื่อที่แสดง' };
+            next.displayName = d;
+        }
+        if (updates.avatar !== undefined) {
+            next.avatar = updates.avatar.trim() || undefined;
+        }
+        if (updates.uiTheme !== undefined) {
+            next.uiTheme = updates.uiTheme;
+            applyUiThemeToApp(updates.uiTheme);
+        }
+        if (updates.newPassword) {
+            if (!updates.currentPassword) return { ok: false, message: 'กรุณากรอกรหัสผ่านปัจจุบัน' };
+            const match = await verifyStoredPassword(admin.password, updates.currentPassword);
+            if (!match) return { ok: false, message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' };
+            const pol = validateNewPasswordPolicy(updates.newPassword);
+            if (!pol.ok) return { ok: false, message: pol.message };
+            next.password = await hashPasswordForStorage(updates.newPassword);
+            next.mustChangePassword = false;
+        }
+
+        setAdmins(prev => prev.map(a => a.id === next.id ? next : a));
+        setCurrentAdmin(next);
+        await db.saveAdmin(next);
+        if (currentAdminRef.current?.id === next.id) {
+            const log: AdminLog = {
+                id: Date.now().toString(),
+                adminId: next.id,
+                adminName: next.displayName,
+                action: 'profile_update',
+                details: `อัปเดตโปรไฟล์${updates.newPassword ? ' และเปลี่ยนรหัสผ่าน' : ''} | @${next.username}`,
+                timestamp: formatDateTimeTH(),
+            };
+            setAdminLogs(prevLogs => [log, ...prevLogs]);
+            db.saveAdminLog(log);
+        }
+        return { ok: true };
+    }, [applyUiThemeToApp]);
+
     /** ล้างข้อมูลที่บันทึกทั้งหมด (ธุรกรรม + โครงการที่ดิน) ไม่ลบพนักงานและตั้งค่า */
     const handleClearAllData = useCallback(async () => {
         if (!confirm('ต้องการล้างข้อมูลที่บันทึกทั้งหมด (รายการธุรกรรม + โครงการที่ดิน) หรือไม่?\n\nข้อมูลพนักงานและตั้งค่าจะไม่ถูกลบ')) return;
         try {
             if (currentAdmin) {
-                addLog('clear_daily_data', 'ล้างข้อมูลธุรกรรมและโครงการที่ดินทั้งหมดจากหน้า Settings');
+                addLog('clear_daily_data', 'การดำเนินการ: ล้างข้อมูลที่บันทึกทั้งหมด | ครอบคลุม: ธุรกรรม + โครงการที่ดิน | ต้นทาง: เมนู การตั้งค่า');
             }
             await db.deleteAllTransactions();
             await db.deleteAllProjects();
@@ -528,7 +687,7 @@ function App() {
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
-            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
+            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Maintenance': return <MaintenanceModule settings={settings} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
             case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={transactions} />;
@@ -537,7 +696,15 @@ function App() {
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
             case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
-            case 'Settings': return <SettingsModule settings={settings} setSettings={handleSetSettings} onClearAllData={handleClearAllData} />;
+            case 'Settings': return (
+                <SettingsModule
+                    settings={settings}
+                    setSettings={handleSetSettings}
+                    onClearAllData={handleClearAllData}
+                    currentAdmin={currentAdmin}
+                    onUpdateAdminProfile={handleUpdateAdminProfile}
+                />
+            );
             default: return <div className="p-8 text-center text-slate-400 dark:text-slate-500">Coming Soon</div>;
         }
     };
@@ -556,6 +723,17 @@ function App() {
 
     // --- LOGIN GATE ---
     if (!isLoggedIn) {
+        if (pendingForcedPasswordAdmin) {
+            return (
+                <FirstLoginPasswordChange
+                    displayName={pendingForcedPasswordAdmin.displayName}
+                    username={pendingForcedPasswordAdmin.username}
+                    darkMode={darkMode}
+                    onToggleDarkMode={() => setDarkMode(!darkMode)}
+                    onComplete={handleForcedFirstLoginPassword}
+                />
+            );
+        }
         return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
     }
 
@@ -575,6 +753,16 @@ function App() {
             )}
 
             {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+
+            {currentAdmin && (
+                <AdminProfileModal
+                    open={accountModalOpen}
+                    onClose={() => setAccountModalOpen(false)}
+                    currentAdmin={currentAdmin}
+                    darkMode={darkMode}
+                    onUpdateAdminProfile={handleUpdateAdminProfile}
+                />
+            )}
 
             {/* Popup ใส่ค่าแรงเมื่อใช้พนักงานที่ยังไม่มีค่าแรง */}
             {wagePromptEmp && (
@@ -649,15 +837,24 @@ function App() {
                 {!isMobile && (
                     <div className={`p-4 border-t space-y-2 ${darkMode ? 'border-gray-800' : ''}`}>
                         {isSidebarOpen && currentAdmin && (
-                            <div className="flex items-center gap-2 px-2 mb-2">
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
-                                    {currentAdmin.displayName.charAt(0)}
+                            <button
+                                type="button"
+                                onClick={() => setAccountModalOpen(true)}
+                                className={`mb-2 flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors ${darkMode ? 'hover:bg-white/[0.06]' : 'hover:bg-stone-100'}`}
+                                title="แก้ไขบัญชีแอดมิน"
+                            >
+                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
+                                    {currentAdmin.avatar && (currentAdmin.avatar.startsWith('http') || currentAdmin.avatar.startsWith('data:')) ? (
+                                        <img src={currentAdmin.avatar} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        currentAdmin.displayName.charAt(0)
+                                    )}
                                 </div>
                                 <div className="min-w-0">
-                                    <p className={`text-xs font-medium truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
+                                    <p className={`truncate text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
                                     <p className="text-[10px] text-slate-400">{currentAdmin.role}</p>
                                 </div>
-                            </div>
+                            </button>
                         )}
                         <div className="flex gap-2">
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
@@ -674,15 +871,24 @@ function App() {
                 {isMobile && (
                     <div className={`p-4 border-t ${darkMode ? 'border-gray-800' : ''}`}>
                         {currentAdmin && (
-                            <div className="flex items-center gap-3 px-2 mb-3">
-                                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0 ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
-                                    {currentAdmin.displayName.charAt(0)}
+                            <button
+                                type="button"
+                                onClick={() => { setAccountModalOpen(true); setIsSidebarOpen(false); }}
+                                className={`mb-3 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${darkMode ? 'hover:bg-white/[0.06]' : 'hover:bg-stone-100'}`}
+                                title="แก้ไขบัญชีแอดมิน"
+                            >
+                                <div className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
+                                    {currentAdmin.avatar && (currentAdmin.avatar.startsWith('http') || currentAdmin.avatar.startsWith('data:')) ? (
+                                        <img src={currentAdmin.avatar} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        currentAdmin.displayName.charAt(0)
+                                    )}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
+                                    <p className={`truncate text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{currentAdmin.displayName}</p>
                                     <p className="text-xs text-slate-400">@{currentAdmin.username} • {currentAdmin.role}</p>
                                 </div>
-                            </div>
+                            </button>
                         )}
                         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
                             <LogOut size={16} /> ออกจากระบบ
@@ -720,16 +926,35 @@ function App() {
                             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                         {currentAdmin && (
-                            <div className={`hidden sm:flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-stone-500'}`}>
-                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{currentAdmin.displayName}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${currentAdmin.role === 'SuperAdmin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300' : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'}`}>
-                                    {currentAdmin.role}
-                                </span>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAccountModalOpen(true)}
+                                className={`flex max-w-[min(100%,320px)] items-center gap-2 rounded-xl py-1.5 pl-2 pr-1.5 transition-colors sm:gap-3 sm:py-2 sm:pl-3 sm:pr-2 ${darkMode ? 'hover:bg-white/[0.06]' : 'hover:bg-stone-200/60'}`}
+                                title="แก้ไขบัญชีแอดมิน"
+                            >
+                                <div className={`hidden min-w-0 items-center gap-2 text-sm sm:flex ${darkMode ? 'text-gray-400' : 'text-stone-500'}`}>
+                                    <span className={`truncate font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{currentAdmin.displayName}</span>
+                                    <span
+                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                            currentAdmin.role === 'SuperAdmin'
+                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
+                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
+                                        }`}
+                                    >
+                                        {currentAdmin.role}
+                                    </span>
+                                </div>
+                                <div
+                                    className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold sm:h-10 sm:w-10 ${darkMode ? 'border border-amber-500/20 bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700'}`}
+                                >
+                                    {currentAdmin.avatar && (currentAdmin.avatar.startsWith('http') || currentAdmin.avatar.startsWith('data:')) ? (
+                                        <img src={currentAdmin.avatar} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <span className="text-sm sm:text-base">{currentAdmin.displayName.charAt(0) ?? '?'}</span>
+                                    )}
+                                </div>
+                            </button>
                         )}
-                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold ${darkMode ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'bg-amber-50 text-amber-700'}`}>
-                            <User size={18} />
-                        </div>
                     </div>
                 </header>
 

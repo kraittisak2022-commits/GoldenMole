@@ -1,22 +1,42 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { AppSettings } from '../../types';
+import { AppSettings, AdminUser, AdminUiTheme } from '../../types';
 import { supabase } from '../../lib/supabase';
 
 interface SettingsModuleProps {
     settings: AppSettings;
-    setSettings: (settings: AppSettings) => void;
+    setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     onClearAllData?: () => Promise<void>;
+    currentAdmin?: AdminUser | null;
+    onUpdateAdminProfile?: (updates: {
+        displayName?: string;
+        avatar?: string;
+        uiTheme?: AdminUiTheme;
+        currentPassword?: string;
+        newPassword?: string;
+    }) => Promise<{ ok: boolean; message?: string }>;
 }
+
+const TAB_HELP: Record<string, string> = {
+    cars: 'รายชื่อรถ/แม็คโคร/ดรัม ใช้ในเมนู «การใช้รถ», «น้ำมัน», และบันทึกงานประจำวัน (เที่ยวรถ / เติมน้ำมัน)',
+    jobDescriptions: 'ตัวเลือก «งานที่ทำ» สำหรับค่าแรงและรายงานที่เกี่ยวข้อง',
+    incomeTypes: 'ประเภทรายรับ ใช้ตอนบันทึกรายรับและบางรายงานสรุป',
+    expenseTypes: 'ประเภทค่าใช้จ่ายในเมนู «สาธารณูปโภค» (ไฟ น้ำ ฯลฯ)',
+    maintenanceTypes: 'ประเภทซ่อม เช่น เปลี่ยนถ่ายน้ำมันเครื่อง ปะยาง — ใช้ในเมนูซ่อมบำรุง',
+    locations: 'สถานที่/หน้างาน ให้เลือกตอนบันทึกการใช้รถและที่เกี่ยวข้อง',
+    landGroups: 'กลุ่ม/โครงการที่ดิน ใช้จัดหมวดโครงการที่ดิน',
+};
+
+const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups'] as const;
 
 const POSITIONS_STORAGE_KEY = 'app_employee_positions';
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 
-const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModuleProps) => {
+const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -59,6 +79,64 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     // แก้ไขรายการใน list: { tabKey: { index: number, value: string } }
     const [editingItem, setEditingItem] = useState<{ index: number; value: string } | null>(null);
 
+    const [orgForm, setOrgForm] = useState({
+        name: settings.orgProfile?.name || '',
+        phone: settings.orgProfile?.phone || '',
+        address: settings.orgProfile?.address || '',
+        taxId: settings.orgProfile?.taxId || '',
+    });
+    const [fuelStockForm, setFuelStockForm] = useState({
+        diesel: String(settings.fuelOpeningStockLiters?.Diesel ?? 0),
+        benzine: String(settings.fuelOpeningStockLiters?.Benzine ?? 0),
+    });
+    const [defaultsForm, setDefaultsForm] = useState({
+        sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3),
+    });
+
+    const [accountForm, setAccountForm] = useState({
+        displayName: '',
+        avatar: '',
+        uiTheme: 'system' as AdminUiTheme,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    });
+    const [accountSaving, setAccountSaving] = useState(false);
+    const [accountMsg, setAccountMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+    useEffect(() => {
+        if (!currentAdmin) return;
+        setAccountForm({
+            displayName: currentAdmin.displayName,
+            avatar: currentAdmin.avatar || '',
+            uiTheme: currentAdmin.uiTheme ?? 'system',
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: '',
+        });
+        setAccountMsg(null);
+    }, [currentAdmin?.id]);
+
+    useEffect(() => {
+        setOrgForm({
+            name: settings.orgProfile?.name || '',
+            phone: settings.orgProfile?.phone || '',
+            address: settings.orgProfile?.address || '',
+            taxId: settings.orgProfile?.taxId || '',
+        });
+    }, [settings.orgProfile]);
+
+    useEffect(() => {
+        setFuelStockForm({
+            diesel: String(settings.fuelOpeningStockLiters?.Diesel ?? 0),
+            benzine: String(settings.fuelOpeningStockLiters?.Benzine ?? 0),
+        });
+    }, [settings.fuelOpeningStockLiters]);
+
+    useEffect(() => {
+        setDefaultsForm({ sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3) });
+    }, [settings.appDefaults]);
+
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
     const [positions, setPositions] = useState<string[]>(() => {
         try {
@@ -84,16 +162,19 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
     }, [settings.appName, settings.appSubtext, settings.appIcon, settings.appIconDark]);
 
     const handleAdd = () => {
-        if (!newItem || activeTab === 'positionsLocal') return;
-        setSettings({ ...settings, [activeTab]: [...(settings as any)[activeTab], newItem] });
+        if (!newItem || activeTab === 'positionsLocal' || !LIST_TAB_KEYS.includes(activeTab as any)) return;
+        const key = activeTab as keyof AppSettings;
+        const cur = (settings[key] as string[]) || [];
+        setSettings({ ...settings, [key]: [...cur, newItem.trim()] });
         setNewItem('');
     };
     const handleDelete = (index: number) => {
-        if (activeTab === 'positionsLocal') return;
+        if (activeTab === 'positionsLocal' || !LIST_TAB_KEYS.includes(activeTab as any)) return;
         if (confirm('ยืนยันลบ?')) {
-            const newList = [...(settings as any)[activeTab]];
+            const key = activeTab as keyof AppSettings;
+            const newList = [...((settings[key] as string[]) || [])];
             newList.splice(index, 1);
-            setSettings({ ...settings, [activeTab]: newList });
+            setSettings({ ...settings, [key]: newList });
         }
     };
 
@@ -108,14 +189,50 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
         alert('บันทึกตั้งค่าทั่วไปแล้ว');
     };
 
+    const saveOrgProfile = () => {
+        setSettings({
+            ...settings,
+            orgProfile: {
+                name: orgForm.name.trim() || undefined,
+                phone: orgForm.phone.trim() || undefined,
+                address: orgForm.address.trim() || undefined,
+                taxId: orgForm.taxId.trim() || undefined,
+            },
+        });
+        alert('บันทึกข้อมูลองค์กรแล้ว');
+    };
+
+    const saveFuelOpening = () => {
+        setSettings({
+            ...settings,
+            fuelOpeningStockLiters: {
+                Diesel: Number(fuelStockForm.diesel.replace(/,/g, '')) || 0,
+                Benzine: Number(fuelStockForm.benzine.replace(/,/g, '')) || 0,
+            },
+        });
+        alert('บันทึกยอดยกมาสต็อกน้ำมันแล้ว');
+    };
+
+    const saveAppDefaults = () => {
+        const v = Number(defaultsForm.sandCubicPerTrip);
+        setSettings({
+            ...settings,
+            appDefaults: {
+                ...settings.appDefaults,
+                sandCubicPerTrip: v > 0 ? v : 3,
+            },
+        });
+        alert('บันทึกค่าเริ่มต้นระบบแล้ว');
+    };
+
     const startEdit = (index: number, value: string) => {
         setEditingItem({ index, value });
     };
     const cancelEdit = () => setEditingItem(null);
     const saveEdit = () => {
-        if (editingItem == null || activeTab === 'positionsLocal' || activeTab === 'general' || activeTab === 'clearData') return;
+        if (editingItem == null || activeTab === 'positionsLocal' || activeTab === 'general' || activeTab === 'clearData' || !LIST_TAB_KEYS.includes(activeTab as any)) return;
         const key = activeTab as keyof AppSettings;
-        const arr = [...(settings[key] as string[])];
+        const arr = [...((settings[key] as string[]) || [])];
         if (editingItem.index >= 0 && editingItem.index < arr.length) {
             arr[editingItem.index] = editingItem.value.trim();
             if (arr[editingItem.index]) {
@@ -218,30 +335,175 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
         return { text: 'ไม่ทราบ', cls: 'bg-slate-100 text-slate-700' };
     };
 
+    const saveAccountProfile = async () => {
+        if (!onUpdateAdminProfile || !currentAdmin) return;
+        setAccountSaving(true);
+        setAccountMsg(null);
+        const r = await onUpdateAdminProfile({
+            displayName: accountForm.displayName,
+            avatar: accountForm.avatar,
+            uiTheme: accountForm.uiTheme,
+        });
+        setAccountSaving(false);
+        if (r.ok) setAccountMsg({ type: 'ok', text: 'บันทึกโปรไฟล์แล้ว' });
+        else setAccountMsg({ type: 'err', text: r.message || 'เกิดข้อผิดพลาด' });
+    };
+
+    const saveAccountPassword = async () => {
+        if (!onUpdateAdminProfile || !currentAdmin) return;
+        if (accountForm.newPassword !== accountForm.confirmPassword) {
+            setAccountMsg({ type: 'err', text: 'รหัสผ่านใหม่ไม่ตรงกัน' });
+            return;
+        }
+        if (!accountForm.newPassword) {
+            setAccountMsg({ type: 'err', text: 'กรุณากรอกรหัสผ่านใหม่' });
+            return;
+        }
+        setAccountSaving(true);
+        setAccountMsg(null);
+        const r = await onUpdateAdminProfile({
+            currentPassword: accountForm.currentPassword,
+            newPassword: accountForm.newPassword,
+        });
+        setAccountSaving(false);
+        if (r.ok) {
+            setAccountForm(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
+            setAccountMsg({ type: 'ok', text: 'เปลี่ยนรหัสผ่านแล้ว' });
+        } else setAccountMsg({ type: 'err', text: r.message || 'เกิดข้อผิดพลาด' });
+    };
+
+    const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0];
+        if (!f || !f.type.startsWith('image/')) return;
+        if (f.size > 600 * 1024) {
+            alert('รูปต้องไม่เกิน 600 KB');
+            e.target.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => setAccountForm(prev => ({ ...prev, avatar: String(reader.result || '') }));
+        reader.readAsDataURL(f);
+        e.target.value = '';
+    };
+
     const tabs = [
-        { key: 'general', l: 'ทั่วไป (General)' },
-        { key: 'cars', l: 'รถ/เครื่องจักร' },
-        { key: 'jobDescriptions', l: 'รายละเอียดงาน (Labor)' },
+        { key: 'myAccount', l: 'บัญชีแอดมิน' },
+        { key: 'general', l: 'ทั่วไป' },
+        { key: 'organization', l: 'ข้อมูลองค์กร' },
+        { key: 'cars', l: 'รถ / เครื่องจักร' },
+        { key: 'jobDescriptions', l: 'รายละเอียดงาน' },
         { key: 'incomeTypes', l: 'ประเภทรายรับ' },
-        { key: 'expenseTypes', l: 'สาธารณูปโภค (Utilities)' },
-        { key: 'maintenanceTypes', l: 'ประเภทซ่อมบำรุง' },
-        { key: 'locations', l: 'สถานที่/หน้างาน' },
+        { key: 'expenseTypes', l: 'สาธารณูปโภค' },
+        { key: 'maintenanceTypes', l: 'ซ่อมบำรุง' },
+        { key: 'locations', l: 'สถานที่ / หน้างาน' },
         { key: 'landGroups', l: 'กลุ่มที่ดิน' },
+        { key: 'fuelStock', l: 'น้ำมัน & สต็อกยกมา' },
+        { key: 'defaults', l: 'ค่าเริ่มต้นระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
         { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
-        { key: 'clearData', l: 'ล้างข้อมูล' }
+        { key: 'clearData', l: 'ล้างข้อมูล' },
     ];
 
     return (
         <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold">ตั้งค่า</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card className="p-4 h-fit md:col-span-1"><div className="flex flex-col gap-2">{tabs.map(t => (<button key={t.key} onClick={() => clearEditOnTabChange(t.key)} className={`text-left px-4 py-3 rounded-lg text-sm font-medium ${activeTab === t.key ? 'bg-slate-800 text-white' : 'hover:bg-slate-50'}`}>{t.l}</button>))}</div></Card>
+                <Card className="p-4 h-fit md:col-span-1"><div className="flex flex-col gap-1.5">{tabs.map(t => (<button key={t.key} type="button" onClick={() => clearEditOnTabChange(t.key)} className={`text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'hover:bg-slate-50 dark:hover:bg-white/[0.06] text-slate-700 dark:text-slate-300'}`}>{t.l}</button>))}</div></Card>
                 <Card className="p-6 md:col-span-3 min-h-[500px]">
-                    {activeTab === 'general' ? (
+                    {activeTab === 'myAccount' ? (
+                        currentAdmin && onUpdateAdminProfile ? (
+                            <div className="space-y-8 max-w-xl">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <UserCircle className="text-amber-600" size={22} />
+                                    <h3 className="font-bold text-lg">บัญชีแอดมิน</h3>
+                                </div>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    แก้ชื่อที่แสดง รูปประจำตัว โหมดสว่าง/มืดของคุณ และรหัสผ่าน — บันทึกลงบัญชีนี้ (@{currentAdmin.username})
+                                </p>
+
+                                {accountMsg && (
+                                    <div className={`rounded-xl px-4 py-3 text-sm border ${accountMsg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-500/10 dark:border-red-500/30 dark:text-red-200'}`}>
+                                        {accountMsg.text}
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    <Input label="ชื่อที่แสดง" value={accountForm.displayName} onChange={(e: any) => setAccountForm({ ...accountForm, displayName: e.target.value })} />
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">รูปประจำตัว</label>
+                                        <div className="flex flex-wrap items-center gap-4">
+                                            <div className="w-16 h-16 rounded-full border-2 border-slate-200 dark:border-white/15 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                                                {accountForm.avatar && (accountForm.avatar.startsWith('http') || accountForm.avatar.startsWith('data:')) ? (
+                                                    <img src={accountForm.avatar} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-xl font-bold text-slate-500">{accountForm.displayName.charAt(0) || '?'}</span>
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-[200px] space-y-2">
+                                                <Input value={accountForm.avatar} onChange={(e: any) => setAccountForm({ ...accountForm, avatar: e.target.value })} placeholder="URL รูป หรืออัปโหลดด้านล่าง" />
+                                                <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">
+                                                    <input type="file" accept="image/*" className="hidden" onChange={onAvatarFile} />
+                                                    <span className="underline decoration-dotted">อัปโหลดรูปจากเครื่อง</span>
+                                                    <span className="text-xs">(สูงสุด ~600 KB)</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">โหมดแสดงผล</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {([
+                                                { v: 'system' as const, label: 'ตามระบบ', Icon: Monitor },
+                                                { v: 'light' as const, label: 'สว่าง', Icon: Sun },
+                                                { v: 'dark' as const, label: 'มืด', Icon: Moon },
+                                            ]).map(({ v, label, Icon }) => (
+                                                <button
+                                                    key={v}
+                                                    type="button"
+                                                    onClick={() => setAccountForm({ ...accountForm, uiTheme: v })}
+                                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                                                        accountForm.uiTheme === v
+                                                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/40'
+                                                            : 'bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    <Icon size={18} /> {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-2">«ตามระบบ» จะสลับตามการตั้งค่าของเครื่อง/เบราว์เซอร์</p>
+                                    </div>
+
+                                    <Button onClick={saveAccountProfile} disabled={accountSaving} className="mt-2">
+                                        {accountSaving ? 'กำลังบันทึก...' : 'บันทึกโปรไฟล์'}
+                                    </Button>
+                                </div>
+
+                                <div className="border-t border-slate-200 dark:border-white/10 pt-8 space-y-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Lock className="text-slate-500" size={18} />
+                                        <h4 className="font-bold text-slate-800 dark:text-slate-100">เปลี่ยนรหัสผ่าน</h4>
+                                    </div>
+                                    <Input type="password" label="รหัสผ่านปัจจุบัน" value={accountForm.currentPassword} onChange={(e: any) => setAccountForm({ ...accountForm, currentPassword: e.target.value })} autoComplete="current-password" />
+                                    <Input type="password" label="รหัสผ่านใหม่" value={accountForm.newPassword} onChange={(e: any) => setAccountForm({ ...accountForm, newPassword: e.target.value })} autoComplete="new-password" />
+                                    <Input type="password" label="ยืนยันรหัสผ่านใหม่" value={accountForm.confirmPassword} onChange={(e: any) => setAccountForm({ ...accountForm, confirmPassword: e.target.value })} autoComplete="new-password" />
+                                    <Button onClick={saveAccountPassword} disabled={accountSaving} variant="outline">
+                                        {accountSaving ? 'กำลังบันทึก...' : 'เปลี่ยนรหัสผ่าน'}
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-500">ไม่พบข้อมูลบัญชี</p>
+                        )
+                    ) : activeTab === 'general' ? (
                         <div className="space-y-6 max-w-lg">
                             <h3 className="font-bold text-lg mb-4">ตั้งค่าทั่วไป</h3>
                             <Input label="ชื่อเว็บไซต์/แอพ" value={generalForm.name} onChange={(e: any) => setGeneralForm({ ...generalForm, name: e.target.value })} />
                             <Input label="ข้อความใต้ชื่อ (Subtext)" value={generalForm.subtext} onChange={(e: any) => setGeneralForm({ ...generalForm, subtext: e.target.value })} placeholder="เช่น ระบบจัดการ" />
+                            <p className="text-xs text-slate-500 flex items-start gap-2 rounded-lg bg-slate-50 dark:bg-white/[0.04] p-3 border border-slate-100 dark:border-white/10">
+                                <Info size={16} className="shrink-0 mt-0.5 text-slate-400" />
+                                <span>สกุลเงินที่ใช้ในระบบคือ <strong>บาท (THB)</strong> ชื่อแอปและโลโก้จะแสดงที่แถบด้านข้างและหน้าเข้าสู่ระบบ</span>
+                            </p>
 
                             {/* Logo Light Mode */}
                             <div className="flex flex-col gap-1.5">
@@ -275,6 +537,64 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
                             </div>
 
                             <Button onClick={saveGeneral} className="mt-4">บันทึกการเปลี่ยนแปลง</Button>
+                        </div>
+                    ) : activeTab === 'organization' ? (
+                        <div className="space-y-6 max-w-xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Building2 className="text-indigo-600" size={22} />
+                                <h3 className="font-bold text-lg">ข้อมูลองค์กร</h3>
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                ใช้เก็บชื่อ ที่อยู่ และเลขประจำตัวผู้เสียภาษีเพื่ออ้างอิงในเอกสารหรือรายงานในอนาคต — ไม่บังคับกรอกครบทุกช่อง
+                            </p>
+                            <Input label="ชื่อองค์กร / ชื่อกิจการ" value={orgForm.name} onChange={(e: any) => setOrgForm({ ...orgForm, name: e.target.value })} />
+                            <Input label="เบอร์โทรติดต่อ" value={orgForm.phone} onChange={(e: any) => setOrgForm({ ...orgForm, phone: e.target.value })} />
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">ที่อยู่</label>
+                                <textarea
+                                    className="border border-slate-200 dark:border-white/15 rounded-xl p-3 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 min-h-[88px]"
+                                    value={orgForm.address}
+                                    onChange={e => setOrgForm({ ...orgForm, address: e.target.value })}
+                                    placeholder="บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
+                                />
+                            </div>
+                            <Input label="เลขประจำตัวผู้เสียภาษี (ถ้ามี)" value={orgForm.taxId} onChange={(e: any) => setOrgForm({ ...orgForm, taxId: e.target.value })} placeholder="เช่น 13 หลัก" />
+                            <Button onClick={saveOrgProfile}>บันทึกข้อมูลองค์กร</Button>
+                        </div>
+                    ) : activeTab === 'fuelStock' ? (
+                        <div className="space-y-6 max-w-xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Droplets className="text-orange-500" size={22} />
+                                <h3 className="font-bold text-lg">ยอดยกมาสต็อกน้ำมัน (ลิตร)</h3>
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                ใช้คำนวณสต็อกคงเหลือร่วมกับรายการ «รับน้ำมันเข้าสต็อก» และ «เติมรถ» ในเมนูน้ำมัน — แก้ที่นี่ได้เหมือนในหน้าน้ำมัน
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Input label="ดีเซล (ลิตร)" type="number" value={fuelStockForm.diesel} onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, diesel: e.target.value })} />
+                                <Input label="เบนซิน (ลิตร)" type="number" value={fuelStockForm.benzine} onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, benzine: e.target.value })} />
+                            </div>
+                            <Button onClick={saveFuelOpening}>บันทึกยอดยกมา</Button>
+                        </div>
+                    ) : activeTab === 'defaults' ? (
+                        <div className="space-y-6 max-w-xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <SlidersHorizontal className="text-teal-600" size={22} />
+                                <h3 className="font-bold text-lg">ค่าเริ่มต้นระบบ</h3>
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                ตัวเลขที่ใช้เป็นค่าเริ่มในบันทึกงานประจำวัน (เช่น คำนวณปริมาณทรายจากจำนวนเที่ยวรถ)
+                            </p>
+                            <Input
+                                label="คิวต่อ 1 เที่ยวรถ (ค่าเริ่ม)"
+                                type="number"
+                                min={0.1}
+                                step={0.1}
+                                value={defaultsForm.sandCubicPerTrip}
+                                onChange={(e: any) => setDefaultsForm({ ...defaultsForm, sandCubicPerTrip: e.target.value })}
+                            />
+                            <p className="text-xs text-slate-400">ถ้าไม่แน่ใจ ใช้ 3 คิวต่อเที่ยวเป็นค่ามาตรฐาน</p>
+                            <Button onClick={saveAppDefaults}>บันทึกค่าเริ่มต้น</Button>
                         </div>
                     ) : activeTab === 'clearData' ? (
                         <div className="space-y-6 max-w-lg">
@@ -380,11 +700,20 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
                                 {positions.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีตำแหน่งที่บันทึกไว้</p>}
                             </div>
                         </div>
-                    ) : (
+                    ) : LIST_TAB_KEYS.includes(activeTab as (typeof LIST_TAB_KEYS)[number]) ? (
                         <>
+                            <div className="mb-4">
+                                <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{tabs.find(t => t.key === activeTab)?.l}</h3>
+                                {TAB_HELP[activeTab] && (
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 flex items-start gap-2">
+                                        <Info size={15} className="shrink-0 mt-0.5 opacity-70" />
+                                        {TAB_HELP[activeTab]}
+                                    </p>
+                                )}
+                            </div>
                             <div className="flex gap-2 mb-6"><Input placeholder="รายการใหม่..." value={newItem} onChange={(e: any) => setNewItem(e.target.value)} /><Button onClick={handleAdd}><Plus size={18} /> เพิ่ม</Button></div>
                             <div className="space-y-2">
-                                {(settings as any)[activeTab].map((item: string, idx: number) => {
+                                {((settings[activeTab as keyof AppSettings] as string[]) || []).map((item: string, idx: number) => {
                                     const isEditing = editingItem?.index === idx;
                                     return (
                                         <div key={idx} className="flex justify-between items-center gap-2 p-3 bg-slate-50 rounded-lg group">
@@ -412,6 +741,8 @@ const SettingsModule = ({ settings, setSettings, onClearAllData }: SettingsModul
                                 })}
                             </div>
                         </>
+                    ) : (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">เลือกหัวข้อจากเมนูด้านซ้าย</p>
                     )}
                 </Card>
             </div>

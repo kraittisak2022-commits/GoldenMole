@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Truck, Pencil, Trash2, History } from 'lucide-react';
+import { Truck, Pencil, Trash2, History, ClipboardList, BarChart3 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -27,9 +27,35 @@ const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.positio
 const driverEmployees = (employees: Employee[]) => employees.filter(e => getEmpPositions(e).includes('คนขับรถ'));
 
 const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete }: VehicleEntryProps) => {
+    const [section, setSection] = useState<'entry' | 'stats' | 'history'>('entry');
     const [form, setForm] = useState({ date: getToday(), car: '', driver: '', location: '', wage: '', vehicleWage: '', workDetails: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
     const drivers = driverEmployees(employees);
+
+    const vehicleStats = useMemo(() => {
+        const v = transactions.filter(t => t.category === 'Vehicle' && t.type === 'Expense');
+        const total = v.reduce((s, t) => s + (t.amount || 0), 0);
+        const byCar: Record<string, number> = {};
+        const byDriver: Record<string, number> = {};
+        v.forEach(t => {
+            const c = (t.vehicleId || 'ไม่ระบุรถ').trim();
+            byCar[c] = (byCar[c] || 0) + (t.amount || 0);
+            const dr = t.driverId
+                ? employees.find(e => e.id === t.driverId)?.nickname || employees.find(e => e.id === t.driverId)?.name || t.driverId
+                : 'ไม่ระบุคนขับ';
+            byDriver[dr] = (byDriver[dr] || 0) + (t.amount || 0);
+        });
+        const carRows = Object.entries(byCar).sort((a, b) => b[1] - a[1]);
+        const driverRows = Object.entries(byDriver).sort((a, b) => b[1] - a[1]);
+        return { total, count: v.length, carRows, driverRows };
+    }, [transactions, employees]);
+
+    const tabClass = (active: boolean) =>
+        `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+            active
+                ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.14]'
+        }`;
 
     const normDate = normalizeDate(form.date);
     const dayVehicleTx = useMemo(() =>
@@ -96,8 +122,21 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
     };
 
     return (
-        <>
-        <Card className="p-6 max-w-2xl mx-auto animate-fade-in">
+        <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
+            <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-white/10 pb-2 mb-2">
+                <button type="button" onClick={() => setSection('entry')} className={tabClass(section === 'entry')}>
+                    <ClipboardList size={18} /> บันทึก
+                </button>
+                <button type="button" onClick={() => setSection('stats')} className={tabClass(section === 'stats')}>
+                    <BarChart3 size={18} /> สถิติ
+                </button>
+                <button type="button" onClick={() => setSection('history')} className={tabClass(section === 'history')}>
+                    <History size={18} /> ประวัติ
+                </button>
+            </div>
+
+        {section === 'entry' && (
+        <Card className="p-6">
             <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
                 <Truck className="text-amber-500" /> บันทึกการใช้รถ
             </h3>
@@ -150,12 +189,62 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                 <Button onClick={handleSave} className="w-full mt-4">บันทึก</Button>
             </div>
         </Card>
+        )}
 
-        {/* ประวัติการใช้รถ */}
-        {transactions && (() => {
+        {section === 'stats' && (
+            <div className="space-y-4">
+                <Card className="p-6">
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                        <BarChart3 className="text-amber-500" /> สรุปการใช้รถทั้งหมด
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                        <div className="rounded-xl border border-amber-100 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-950/20 p-4">
+                            <p className="text-xs text-amber-800 dark:text-amber-200">จำนวนครั้ง</p>
+                            <p className="text-2xl font-bold text-slate-900 dark:text-white">{vehicleStats.count}</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-white/10 p-4">
+                            <p className="text-xs text-slate-500">ยอดรวมค่าใช้รถ</p>
+                            <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">฿{vehicleStats.total.toLocaleString()}</p>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-6">
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-200 mb-3">แยกตามคันรถ</h4>
+                    {vehicleStats.carRows.length === 0 ? (
+                        <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>
+                    ) : (
+                        <ul className="space-y-2 max-h-52 overflow-y-auto">
+                            {vehicleStats.carRows.map(([name, amt]) => (
+                                <li key={name} className="flex justify-between text-sm border-b border-slate-100 dark:border-white/10 pb-2">
+                                    <span className="text-slate-700 dark:text-slate-300 truncate pr-2">{name}</span>
+                                    <span className="font-semibold text-amber-700 dark:text-amber-300 shrink-0">฿{amt.toLocaleString()}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Card>
+                <Card className="p-6">
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-200 mb-3">แยกตามคนขับ</h4>
+                    {vehicleStats.driverRows.length === 0 ? (
+                        <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>
+                    ) : (
+                        <ul className="space-y-2 max-h-52 overflow-y-auto">
+                            {vehicleStats.driverRows.map(([name, amt]) => (
+                                <li key={name} className="flex justify-between text-sm border-b border-slate-100 dark:border-white/10 pb-2">
+                                    <span className="text-slate-700 dark:text-slate-300 truncate pr-2">{name}</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-100 shrink-0">฿{amt.toLocaleString()}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Card>
+            </div>
+        )}
+
+        {section === 'history' && transactions && (() => {
             const vehicleHistory = transactions.filter((t: Transaction) => t.category === 'Vehicle').slice(-30).reverse();
             return (
-                <Card className="mt-6 p-0 overflow-hidden border border-slate-200 shadow-sm">
+                <Card className="p-0 overflow-hidden border border-slate-200 shadow-sm">
                     <div className="p-4 bg-gradient-to-r from-amber-50 to-amber-100/50 border-b flex items-center justify-between">
                         <span className="flex items-center gap-2 text-amber-800 font-bold">
                             <History size={18} /> ประวัติการใช้รถ ({vehicleHistory.length} รายการ)
@@ -183,7 +272,7 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                 </Card>
             );
         })()}
-    </>
+        </div>
     );
 };
 

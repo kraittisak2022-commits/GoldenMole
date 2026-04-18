@@ -1,4 +1,41 @@
+import type { Transaction } from '../types';
+
 const TZ_TH = 'Asia/Bangkok';
+
+/** แปลงปริมาณน้ำมันในธุรกรรมเป็นหน่วยลิตร (รองรับ L / gallon / แกลลอน) */
+export function fuelTxToLiters(t: Transaction): number {
+    const q = Number(t.quantity) || 0;
+    if (!q) return 0;
+    const u = (t.unit || 'L').toLowerCase();
+    if (u === 'gallon' || u === 'แกลลอน') return q * 3.785411784;
+    return q;
+}
+
+/** รับเข้าสต็อก vs เติมรถ — ข้อมูลเก่า: มี vehicleId = เติมรถ, ไม่มี = รับเข้า */
+export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
+    if (t.category !== 'Fuel') return 'stock_out';
+    if (t.fuelMovement === 'stock_in' || t.fuelMovement === 'stock_out') return t.fuelMovement;
+    return t.vehicleId ? 'stock_out' : 'stock_in';
+}
+
+export function computeFuelStockBalances(
+    transactions: Transaction[],
+    opening?: { Diesel?: number; Benzine?: number }
+): { Diesel: number; Benzine: number } {
+    let d = opening?.Diesel ?? 0;
+    let b = opening?.Benzine ?? 0;
+    for (const t of transactions) {
+        if (t.category !== 'Fuel' || t.type !== 'Expense') continue;
+        const ft = t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
+        const liters = fuelTxToLiters(t);
+        if (!liters) continue;
+        const mov = inferFuelMovement(t);
+        const delta = mov === 'stock_in' ? liters : -liters;
+        if (ft === 'Benzine') b += delta;
+        else d += delta;
+    }
+    return { Diesel: d, Benzine: b };
+}
 
 /** วันที่ปัจจุบันในประเทศไทย (YYYY-MM-DD) */
 export const getToday = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ_TH });

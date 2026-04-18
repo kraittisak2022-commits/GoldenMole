@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     note TEXT,
     work_details TEXT,
     fuel_type TEXT,
+    fuel_movement TEXT,
     payroll_period JSONB,
     payroll_snapshot JSONB,
     machine_id TEXT,
@@ -97,8 +98,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
     maintenance_types JSONB DEFAULT '[]'::jsonb,
     locations JSONB DEFAULT '[]'::jsonb,
     land_groups JSONB DEFAULT '[]'::jsonb,
+    fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- เพิ่มคอลัมน์สต็อกน้ำมันยกมา (ถ้ามีตาราง app_settings อยู่แล้วจากเวอร์ชันเก่า)
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb;
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_movement TEXT;
 
 -- 5. Admin Users
 CREATE TABLE IF NOT EXISTS admin_users (
@@ -134,7 +141,14 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow full access for authenticated and anon users
+-- Allow full access for authenticated and anon users (DROP ก่อนเพื่อให้รันสคริปต์ซ้ำได้)
+DROP POLICY IF EXISTS "Allow all on employees" ON employees;
+DROP POLICY IF EXISTS "Allow all on transactions" ON transactions;
+DROP POLICY IF EXISTS "Allow all on land_projects" ON land_projects;
+DROP POLICY IF EXISTS "Allow all on app_settings" ON app_settings;
+DROP POLICY IF EXISTS "Allow all on admin_users" ON admin_users;
+DROP POLICY IF EXISTS "Allow all on admin_logs" ON admin_logs;
+
 CREATE POLICY "Allow all on employees" ON employees FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on land_projects" ON land_projects FOR ALL USING (true) WITH CHECK (true);

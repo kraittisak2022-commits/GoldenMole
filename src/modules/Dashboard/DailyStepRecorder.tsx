@@ -324,16 +324,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             <div className="flex flex-col gap-3 sm:gap-4 mb-3 sm:mb-6">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
                     <div>
-                        <h2 className="text-lg sm:text-2xl font-bold text-slate-800">บันทึกงานประจำวัน (Daily Wizard)</h2>
-                        <p className="text-slate-500 text-xs sm:text-sm">
+                        <h2 className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100">บันทึกงานประจำวัน (Daily Wizard)</h2>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
                             {viewMode === 'record' ? 'ระบบช่วยบันทึกข้อมูลแบบทีละขั้นตอน' : 'รายงานสรุปข้อมูลที่บันทึกในแต่ละวัน'}
                         </p>
                     </div>
-                    <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-full sm:w-auto">
+                    <div className="flex rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] p-1 shadow-sm w-full sm:w-auto">
                         <button
                             type="button"
                             onClick={() => setViewMode('record')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'}`}
                         >
                             <ClipboardList size={16} />
                             บันทึก
@@ -341,7 +341,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         <button
                             type="button"
                             onClick={() => setViewMode('report')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'}`}
                         >
                             <FileText size={16} />
                             รายงาน
@@ -351,7 +351,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                 {viewMode === 'record' && (
                     <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar w-full sm:w-auto">
                         {STEPS.map((s, i) => (
-                            <div key={s.id} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                            <div key={s.id} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${step === i ? 'bg-indigo-600 text-white' : i < step ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400'}`}>
                                 <s.icon size={12} />
                                 <span className="hidden sm:inline">{s.label}</span>
                             </div>
@@ -365,7 +365,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                 <div className="space-y-6 animate-fade-in">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
                                 ช่วงวันที่
                             </p>
                             <div className="flex items-center gap-2 text-xs">
@@ -375,7 +375,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     onChange={e => setReportStart(e.target.value)}
                                     className="border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-white/5 text-slate-700 dark:text-slate-100"
                                 />
-                                <span className="text-slate-400">ถึง</span>
+                                <span className="text-slate-400 dark:text-slate-500">ถึง</span>
                                 <input
                                     type="date"
                                     value={reportEnd || ''}
@@ -392,8 +392,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         {reportData.length === 0 ? (
                             <Card className="p-12 text-center">
                                 <FileText size={48} className="mx-auto text-slate-300 mb-3" />
-                                <p className="text-slate-500 font-medium">ไม่มีข้อมูลบันทึกงานในช่วงนี้</p>
-                                <p className="text-sm text-slate-400 mt-1">ลองเลือกช่วงวันที่อื่นหรือไปที่โหมด บันทึก เพื่อกรอกข้อมูล</p>
+                                <p className="text-slate-500 dark:text-slate-300 font-medium">ไม่มีข้อมูลบันทึกงานในช่วงนี้</p>
+                                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">ลองเลือกช่วงวันที่อื่นหรือไปที่โหมด บันทึก เพื่อกรอกข้อมูล</p>
                             </Card>
                         ) : reportData.map(([dateStr, txs]) => {
                             const labor = txs.filter(t => t.category === 'Labor');
@@ -549,14 +549,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         {/* Step 0: Date */}
                         {step === 0 && (
                             <div className="flex flex-col items-center justify-center h-full space-y-6 animate-slide-up">
-                                <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 mb-2">
+                                <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-300 mb-2">
                                     <Calendar size={32} />
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-800">เลือกวันที่ต้องการบันทึก</h3>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">เลือกวันที่ต้องการบันทึก</h3>
                                 <div className="w-full max-w-sm">
                                     <DatePicker label="วันที่" value={date} onChange={setDate} />
                                 </div>
-                                <div className="p-4 bg-orange-50 text-orange-700 rounded-xl text-sm border border-orange-100 max-w-md text-center">
+                                <div className="p-4 bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-200 rounded-xl text-sm border border-orange-100 dark:border-orange-500/25 max-w-md text-center">
                                     💡 ระบบจะดึงข้อมูลเก่าของวันนี้มาแสดงให้ตรวจสอบด้วยครับ
                                 </div>
                                 <Button onClick={nextStep} className="mt-8 px-8 py-3 text-lg shadow-lg shadow-indigo-200">
@@ -569,30 +569,30 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         {step === 1 && (
                             <div className="h-full flex flex-col animate-slide-up">
                                 <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-lg flex items-center gap-2"><Users className="text-emerald-500" /> บันทึกค่าแรง / OT</h3>
-                                    <span className="text-xs text-slate-400">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                                    <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Users className="text-emerald-500 dark:text-emerald-400" /> บันทึกค่าแรง / OT</h3>
+                                    <span className="text-xs text-slate-400 dark:text-slate-500">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                                 </div>
 
                                 <div className="flex gap-3 mb-4">
-                                    <button onClick={() => setLaborStatus('Work')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'Work' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-bold' : 'bg-white hover:bg-slate-50'}`}>✅ มาทำงาน</button>
-                                    <button onClick={() => setLaborStatus('OT')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'OT' ? 'bg-amber-50 border-amber-500 text-amber-700 font-bold' : 'bg-white hover:bg-slate-50'}`}>🕒 OT</button>
+                                    <button onClick={() => setLaborStatus('Work')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'Work' ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>✅ มาทำงาน</button>
+                                    <button onClick={() => setLaborStatus('OT')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'OT' ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>🕒 OT</button>
                                 </div>
                                 {laborStatus === 'Work' && (
-                                    <p className="text-xs text-slate-500 mb-2">💡 มาทำงานปกติ = เต็มวัน (ไม่ต้องกด) — ถ้ามาครึ่งวันให้กดปุ่ม &quot;½ ครึ่งวัน&quot ที่ชื่อคนนั้น</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">💡 มาทำงานปกติ = เต็มวัน (ไม่ต้องกด) — ถ้ามาครึ่งวันให้กดปุ่ม &quot;½ ครึ่งวัน&quot ที่ชื่อคนนั้น</p>
                                 )}
 
                                 {/* รายการบันทึกวันนี้ (ค่าแรง/OT) — เรียลไทม์ */}
                                 {step === 1 && (
-                                    <div className="mb-4 p-3 rounded-xl border border-emerald-200 bg-emerald-50/80">
-                                        <p className="text-xs font-bold text-emerald-800 mb-2">📋 รายการบันทึกวันนี้ (อัปเดตทันที)</p>
+                                    <div className="mb-4 p-3 rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-500/10">
+                                        <p className="text-xs font-bold text-emerald-800 dark:text-emerald-200 mb-2">📋 รายการบันทึกวันนี้ (อัปเดตทันที)</p>
                                         {dayTransactions.filter(t => t.category === 'Labor').length === 0 ? (
-                                            <p className="text-sm text-slate-500 py-2">ยังไม่มีรายการค่าแรง/OT วันนี้ — เมื่อกดบันทึกจะแสดงที่นี่ทันที</p>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400 py-2">ยังไม่มีรายการค่าแรง/OT วันนี้ — เมื่อกดบันทึกจะแสดงที่นี่ทันที</p>
                                         ) : (
                                             <div className="space-y-1.5 max-h-32 overflow-y-auto">
                                                 {dayTransactions.filter(t => t.category === 'Labor').map(t => (
-                                                    <div key={t.id} className="flex justify-between items-center text-sm py-1.5 px-2 rounded-lg bg-white/80 border border-emerald-100">
-                                                        <span className="font-medium text-slate-700 truncate flex-1">{t.description}</span>
-                                                        <span className="text-emerald-700 font-bold shrink-0 ml-2">฿{t.amount?.toLocaleString() ?? 0}</span>
+                                                    <div key={t.id} className="flex justify-between items-center text-sm py-1.5 px-2 rounded-lg bg-white/80 dark:bg-white/5 border border-emerald-100 dark:border-emerald-500/20">
+                                                        <span className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{t.description}</span>
+                                                        <span className="text-emerald-700 dark:text-emerald-300 font-bold shrink-0 ml-2">฿{t.amount?.toLocaleString() ?? 0}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -603,20 +603,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 {/* === OT MODE: Clean form layout === */}
                                 {laborStatus === 'OT' && (
                                     <div className="flex-1 flex flex-col">
-                                        <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                                        <div className="flex-1 bg-white dark:bg-white/[0.03] p-5 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm space-y-5">
                                             {/* Date */}
                                             <div>
-                                                <label className="text-sm font-bold text-slate-700 mb-1.5 block">วันที่</label>
+                                                <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">วันที่</label>
                                                 <input type="date" value={date} readOnly
-                                                    className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 bg-slate-50" />
+                                                    className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-white/5" />
                                             </div>
 
                                             {/* Employee selector */}
-                                            <div className="border border-slate-200 rounded-xl p-4">
+                                            <div className="border border-slate-200 dark:border-white/10 rounded-xl p-4">
                                                 <div className="flex justify-between items-center mb-3">
-                                                    <span className="text-sm font-bold text-slate-700">เลือกพนักงาน ({selectedEmps.length})</span>
+                                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">เลือกพนักงาน ({selectedEmps.length})</span>
                                                     <input placeholder="ค้นหาชื่อ..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)}
-                                                        className="text-sm border rounded-lg px-3 py-1.5 w-32" />
+                                                        className="text-sm border border-slate-200 dark:border-white/15 rounded-lg px-3 py-1.5 w-32 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder:text-slate-400" />
                                                 </div>
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                     {employees.filter(e => e.name.includes(laborSearch) || e.nickname.includes(laborSearch)).map(emp => {
@@ -624,7 +624,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                         return (
                                                             <button key={emp.id}
                                                                 onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
-                                                                className={`px-3 py-2.5 rounded-xl text-sm text-left font-medium transition-all border-2 ${isSelected ? 'border-slate-800 bg-slate-50 text-slate-800' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}`}>
+                                                                className={`px-3 py-2.5 rounded-xl text-sm text-left font-medium transition-all border-2 ${isSelected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}>
                                                                 {emp.nickname} ({emp.name})
                                                             </button>
                                                         );
@@ -634,30 +634,30 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                             {/* OT Rate */}
                                             <div>
-                                                <label className="text-sm font-bold text-slate-700 mb-1.5 block">ค่า OT (บาท/คน/ชม.)</label>
+                                                <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">ค่า OT (บาท/คน/ชม.)</label>
                                                 <input type="number" placeholder="" value={otRate} onChange={e => setOtRate(e.target.value)}
-                                                    className="w-full px-4 py-3.5 border border-slate-300 rounded-xl text-base text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                                    className="w-full px-4 py-3.5 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                             </div>
 
                                             {/* OT Hours */}
                                             <div>
-                                                <label className="text-sm font-bold text-slate-700 mb-1.5 block">จำนวนชั่วโมง OT</label>
+                                                <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">จำนวนชั่วโมง OT</label>
                                                 <input type="number" placeholder="เช่น 2.5" value={otHours} onChange={e => setOtHours(e.target.value)}
-                                                    className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                                    className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                             </div>
 
                                             {/* OT Description */}
                                             <div>
-                                                <label className="text-sm font-bold text-slate-700 mb-1.5 block">รายละเอียดงาน OT</label>
+                                                <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">รายละเอียดงาน OT</label>
                                                 <input type="text" placeholder="ทำอะไร..." value={otDesc} onChange={e => setOtDesc(e.target.value)}
-                                                    className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                                    className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                             </div>
 
                                             {/* OT Summary */}
                                             {selectedEmps.length > 0 && Number(otRate) > 0 && Number(otHours) > 0 && (
-                                                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-center">
-                                                    <span className="text-sm text-amber-800">รวม: <span className="font-bold text-lg">{(Number(otRate) * Number(otHours) * selectedEmps.length).toLocaleString()}</span> บาท</span>
-                                                    <span className="text-xs text-amber-600 block">({selectedEmps.length} คน × {otRate} บาท × {otHours} ชม.)</span>
+                                                <div className="bg-amber-50 dark:bg-amber-500/10 p-3 rounded-xl border border-amber-200 dark:border-amber-500/25 text-center">
+                                                    <span className="text-sm text-amber-800 dark:text-amber-200">รวม: <span className="font-bold text-lg">{(Number(otRate) * Number(otHours) * selectedEmps.length).toLocaleString()}</span> บาท</span>
+                                                    <span className="text-xs text-amber-600 dark:text-amber-300/90 block">({selectedEmps.length} คน × {otRate} บาท × {otHours} ชม.)</span>
                                                 </div>
                                             )}
 
@@ -927,8 +927,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <Input label="เบี้ยเลี้ยงคนขับ (ใช้ค่าแรงในวันนั้น)" type="number" value={vehWage} onChange={(e: any) => setVehWage(e.target.value)} />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-sm font-medium text-slate-700">รายละเอียดงาน</label>
-                                        <textarea className="border rounded-xl p-2 text-sm" rows={2} value={vehDetails} onChange={e => setVehDetails(e.target.value)} placeholder="ขนดิน, ปรับพื้นที่..." />
+                                        <label className="text-sm font-medium text-slate-700 dark:text-slate-200">รายละเอียดงาน</label>
+                                        <textarea className="border border-slate-200 dark:border-white/15 rounded-xl p-2 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400" rows={2} value={vehDetails} onChange={e => setVehDetails(e.target.value)} placeholder="ขนดิน, ปรับพื้นที่..." />
                                     </div>
                                     <Button onClick={() => {
                                         if (!vehCar || !vehDriver) return alert('ข้อมูลไม่ครบ');
@@ -954,7 +954,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 {/* Header with date and saved totals */}
                                 <div className="flex flex-col gap-2 mb-4">
                                     <div className="flex justify-between items-center">
-                                        <h3 className="font-bold text-lg flex items-center gap-2"><Truck className="text-blue-500" /> บันทึกรถและจำนวนเที่ยวรถ</h3>
+                                        <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Truck className="text-blue-500 dark:text-blue-400" /> บันทึกรถและจำนวนเที่ยวรถ</h3>
                                         {(() => {
                                             const savedTrips = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                                             const savedTotalTrips = savedTrips.reduce((sum, t) => sum + ((t as any).perCarTrips || 0), 0);
@@ -973,29 +973,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             );
                                         })()}
                                     </div>
-                                    <div className="text-sm text-slate-500 flex items-center gap-1.5">
-                                        📅 วันที่: <span className="font-semibold text-indigo-600">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                    <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                        📅 วันที่: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
                                     </div>
                                 </div>
 
                                 {/* Morning / Afternoon Trip Counts + Cubic per trip */}
-                                <div className="bg-gradient-to-r from-amber-50 to-blue-50 p-4 rounded-xl border border-amber-100 mb-4">
-                                    <p className="text-sm font-bold text-slate-700 mb-3">จำนวนเที่ยวรวม</p>
+                                <div className="bg-gradient-to-r from-amber-50 to-blue-50 dark:from-amber-500/10 dark:to-blue-500/10 p-4 rounded-xl border border-amber-100 dark:border-white/10 mb-4">
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">จำนวนเที่ยวรวม</p>
                                     <div className="grid grid-cols-3 gap-3">
                                         <div>
-                                            <label className="text-xs font-medium text-amber-700 mb-1 block">☀️ ช่วงเช้า (เที่ยว)</label>
+                                            <label className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1 block">☀️ ช่วงเช้า (เที่ยว)</label>
                                             <input type="number" placeholder="0" value={tripMorning} onChange={e => setTripMorning(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none transition-colors" />
+                                                className="w-full px-3 py-2.5 border-2 border-amber-200 dark:border-amber-500/35 rounded-xl text-center text-lg font-bold text-amber-800 dark:text-amber-200 bg-white dark:bg-white/5 focus:border-amber-400 focus:outline-none transition-colors" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-blue-700 mb-1 block">🌙 ช่วงบ่าย (เที่ยว)</label>
+                                            <label className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1 block">🌙 ช่วงบ่าย (เที่ยว)</label>
                                             <input type="number" placeholder="0" value={tripAfternoon} onChange={e => setTripAfternoon(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none transition-colors" />
+                                                className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-500/35 rounded-xl text-center text-lg font-bold text-blue-800 dark:text-blue-200 bg-white dark:bg-white/5 focus:border-blue-400 focus:outline-none transition-colors" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-emerald-700 mb-1 block">📦 คิว/เที่ยว</label>
+                                            <label className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1 block">📦 คิว/เที่ยว</label>
                                             <input type="number" placeholder="3" value={cubicPerTrip} onChange={e => setCubicPerTrip(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-emerald-200 rounded-xl text-center text-lg font-bold text-emerald-800 bg-white focus:border-emerald-400 focus:outline-none transition-colors" />
+                                                className="w-full px-3 py-2.5 border-2 border-emerald-200 dark:border-emerald-500/35 rounded-xl text-center text-lg font-bold text-emerald-800 dark:text-emerald-200 bg-white dark:bg-white/5 focus:border-emerald-400 focus:outline-none transition-colors" />
                                         </div>
                                     </div>
                                     {totalTrips > 0 && (() => {
@@ -1242,31 +1242,31 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <div className="bg-white/80 rounded-xl border border-cyan-100 p-3 shadow-sm">
                                                 <label className="text-[11px] font-semibold text-amber-700 mb-1.5 block">☀️ ช่วงเช้า เริ่มงาน (น.)</label>
                                                 <input type="time" value={sandMorningStart} onChange={e => setSandMorningStart(e.target.value)}
-                                                    className="w-full px-3 py-2.5 border border-amber-200/80 rounded-lg text-slate-800 bg-white text-sm font-medium focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 outline-none transition-all" />
+                                                    className="w-full px-3 py-2.5 border border-amber-200/80 dark:border-amber-500/30 rounded-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 text-sm font-medium focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 outline-none transition-all" />
                                             </div>
                                             <div className="bg-white/80 rounded-xl border border-cyan-100 p-3 shadow-sm">
                                                 <label className="text-[11px] font-semibold text-blue-700 mb-1.5 block">🌤️ ช่วงบ่าย เริ่มงาน (น.)</label>
                                                 <input type="time" value={sandAfternoonStart} onChange={e => setSandAfternoonStart(e.target.value)}
-                                                    className="w-full px-3 py-2.5 border border-blue-200/80 rounded-lg text-slate-800 bg-white text-sm font-medium focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 outline-none transition-all" />
+                                                    className="w-full px-3 py-2.5 border border-blue-200/80 dark:border-blue-500/30 rounded-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 text-sm font-medium focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 outline-none transition-all" />
                                             </div>
                                             <div className="bg-white/80 rounded-xl border border-teal-100 p-3 shadow-sm">
                                                 <label className="text-[11px] font-semibold text-teal-700 mb-1.5 block">🌙 เย็น หยุดล้าง (กี่โมง)</label>
                                                 <input type="time" value={sandEveningEnd} onChange={e => setSandEveningEnd(e.target.value)}
-                                                    className="w-full px-3 py-2.5 border border-teal-200/80 rounded-lg text-slate-800 bg-white text-sm font-medium focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 outline-none transition-all" />
+                                                    className="w-full px-3 py-2.5 border border-teal-200/80 dark:border-teal-500/30 rounded-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 text-sm font-medium focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 outline-none transition-all" />
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* จำนวนถังที่ได้วันนี้ */}
-                                    <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100/80 p-4 shadow-sm">
-                                        <label className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                                            <span className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-700">🪣</span>
+                                    <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-gradient-to-r from-slate-50 to-slate-100/80 dark:from-white/[0.04] dark:to-white/[0.02] p-4 shadow-sm">
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
+                                            <span className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-700 dark:text-amber-300">🪣</span>
                                             จำนวนถังที่ได้วันนี้
                                         </label>
                                         <div className="flex items-center gap-2">
                                             <input type="number" min="0" placeholder="0" value={sandDrumsObtained} onChange={e => setSandDrumsObtained(e.target.value)}
-                                                className="w-24 px-4 py-2.5 border-2 border-slate-200 rounded-xl text-center text-lg font-bold text-slate-800 bg-white focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all" />
-                                            <span className="text-slate-500 text-sm font-medium">ถัง</span>
+                                                className="w-24 px-4 py-2.5 border-2 border-slate-200 dark:border-white/15 rounded-xl text-center text-lg font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all" />
+                                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">ถัง</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1324,12 +1324,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         {/* Step 5: Fuel */}
                         {step === 5 && (
                             <div className="h-full flex flex-col animate-slide-up">
-                                <h3 className="font-bold text-xl text-slate-800 mb-5">Fuel Entry</h3>
+                                <h3 className="font-bold text-xl text-slate-800 dark:text-slate-100 mb-5">Fuel Entry</h3>
 
                                 {/* Saved fuel entries */}
                                 {dayTransactions.filter(t => t.category === 'Fuel').length > 0 && (
                                     <div className="mb-4 space-y-2">
-                                        <p className="text-sm font-semibold text-slate-500">รายการซื้อน้ำมันวันนี้ ({dayTransactions.filter(t => t.category === 'Fuel').length} รอบ)</p>
+                                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">รายการซื้อน้ำมันวันนี้ ({dayTransactions.filter(t => t.category === 'Fuel').length} รอบ)</p>
                                         <div className="flex gap-2 overflow-x-auto pb-2">
                                             {dayTransactions.filter(t => t.category === 'Fuel').map(t => (
                                                 <div key={t.id} className="min-w-[200px] p-3 bg-red-50 border border-red-100 rounded-xl text-xs relative">
@@ -1349,27 +1349,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 )}
 
                                 {/* Clean fuel entry form */}
-                                <div className="flex-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                                <div className="flex-1 bg-white dark:bg-white/[0.03] p-6 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm space-y-5">
                                     {/* Date */}
                                     <div>
-                                        <label className="text-sm font-medium text-slate-600 mb-1.5 block">วันที่</label>
+                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">วันที่</label>
                                         <input type="date" value={date} readOnly
-                                            className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 bg-slate-50" />
+                                            className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-white/5" />
                                     </div>
 
                                     {/* Fuel Type - Radio style */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <button onClick={() => setFuelType('Diesel')}
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Diesel' ? 'border-slate-800 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${fuelType === 'Diesel' ? 'border-slate-800' : 'border-slate-300'}`}>
-                                                {fuelType === 'Diesel' && <span className="w-3 h-3 rounded-full bg-slate-800"></span>}
+                                            type="button"
+                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Diesel' ? 'border-slate-800 dark:border-slate-300 bg-white dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20'}`}>
+                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${fuelType === 'Diesel' ? 'border-slate-800 dark:border-slate-300' : 'border-slate-300 dark:border-slate-500'}`}>
+                                                {fuelType === 'Diesel' && <span className="w-3 h-3 rounded-full bg-slate-800 dark:bg-slate-200"></span>}
                                             </span>
                                             ดีเซล
                                         </button>
                                         <button onClick={() => setFuelType('Benzine')}
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Benzine' ? 'border-slate-800 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${fuelType === 'Benzine' ? 'border-slate-800' : 'border-slate-300'}`}>
-                                                {fuelType === 'Benzine' && <span className="w-3 h-3 rounded-full bg-slate-800"></span>}
+                                            type="button"
+                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Benzine' ? 'border-slate-800 dark:border-slate-300 bg-white dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20'}`}>
+                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${fuelType === 'Benzine' ? 'border-slate-800 dark:border-slate-300' : 'border-slate-300 dark:border-slate-500'}`}>
+                                                {fuelType === 'Benzine' && <span className="w-3 h-3 rounded-full bg-slate-800 dark:bg-slate-200"></span>}
                                             </span>
                                             เบนซิน
                                         </button>
@@ -1378,14 +1380,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     {/* Quantity + Unit */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-sm font-medium text-slate-600 mb-1.5 block">จำนวนลิตร</label>
+                                            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">จำนวนลิตร</label>
                                             <input type="number" placeholder="" value={fuelLiters} onChange={e => setFuelLiters(e.target.value)}
-                                                className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                                className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                         </div>
                                         <div>
-                                            <label className="text-sm font-medium text-slate-600 mb-1.5 block">หน่วย</label>
+                                            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">หน่วย</label>
                                             <select value={fuelUnit} onChange={e => setFuelUnit(e.target.value)}
-                                                className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 bg-white focus:border-slate-500 focus:outline-none transition-colors appearance-none">
+                                                className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors appearance-none">
                                                 <option value="ลิตร">ลิตร</option>
                                                 <option value="แกลลอน">แกลลอน</option>
                                             </select>
@@ -1394,16 +1396,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                     {/* Price */}
                                     <div>
-                                        <label className="text-sm font-medium text-slate-600 mb-1.5 block">ราคาซื้อน้ำมัน (บาท)</label>
+                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">ราคาซื้อน้ำมัน (บาท)</label>
                                         <input type="number" placeholder="" value={fuelAmount} onChange={e => setFuelAmount(e.target.value)}
-                                            className="w-full px-4 py-4 border border-slate-300 rounded-xl text-lg text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                            className="w-full px-4 py-4 border border-slate-300 dark:border-white/15 rounded-xl text-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                     </div>
 
                                     {/* Details (optional) */}
                                     <div>
-                                        <label className="text-sm font-medium text-slate-600 mb-1.5 block">รายละเอียดเพิ่มเติม <span className="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
+                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">รายละเอียดเพิ่มเติม <span className="text-slate-400 dark:text-slate-500 font-normal">(ไม่บังคับ)</span></label>
                                         <input type="text" placeholder="เช่น ซื้อที่ปั๊มหน้าแคมป์" value={fuelDetails} onChange={e => setFuelDetails(e.target.value)}
-                                            className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-800 focus:border-slate-500 focus:outline-none transition-colors" />
+                                            className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                     </div>
 
                                     {/* Save button */}
@@ -1533,7 +1535,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             <div className="h-full flex flex-col animate-slide-up text-center">
                                 <div className="flex flex-col items-center justify-center mb-6">
                                     <FileText size={48} className="text-emerald-400 mb-4" />
-                                    <h3 className="text-2xl font-bold text-slate-800 mb-2">บันทึกข้อมูลเรียบร้อยแล้ว</h3>
+                                    <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">บันทึกข้อมูลเรียบร้อยแล้ว</h3>
                                     <p className="text-slate-500">สรุปข้อมูลที่คุณบันทึกในวันนี้ ({new Date(date).toLocaleDateString('th-TH')})</p>
                                 </div>
 
@@ -1589,16 +1591,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 })()}
 
                                 {/* Detailed list of today's records */}
-                                <div className="flex-1 w-full bg-slate-50/50 rounded-xl border border-slate-200 overflow-hidden flex flex-col mb-4">
-                                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 text-left">
-                                        <p className="font-bold text-slate-700 text-sm">รายการที่บันทึกแล้ววันนี้</p>
+                                <div className="flex-1 w-full bg-slate-50/50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col mb-4">
+                                    <div className="bg-slate-100 dark:bg-white/5 px-4 py-2 border-b border-slate-200 dark:border-white/10 text-left">
+                                        <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">รายการที่บันทึกแล้ววันนี้</p>
                                     </div>
                                     <div className="overflow-y-auto max-h-[250px] p-2 space-y-2 text-left">
                                         {dayTransactions.length === 0 ? (
-                                            <p className="text-center text-slate-400 py-4 text-sm">ไม่มีรายการบันทึกในวันนี้</p>
+                                            <p className="text-center text-slate-400 dark:text-slate-500 py-4 text-sm">ไม่มีรายการบันทึกในวันนี้</p>
                                         ) : (
                                             dayTransactions.map(t => (
-                                                <div key={t.id} className="bg-white p-3 rounded-lg border border-slate-200 text-sm flex justify-between items-center hover:bg-slate-50">
+                                                <div key={t.id} className="bg-white dark:bg-white/[0.04] p-3 rounded-lg border border-slate-200 dark:border-white/10 text-sm flex justify-between items-center hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             {t.category === 'Labor' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-bold">ค่าแรง</span>}
@@ -1607,9 +1609,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                             {t.category === 'DailyLog' && t.subCategory === 'VehicleTrip' && <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold">เที่ยวรถ</span>}
                                                             {t.category === 'DailyLog' && t.subCategory === 'Sand' && <span className="bg-cyan-100 text-cyan-700 text-[10px] px-1.5 py-0.5 rounded font-bold">ทราย</span>}
                                                             {t.category === 'DailyLog' && t.subCategory === 'Event' && <span className="bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded font-bold">เหตุการณ์</span>}
-                                                            <span className="font-medium text-slate-700">{t.description}</span>
+                                                            <span className="font-medium text-slate-700 dark:text-slate-200">{t.description}</span>
                                                         </div>
-                                                        <div className="text-xs text-slate-500">
+                                                        <div className="text-xs text-slate-500 dark:text-slate-400">
                                                             {t.category === 'Fuel' && <span className="mr-3">ค่าน้ำมันที่ซื้อ: ฿{t.amount?.toLocaleString()} บาท</span>}
                                                             {t.amount > 0 && t.category !== 'Fuel' && <span className="mr-3">ยอดเงิน: ฿{t.amount.toLocaleString()}</span>}
                                                             {((t as any).perCarTrips || (t as any).tripCount) && <span className="mr-3">จำนวน: {(t as any).perCarTrips || (t as any).tripCount} เที่ยว</span>}
@@ -1736,9 +1738,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
                             {dayTransactions.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 opacity-60">
-                                    <FileText size={48} className="mb-3 opacity-50" />
-                                    <p>ยังไม่มีรายการบันทึก</p>
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 dark:text-slate-300">
+                                    <FileText size={48} className="mb-3 text-slate-300 dark:text-slate-500" />
+                                    <p className="font-medium">ยังไม่มีรายการบันทึก</p>
                                 </div>
                             ) : (
                                 dayTransactions.map(t => (

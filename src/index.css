@@ -416,6 +416,70 @@
 
 .animate-shimmer-fast {
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-    background-size: 200% 100%;
     animation: shimmer 2s ease-in-out infinite;
+    background-size: 200% 100%;
+}
+
+/* Login page — typing / focus micro-interactions */
+@keyframes login-keystroke {
+    0% {
+        opacity: 0;
+        transform: scale(0.985);
+    }
+
+    35% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1);
+    }
+}
+
+.animate-login-keystroke-light {
+    animation: login-keystroke 0.42s ease-out forwards;
+    background: radial-gradient(ellipse 120% 80% at 50% 100%, rgba(197, 165, 90, 0.22), transparent 55%);
+}
+
+.animate-login-keystroke-dark {
+    animation: login-keystroke 0.42s ease-out forwards;
+    background: radial-gradient(ellipse 120% 80% at 50% 100%, rgba(0, 200, 255, 0.18), transparent 55%);
+}
+
+@keyframes login-icon-wiggle {
+    0%,
+    100% {
+        transform: rotate(0deg);
+    }
+
+    25% {
+        transform: rotate(-7deg);
+    }
+
+    75% {
+        transform: rotate(7deg);
+    }
+}
+
+.login-icon-typing {
+    animation: login-icon-wiggle 0.5s ease-in-out;
+}
+
+@keyframes login-bar-shimmer {
+    0% {
+        filter: brightness(1);
+    }
+
+    50% {
+        filter: brightness(1.15);
+    }
+
+    100% {
+        filter: brightness(1);
+    }
+}
+
+.login-input-bar-pulse {
+    animation: login-bar-shimmer 1.8s ease-in-out infinite;
 }

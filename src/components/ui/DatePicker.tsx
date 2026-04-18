@@ -100,16 +100,16 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
 
     return (
         <div className={`relative ${className}`} ref={containerRef}>
-            {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
+            {label && <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</label>}
 
             <div
                 ref={triggerRef}
                 className="relative cursor-pointer"
                 onClick={() => (isOpen ? setIsOpen(false) : openCalendar())}
             >
-                <div className="flex items-center w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 hover:border-emerald-400 transition-colors shadow-sm">
+                <div className="flex items-center w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 hover:border-emerald-400 dark:hover:border-emerald-500/50 transition-colors shadow-sm">
                     <span className="flex-1 text-center font-bold text-lg">{value ? formatDateBE(value) : 'เลือกวันที่'}</span>
-                    <CalendarIcon className="text-slate-400 shrink-0 ml-2" />
+                    <CalendarIcon className="text-slate-400 dark:text-slate-500 shrink-0 ml-2" />
                 </div>
             </div>
 
