@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS employees (
     nickname TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('Daily', 'Monthly')),
     base_wage NUMERIC NOT NULL DEFAULT 0,
+    position TEXT,
+    positions JSONB DEFAULT '[]'::jsonb,
     phone TEXT,
     start_date TEXT,
     salary_history JSONB DEFAULT '[]'::jsonb,
@@ -98,12 +100,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
     maintenance_types JSONB DEFAULT '[]'::jsonb,
     locations JSONB DEFAULT '[]'::jsonb,
     land_groups JSONB DEFAULT '[]'::jsonb,
+    employee_positions JSONB DEFAULT '[]'::jsonb,
     fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- เพิ่มคอลัมน์สต็อกน้ำมันยกมา (ถ้ามีตาราง app_settings อยู่แล้วจากเวอร์ชันเก่า)
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS employee_positions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS position TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS positions JSONB DEFAULT '[]'::jsonb;
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_movement TEXT;
 

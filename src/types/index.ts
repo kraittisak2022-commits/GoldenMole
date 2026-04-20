@@ -110,6 +110,7 @@ export interface AppDefaults {
 export interface AppSettings {
     appName: string; appSubtext: string; appIcon: string; appIconDark?: string;
     cars: string[]; jobDescriptions: string[]; incomeTypes: string[]; expenseTypes: string[]; maintenanceTypes: string[]; locations: string[]; landGroups: string[];
+    employeePositions?: string[];
     fuelOpeningStockLiters?: { Diesel?: number; Benzine?: number };
     orgProfile?: OrgProfile;
     appDefaults?: AppDefaults;

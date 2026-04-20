@@ -5,17 +5,17 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { formatDateBE } from '../../utils';
-import { Employee, Transaction, SalaryHistoryItem, KPIEvaluation } from '../../types';
-
-const POSITIONS_STORAGE_KEY = 'app_employee_positions';
+import { Employee, Transaction, SalaryHistoryItem, KPIEvaluation, AppSettings } from '../../types';
 
 interface EmployeeManagerProps {
     employees: Employee[];
     setEmployees: (emps: Employee[]) => void;
     transactions: Transaction[];
+    settings: AppSettings;
+    setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
 }
 
-const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeManagerProps) => {
+const EmployeeManager = ({ employees, setEmployees, transactions, settings, setSettings }: EmployeeManagerProps) => {
     const [section, setSection] = useState<'employees' | 'positions'>('employees');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingEmp, setEditingEmp] = useState<Partial<Employee>>({});
@@ -26,15 +26,14 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
     const [newKpi, setNewKpi] = useState({ date: new Date().toISOString().split('T')[0], score: 100, maxScore: 100, notes: '', evaluator: 'Admin' });
 
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
-    const [positions, setPositions] = useState<string[]>(() => {
-        try {
-            const s = localStorage.getItem(POSITIONS_STORAGE_KEY);
-            if (s) return JSON.parse(s);
-            return [...DEFAULT_POSITIONS];
-        } catch { return [...DEFAULT_POSITIONS]; }
-    });
+    const positions = (settings.employeePositions && settings.employeePositions.length > 0)
+        ? settings.employeePositions
+        : DEFAULT_POSITIONS;
     const [newPositionName, setNewPositionName] = useState('');
-    useEffect(() => { try { localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions)); } catch (_) {} }, [positions]);
+    useEffect(() => {
+        if (settings.employeePositions && settings.employeePositions.length > 0) return;
+        setSettings(prev => ({ ...prev, employeePositions: [...DEFAULT_POSITIONS] }));
+    }, [settings.employeePositions, setSettings]);
 
     const handleSave = () => {
         if (editingEmp.id) {
@@ -139,13 +138,25 @@ const EmployeeManager = ({ employees, setEmployees, transactions }: EmployeeMana
                     <p className="text-sm text-slate-500">จัดการตำแหน่งสำหรับระบุให้พนักงาน (ไม่บังคับ)</p>
                     <div className="flex gap-2 flex-wrap items-center">
                         <input className="border rounded-lg px-3 py-2 w-48" placeholder="ชื่อตำแหน่งใหม่" value={newPositionName} onChange={e => setNewPositionName(e.target.value)} />
-                        <Button onClick={() => { if (newPositionName.trim()) { setPositions(p => [...p, newPositionName.trim()]); setNewPositionName(''); } }}><Plus size={16} /> เพิ่มตำแหน่ง</Button>
+                        <Button onClick={() => {
+                            const nextPos = newPositionName.trim();
+                            if (!nextPos) return;
+                            if (positions.includes(nextPos)) return;
+                            setSettings(prev => ({ ...prev, employeePositions: [...positions, nextPos] }));
+                            setNewPositionName('');
+                        }}><Plus size={16} /> เพิ่มตำแหน่ง</Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {positions.map((pos, i) => (
                             <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 rounded-lg text-sm">
                                 {pos}
-                                <button type="button" onClick={() => setPositions(p => p.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">×</button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, employeePositions: positions.filter((_, j) => j !== i) }))}
+                                    className="text-slate-400 hover:text-red-500"
+                                >
+                                    ×
+                                </button>
                             </span>
                         ))}
                         {positions.length === 0 && <span className="text-slate-400 text-sm">ยังไม่มีตำแหน่ง</span>}

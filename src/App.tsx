@@ -70,6 +70,7 @@ const MOCK_SETTINGS: AppSettings = {
     maintenanceTypes: ['เปลี่ยนถ่ายน้ำมันเครื่อง', 'ปะยาง', 'ซ่อมเครื่องยนต์', 'อะไหล่สิ้นเปลือง'],
     locations: ['หน้างาน A', 'บ่อทราย B', 'ออฟฟิศใหญ่'],
     landGroups: ['โครงการหนองจอก', 'โครงการลาดกระบัง'],
+    employeePositions: ['คนขับรถ', 'รับจ้างรายวัน'],
     fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
     orgProfile: {},
     appDefaults: { sandCubicPerTrip: 3 },
@@ -272,6 +273,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 function App() {
+    const appVersion = import.meta.env.VITE_APP_VERSION || 'dev';
+    const appLastUpdated = import.meta.env.VITE_APP_UPDATED_AT || '';
     // --- Auth State ---
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
@@ -555,6 +558,7 @@ function App() {
     const handleSetTransactions = useCallback((updater: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
         setTransactions(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
+            next.forEach(t => db.saveTransaction(t));
             // Delete removed transactions
             const nextIds = new Set(next.map(t => t.id));
             prev.forEach(t => { if (!nextIds.has(t.id)) db.deleteTransaction(t.id); });
@@ -684,7 +688,7 @@ function App() {
     const renderContent = () => {
         switch (activeMenu) {
             case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
-            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} />;
+            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
             case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
@@ -734,7 +738,7 @@ function App() {
                 />
             );
         }
-        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
+        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} appVersion={appVersion} appLastUpdated={appLastUpdated} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
     }
 
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);

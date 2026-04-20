@@ -32,8 +32,6 @@ const TAB_HELP: Record<string, string> = {
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups'] as const;
 
-const POSITIONS_STORAGE_KEY = 'app_employee_positions';
-
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 
 const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
@@ -138,18 +136,15 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
     }, [settings.appDefaults]);
 
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
-    const [positions, setPositions] = useState<string[]>(() => {
-        try {
-            const s = localStorage.getItem(POSITIONS_STORAGE_KEY);
-            if (s) return JSON.parse(s);
-            return [...DEFAULT_POSITIONS];
-        } catch { return [...DEFAULT_POSITIONS]; }
-    });
+    const positions = (settings.employeePositions && settings.employeePositions.length > 0)
+        ? settings.employeePositions
+        : DEFAULT_POSITIONS;
     const [newPosition, setNewPosition] = useState('');
 
     useEffect(() => {
-        try { localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions)); } catch { }
-    }, [positions]);
+        if (settings.employeePositions && settings.employeePositions.length > 0) return;
+        setSettings(prev => ({ ...prev, employeePositions: [...DEFAULT_POSITIONS] }));
+    }, [settings.employeePositions, setSettings]);
 
     // sync general form เมื่อ settings เปลี่ยน
     useEffect(() => {
@@ -668,7 +663,13 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
                             <p className="text-sm text-slate-500 mb-4">เพิ่ม/แก้ไข/ลบชื่อตำแหน่งที่ใช้กำหนดให้พนักงาน เช่น คนงาน, ช่างเชื่อม, หัวหน้าทีม ฯลฯ</p>
                             <div className="flex gap-2 mb-4">
                                 <Input placeholder="ชื่อตำแหน่งใหม่..." value={newPosition} onChange={(e: any) => setNewPosition(e.target.value)} />
-                                <Button onClick={() => { if (!newPosition.trim()) return; setPositions(prev => [...prev, newPosition.trim()]); setNewPosition(''); }}><Plus size={18} /> เพิ่ม</Button>
+                                <Button onClick={() => {
+                                    const value = newPosition.trim();
+                                    if (!value) return;
+                                    if (positions.includes(value)) return;
+                                    setSettings(prev => ({ ...prev, employeePositions: [...positions, value] }));
+                                    setNewPosition('');
+                                }}><Plus size={18} /> เพิ่ม</Button>
                             </div>
                             <div className="space-y-2">
                                 {positions.map((p, idx) => {
@@ -681,17 +682,39 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
                                                         className="flex-1"
                                                         value={editingItem.value}
                                                         onChange={(e: any) => setEditingItem({ ...editingItem, value: e.target.value })}
-                                                        onKeyDown={(e: any) => { if (e.key === 'Enter') { const v = editingItem.value.trim(); if (v) { setPositions(prev => { const n = [...prev]; n[idx] = v; return n; }); setEditingItem(null); } } if (e.key === 'Escape') setEditingItem(null); }}
+                                                        onKeyDown={(e: any) => {
+                                                            if (e.key === 'Enter') {
+                                                                const v = editingItem.value.trim();
+                                                                if (v) {
+                                                                    const next = [...positions];
+                                                                    next[idx] = v;
+                                                                    setSettings(prev => ({ ...prev, employeePositions: next }));
+                                                                    setEditingItem(null);
+                                                                }
+                                                            }
+                                                            if (e.key === 'Escape') setEditingItem(null);
+                                                        }}
                                                         autoFocus
                                                     />
-                                                    <button onClick={() => { const v = editingItem.value.trim(); if (v) { setPositions(prev => { const n = [...prev]; n[idx] = v; return n; }); setEditingItem(null); }}} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
+                                                    <button onClick={() => {
+                                                        const v = editingItem.value.trim();
+                                                        if (v) {
+                                                            const next = [...positions];
+                                                            next[idx] = v;
+                                                            setSettings(prev => ({ ...prev, employeePositions: next }));
+                                                            setEditingItem(null);
+                                                        }
+                                                    }} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
                                                     <button onClick={() => setEditingItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="ยกเลิก"><X size={18} /></button>
                                                 </>
                                             ) : (
                                                 <>
                                                     <span className="text-slate-700 flex-1">{p}</span>
                                                     <button onClick={() => setEditingItem({ index: idx, value: p })} className="p-1.5 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100" title="แก้ไข"><Pencil size={16} /></button>
-                                                    <button onClick={() => { if (confirm('ลบตำแหน่งนี้?')) setPositions(prev => prev.filter((_, i) => i !== idx)); }} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100" title="ลบ"><Trash2 size={16} /></button>
+                                                    <button onClick={() => {
+                                                        if (!confirm('ลบตำแหน่งนี้?')) return;
+                                                        setSettings(prev => ({ ...prev, employeePositions: positions.filter((_, i) => i !== idx) }));
+                                                    }} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100" title="ลบ"><Trash2 size={16} /></button>
                                                 </>
                                             )}
                                         </div>

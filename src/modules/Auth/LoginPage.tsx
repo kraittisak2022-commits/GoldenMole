@@ -8,6 +8,8 @@ interface LoginPageProps {
     onLogin: (admin: AdminUser, plainPassword: string) => void | Promise<void>;
     appName: string;
     appIcon: string;
+    appVersion: string;
+    appLastUpdated?: string;
     darkMode: boolean;
     onToggleDarkMode: () => void;
 }
@@ -181,7 +183,7 @@ const NetworkBackground = ({ darkMode }: { darkMode: boolean }) => {
 };
 
 // ─── Login Page ─────────────────────────────────────────────────────────
-const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMode }: LoginPageProps) => {
+const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdated, darkMode, onToggleDarkMode }: LoginPageProps) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -226,6 +228,12 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
 
     const gold = '#C5A55A';
     const goldDark = '#8B7A3E';
+    const lastUpdatedText = (() => {
+        if (!appLastUpdated) return '-';
+        const d = new Date(appLastUpdated);
+        if (Number.isNaN(d.getTime())) return appLastUpdated;
+        return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' });
+    })();
 
     return (
         <div className={`min-h-screen min-h-[100dvh] flex items-center justify-center relative overflow-hidden transition-colors duration-700 ${darkMode ? 'bg-[#050510]' : 'bg-gradient-to-br from-stone-100 via-stone-50 to-amber-50/30'}`}>
@@ -473,6 +481,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, darkMode, onToggleDarkMo
                 <div className={`mt-6 text-center transition-all duration-700 delay-[800ms] ${mounted ? 'opacity-100' : 'opacity-0'}`}>
                     <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-black/60'}`}>
                         ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน
+                    </p>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-black/60'}`}>
+                        เวอร์ชัน {appVersion} • อัปเดตล่าสุด {lastUpdatedText}
                     </p>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-gray-800' : 'text-black/50'}`}>
                         © 2024 {appName}. All rights reserved.
