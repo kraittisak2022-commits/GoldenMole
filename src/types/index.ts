@@ -54,6 +54,10 @@ export interface Transaction {
     workType?: WorkType;
     /** กำหนดเต็มวัน/ครึ่งวันรายคน (บันทึกงานประจำวัน) — ไม่มี = เต็มวัน */
     workTypeByEmployee?: Record<string, WorkType>;
+    /** กลุ่มงานรายวัน: รหัสกลุ่ม -> รายชื่อ employeeId */
+    workAssignments?: Record<string, string[]>;
+    /** กลุ่มงานที่ผู้ใช้เพิ่มเองใน Daily Wizard */
+    customWorkCategories?: Array<{ id: string; label: string }>;
     otAmount?: number; advanceAmount?: number; specialAmount?: number;
     otHours?: number; // Added for detailed OT tracking
     otDescription?: string; // Added for detailed OT tracking
@@ -68,6 +72,13 @@ export interface Transaction {
     machineId?: string;
     machineHours?: number;
     machineWorkType?: string;
+    tripCount?: number;
+    tripMorning?: number;
+    tripAfternoon?: number;
+    cubicPerTrip?: number;
+    totalCubic?: number;
+    perCarTrips?: number;
+    perCarCubic?: number;
     sandMorning?: number;
     sandAfternoon?: number;
     sandMachineType?: 'Old' | 'New';
@@ -85,6 +96,8 @@ export interface Transaction {
     sandAfternoonStart?: string;
     /** บันทึกการล้างทราย: เย็นหยุดล้าง กี่โมง (HH:mm) */
     sandEveningEnd?: string;
+    eventType?: string;
+    eventPriority?: string;
     eventTime?: string;
 }
 

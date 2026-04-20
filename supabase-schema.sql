@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     location TEXT,
     labor_status TEXT,
     work_type TEXT,
+    work_type_by_employee JSONB,
+    work_assignments JSONB,
+    custom_work_categories JSONB DEFAULT '[]'::jsonb,
     ot_amount NUMERIC,
     advance_amount NUMERIC,
     special_amount NUMERIC,
@@ -64,6 +67,21 @@ CREATE TABLE IF NOT EXISTS transactions (
     sand_machine_type TEXT,
     sand_operators JSONB DEFAULT '[]'::jsonb,
     sand_transport NUMERIC,
+    drums_obtained NUMERIC,
+    drums_washed_at_home NUMERIC,
+    sand_work_start TEXT,
+    sand_morning_start TEXT,
+    sand_afternoon_start TEXT,
+    sand_evening_end TEXT,
+    trip_count NUMERIC,
+    trip_morning NUMERIC,
+    trip_afternoon NUMERIC,
+    cubic_per_trip NUMERIC,
+    total_cubic NUMERIC,
+    per_car_trips NUMERIC,
+    per_car_cubic NUMERIC,
+    event_type TEXT,
+    event_priority TEXT,
     event_time TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -102,16 +120,38 @@ CREATE TABLE IF NOT EXISTS app_settings (
     land_groups JSONB DEFAULT '[]'::jsonb,
     employee_positions JSONB DEFAULT '[]'::jsonb,
     fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb,
+    org_profile JSONB DEFAULT '{}'::jsonb,
+    app_defaults JSONB DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- เพิ่มคอลัมน์สต็อกน้ำมันยกมา (ถ้ามีตาราง app_settings อยู่แล้วจากเวอร์ชันเก่า)
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS employee_positions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS org_profile JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_defaults JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS position TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS positions JSONB DEFAULT '[]'::jsonb;
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_movement TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS work_type_by_employee JSONB;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS work_assignments JSONB;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS custom_work_categories JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS drums_obtained NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS drums_washed_at_home NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_work_start TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_morning_start TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_afternoon_start TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_evening_end TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trip_count NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trip_morning NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trip_afternoon NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cubic_per_trip NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS total_cubic NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS per_car_trips NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS per_car_cubic NUMERIC;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_type TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_priority TEXT;
 
 -- 5. Admin Users
 CREATE TABLE IF NOT EXISTS admin_users (
@@ -122,8 +162,13 @@ CREATE TABLE IF NOT EXISTS admin_users (
     role TEXT NOT NULL CHECK (role IN ('SuperAdmin', 'Admin')),
     created_at TEXT NOT NULL,
     last_login TEXT,
-    avatar TEXT
+    avatar TEXT,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+    ui_theme TEXT DEFAULT 'system'
 );
+
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS ui_theme TEXT DEFAULT 'system';
 
 -- 6. Admin Logs
 CREATE TABLE IF NOT EXISTS admin_logs (
