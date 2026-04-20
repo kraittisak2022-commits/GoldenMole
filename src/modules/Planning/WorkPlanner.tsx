@@ -86,6 +86,52 @@ const parseAiDateToIso = (value: string | undefined): string | null => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
     return parseDateDMYBEToISO(normalized);
 };
+const escapeHtml = (value: string): string => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = 'openai/gpt-5.4-mini';
+const AI_TIMEOUT_MS = 25000;
+
+const normalizeLane = (value?: string): PlanLane | undefined => {
+    if (!value) return undefined;
+    const normalized = value.trim().replace(/\s+/g, '');
+    if (normalized.includes('ท่าทราย') || normalized.includes('ทราย')) return 'ท่าทราย';
+    if (normalized.includes('แม่สุข')) return 'แม่สุข';
+    if (normalized.includes('ทดลองน้ำ') || normalized.includes('ทดลอง')) return 'ทดลองน้ำ';
+    return undefined;
+};
+
+const extractJsonObject = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+    const codeFence = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (codeFence?.[1]) {
+        const block = codeFence[1].trim();
+        if (block.startsWith('{') && block.endsWith('}')) return block;
+    }
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+    return null;
+};
+
+const toAiDraft = (raw: string): AiPlanDraft => {
+    const jsonText = extractJsonObject(raw);
+    if (!jsonText) throw new Error('AI ตอบกลับไม่เป็น JSON ที่อ่านได้');
+    const parsed = JSON.parse(jsonText) as AiPlanDraft;
+    return {
+        reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : '',
+        title: typeof parsed.title === 'string' ? parsed.title.trim() : '',
+        note: typeof parsed.note === 'string' ? parsed.note.trim() : '',
+        workType: typeof parsed.workType === 'string' ? parsed.workType.trim() : '',
+        lane: normalizeLane(typeof parsed.lane === 'string' ? parsed.lane : ''),
+        planDate: typeof parsed.planDate === 'string' ? parsed.planDate.trim() : '',
+    };
+};
 
 const addOneDay = (dateStr: string): string => {
     const d = new Date(dateStr);
@@ -368,15 +414,62 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
             }
             setWorkType(nextType);
         }
-        if (draft.lane && ['ท่าทราย', 'แม่สุข', 'ทดลองน้ำ'].includes(draft.lane)) {
-            setLane(draft.lane);
-        }
+        const laneValue = normalizeLane(draft.lane);
+        if (laneValue) setLane(laneValue);
         const parsedDate = parseAiDateToIso(draft.planDate);
         if (parsedDate) setSelectedDate(parsedDate);
     };
+    const requestAiDraft = async (savedKey: string, prompt: string): Promise<{ raw: string; draft: AiPlanDraft }> => {
+        const conversation = aiMessages.slice(-8).map(m => ({
+            role: m.role,
+            content: m.text,
+        }));
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+        try {
+            const resp = await fetch(OPENROUTER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${savedKey}`,
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    model: AI_MODEL,
+                    temperature: 0.15,
+                    max_tokens: 450,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: [
+                                'ตอบเป็น JSON เท่านั้นและต้องเป็น object เดียว',
+                                'keys ที่รองรับ: reply, title, note, workType, lane, planDate',
+                                'lane ต้องเป็น: ท่าทราย | แม่สุข | ทดลองน้ำ',
+                                'planDate ใช้รูปแบบ DD/MM/YYYY หรือ DD/MM/BBBB หรือ YYYY-MM-DD',
+                                'ถ้าข้อมูลไม่พอ ให้ตอบถามกลับใน reply และเว้น field อื่นเป็นค่าว่าง',
+                            ].join('. '),
+                        },
+                        ...conversation,
+                        { role: 'user', content: prompt },
+                    ],
+                    response_format: { type: 'json_object' },
+                }),
+            });
+            if (!resp.ok) {
+                const detail = await resp.text().catch(() => '');
+                throw new Error(`OpenRouter error ${resp.status}${detail ? `: ${detail.slice(0, 120)}` : ''}`);
+            }
+            const data = await resp.json();
+            const raw = data?.choices?.[0]?.message?.content;
+            if (!raw || typeof raw !== 'string') throw new Error('AI ไม่ได้ส่งข้อมูลกลับมา');
+            return { raw, draft: toAiDraft(raw) };
+        } finally {
+            window.clearTimeout(timer);
+        }
+    };
     const autoFillWithAi = async () => {
         const prompt = aiPrompt.trim();
-        if (!prompt) return;
+        if (!prompt || aiLoading) return;
         const savedKey = settings.appDefaults?.openRouterApiKey?.trim() || '';
         if (!savedKey) {
             setAiError('ยังไม่พบ OpenRouter API Key ในตั้งค่า');
@@ -385,38 +478,19 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
         setAiError(null);
         setAiLoading(true);
         try {
-            const conversation = aiMessages.slice(-10).map(m => ({
-                role: m.role,
-                content: m.text,
-            }));
-            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${savedKey}`,
-                },
-                body: JSON.stringify({
-                    model: 'openai/gpt-5.4-mini',
-                    temperature: 0.2,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'ตอบเป็น JSON เท่านั้นด้วย keys: reply, title, note, workType, lane, planDate. ใช้ reply เพื่อคุยโต้ตอบกับผู้ใช้และถามกลับเมื่อข้อมูลไม่พอ. lane ต้องเป็นหนึ่งใน: ท่าทราย, แม่สุข, ทดลองน้ำ. planDate ใช้รูปแบบ DD/MM/YYYY หรือ DD/MM/BBBB (พ.ศ.) หรือ YYYY-MM-DD',
-                        },
-                        ...conversation,
-                        {
-                            role: 'user',
-                            content: prompt,
-                        },
-                    ],
-                    response_format: { type: 'json_object' },
-                }),
-            });
-            if (!resp.ok) throw new Error(`OpenRouter error ${resp.status}`);
-            const data = await resp.json();
-            const raw = data?.choices?.[0]?.message?.content;
-            if (!raw) throw new Error('AI ไม่ได้ส่งข้อมูลกลับมา');
-            const draft = JSON.parse(raw) as AiPlanDraft;
+            let result: { raw: string; draft: AiPlanDraft } | null = null;
+            let lastErr: unknown = null;
+            for (let attempt = 1; attempt <= 2; attempt += 1) {
+                try {
+                    result = await requestAiDraft(savedKey, prompt);
+                    break;
+                } catch (err) {
+                    lastErr = err;
+                    if (attempt === 2) break;
+                }
+            }
+            if (!result) throw lastErr instanceof Error ? lastErr : new Error('AI ทำงานไม่สำเร็จ');
+            const { raw, draft } = result;
             applyAiDraft(draft);
             const assistantText = draft.reply?.trim() || 'AI อัปเดตข้อมูลให้แล้ว';
             setAiMessages(prev => [
@@ -427,7 +501,9 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
             setAiPrompt('');
             appendAiUsageLog('success', prompt);
         } catch (e) {
-            const msg = e instanceof Error ? e.message : 'AI ทำงานไม่สำเร็จ';
+            const msg = e instanceof DOMException && e.name === 'AbortError'
+                ? 'หมดเวลาเชื่อมต่อ AI (timeout) กรุณาลองใหม่'
+                : (e instanceof Error ? e.message : 'AI ทำงานไม่สำเร็จ');
             setAiError(msg);
             setAiMessages(prev => [
                 ...prev,
@@ -440,10 +516,44 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
         }
     };
     const printDailyA4 = () => {
-        const target = dailyReportRef.current;
-        if (!target) return;
+        if (scopeFilter !== 'Daily') return;
         const popup = window.open('', '_blank', 'width=900,height=1200');
         if (!popup) return;
+        const totalCount = todayPlans.length;
+        const doneCount = doneToday.length;
+        const pendingCount = pendingToday.length;
+        const laneOrder: PlanLane[] = ['ท่าทราย', 'แม่สุข', 'ทดลองน้ำ'];
+        const laneRows = laneOrder.map((laneName) => {
+            const rows = dailyPlansByLane[laneName];
+            const rowHtml = rows.length === 0
+                ? `<tr><td class="muted" colspan="5">- ไม่มีรายการ -</td></tr>`
+                : rows.map((item, idx) => `
+                    <tr>
+                        <td class="center">${idx + 1}</td>
+                        <td class="center">${item.status === 'Done' ? '☑' : '☐'}</td>
+                        <td>${escapeHtml(item.workType || item.title || '-')}</td>
+                        <td>${escapeHtml(item.note || item.title || '-')}</td>
+                        <td>${escapeHtml(item.carryHistory && item.carryHistory.length > 0 ? item.carryHistory[item.carryHistory.length - 1] : '-')}</td>
+                    </tr>
+                `).join('');
+            return `
+                <section class="lane-section">
+                    <div class="lane-head">${laneName}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:38px">ลำดับ</th>
+                                <th style="width:46px">สถานะ</th>
+                                <th style="width:160px">ประเภทงาน</th>
+                                <th>รายละเอียดงาน</th>
+                                <th style="width:180px">หมายเหตุ/ประวัติ</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowHtml}</tbody>
+                    </table>
+                </section>
+            `;
+        }).join('');
         popup.document.write(`
 <!doctype html>
 <html>
@@ -451,16 +561,56 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
   <meta charset="utf-8" />
   <title>แบบฟอร์มบันทึกงานรายวัน</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm; }
-    body { font-family: "Sarabun", "Tahoma", Arial, sans-serif; color: #111; margin: 0; }
-    .print-root { width: 100%; }
-    .print-root .print-hide { display: none !important; }
-    .print-root .border { border: 1px solid #9ca3af; }
-    .print-root .rounded-xl, .print-root .rounded-2xl { border-radius: 0; }
+    @page { size: A4 portrait; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Sarabun", "TH Sarabun New", "Tahoma", Arial, sans-serif; color: #111827; margin: 0; font-size: 12px; }
+    .sheet { width: 100%; }
+    .title { border: 1.5px solid #0f172a; padding: 10px 12px; margin-bottom: 8px; }
+    .title h1 { margin: 0; font-size: 18px; line-height: 1.2; }
+    .title p { margin: 4px 0 0; color: #334155; }
+    .meta-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .meta-box { border: 1px solid #334155; border-radius: 6px; padding: 6px 8px; min-height: 44px; }
+    .meta-label { font-size: 10px; color: #475569; margin-bottom: 2px; }
+    .meta-value { font-weight: 600; font-size: 13px; }
+    .lane-section { border: 1px solid #334155; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+    .lane-head { background: #e2e8f0; font-weight: 700; padding: 6px 8px; border-bottom: 1px solid #334155; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #94a3b8; padding: 6px; vertical-align: top; }
+    th { background: #f8fafc; text-align: left; font-size: 11px; }
+    td.center, th.center { text-align: center; vertical-align: middle; }
+    .muted { color: #64748b; text-align: center; font-style: italic; }
+    .foot { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .sign-box { border-top: 1px dashed #475569; padding-top: 6px; text-align: center; min-height: 52px; }
+    .footer-note { margin-top: 6px; font-size: 10px; color: #64748b; text-align: right; }
   </style>
 </head>
 <body>
-  <div class="print-root">${target.innerHTML}</div>
+  <div class="sheet">
+    <div class="title">
+      <h1>แบบฟอร์มบันทึกงานรายวัน</h1>
+      <p>${escapeHtml(settings.appName || 'Construction Management App')}</p>
+    </div>
+    <div class="meta-grid">
+      <div class="meta-box">
+        <div class="meta-label">วันที่บันทึก</div>
+        <div class="meta-value">${escapeHtml(formatDateDMYBE(selectedDate))}</div>
+      </div>
+      <div class="meta-box">
+        <div class="meta-label">สรุปจำนวนงาน</div>
+        <div class="meta-value">${totalCount} งาน</div>
+      </div>
+      <div class="meta-box">
+        <div class="meta-label">สถานะ</div>
+        <div class="meta-value">เสร็จ ${doneCount} | ค้าง ${pendingCount}</div>
+      </div>
+    </div>
+    ${laneRows}
+    <div class="foot">
+      <div class="sign-box">ผู้บันทึก _______________________________</div>
+      <div class="sign-box">ผู้ตรวจสอบ _______________________________</div>
+    </div>
+    <div class="footer-note">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')}</div>
+  </div>
 </body>
 </html>`);
         popup.document.close();
@@ -548,7 +698,7 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
                             className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-3 text-sm font-semibold text-purple-700 disabled:opacity-60 dark:text-purple-300"
                         >
                             <Sparkles size={14} />
-                            {aiLoading ? 'AI กำลังช่วยกรอก...' : 'ให้ AI กรอกข้อมูล'}
+                            {aiLoading ? 'AI กำลังช่วยกรอก...' : 'ให้ AI ช่วยกรอกข้อมูล'}
                         </button>
                         {aiError ? <span className="text-xs text-red-500">{aiError}</span> : null}
                     </div>
