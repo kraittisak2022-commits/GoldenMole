@@ -61,7 +61,11 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
     const checkOverlap = (empId: string, start: string, end: string) => transactions.some(t => t.category === 'Payroll' && t.employeeId === empId && t.payrollPeriod && (start <= t.payrollPeriod.end && end >= t.payrollPeriod.start));
 
     const calculatePayroll = (emp: Employee) => {
-        const empTrans = transactions.filter(t => t.date >= range.start && t.date <= range.end && (t.employeeId === emp.id || t.employeeIds?.includes(emp.id)));
+        const empTrans = transactions.filter(t =>
+            t.date >= range.start &&
+            t.date <= range.end &&
+            (t.employeeId === emp.id || t.employeeIds?.includes(emp.id) || t.driverId === emp.id)
+        );
         const isHalfDay = (t: Transaction) => {
             if (t.laborStatus !== 'Work') return false;
             if (t.workTypeByEmployee && emp.id in t.workTypeByEmployee) return t.workTypeByEmployee[emp.id] === 'HalfDay';
@@ -72,17 +76,34 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
         const ot = empTrans.reduce((s, t) => s + (t.otAmount || 0), 0);
         const adv = empTrans.reduce((s, t) => s + (t.advanceAmount || 0), 0);
         const special = empTrans.reduce((s, t) => s + (t.specialAmount || 0), 0);
+        const driverAllowance = empTrans.reduce((s, t) => s + (t.driverWage || 0), 0);
 
         const adj = adjustments[emp.id] || { bonus: 0, deduction: 0, note: '' };
 
         const base = emp.baseWage ?? 0;
         let basePay = emp.type === 'Monthly' ? base : (fullDays * base) + (halfDays * (base / 2));
-        const totalIncome = basePay + ot + special + adj.bonus;
+        const totalIncome = basePay + ot + special + driverAllowance + adj.bonus;
         const totalDeductions = adv + adj.deduction;
         const netPay = totalIncome - totalDeductions;
         const isPaid = checkOverlap(emp.id, range.start, range.end);
 
-        return { ...emp, fullDays, halfDays, income: totalIncome, net: netPay, ot, adv, special, basePay, transactions: empTrans, isPaid, customBonus: adj.bonus, customDeduction: adj.deduction, adjNote: adj.note };
+        return {
+            ...emp,
+            fullDays,
+            halfDays,
+            income: totalIncome,
+            net: netPay,
+            ot,
+            adv,
+            special,
+            driverAllowance,
+            basePay,
+            transactions: empTrans,
+            isPaid,
+            customBonus: adj.bonus,
+            customDeduction: adj.deduction,
+            adjNote: adj.note
+        };
     };
 
     const payrollData = useMemo(() => employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()) || e.nickname.toLowerCase().includes(search.toLowerCase())).map(emp => calculatePayroll(emp)), [employees, transactions, range, search, adjustments]);
@@ -104,6 +125,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
             basePay: p.basePay,
             ot: p.ot,
             special: p.special,
+            driverAllowance: p.driverAllowance,
             adv: p.adv,
             customBonus: p.customBonus,
             customDeduction: p.customDeduction,
@@ -325,6 +347,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">รายได้</p>
                                             <p className="text-sm text-slate-700">ค่าแรง: ฿{(p.basePay ?? 0).toLocaleString()}</p>
                                             <p className="text-sm text-slate-700">OT: ฿{(p.ot ?? 0).toLocaleString()} · พิเศษ: ฿{(p.special ?? 0).toLocaleString()}</p>
+                                            {(p.driverAllowance ?? 0) > 0 && <p className="text-sm text-amber-700 font-medium">เบี้ยเลี้ยงคนขับ: +฿{(p.driverAllowance ?? 0).toLocaleString()}</p>}
                                             {((p.customBonus ?? 0) > 0) && <p className="text-sm text-emerald-600 font-medium">โบนัส: +฿{(p.customBonus ?? 0).toLocaleString()}</p>}
                                         </div>
                                         <div className="bg-rose-50/50 rounded-xl p-3 border border-rose-100">
@@ -458,7 +481,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
             {/* View History Detail Modal - ใบสำคัญจ่ายเงินเดือน */}
             {viewHistoryItem && (() => {
                 const snap = viewHistoryItem.payrollSnapshot;
-                const totalEarnings = snap ? ((snap.basePay ?? 0) + (snap.ot ?? 0) + (snap.special ?? 0) + (snap.customBonus ?? 0)) : 0;
+                const totalEarnings = snap ? ((snap.basePay ?? 0) + (snap.ot ?? 0) + (snap.special ?? 0) + (snap.driverAllowance ?? 0) + (snap.customBonus ?? 0)) : 0;
                 const totalDeductions = snap ? ((snap.adv ?? 0) + (snap.customDeduction ?? 0)) : 0;
                 return (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
@@ -483,6 +506,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                                 <div className="flex justify-between px-4 py-3"><span className="text-slate-600">ค่าแรง ({snap.fullDays} วันเต็ม + {snap.halfDays} ครึ่งวัน)</span><span className="font-semibold">฿{(snap.basePay ?? 0).toLocaleString()}</span></div>
                                                 <div className="flex justify-between px-4 py-3"><span className="text-slate-600">ค่าล่วงเวลา (OT)</span><span className="font-semibold">฿{(snap.ot ?? 0).toLocaleString()}</span></div>
                                                 <div className="flex justify-between px-4 py-3"><span className="text-slate-600">พิเศษอื่นๆ</span><span className="font-semibold">฿{(snap.special ?? 0).toLocaleString()}</span></div>
+                                                <div className="flex justify-between px-4 py-3 bg-amber-50/40"><span className="text-amber-700 font-medium">เบี้ยเลี้ยงคนขับ</span><span className="font-semibold text-amber-700">+฿{(snap.driverAllowance ?? 0).toLocaleString()}</span></div>
                                                 <div className="flex justify-between px-4 py-3 bg-emerald-50/50"><span className="text-emerald-700 font-medium">โบนัส / เบี้ยขยัน</span><span className="font-semibold text-emerald-700">+฿{(snap.customBonus ?? 0).toLocaleString()}</span></div>
                                             </div>
                                             <div className="flex justify-between px-4 py-3 bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-800"><span>รวมรายได้</span><span>฿{totalEarnings.toLocaleString()}</span></div>
@@ -654,6 +678,12 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                             <span>รายได้พิเศษอื่นๆ</span>
                                             <span className="font-bold text-slate-800 text-base">{slipEmp.special.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                         </div>
+                                        {(slipEmp.driverAllowance > 0) && (
+                                            <div className="flex justify-between items-center p-2 text-amber-700 bg-amber-50 rounded">
+                                                <span>เบี้ยเลี้ยงคนขับ</span>
+                                                <span className="font-bold text-base">+{slipEmp.driverAllowance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        )}
                                         {(slipEmp.customBonus > 0) && (
                                             <div className="flex justify-between items-center p-2 text-emerald-600 bg-emerald-50 rounded">
                                                 <span>โบนัส / เบี้ยขยัน</span>

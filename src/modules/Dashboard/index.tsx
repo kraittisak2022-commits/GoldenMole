@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { CalendarDays } from 'lucide-react';
 import DashboardOverview from './DashboardOverview';
 import DashboardV4 from './DashboardV4';
@@ -27,7 +27,35 @@ const DASHBOARD_DETAIL_TABS = [
     { id: 'Wizard', label: 'บันทึกงาน' },
 ] as const;
 
-const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDeleteTransaction }: { transactions: Transaction[], settings: AppSettings, employees: Employee[], onSaveTransaction: any, onDeleteTransaction: any }) => {
+function useViewportNarrow(breakpointPx = 1024) {
+    const [narrow, setNarrow] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < breakpointPx : false));
+    useEffect(() => {
+        const mq = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
+        const sync = () => setNarrow(mq.matches);
+        sync();
+        mq.addEventListener('change', sync);
+        return () => mq.removeEventListener('change', sync);
+    }, [breakpointPx]);
+    return narrow;
+}
+
+const Dashboard = ({
+    transactions,
+    settings,
+    employees,
+    onSaveTransaction,
+    onDeleteTransaction,
+    isMobile = false,
+}: {
+    transactions: Transaction[];
+    settings: AppSettings;
+    employees: Employee[];
+    onSaveTransaction: (t: Transaction) => void;
+    onDeleteTransaction: (id: string) => void;
+    isMobile?: boolean;
+}) => {
+    const viewportNarrow = useViewportNarrow(1024);
+    const wizardMobileShell = isMobile || viewportNarrow;
     const [subTab, setSubTab] = useState('Overview');
     const [filterType, setFilterType] = useState<'7' | '14' | '30' | 'custom'>('7');
     const [customRange, setCustomRange] = useState({ start: '', end: '' });
@@ -96,7 +124,17 @@ const Dashboard = ({ transactions, settings, employees, onSaveTransaction, onDel
                     subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
                         subTab === 'V4' ? <DashboardV4 transactions={transactions} dateFilter={dateFilter} employees={employees} settings={settings} /> :
                             subTab === 'V5' ? <DashboardV5 transactions={transactions} dateFilter={dateFilter} /> :
-                            subTab === 'Wizard' ? <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} dateFilter={dateFilter} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
+                            subTab === 'Wizard' ? (
+                                <DailyStepRecorder
+                                    mobileShell={wizardMobileShell}
+                                    employees={employees}
+                                    settings={settings}
+                                    transactions={transactions}
+                                    dateFilter={dateFilter}
+                                    onSaveTransaction={onSaveTransaction}
+                                    onDeleteTransaction={onDeleteTransaction}
+                                />
+                            ) :
                                 <SpecificDashboard type={subTab} transactions={transactions} settings={settings} employees={employees} dateFilter={dateFilter} />}
         </div>
     );

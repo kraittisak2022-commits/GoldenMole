@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
-import FormatNumber from './components/ui/FormatNumber';
-import { Trash2 } from 'lucide-react';
 
 // Modules
 import Dashboard from './modules/Dashboard';
@@ -20,6 +18,9 @@ import MaintenanceModule from './modules/Maintenance/MaintenanceModule';
 import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
 import LoginPage from './modules/Auth/LoginPage';
 import FirstLoginPasswordChange from './modules/Auth/FirstLoginPasswordChange';
+import PostLoginModeSelect from './modules/Auth/PostLoginModeSelect';
+import MobileFieldApp from './modules/Mobile/MobileFieldApp';
+import RecordManager from './modules/DataList/RecordManager';
 import AdminModule from './modules/Admin/AdminModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
@@ -71,6 +72,7 @@ const MOCK_SETTINGS: AppSettings = {
     locations: ['หน้างาน A', 'บ่อทราย B', 'ออฟฟิศใหญ่'],
     landGroups: ['โครงการหนองจอก', 'โครงการลาดกระบัง'],
     employeePositions: ['คนขับรถ', 'รับจ้างรายวัน'],
+    versionNotes: ['เปิดใช้ Daily Wizard และซิงก์ข้อมูลกับ Supabase'],
     fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
     orgProfile: {},
     appDefaults: { sandCubicPerTrip: 3 },
@@ -83,7 +85,7 @@ const MOCK_TRANSACTIONS: Transaction[] = [
 
 const MENU_ITEMS = [
     { id: 'Dashboard', icon: LayoutDashboard, l: 'ภาพรวม' },
-    { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน' },
+    { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน (Daily Wizard)' },
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
     { id: 'Labor', icon: Users, l: 'ค่าแรง/ลา' },
     { id: 'Vehicle', icon: Truck, l: 'การใช้รถ' },
@@ -98,185 +100,22 @@ const MENU_ITEMS = [
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];
 
-const CATEGORY_LABELS: Record<string, string> = {
-    Labor: 'ค่าแรง/ลา',
-    Vehicle: 'รถ',
-    Fuel: 'น้ำมัน',
-    Maintenance: 'ซ่อมบำรุง',
-    Income: 'รายรับ',
-    Leave: 'ลา',
-    DailyLog: 'บันทึกงาน',
-    Land: 'ที่ดิน',
-    Utilities: 'สาธารณูปโภค',
-};
-
-    const RecordManager = ({ transactions, onDeleteTransaction }: { transactions: Transaction[]; onDeleteTransaction?: (id: string) => void }) => {
-    const [filterMode, setFilterMode] = useState<'all' | 'month' | 'date'>('all');
-    const [filterMonth, setFilterMonth] = useState(() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    });
-    const [filterDate, setFilterDate] = useState('');
-    const [searchQuery, setSearchQuery] = useState('');
-
-    const filtered = useMemo(() => {
-        let list = [...transactions];
-        if (filterMode === 'month' && filterMonth) {
-            const [y, m] = filterMonth.split('-').map(Number);
-            const first = `${y}-${String(m).padStart(2, '0')}-01`;
-            const lastDay = new Date(y, m, 0).getDate();
-            const last = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-            list = list.filter(t => {
-                const d = normalizeDate(t.date);
-                return d >= first && d <= last;
-            });
-        } else if (filterMode === 'date' && filterDate) {
-            const d = normalizeDate(filterDate);
-            list = list.filter(t => normalizeDate(t.date) === d);
-        }
-        const q = searchQuery.trim().toLowerCase();
-        if (q) {
-            list = list.filter(t =>
-                (t.description || '').toLowerCase().includes(q) ||
-                (t.category || '').toLowerCase().includes(q) ||
-                (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
-            );
-        }
-        return list;
-    }, [transactions, filterMode, filterMonth, filterDate, searchQuery]);
-
-    const byDay = useMemo(() => {
-        const map = new Map<string, Transaction[]>();
-        filtered.forEach(t => {
-            const d = normalizeDate(t.date);
-            if (!map.has(d)) map.set(d, []);
-            map.get(d)!.push(t);
-        });
-        const entries = Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-        return entries;
-    }, [filtered]);
-
-    const formatDayHeader = (dateStr: string) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const date = new Date(y, (m || 1) - 1, d || 1);
-        const th = date.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        return th;
-    };
-
-    return (
-        <div className="space-y-4 animate-fade-in">
-            <Card className="p-0 overflow-hidden">
-                <div className="p-3 sm:p-4 bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10 sticky top-0 z-10">
-                    <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-4">รายการบันทึก</h3>
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-wrap">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">ช่วงเวลา:</span>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name="period" checked={filterMode === 'all'} onChange={() => setFilterMode('all')} className="accent-slate-700" />
-                                <span className="text-sm text-slate-700 dark:text-slate-300">ทั้งหมด</span>
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name="period" checked={filterMode === 'month'} onChange={() => setFilterMode('month')} className="accent-slate-700" />
-                                <span className="text-sm text-slate-700 dark:text-slate-300">เดือน</span>
-                            </label>
-                            {filterMode === 'month' && (
-                                <input
-                                    type="month"
-                                    value={filterMonth}
-                                    onChange={(e) => setFilterMonth(e.target.value)}
-                                    className="border border-slate-300 dark:border-white/20 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200"
-                                />
-                            )}
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name="period" checked={filterMode === 'date'} onChange={() => setFilterMode('date')} className="accent-slate-700" />
-                                <span className="text-sm text-slate-700 dark:text-slate-300">วันที่</span>
-                            </label>
-                            {filterMode === 'date' && (
-                                <input
-                                    type="date"
-                                    value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
-                                    className="border border-slate-300 dark:border-white/20 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200"
-                                />
-                            )}
-                        </div>
-                        <div className="flex-1 min-w-[180px]">
-                            <input
-                                type="text"
-                                placeholder="ค้นหา (รายละเอียด, ประเภท)..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full border border-slate-300 dark:border-white/20 rounded-lg px-3 py-2 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder-slate-400"
-                            />
-                        </div>
-                    </div>
-                    {filtered.length > 0 && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                            แสดง {filtered.length} รายการ {byDay.length > 0 && `ใน ${byDay.length} วัน`}
-                        </p>
-                    )}
-                </div>
-                <div className="max-h-[calc(100dvh-260px)] min-h-[200px] overflow-y-auto">
-                    {byDay.length === 0 ? (
-                        <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">ไม่มีรายการที่ตรงกับเงื่อนไข</div>
-                    ) : (
-                        <div className="divide-y divide-slate-200 dark:divide-white/10">
-                            {byDay.map(([day, list]) => (
-                                <div key={day} className="bg-white dark:bg-white/[0.02]">
-                                    <div className="sticky top-0 z-10 px-3 sm:px-4 py-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
-                                        <span className="font-bold text-slate-800 dark:text-slate-100">{formatDayHeader(day)}</span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">{list.length} รายการ</span>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <div className="sm:hidden text-[11px] text-slate-400 dark:text-slate-500 px-3 pt-2 pb-1">
-                                            เลื่อนในแนวนอนเพื่อดูข้อมูลครบถ้วน
-                                        </div>
-                                        <table className="w-full text-sm text-left min-w-[480px]">
-                                            <thead>
-                                                <tr className="border-b border-slate-100 dark:border-white/5">
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">ประเภท</th>
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium max-sm:w-1/2">รายละเอียด</th>
-                                                    <th className="p-2 sm:p-3 text-right text-slate-500 dark:text-slate-400 font-medium">จำนวนเงิน</th>
-                                                    {onDeleteTransaction && <th className="p-2 sm:p-3 w-10"></th>}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {list.map(t => (
-                                                    <tr key={t.id} className="border-b border-slate-50 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
-                                                        <td className="p-2 sm:p-3 whitespace-nowrap">
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200">
-                                                                {CATEGORY_LABELS[t.category] || t.category}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2 sm:p-3 text-slate-700 dark:text-slate-300 max-w-[160px] sm:max-w-none truncate sm:whitespace-normal" title={t.description}>{t.description}</td>
-                                                        <td className={`p-2 sm:p-3 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
-                                                            {t.type === 'Income' ? '+' : ''}<FormatNumber value={t.amount} />
-                                                        </td>
-                                                        {onDeleteTransaction && (
-                                                            <td className="p-2 sm:p-3 text-center">
-                                                                <button onClick={() => { if (confirm('ลบรายการนี้?')) onDeleteTransaction(t.id); }} className="p-1.5 rounded text-slate-400 hover:text-red-500 dark:hover:text-red-400" title="ลบ"><Trash2 size={14} /></button>
-                                                            </td>
-                                                        )}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </Card>
-        </div>
-    );
-};
-
 function App() {
     const appVersion = import.meta.env.VITE_APP_VERSION || 'dev';
     const appLastUpdated = import.meta.env.VITE_APP_UPDATED_AT || '';
+    const autoVersionNotes = useMemo(() => {
+        try {
+            const raw = import.meta.env.VITE_APP_AUTO_CHANGELOG || '[]';
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed.filter((x: unknown): x is string => typeof x === 'string' && x.trim().length > 0) : [];
+        } catch {
+            return [];
+        }
+    }, []);
     // --- Auth State ---
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    /** หลังล็อกอิน: เลือกโหมดมือถือหรือเว็บปกติ */
+    const [clientSurface, setClientSurface] = useState<'select' | 'desktop' | 'mobile'>('select');
     const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
@@ -290,15 +129,29 @@ function App() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
+    const latestVersionNote = (settings.versionNotes && settings.versionNotes.length > 0)
+        ? settings.versionNotes[settings.versionNotes.length - 1]
+        : (autoVersionNotes[0] || 'พร้อมใช้งาน');
     const [toast, setToast] = useState<string | null>(null);
     const [accountModalOpen, setAccountModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
     const hasSeeded = useRef(false);
+    const hasAutoVersionSynced = useRef(false);
     const currentAdminRef = useRef<AdminUser | null>(null);
     useEffect(() => {
         currentAdminRef.current = currentAdmin;
     }, [currentAdmin]);
+
+    useEffect(() => {
+        if (isLoading || hasAutoVersionSynced.current) return;
+        if (autoVersionNotes.length === 0) return;
+        if (settings.versionNotes && settings.versionNotes.length > 0) return;
+        hasAutoVersionSynced.current = true;
+        const next = { ...settings, versionNotes: [...autoVersionNotes] };
+        setSettings(next);
+        db.saveSettings(next);
+    }, [isLoading, autoVersionNotes, settings]);
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
@@ -393,6 +246,7 @@ function App() {
     }, [currentAdmin]);
 
     const finalizeSuccessfulLogin = useCallback(async (updatedAdmin: AdminUser) => {
+        setClientSurface('select');
         setAdmins(prev => prev.map(a => a.id === updatedAdmin.id ? updatedAdmin : a));
         setCurrentAdmin(updatedAdmin);
         setIsLoggedIn(true);
@@ -446,6 +300,7 @@ function App() {
         }
         setIsLoggedIn(false);
         setCurrentAdmin(null);
+        setClientSurface('select');
         setActiveMenu('Dashboard');
     };
 
@@ -476,6 +331,7 @@ function App() {
             }
             setIsLoggedIn(false);
             setCurrentAdmin(null);
+            setClientSurface('select');
             setActiveMenu('Dashboard');
             setToast('ออกจากระบบอัตโนมัติ — ไม่มีการใช้งานเกิน 45 นาที กรุณาเข้าสู่ระบบใหม่');
             setTimeout(() => setToast(null), 6000);
@@ -687,7 +543,7 @@ function App() {
 
     const renderContent = () => {
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} />;
+            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} isMobile={isMobile} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
@@ -698,12 +554,13 @@ function App() {
             case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
-            case 'DailyWizard': return <DailyStepRecorder employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return (
                 <SettingsModule
                     settings={settings}
                     setSettings={handleSetSettings}
+                    autoVersionNotes={autoVersionNotes}
                     onClearAllData={handleClearAllData}
                     currentAdmin={currentAdmin}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
@@ -738,7 +595,78 @@ function App() {
                 />
             );
         }
-        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} appVersion={appVersion} appLastUpdated={appLastUpdated} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
+        return <LoginPage admins={admins} onLogin={handleLogin} appName={settings.appName} appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon} appVersion={appVersion} appLastUpdated={appLastUpdated} latestVersionNote={latestVersionNote} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />;
+    }
+
+    if (currentAdmin && clientSurface === 'select') {
+        return (
+            <>
+                {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                <PostLoginModeSelect
+                    appName={settings.appName}
+                    appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
+                    currentAdmin={currentAdmin}
+                    darkMode={darkMode}
+                    onToggleDarkMode={() => setDarkMode(!darkMode)}
+                    onChooseMobile={() => setClientSurface('mobile')}
+                    onChooseDesktop={() => setClientSurface('desktop')}
+                />
+            </>
+        );
+    }
+
+    if (currentAdmin && clientSurface === 'mobile') {
+        return (
+            <>
+                {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                <AdminProfileModal
+                    open={accountModalOpen}
+                    onClose={() => setAccountModalOpen(false)}
+                    currentAdmin={currentAdmin}
+                    darkMode={darkMode}
+                    onUpdateAdminProfile={handleUpdateAdminProfile}
+                />
+                {wagePromptEmp && (
+                    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-[100] p-4">
+                        <Card className="w-full max-w-sm p-6 shadow-xl">
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">ระบุค่าแรง</h3>
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">พนักงาน <span className="font-semibold text-slate-800 dark:text-slate-200">{wagePromptEmp.nickname || wagePromptEmp.name || 'คนนี้'}</span> ยังไม่มีค่าแรง — กรุณาใส่ค่าแรง (บาท)</p>
+                            <input type="number" min="1" className="w-full border border-slate-300 dark:border-white/20 rounded-lg px-4 py-3 text-lg font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 mb-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:focus:ring-amber-400/30" placeholder="บาท" value={wagePromptValue} onChange={e => setWagePromptValue(e.target.value)} />
+                            <div className="flex gap-2">
+                                <Button variant="outline" className="flex-1" onClick={cancelWagePrompt}>ยกเลิก</Button>
+                                <Button className="flex-1" onClick={submitWagePrompt}>บันทึก</Button>
+                            </div>
+                        </Card>
+                    </div>
+                )}
+                <MobileFieldApp
+                    settings={settings}
+                    employees={employees}
+                    transactions={transactions}
+                    admins={admins}
+                    adminLogs={adminLogs}
+                    currentAdmin={currentAdmin}
+                    appVersion={appVersion}
+                    latestVersionNote={latestVersionNote}
+                    autoVersionNotes={autoVersionNotes}
+                    appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
+                    darkMode={darkMode}
+                    onToggleDarkMode={() => setDarkMode(!darkMode)}
+                    onLogout={handleLogout}
+                    onSwitchToDesktop={() => setClientSurface('desktop')}
+                    onOpenAccount={() => setAccountModalOpen(true)}
+                    onSaveTransaction={handleSave}
+                    onDeleteTransaction={handleDeleteTransaction}
+                    handleSetTransactions={handleSetTransactions}
+                    ensureEmployeeWage={ensureEmployeeWage}
+                    handleSetSettings={handleSetSettings}
+                    handleSetAdmins={handleSetAdmins}
+                    onClearAllData={handleClearAllData}
+                    onUpdateAdminProfile={handleUpdateAdminProfile}
+                    addLog={addLog}
+                />
+            </>
+        );
     }
 
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
@@ -813,6 +741,7 @@ function App() {
                         <div className="flex-1 min-w-0">
                             <h1 className="font-bold text-lg truncate">{settings.appName}</h1>
                             <p className="text-[10px] text-slate-400 uppercase">{settings.appSubtext}</p>
+                            <p className="text-[10px] mt-1 text-slate-500 truncate">v{appVersion} • {latestVersionNote}</p>
                         </div>
                     )}
                     {isMobile && (
@@ -864,6 +793,9 @@ function App() {
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
                                 <MoreHorizontal size={18} />
                             </button>
+                            <button type="button" onClick={() => setClientSurface('mobile')} className={`flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-emerald-500/10 text-emerald-400' : 'hover:bg-emerald-50 text-emerald-700'}`} title="โหมดมือถือ (กรอกข้อมูลง่าย)">
+                                <Smartphone size={18} />
+                            </button>
                             <button onClick={handleLogout} className="flex items-center justify-center p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="ออกจากระบบ">
                                 <LogOut size={18} />
                             </button>
@@ -894,6 +826,9 @@ function App() {
                                 </div>
                             </button>
                         )}
+                        <button type="button" onClick={() => { setClientSurface('mobile'); setIsSidebarOpen(false); }} className={`mb-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}>
+                            <Smartphone size={16} /> โหมดมือถือ (กรอกเร็ว)
+                        </button>
                         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
                             <LogOut size={16} /> ออกจากระบบ
                         </button>
@@ -901,8 +836,8 @@ function App() {
                 )}
             </aside>
 
-            {/* Main Content */}
-            <main className={`flex-1 min-w-0 overflow-y-auto min-h-screen min-h-[100dvh] ${darkMode ? 'bg-transparent' : ''}`}>
+            {/* Main Content — padding-bottom on mobile clears fixed bottom nav */}
+            <main className={`flex-1 min-w-0 overflow-y-auto min-h-screen min-h-[100dvh] ${darkMode ? 'bg-transparent' : ''} ${isMobile ? 'pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]' : ''}`}>
                 {/* Header */}
                 <header className="flex justify-between items-center p-3 sm:p-4 lg:p-8 lg:pb-0 mb-2 lg:mb-8">
                     <div className="flex items-center gap-3">
@@ -966,6 +901,54 @@ function App() {
                     {renderContent()}
                 </div>
             </main>
+
+            {/* Mobile app-style bottom bar: quick access to Daily Wizard & common screens */}
+            {isMobile && (
+                <nav
+                    className={`fixed bottom-0 inset-x-0 z-[45] flex items-stretch justify-around gap-0 border-t backdrop-blur-xl touch-manipulation ${
+                        darkMode
+                            ? 'border-white/[0.08] bg-[#0a0a0f]/92 text-gray-300'
+                            : 'border-stone-200/90 bg-white/95 text-stone-600'
+                    }`}
+                    style={{ paddingBottom: 'max(0.35rem, env(safe-area-inset-bottom, 0px))' }}
+                    aria-label="เมนูลัดมือถือ"
+                >
+                    {[
+                        { id: 'Dashboard', icon: LayoutDashboard, label: 'ภาพรวม' },
+                        { id: 'DailyWizard', icon: ClipboardList, label: 'Daily Wizard' },
+                        { id: 'DataList', icon: List, label: 'รายการ' },
+                        { id: '__menu__', icon: Menu, label: 'เมนู' },
+                    ].map((item) => {
+                        const active = item.id !== '__menu__' && activeMenu === item.id;
+                        const Icon = item.icon;
+                        return (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => {
+                                    if (item.id === '__menu__') {
+                                        setIsSidebarOpen(true);
+                                        return;
+                                    }
+                                    handleMenuClick(item.id);
+                                }}
+                                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+                                    active
+                                        ? darkMode
+                                            ? 'text-amber-400'
+                                            : 'text-amber-700'
+                                        : darkMode
+                                          ? 'text-gray-500 active:bg-white/[0.06]'
+                                          : 'text-stone-500 active:bg-stone-100'
+                                }`}
+                            >
+                                <Icon size={22} strokeWidth={active ? 2.5 : 2} className="shrink-0" aria-hidden />
+                                <span className="truncate px-0.5">{item.label}</span>
+                            </button>
+                        );
+                    })}
+                </nav>
+            )}
         </div>
     );
 }

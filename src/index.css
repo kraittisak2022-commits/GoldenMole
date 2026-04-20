@@ -483,3 +483,17 @@
 .login-input-bar-pulse {
     animation: login-bar-shimmer 1.8s ease-in-out infinite;
 }
+
+/* โหมดมือถือในแอป — ช่องกรอกใหญ่ อ่านง่าย ลดการซูมบน iOS */
+.mobile-field-app input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+.mobile-field-app select,
+.mobile-field-app textarea {
+    font-size: 1.0625rem;
+}
+
+.mobile-field-app input[type="number"],
+.mobile-field-app input[type="text"],
+.mobile-field-app input[type="search"],
+.mobile-field-app input[type="tel"] {
+    min-height: 2.75rem;
+}

@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     locations JSONB DEFAULT '[]'::jsonb,
     land_groups JSONB DEFAULT '[]'::jsonb,
     employee_positions JSONB DEFAULT '[]'::jsonb,
+    version_notes JSONB DEFAULT '[]'::jsonb,
     fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb,
     org_profile JSONB DEFAULT '{}'::jsonb,
     app_defaults JSONB DEFAULT '{}'::jsonb,
@@ -128,6 +129,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- เพิ่มคอลัมน์สต็อกน้ำมันยกมา (ถ้ามีตาราง app_settings อยู่แล้วจากเวอร์ชันเก่า)
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS employee_positions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS version_notes JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS org_profile JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_defaults JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS position TEXT;

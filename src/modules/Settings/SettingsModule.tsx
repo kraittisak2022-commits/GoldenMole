@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 interface SettingsModuleProps {
     settings: AppSettings;
     setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
+    autoVersionNotes?: string[];
     onClearAllData?: () => Promise<void>;
     currentAdmin?: AdminUser | null;
     onUpdateAdminProfile?: (updates: {
@@ -28,13 +29,15 @@ const TAB_HELP: Record<string, string> = {
     maintenanceTypes: 'ประเภทซ่อม เช่น เปลี่ยนถ่ายน้ำมันเครื่อง ปะยาง — ใช้ในเมนูซ่อมบำรุง',
     locations: 'สถานที่/หน้างาน ให้เลือกตอนบันทึกการใช้รถและที่เกี่ยวข้อง',
     landGroups: 'กลุ่ม/โครงการที่ดิน ใช้จัดหมวดโครงการที่ดิน',
+    versionNotes: 'สรุปการเปลี่ยนแปลงเวอร์ชันแบบสั้นๆ เพื่อแสดงในหน้าโลโก้และตั้งค่า',
+    laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
 };
 
-const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups'] as const;
+const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 
-const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
+const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearAllData, currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -90,6 +93,9 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
     const [defaultsForm, setDefaultsForm] = useState({
         sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3),
     });
+    const [newLaborCategory, setNewLaborCategory] = useState('');
+    const [editingLaborCategoryId, setEditingLaborCategoryId] = useState<string | null>(null);
+    const [editingLaborCategoryLabel, setEditingLaborCategoryLabel] = useState('');
 
     const [accountForm, setAccountForm] = useState({
         displayName: '',
@@ -218,6 +224,53 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
             },
         });
         alert('บันทึกค่าเริ่มต้นระบบแล้ว');
+    };
+    const laborWorkCategories = settings.appDefaults?.laborWorkCategories || [];
+
+    const addLaborCategory = () => {
+        const label = newLaborCategory.trim();
+        if (!label) return;
+        if (laborWorkCategories.some(c => c.label.trim() === label)) return;
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...prev.appDefaults,
+                laborWorkCategories: [...(prev.appDefaults?.laborWorkCategories || []), { id: `c_${Date.now()}`, label }],
+            },
+        }));
+        setNewLaborCategory('');
+    };
+
+    const saveLaborCategoryEdit = () => {
+        if (!editingLaborCategoryId) return;
+        const label = editingLaborCategoryLabel.trim();
+        if (!label) return;
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...prev.appDefaults,
+                laborWorkCategories: (prev.appDefaults?.laborWorkCategories || []).map(cat =>
+                    cat.id === editingLaborCategoryId ? { ...cat, label } : cat
+                ),
+            },
+        }));
+        setEditingLaborCategoryId(null);
+        setEditingLaborCategoryLabel('');
+    };
+
+    const deleteLaborCategory = (id: string) => {
+        if (!confirm('ลบประเภทงานนี้?')) return;
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...prev.appDefaults,
+                laborWorkCategories: (prev.appDefaults?.laborWorkCategories || []).filter(cat => cat.id !== id),
+            },
+        }));
+        if (editingLaborCategoryId === id) {
+            setEditingLaborCategoryId(null);
+            setEditingLaborCategoryLabel('');
+        }
     };
 
     const startEdit = (index: number, value: string) => {
@@ -394,6 +447,8 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
         { key: 'landGroups', l: 'กลุ่มที่ดิน' },
         { key: 'fuelStock', l: 'น้ำมัน & สต็อกยกมา' },
         { key: 'defaults', l: 'ค่าเริ่มต้นระบบ' },
+        { key: 'laborWorkCategories', l: 'ประเภทงานค่าแรง' },
+        { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
         { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
         { key: 'clearData', l: 'ล้างข้อมูล' },
@@ -591,6 +646,56 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
                             <p className="text-xs text-slate-400">ถ้าไม่แน่ใจ ใช้ 3 คิวต่อเที่ยวเป็นค่ามาตรฐาน</p>
                             <Button onClick={saveAppDefaults}>บันทึกค่าเริ่มต้น</Button>
                         </div>
+                    ) : activeTab === 'laborWorkCategories' ? (
+                        <div className="space-y-6 max-w-xl">
+                            <h3 className="font-bold text-lg">ประเภทงานค่าแรง (Daily Wizard)</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                เพิ่ม/ลบรายการประเภทงานที่ต้องการให้แสดงในหน้าบันทึกค่าแรงแบบ Daily Wizard โดยอัตโนมัติ
+                            </p>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="เพิ่มประเภทงานใหม่..."
+                                    value={newLaborCategory}
+                                    onChange={(e: any) => setNewLaborCategory(e.target.value)}
+                                />
+                                <Button onClick={addLaborCategory}><Plus size={18} /> เพิ่ม</Button>
+                            </div>
+                            <div className="space-y-2">
+                                {laborWorkCategories.map((cat) => {
+                                    const isEditing = editingLaborCategoryId === cat.id;
+                                    return (
+                                        <div key={cat.id} className="flex justify-between items-center gap-2 p-3 bg-slate-50 rounded-lg group">
+                                            {isEditing ? (
+                                                <>
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={editingLaborCategoryLabel}
+                                                        onChange={(e: any) => setEditingLaborCategoryLabel(e.target.value)}
+                                                        onKeyDown={(e: any) => {
+                                                            if (e.key === 'Enter') saveLaborCategoryEdit();
+                                                            if (e.key === 'Escape') {
+                                                                setEditingLaborCategoryId(null);
+                                                                setEditingLaborCategoryLabel('');
+                                                            }
+                                                        }}
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={saveLaborCategoryEdit} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
+                                                    <button onClick={() => { setEditingLaborCategoryId(null); setEditingLaborCategoryLabel(''); }} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="ยกเลิก"><X size={18} /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="text-slate-700 flex-1">{cat.label}</span>
+                                                    <button onClick={() => { setEditingLaborCategoryId(cat.id); setEditingLaborCategoryLabel(cat.label); }} className="p-1.5 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100" title="แก้ไข"><Pencil size={16} /></button>
+                                                    <button onClick={() => deleteLaborCategory(cat.id)} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100" title="ลบ"><Trash2 size={16} /></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {laborWorkCategories.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีประเภทงานที่ตั้งค่าไว้</p>}
+                            </div>
+                        </div>
                     ) : activeTab === 'clearData' ? (
                         <div className="space-y-6 max-w-lg">
                             <h3 className="font-bold text-lg mb-2 text-red-600">ล้างข้อมูลที่บันทึกทั้งหมด</h3>
@@ -734,6 +839,23 @@ const SettingsModule = ({ settings, setSettings, onClearAllData, currentAdmin, o
                                     </p>
                                 )}
                             </div>
+                            {activeTab === 'versionNotes' && autoVersionNotes.length > 0 && (
+                                <div className="mb-4 p-3 rounded-xl border border-indigo-200 bg-indigo-50/70 dark:bg-indigo-500/10 dark:border-indigo-500/30">
+                                    <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mb-2">อัปเดตอัตโนมัติจาก commit ล่าสุด</p>
+                                    <div className="space-y-1.5 mb-2">
+                                        {autoVersionNotes.map((note, idx) => (
+                                            <p key={`${note}-${idx}`} className="text-xs text-indigo-800 dark:text-indigo-200">- {note}</p>
+                                        ))}
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setSettings(prev => ({ ...prev, versionNotes: [...autoVersionNotes] }))}
+                                        className="h-8 text-xs"
+                                    >
+                                        ใช้รายการอัตโนมัตินี้
+                                    </Button>
+                                </div>
+                            )}
                             <div className="flex gap-2 mb-6"><Input placeholder="รายการใหม่..." value={newItem} onChange={(e: any) => setNewItem(e.target.value)} /><Button onClick={handleAdd}><Plus size={18} /> เพิ่ม</Button></div>
                             <div className="space-y-2">
                                 {((settings[activeTab as keyof AppSettings] as string[]) || []).map((item: string, idx: number) => {

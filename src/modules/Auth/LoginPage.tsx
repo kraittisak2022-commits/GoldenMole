@@ -10,6 +10,7 @@ interface LoginPageProps {
     appIcon: string;
     appVersion: string;
     appLastUpdated?: string;
+    latestVersionNote?: string;
     darkMode: boolean;
     onToggleDarkMode: () => void;
 }
@@ -183,7 +184,7 @@ const NetworkBackground = ({ darkMode }: { darkMode: boolean }) => {
 };
 
 // ─── Login Page ─────────────────────────────────────────────────────────
-const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdated, darkMode, onToggleDarkMode }: LoginPageProps) => {
+const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdated, latestVersionNote, darkMode, onToggleDarkMode }: LoginPageProps) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -317,6 +318,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
                             </h1>
                             <p className={`text-sm transition-all duration-700 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'} ${darkMode ? 'text-cyan-300/50' : 'text-black/70'}`}>
                                 ระบบจัดการโครงการก่อสร้าง
+                            </p>
+                            <p className={`text-xs mt-2 transition-all duration-700 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'} ${darkMode ? 'text-cyan-400/60' : 'text-black/60'}`}>
+                                v{appVersion} • {latestVersionNote || 'พร้อมใช้งาน'}
                             </p>
 
                             {/* Feature badges */}
