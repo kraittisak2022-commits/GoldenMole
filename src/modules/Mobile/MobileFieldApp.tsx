@@ -232,6 +232,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             onSaveTransaction={onSaveTransaction}
                             onDeleteTransaction={onDeleteTransaction}
                             ensureEmployeeWage={ensureEmployeeWage}
+                            setSettings={handleSetSettings}
                         />
                     )}
 
@@ -454,7 +455,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             className="pointer-events-none absolute inset-x-6 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent dark:via-white/12"
                             aria-hidden
                         />
-                        <div className="relative z-10 flex items-stretch justify-between gap-0.5 px-1 py-2" role="tablist">
+                        <div className="relative z-10 flex items-stretch justify-between gap-1 px-1.5 py-2" role="tablist">
                             {TAB_BAR.map(({ id, label, icon: Icon }) => {
                                 const active = tab === id;
                                 return (
@@ -472,15 +473,17 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                 setRecordTypeFilter(null);
                                             }
                                         }}
-                                        className={`relative flex min-h-[58px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.96] ${
+                                        className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.97] ${
                                             active
                                                 ? darkMode
-                                                    ? 'bg-blue-500/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-blue-400/25'
-                                                    : 'bg-gradient-to-b from-blue-500/12 to-indigo-500/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-blue-500/20'
-                                                : 'ring-1 ring-transparent hover:bg-slate-100/70 dark:hover:bg-white/[0.04]'
+                                                    ? 'bg-gradient-to-b from-blue-500/[0.16] to-indigo-500/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_-12px_rgba(37,99,235,0.75)] ring-1 ring-blue-400/30'
+                                                    : 'bg-gradient-to-b from-blue-500/14 to-indigo-500/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.68),0_10px_18px_-14px_rgba(37,99,235,0.45)] ring-1 ring-blue-500/20'
+                                                : darkMode
+                                                  ? 'ring-1 ring-transparent hover:bg-white/[0.045]'
+                                                  : 'ring-1 ring-transparent hover:bg-slate-100/80'
                                         }`}
                                     >
-                                        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                                        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
                                             {active ? (
                                                 <span
                                                     className={`absolute inset-0 rounded-full bg-gradient-to-br shadow-lg motion-reduce:transition-none transition-transform duration-300 ease-out ${
@@ -491,15 +494,15 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                 />
                                             ) : null}
                                             <Icon
-                                                size={22}
+                                                size={20}
                                                 strokeWidth={active ? 2.4 : 2}
                                                 className={`relative z-10 shrink-0 transition-colors duration-300 ${
-                                                    active ? 'text-white' : darkMode ? 'text-slate-500' : 'text-slate-400'
+                                                    active ? 'text-white' : darkMode ? 'text-slate-400' : 'text-slate-500'
                                                 }`}
                                             />
                                         </span>
                                         <span
-                                            className={`h-0.5 w-6 shrink-0 rounded-full transition-colors duration-300 ${
+                                            className={`h-0.5 w-5 shrink-0 rounded-full transition-colors duration-300 ${
                                                 active
                                                     ? 'bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400'
                                                     : darkMode
@@ -509,7 +512,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                             aria-hidden
                                         />
                                         <span
-                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[10px] font-black leading-tight tracking-wide transition-colors duration-300 ${
+                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[10px] font-extrabold leading-tight tracking-wide transition-colors duration-300 ${
                                                 active
                                                     ? darkMode
                                                         ? 'text-blue-300'

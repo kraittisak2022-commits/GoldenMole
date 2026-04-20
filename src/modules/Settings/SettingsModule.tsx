@@ -34,6 +34,7 @@ const TAB_HELP: Record<string, string> = {
 };
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
+const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 
@@ -230,7 +231,8 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
     const addLaborCategory = () => {
         const label = newLaborCategory.trim();
         if (!label) return;
-        if (laborWorkCategories.some(c => c.label.trim() === label)) return;
+        const target = normalizeCategoryLabel(label);
+        if (laborWorkCategories.some(c => normalizeCategoryLabel(c.label) === target)) return;
         setSettings(prev => ({
             ...prev,
             appDefaults: {
@@ -245,6 +247,12 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
         if (!editingLaborCategoryId) return;
         const label = editingLaborCategoryLabel.trim();
         if (!label) return;
+        const target = normalizeCategoryLabel(label);
+        const duplicate = laborWorkCategories.some(cat => cat.id !== editingLaborCategoryId && normalizeCategoryLabel(cat.label) === target);
+        if (duplicate) {
+            alert('มีประเภทงานชื่อนี้อยู่แล้ว');
+            return;
+        }
         setSettings(prev => ({
             ...prev,
             appDefaults: {
@@ -271,6 +279,30 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
             setEditingLaborCategoryId(null);
             setEditingLaborCategoryLabel('');
         }
+    };
+    const dedupeLaborCategories = () => {
+        const current = settings.appDefaults?.laborWorkCategories || [];
+        const seen = new Set<string>();
+        const deduped = current.filter((cat) => {
+            const norm = normalizeCategoryLabel(cat.label || '');
+            if (!norm) return false;
+            if (seen.has(norm)) return false;
+            seen.add(norm);
+            return true;
+        });
+        const removed = current.length - deduped.length;
+        if (removed <= 0) {
+            alert('ไม่พบรายการซ้ำ');
+            return;
+        }
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...prev.appDefaults,
+                laborWorkCategories: deduped,
+            },
+        }));
+        alert(`ล้างรายการซ้ำแล้ว ${removed} รายการ`);
     };
 
     const startEdit = (index: number, value: string) => {
@@ -652,6 +684,9 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
                             <p className="text-sm text-slate-500 dark:text-slate-400">
                                 เพิ่ม/ลบรายการประเภทงานที่ต้องการให้แสดงในหน้าบันทึกค่าแรงแบบ Daily Wizard โดยอัตโนมัติ
                             </p>
+                            <Button variant="outline" onClick={dedupeLaborCategories}>
+                                ล้างรายการชื่อซ้ำอัตโนมัติ
+                            </Button>
                             <div className="flex gap-2">
                                 <Input
                                     placeholder="เพิ่มประเภทงานใหม่..."

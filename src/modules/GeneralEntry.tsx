@@ -38,6 +38,10 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
     const [fuelSection, setFuelSection] = useState<'overview' | 'entry' | 'history'>('overview');
     /** แท็บย่อยเมนูสาธารณูปโภค */
     const [utilitiesSection, setUtilitiesSection] = useState<'entry' | 'stats' | 'history'>('entry');
+    const confirmWarnings = (messages: string[], title = 'พบข้อมูลที่อาจซ้ำหรือผิดปกติ') => {
+        if (messages.length === 0) return true;
+        return window.confirm(`${title}\n- ${messages.join('\n- ')}\n\nต้องการบันทึกต่อหรือไม่?`);
+    };
 
     const normDate = normalizeDate(form.date);
     const dayFuelTx = useMemo(
@@ -56,6 +60,23 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             .filter(t => t.category === 'Fuel' && t.type === 'Expense' && inferFuelMovement(t) === 'stock_out')
             .sort((a, b) => (normalizeDate(b.date) + (b.id || '')).localeCompare(normalizeDate(a.date) + (a.id || '')))
             .slice(0, 25);
+    }, [transactions, type]);
+    const vehicleUsageSummary = useMemo(() => {
+        if (type !== 'Fuel') return [] as Array<{ vehicleId: string; liters: number; amount: number; count: number }>;
+        const map = new Map<string, { liters: number; amount: number; count: number }>();
+        transactions.forEach((t) => {
+            if (t.category !== 'Fuel' || t.type !== 'Expense' || inferFuelMovement(t) !== 'stock_out') return;
+            const vehicleId = t.vehicleId || 'ไม่ระบุรถ';
+            const prev = map.get(vehicleId) || { liters: 0, amount: 0, count: 0 };
+            map.set(vehicleId, {
+                liters: prev.liters + fuelTxToLiters(t),
+                amount: prev.amount + (t.amount || 0),
+                count: prev.count + 1,
+            });
+        });
+        return Array.from(map.entries())
+            .map(([vehicleId, v]) => ({ vehicleId, ...v }))
+            .sort((a, b) => b.liters - a.liters);
     }, [transactions, type]);
 
     const history = useMemo(() => transactions.filter(t => t.category === type).slice(-30).reverse(), [transactions, type]);
@@ -140,8 +161,11 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
     };
 
     const handleSave = () => {
-        if (!form.amount) return;
         if (type === 'Fuel') {
+            if (form.fuelMovement === 'stock_in' && !form.amount) {
+                alert('กรุณาระบุราคาซื้อน้ำมัน');
+                return;
+            }
             if (form.fuelMovement === 'stock_out' && !form.vehicleId) {
                 alert('กรุณาเลือกรถที่เติมน้ำมัน');
                 return;
@@ -155,6 +179,8 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                 alert('กรุณาระบุจำนวนลิตรที่รับเข้าสต็อก');
                 return;
             }
+        } else if (!form.amount) {
+            return;
         }
         if (editingId && onDelete) {
             onDelete(editingId);
@@ -164,6 +190,21 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         const qtyNum = Number(form.quantity) || 0;
         const ftTh = form.fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน';
         const unitLabel = form.unit === 'แกลลอน' ? 'แกลลอน' : form.unit === 'ถัง' ? 'ถัง' : 'ลิตร';
+        if (type === 'Fuel') {
+            const warnings: string[] = [];
+            const duplicate = dayFuelTx.find(t =>
+                t.id !== editingId &&
+                inferFuelMovement(t) === form.fuelMovement &&
+                (t.fuelType || 'Diesel') === form.fuelType &&
+                (t.vehicleId || '') === (form.fuelMovement === 'stock_out' ? form.vehicleId : '') &&
+                (Number(t.quantity) || 0) === qtyNum &&
+                (Number(t.amount) || 0) === (Number(form.amount) || 0)
+            );
+            if (duplicate) warnings.push('พบรายการน้ำมันค่าเดียวกันอยู่แล้วในวันนี้');
+            if (qtyNum > 5000) warnings.push('ปริมาณน้ำมันสูงกว่าปกติมาก');
+            if ((Number(form.amount) || 0) > 200000) warnings.push('ยอดเงินสูงกว่าปกติมาก');
+            if (!confirmWarnings(warnings)) return;
+        }
 
         let descText = '';
         if (type === 'Fuel') {
@@ -264,7 +305,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                             </div>
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">
-                            คำนวณจาก: ยอดยกมา + รับเข้าสต็อก − เติมรถ (ตามรายการด้านล่าง)
+                            คำนวณจาก: ยอดยกมา + รับเข้าสต็อก − ใช้/เติมรถ (รวมรายการจากเมนูน้ำมันและ Daily Wizard)
                         </p>
                     </Card>
 
@@ -311,6 +352,31 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                             </div>
                                         </div>
                                         <span className="font-semibold text-slate-700 dark:text-slate-200 shrink-0">฿{(t.amount || 0).toLocaleString()}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </Card>
+                    <Card className="p-0 overflow-hidden border border-slate-200 dark:border-white/10 shadow-sm">
+                        <div className="p-4 bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10 flex items-center gap-2">
+                            <BarChart3 size={18} className="text-indigo-600" />
+                            <span className="font-bold text-slate-800 dark:text-slate-100">สรุปใช้น้ำมันตามรถ</span>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-white/10">
+                            {vehicleUsageSummary.length === 0 ? (
+                                <div className="p-6 text-center text-sm text-slate-400">ยังไม่มีรายการใช้น้ำมันรายรถ</div>
+                            ) : (
+                                vehicleUsageSummary.map((row) => (
+                                    <div key={row.vehicleId} className="px-4 py-3 flex justify-between gap-3 text-sm">
+                                        <div className="min-w-0">
+                                            <div className="font-medium text-slate-800 dark:text-slate-100 truncate">{row.vehicleId}</div>
+                                            <div className="text-xs text-slate-500 mt-0.5">
+                                                {Math.round(row.liters * 10) / 10} ลิตร · {row.count} รายการ
+                                            </div>
+                                        </div>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-200 shrink-0">
+                                            ฿{row.amount.toLocaleString()}
+                                        </span>
                                     </div>
                                 ))
                             )}

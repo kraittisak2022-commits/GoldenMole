@@ -135,6 +135,8 @@ function App() {
     const [toast, setToast] = useState<string | null>(null);
     const [accountModalOpen, setAccountModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadProgress, setLoadProgress] = useState(0);
+    const [loadMessage, setLoadMessage] = useState('กำลังเตรียมระบบ...');
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
@@ -158,14 +160,20 @@ function App() {
         const loadData = async () => {
             try {
                 setIsLoading(true);
+                setLoadProgress(5);
+                setLoadMessage('กำลังเตรียมระบบ...');
 
                 // Seed default data if needed (only once)
                 if (!hasSeeded.current) {
+                    setLoadProgress(20);
+                    setLoadMessage('กำลังเตรียมข้อมูลเริ่มต้น...');
                     hasSeeded.current = true;
                     await db.seedDefaultData(MOCK_EMPLOYEES, MOCK_TRANSACTIONS, MOCK_PROJECTS, MOCK_SETTINGS, DEFAULT_ADMINS);
                 }
 
                 // Load all data in parallel
+                setLoadProgress(55);
+                setLoadMessage('กำลังโหลดข้อมูลจากฐานข้อมูล...');
                 const [emps, txs, projs, sett, adms, logs] = await Promise.all([
                     db.fetchEmployees(),
                     db.fetchTransactions(),
@@ -175,20 +183,28 @@ function App() {
                     db.fetchAdminLogs(),
                 ]);
 
+                setLoadProgress(85);
+                setLoadMessage('กำลังประมวลผลข้อมูล...');
                 setEmployees(emps);
                 setTransactions(txs);
                 setProjects(projs);
                 if (sett) setSettings(sett);
                 setAdmins(adms.length > 0 ? adms : DEFAULT_ADMINS);
                 setAdminLogs(logs);
+                setLoadProgress(100);
+                setLoadMessage('โหลดข้อมูลสำเร็จ');
             } catch (err) {
                 console.error('Failed to load data from Supabase:', err);
+                setLoadProgress(80);
+                setLoadMessage('เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังใช้ข้อมูลสำรอง...');
                 // Fallback to mock data
                 setEmployees(MOCK_EMPLOYEES);
                 setTransactions(MOCK_TRANSACTIONS);
                 setProjects(MOCK_PROJECTS);
                 setSettings(MOCK_SETTINGS);
                 setAdmins(DEFAULT_ADMINS);
+                setLoadProgress(100);
+                setLoadMessage('โหลดข้อมูลสำรองสำเร็จ');
             } finally {
                 setIsLoading(false);
             }
@@ -553,7 +569,7 @@ function App() {
 
     const renderContent = () => {
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} isMobile={isMobile} />;
+            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
@@ -564,7 +580,7 @@ function App() {
             case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return (
                 <SettingsModule
@@ -584,9 +600,16 @@ function App() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen min-h-[100dvh] bg-[#0a0a0f]">
-                <div className="text-center">
+                <div className="text-center w-full max-w-sm px-6">
                     <Loader2 className="w-12 h-12 text-amber-400 animate-spin mx-auto mb-4" />
-                    <p className="text-gray-400 text-sm">กำลังโหลดข้อมูล...</p>
+                    <p className="text-gray-300 text-sm font-medium mb-2">{loadMessage}</p>
+                    <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                            className="h-full bg-amber-400 transition-all duration-300"
+                            style={{ width: `${Math.max(0, Math.min(100, loadProgress))}%` }}
+                        />
+                    </div>
+                    <p className="text-amber-300 text-sm mt-2 font-semibold">{Math.round(loadProgress)}%</p>
                 </div>
             </div>
         );

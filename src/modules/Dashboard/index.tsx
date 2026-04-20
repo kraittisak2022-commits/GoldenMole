@@ -45,6 +45,7 @@ const Dashboard = ({
     employees,
     onSaveTransaction,
     onDeleteTransaction,
+    setSettings,
     isMobile = false,
 }: {
     transactions: Transaction[];
@@ -52,6 +53,7 @@ const Dashboard = ({
     employees: Employee[];
     onSaveTransaction: (t: Transaction) => void;
     onDeleteTransaction: (id: string) => void;
+    setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     isMobile?: boolean;
 }) => {
     const viewportNarrow = useViewportNarrow(1024);
@@ -133,6 +135,7 @@ const Dashboard = ({
                                     dateFilter={dateFilter}
                                     onSaveTransaction={onSaveTransaction}
                                     onDeleteTransaction={onDeleteTransaction}
+                                    setSettings={setSettings}
                                 />
                             ) :
                                 <SpecificDashboard type={subTab} transactions={transactions} settings={settings} employees={employees} dateFilter={dateFilter} />}
