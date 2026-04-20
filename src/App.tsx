@@ -45,6 +45,13 @@ const DEFAULT_ADMINS: AdminUser[] = [
     },
 ];
 
+const AUTH_SESSION_KEY = 'construction_management_auth_session_v1';
+type AuthSessionCache = {
+    adminId: string;
+    clientSurface: 'select' | 'desktop' | 'mobile';
+    savedAt: number;
+};
+
 const resolveDarkFromUiTheme = (ui: AdminUiTheme | undefined): boolean => {
     const t = ui ?? 'system';
     if (t === 'dark') return true;
@@ -140,6 +147,7 @@ function App() {
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
+    const hasRestoredAuthSession = useRef(false);
     const currentAdminRef = useRef<AdminUser | null>(null);
     useEffect(() => {
         currentAdminRef.current = currentAdmin;
@@ -154,6 +162,14 @@ function App() {
         setSettings(next);
         db.saveSettings(next);
     }, [isLoading, autoVersionNotes, settings]);
+
+    const clearAuthSessionCache = useCallback(() => {
+        try {
+            localStorage.removeItem(AUTH_SESSION_KEY);
+        } catch {
+            // ignore storage failures
+        }
+    }, []);
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
@@ -215,6 +231,50 @@ function App() {
     const applyUiThemeToApp = useCallback((ui: AdminUiTheme | undefined) => {
         setDarkMode(resolveDarkFromUiTheme(ui));
     }, []);
+
+    // Restore auth session after initial data load to prevent re-login on refresh
+    useEffect(() => {
+        if (isLoading || hasRestoredAuthSession.current) return;
+        hasRestoredAuthSession.current = true;
+        try {
+            const raw = localStorage.getItem(AUTH_SESSION_KEY);
+            if (!raw) return;
+            const cached = JSON.parse(raw) as AuthSessionCache;
+            if (!cached || !cached.adminId) {
+                clearAuthSessionCache();
+                return;
+            }
+            const matchedAdmin = admins.find(a => a.id === cached.adminId);
+            if (!matchedAdmin) {
+                clearAuthSessionCache();
+                return;
+            }
+            setCurrentAdmin(matchedAdmin);
+            setIsLoggedIn(true);
+            setClientSurface(cached.clientSurface || 'select');
+            applyUiThemeToApp(matchedAdmin.uiTheme);
+        } catch {
+            clearAuthSessionCache();
+        }
+    }, [isLoading, admins, applyUiThemeToApp, clearAuthSessionCache]);
+
+    // Persist successful auth session
+    useEffect(() => {
+        if (!isLoggedIn || !currentAdmin) {
+            clearAuthSessionCache();
+            return;
+        }
+        try {
+            const payload: AuthSessionCache = {
+                adminId: currentAdmin.id,
+                clientSurface,
+                savedAt: Date.now(),
+            };
+            localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(payload));
+        } catch {
+            // ignore storage failures
+        }
+    }, [isLoggedIn, currentAdmin?.id, clientSurface, clearAuthSessionCache]);
 
     // Sync dark mode to <html> for full-page background and Tailwind dark:
     useEffect(() => {
@@ -314,6 +374,7 @@ function App() {
         if (currentAdmin) {
             addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
         }
+        clearAuthSessionCache();
         setIsLoggedIn(false);
         setCurrentAdmin(null);
         setClientSurface('select');
@@ -345,6 +406,7 @@ function App() {
                 setAdminLogs(prev => [log, ...prev]);
                 db.saveAdminLog(log);
             }
+            clearAuthSessionCache();
             setIsLoggedIn(false);
             setCurrentAdmin(null);
             setClientSurface('select');
@@ -356,7 +418,7 @@ function App() {
             events.forEach(ev => window.removeEventListener(ev, bump as EventListener));
             window.clearInterval(tick);
         };
-    }, [isLoggedIn]);
+    }, [isLoggedIn, clearAuthSessionCache]);
 
     const handleMenuClick = useCallback((menuId: string) => {
         setActiveMenu(menuId);
@@ -705,7 +767,7 @@ function App() {
     const activeMenuItem = MENU_ITEMS.find(m => m.id === activeMenu);
 
     return (
-        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 relative overflow-hidden max-w-full ${darkMode ? 'dark bg-[#0a0a0f] text-gray-100' : 'bg-[#FAFAF8] text-gray-800'}`}>
+        <div className={`flex min-h-screen min-h-[100dvh] font-sans transition-colors duration-300 relative overflow-hidden max-w-full ${darkMode ? 'dark app-shell-dark' : 'app-shell-light'}`}>
 
             {/* Global Darktech X Background Auras */}
             {darkMode && (

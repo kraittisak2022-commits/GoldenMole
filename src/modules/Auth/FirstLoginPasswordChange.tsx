@@ -50,7 +50,7 @@ const FirstLoginPasswordChange = ({
 
     return (
         <div
-            className={`relative flex min-h-screen min-h-[100dvh] flex-col items-center justify-center overflow-hidden px-4 py-10 transition-colors duration-500 ${darkMode ? 'bg-[#050510]' : 'bg-gradient-to-b from-stone-100 via-amber-50/40 to-stone-200/30'}`}
+            className={`relative flex min-h-screen min-h-[100dvh] flex-col items-center justify-center overflow-hidden px-4 py-10 transition-colors duration-500 ${darkMode ? 'app-shell-dark' : 'app-shell-light'}`}
         >
             <button
                 type="button"

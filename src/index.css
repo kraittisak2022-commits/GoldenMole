@@ -157,6 +157,17 @@
     @apply text-xl font-bold p-4 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-0 text-slate-700 shadow-sm transition-all;
 }
 
+/* Shared app shell themes (light/dark) for consistent pages */
+.app-shell-light {
+    background-image: linear-gradient(to bottom, #eef3fb 0%, #e8edf5 48%, #dfe8f4 100%);
+    color: #0f172a;
+}
+
+.app-shell-dark {
+    background-color: #0a0a0f;
+    color: #f3f4f6;
+}
+
 /* Spy Theme / Cyberpunk Extras */
 .bg-grid-pattern {
     background-image: linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px),

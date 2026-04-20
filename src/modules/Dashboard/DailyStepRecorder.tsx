@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -49,10 +49,11 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200' },
     { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200' },
     { id: 'washHome', label: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200' },
-    { id: 'other', label: 'ทำอื่นๆ', color: 'bg-slate-500', bgLight: 'bg-slate-50 border-slate-200' },
 ];
 const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
+const HIDDEN_WORK_CATEGORY_IDS = new Set(['other']);
+const HIDDEN_WORK_CATEGORY_LABELS = new Set(['ทำอื่นๆ'].map(normalizeCategoryLabel));
 const isGeneratedCategoryId = (value: string) => /^c_\d+$/.test((value || '').trim());
 const isGeneratedCategoryLabel = (value: string) => isGeneratedCategoryId(value);
 const CUSTOM_CATEGORY_STYLES = [
@@ -70,6 +71,12 @@ const hashString = (value: string) => {
 };
 const getCustomCategoryStyle = (id: string) => CUSTOM_CATEGORY_STYLES[hashString(id) % CUSTOM_CATEGORY_STYLES.length];
 const makeStableCustomCategoryId = (label: string) => `cfg_${hashString(normalizeCategoryLabel(label)).toString(36)}`;
+const sanitizeWorkAssignments = (raw: Record<string, string[]> | undefined | null) => {
+    if (!raw || typeof raw !== 'object') return {};
+    return Object.fromEntries(
+        Object.entries(raw).filter(([catId]) => !HIDDEN_WORK_CATEGORY_IDS.has(catId))
+    );
+};
 const getEmployeeDisplayName = (emp?: Employee) => {
     if (!emp) return '';
     const nickname = String(emp.nickname || '').trim();
@@ -125,7 +132,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const eventCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length;
         return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, eventCount };
     }, [dayTransactions]);
+    const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
+    const [newCategoryName, setNewCategoryName] = useState('');
     const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
+    const latestLaborAttendance = useMemo(() => {
+        const laborAttendance = dayTransactions
+            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance')
+            .sort((a, b) => a.id.localeCompare(b.id)) as any[];
+        if (laborAttendance.length === 0) return null;
+        return laborAttendance[laborAttendance.length - 1];
+    }, [dayTransactions]);
     const resumeStep = useMemo(() => {
         if (dayStepStats.eventCount > 0) return 6;
         if (dayStepStats.fuelCount > 0) return 5;
@@ -142,8 +158,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const seenLabels = new Set<string>();
         const addCategory = (id: string, label: string) => {
             if (!id || !label || DEFAULT_WORK_CATEGORY_IDS.has(id)) return;
+            if (HIDDEN_WORK_CATEGORY_IDS.has(id)) return;
             if (isGeneratedCategoryLabel(label)) return;
             const norm = normalizeCategoryLabel(label);
+            if (HIDDEN_WORK_CATEGORY_LABELS.has(norm)) return;
             if (!norm || seenLabels.has(norm)) return;
             customById.set(id, { id, label });
             knownLabelById.set(id, label);
@@ -187,6 +205,26 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         });
         return Array.from(customById.values());
     }, [transactions, settings.appDefaults?.laborWorkCategories, settings.jobDescriptions]);
+    const mobileLaborCanvasPreview = useMemo(() => {
+        const assignments = latestLaborAttendance?.workAssignments as Record<string, string[]> | undefined;
+        if (!assignments || Object.keys(assignments).length === 0) return [];
+        const knownLabels = new Map<string, string>();
+        DEFAULT_WORK_CATEGORIES.forEach(c => knownLabels.set(c.id, c.label));
+        rememberedCustomCategories.forEach(c => knownLabels.set(c.id, c.label));
+        const rows = Object.entries(assignments)
+            .filter(([catId]) => !HIDDEN_WORK_CATEGORY_IDS.has(catId))
+            .filter(([, empIds]) => Array.isArray(empIds) && empIds.length > 0)
+            .map(([catId, empIds]) => {
+                const label = knownLabels.get(catId) || catId;
+                const names = empIds
+                    .map(id => getEmployeeDisplayName(employees.find(e => e.id === id)))
+                    .filter(Boolean) as string[];
+                return { catId, label, names };
+            })
+            .sort((a, b) => b.names.length - a.names.length);
+        return rows;
+    }, [latestLaborAttendance, rememberedCustomCategories, employees]);
+    const hasLaborAttendanceToday = dayTransactions.some(t => t.category === 'Labor' && t.subCategory === 'Attendance');
     const addOrSelectCustomCategory = useCallback((rawLabel: string) => {
         const label = rawLabel.trim();
         if (!label) return;
@@ -244,8 +282,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [otRate, setOtRate] = useState('');
     // Canvas-style work category assignments: { categoryId: employeeId[] }
     const [workAssignments, setWorkAssignments] = useState<Record<string, string[]>>({});
-    const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
-    const [newCategoryName, setNewCategoryName] = useState('');
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
 
     // Vehicle State
@@ -339,6 +375,44 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [eventType, setEventType] = useState('info');
     const [eventPriority, setEventPriority] = useState('normal');
     const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
+    const stepScrollerRef = useRef<HTMLDivElement | null>(null);
+    const [canScrollStepLeft, setCanScrollStepLeft] = useState(false);
+    const [canScrollStepRight, setCanScrollStepRight] = useState(false);
+
+    const updateStepScrollState = useCallback(() => {
+        const el = stepScrollerRef.current;
+        if (!el) {
+            setCanScrollStepLeft(false);
+            setCanScrollStepRight(false);
+            return;
+        }
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        setCanScrollStepLeft(el.scrollLeft > 4);
+        setCanScrollStepRight(el.scrollLeft < maxScroll - 4);
+    }, []);
+
+    useEffect(() => {
+        const el = stepScrollerRef.current;
+        if (!el || !mobileShell) return;
+        updateStepScrollState();
+        const onScroll = () => updateStepScrollState();
+        window.addEventListener('resize', onScroll);
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => {
+            window.removeEventListener('resize', onScroll);
+            el.removeEventListener('scroll', onScroll);
+        };
+    }, [mobileShell, updateStepScrollState]);
+
+    useEffect(() => {
+        if (!mobileShell) return;
+        const el = stepScrollerRef.current;
+        if (!el) return;
+        const activeBtn = el.querySelector<HTMLButtonElement>(`button[data-step="${step}"]`);
+        if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        const t = window.setTimeout(updateStepScrollState, 180);
+        return () => window.clearTimeout(t);
+    }, [step, mobileShell, updateStepScrollState]);
 
     // Prefill form state เมื่อเลือกวันที่ที่เคยบันทึกแล้ว
     useEffect(() => {
@@ -349,7 +423,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         if (laborAttendance.length > 0) {
             const latest = laborAttendance[laborAttendance.length - 1] as any;
             if (latest.workAssignments) {
-                setWorkAssignments(latest.workAssignments);
+                setWorkAssignments(sanitizeWorkAssignments(latest.workAssignments));
             } else {
                 setWorkAssignments({});
             }
@@ -530,6 +604,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         }
         nextStep();
     };
+    const handleOpenLaborStep = () => {
+        setLaborStatus('Work');
+        setStep(1);
+    };
 
     const isWizardTx = (t: Transaction) =>
         t.category === 'Labor' ||
@@ -587,14 +665,31 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             {/* Header + โหมด บันทึก | รายงาน — โหมดมือถือ: เฉพาะแถบขั้นตอน แตะง่าย */}
             {mobileShell ? (
                 viewMode === 'record' && (
-                    <div className="sticky top-0 z-10 mb-3 overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200/90 bg-white/95 px-1.5 py-2 shadow-sm backdrop-blur-md hide-scrollbar touch-pan-x [-webkit-overflow-scrolling:touch] dark:border-white/10 dark:bg-slate-900/95">
-                        <div className="flex w-max min-w-full gap-1 pb-0.5 snap-x snap-mandatory">
+                    <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200/90 bg-white/95 px-1.5 py-2 shadow-sm backdrop-blur-md [@media(orientation:landscape)_and_(max-height:560px)]:mb-2 [@media(orientation:landscape)_and_(max-height:560px)]:py-1.5 dark:border-white/10 dark:bg-slate-900/95">
+                        <div
+                            ref={stepScrollerRef}
+                            className="relative overflow-x-auto overscroll-x-contain hide-scrollbar touch-pan-x [-webkit-overflow-scrolling:touch]"
+                        >
+                            {canScrollStepLeft && (
+                                <div
+                                    className="pointer-events-none absolute bottom-0 left-0 top-0 w-7 rounded-l-xl bg-gradient-to-r from-white/95 to-transparent dark:from-slate-900/95"
+                                    aria-hidden
+                                />
+                            )}
+                            {canScrollStepRight && (
+                                <div
+                                    className="pointer-events-none absolute bottom-0 right-0 top-0 w-7 rounded-r-xl bg-gradient-to-l from-white/95 to-transparent dark:from-slate-900/95"
+                                    aria-hidden
+                                />
+                            )}
+                            <div className="flex w-max min-w-full gap-1 pb-0.5 snap-x snap-mandatory">
                             {STEPS.map((s, i) => (
                                 <button
                                     type="button"
                                     key={s.id}
+                                    data-step={i}
                                     onClick={() => setStep(i)}
-                                    className={`flex min-h-[44px] shrink-0 snap-start items-center justify-center rounded-xl px-3.5 text-sm font-bold transition-all active:scale-[0.98] touch-manipulation ${
+                                    className={`flex min-h-[44px] shrink-0 snap-start items-center justify-center rounded-xl px-3.5 text-sm font-bold transition-all active:scale-[0.98] touch-manipulation [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[38px] [@media(orientation:landscape)_and_(max-height:560px)]:px-3 [@media(orientation:landscape)_and_(max-height:560px)]:text-xs ${
                                         step === i
                                             ? 'bg-indigo-600 text-white shadow-md'
                                             : i < step
@@ -605,7 +700,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     {s.shortLabel}
                                 </button>
                             ))}
+                            </div>
                         </div>
+                        {(canScrollStepLeft || canScrollStepRight) && (
+                            <p className="mt-1 px-1 text-[10px] font-medium text-slate-400 dark:text-slate-500">ปัดซ้าย/ขวาเพื่อดูขั้นตอนทั้งหมด</p>
+                        )}
                     </div>
                 )
             ) : (
@@ -855,11 +954,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                         {/* Step 0: Date */}
                         {step === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full space-y-6 animate-slide-up">
-                                <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-300 mb-2">
+                            <div className="flex h-full flex-col items-center justify-center space-y-5 animate-slide-up [@media(orientation:landscape)_and_(max-height:560px)]:justify-start [@media(orientation:landscape)_and_(max-height:560px)]:space-y-3 [@media(orientation:landscape)_and_(max-height:560px)]:pt-1">
+                                <div className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200">
                                     <Calendar size={32} />
                                 </div>
-                                <h3 className={`font-bold text-slate-800 dark:text-slate-100 ${mobileShell ? 'text-lg' : 'text-xl'}`}>เลือกวันที่</h3>
+                                <h3 className={`font-bold text-slate-800 dark:text-slate-100 ${mobileShell ? 'text-base' : 'text-xl'}`}>เลือกวันที่</h3>
                                 <div className={mobileShell ? 'w-full' : 'w-full max-w-sm'}>
                                     <DatePicker label={mobileShell ? '' : 'วันที่'} value={date} onChange={setDate} />
                                 </div>
@@ -869,19 +968,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
                                 )}
                                 {hasExistingWizardData && (
-                                    <div className="w-full min-w-0 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
-                                        <p className="mb-2 break-words font-bold">พบข้อมูลวันที่นี้แล้ว สามารถกดเพื่อเข้าไปแก้ไขต่อได้</p>
-                                        <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">ค่าแรง {dayStepStats.laborCount}</div>
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">การใช้รถ {dayStepStats.vehicleCount}</div>
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">เที่ยวรถ {dayStepStats.tripCount}</div>
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">ทราย {dayStepStats.sandCount}</div>
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">น้ำมัน {dayStepStats.fuelCount}</div>
-                                            <div className="min-w-0 rounded-lg bg-white/90 px-2 py-1.5 text-center break-words dark:bg-white/10">เหตุการณ์ {dayStepStats.eventCount}</div>
+                                    <div className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200">
+                                        <p className="mb-2 break-words text-xs font-semibold">พบข้อมูลวันที่นี้แล้ว สามารถกดเพื่อเข้าไปแก้ไขต่อได้</p>
+                                        <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-3">
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">ค่าแรง {dayStepStats.laborCount}</div>
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">การใช้รถ {dayStepStats.vehicleCount}</div>
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">เที่ยวรถ {dayStepStats.tripCount}</div>
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">ทราย {dayStepStats.sandCount}</div>
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">น้ำมัน {dayStepStats.fuelCount}</div>
+                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">เหตุการณ์ {dayStepStats.eventCount}</div>
                                         </div>
                                     </div>
                                 )}
-                                <Button onClick={handleStartRecord} className="mt-8 w-full max-w-xs px-6 py-3 text-base shadow-lg shadow-indigo-200 sm:w-auto sm:max-w-none sm:px-8 sm:text-lg">
+                                <Button onClick={handleStartRecord} className="mt-6 w-full max-w-xs rounded-xl border border-slate-300 bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 [@media(orientation:landscape)_and_(max-height:560px)]:mt-3 sm:w-auto sm:max-w-none sm:px-8 sm:text-base dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100">
                                     {hasExistingWizardData ? 'แก้ไขข้อมูลที่บันทึกแล้ว' : 'เริ่มบันทึก'} <ChevronRight className="ml-2" />
                                 </Button>
                             </div>
@@ -894,6 +993,37 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Users className="text-emerald-500 dark:text-emerald-400" /> บันทึกค่าแรง / OT</h3>
                                     <span className="text-xs text-slate-400 dark:text-slate-500">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                                 </div>
+                                {mobileShell && (
+                                    <div className="mb-3 w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">แคนวาสค่าแรงวันนี้</p>
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/10 dark:bg-white/10 dark:text-slate-300">
+                                                {mobileLaborCanvasPreview.reduce((acc, row) => acc + row.names.length, 0)} คน
+                                            </span>
+                                        </div>
+                                        {mobileLaborCanvasPreview.length > 0 ? (
+                                            <div className="space-y-2 [@media(orientation:landscape)_and_(max-height:560px)]:grid [@media(orientation:landscape)_and_(max-height:560px)]:grid-cols-2 [@media(orientation:landscape)_and_(max-height:560px)]:gap-2 [@media(orientation:landscape)_and_(max-height:560px)]:space-y-0">
+                                                {mobileLaborCanvasPreview.map(row => (
+                                                    <div key={row.catId} className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-white/10 dark:bg-white/5">
+                                                        <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{row.label}</p>
+                                                        <p className="mt-1 break-words text-[11px] text-slate-600 dark:text-slate-300">
+                                                            {row.names.join(', ')}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400">ยังไม่มีการจัดคนลงกล่องงานสำหรับวันนี้</p>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenLaborStep}
+                                            className="mt-3 w-full rounded-xl border border-slate-300 bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99] touch-manipulation dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                                        >
+                                            {hasLaborAttendanceToday ? 'แก้ไขค่าแรง' : 'เริ่มบันทึกค่าแรง'}
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="flex gap-3 mb-4">
                                     <button onClick={() => setLaborStatus('Work')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'Work' ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>✅ มาทำงาน</button>
@@ -1186,7 +1316,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </div>
                                             {settingJobDescriptionSuggestions.length > 0 && (
                                                 <div className="mt-2">
-                                                    <p className="text-xs font-medium text-slate-500 mb-1">ดึงจาก ตั้งค่า > รายละเอียดงาน:</p>
+                                                    <p className="text-xs font-medium text-slate-500 mb-1">ดึงจาก ตั้งค่า &gt; รายละเอียดงาน:</p>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {settingJobDescriptionSuggestions.slice(0, 12).map((label) => (
                                                             <button

@@ -237,7 +237,7 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
     })();
 
     return (
-        <div className={`min-h-screen min-h-[100dvh] flex items-center justify-center relative overflow-hidden transition-colors duration-700 ${darkMode ? 'bg-[#050510]' : 'bg-gradient-to-br from-stone-100 via-stone-50 to-amber-50/30'}`}>
+        <div className={`min-h-screen min-h-[100dvh] flex items-center justify-center relative overflow-hidden transition-colors duration-700 ${darkMode ? 'app-shell-dark' : 'app-shell-light'}`}>
 
             {/* Network Canvas Background */}
             <NetworkBackground darkMode={darkMode} />

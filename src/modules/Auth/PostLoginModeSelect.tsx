@@ -25,7 +25,7 @@ const PostLoginModeSelect = ({
     return (
         <div
             className={`mobile-shell-root flex min-h-0 flex-col items-center justify-center pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] ps-[max(1rem,env(safe-area-inset-left,0px))] pe-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(2.5rem,env(safe-area-inset-top,0px))] transition-colors duration-300 ${
-                darkMode ? 'bg-[#0a0a0f] text-gray-100' : 'bg-gradient-to-b from-stone-50 to-amber-50/40 text-slate-900'
+                darkMode ? 'app-shell-dark' : 'app-shell-light'
             }`}
         >
             <button

@@ -155,8 +155,8 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     }, [tab, morePanel]);
 
     const shellBg = darkMode
-        ? 'bg-slate-950 text-slate-100'
-        : 'bg-gradient-to-b from-[#eef3fb] via-[#e8edf5] to-[#dfe8f4] text-slate-900';
+        ? 'app-shell-dark'
+        : 'bg-white text-slate-900';
     const cardBg = darkMode ? 'bg-slate-900/90 ring-1 ring-white/10' : 'bg-white shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/80';
     const headerBg = darkMode ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200/80 bg-white/95';
     const mainBottomPad = 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]';
@@ -168,22 +168,22 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         >
             {!darkMode && (
                 <div
-                    className="pointer-events-none absolute inset-x-0 top-0 h-52 w-full opacity-90"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-40 w-full opacity-60"
                     style={{
-                        background: 'radial-gradient(ellipse 90% 80% at 50% -25%, rgba(59,130,246,0.2), transparent 72%)',
+                        background: 'linear-gradient(to bottom, rgba(15,23,42,0.03), transparent)',
                     }}
                 />
             )}
-            <div className="relative mx-auto flex min-h-0 w-full max-w-full min-w-0 flex-1 flex-col sm:max-w-lg">
+            <div className="relative mx-auto flex min-h-0 w-full max-w-full min-w-0 flex-1 flex-col sm:max-w-xl [@media(orientation:landscape)_and_(max-height:560px)]:max-w-full">
                 <header
-                    className={`sticky top-0 z-20 flex items-center gap-2 border-b py-2.5 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] backdrop-blur-md ${headerBg}`}
+                    className={`sticky top-0 z-20 flex items-center gap-2 border-b py-2.5 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] backdrop-blur-md [@media(orientation:landscape)_and_(max-height:560px)]:gap-1.5 [@media(orientation:landscape)_and_(max-height:560px)]:py-2 ${headerBg}`}
                     style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
                 >
                     {showBack ? (
                         <button
                             type="button"
                             onClick={onHeaderBack}
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl touch-manipulation active:scale-95 ${
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl touch-manipulation active:scale-95 [@media(orientation:landscape)_and_(max-height:560px)]:h-10 [@media(orientation:landscape)_and_(max-height:560px)]:w-10 ${
                                 darkMode ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
                             }`}
                             aria-label="กลับ"
@@ -192,7 +192,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                         </button>
                     ) : (
                         <div
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner ${
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner [@media(orientation:landscape)_and_(max-height:560px)]:h-10 [@media(orientation:landscape)_and_(max-height:560px)]:w-10 ${
                                 darkMode ? 'bg-blue-600' : 'bg-blue-600'
                             }`}
                         >
@@ -204,13 +204,13 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                         </div>
                     )}
                     <div className="min-w-0 flex-1">
-                        <h1 className="truncate text-lg font-black leading-tight tracking-tight text-slate-900 dark:text-white">{title}</h1>
+                        <h1 className="truncate text-lg font-black leading-tight tracking-tight text-slate-900 [@media(orientation:landscape)_and_(max-height:560px)]:text-base dark:text-white">{title}</h1>
                         <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{settings.appName}</p>
                     </div>
                     <button
                         type="button"
                         onClick={onToggleDarkMode}
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl touch-manipulation active:scale-95 ${
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl touch-manipulation active:scale-95 [@media(orientation:landscape)_and_(max-height:560px)]:h-10 [@media(orientation:landscape)_and_(max-height:560px)]:w-10 ${
                             darkMode ? 'bg-slate-800 text-amber-300' : 'bg-slate-100 text-slate-700'
                         }`}
                         aria-label="ธีม"
@@ -220,7 +220,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                 </header>
 
                 <main
-                    className={`mobile-field-app min-h-0 flex-1 scroll-pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-y-contain pt-3 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] ${mainBottomPad}`}
+                    className={`mobile-field-app min-h-0 flex-1 scroll-pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-y-contain pt-3 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] [@media(orientation:landscape)_and_(max-height:560px)]:pt-2 [@media(orientation:landscape)_and_(max-height:560px)]:pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${mainBottomPad}`}
                     style={{ WebkitTapHighlightColor: 'transparent', overscrollBehaviorY: 'contain' }}
                 >
                     {tab === 'home' && (
@@ -428,7 +428,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                 </main>
 
                 <nav
-                    className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-full touch-manipulation sm:max-w-lg"
+                    className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-full touch-manipulation sm:max-w-xl [@media(orientation:landscape)_and_(max-height:560px)]:sm:max-w-full"
                     aria-label="เมนูหลักมือถือ"
                     style={{
                         paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
@@ -455,7 +455,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             className="pointer-events-none absolute inset-x-6 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent dark:via-white/12"
                             aria-hidden
                         />
-                        <div className="relative z-10 flex items-stretch justify-between gap-1 px-1.5 py-2" role="tablist">
+                        <div className="relative z-10 flex items-stretch justify-between gap-1 px-1.5 py-2 [@media(orientation:landscape)_and_(max-height:560px)]:py-1.5" role="tablist">
                             {TAB_BAR.map(({ id, label, icon: Icon }) => {
                                 const active = tab === id;
                                 return (
@@ -473,7 +473,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                 setRecordTypeFilter(null);
                                             }
                                         }}
-                                        className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.97] ${
+                                        className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.97] [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[52px] [@media(orientation:landscape)_and_(max-height:560px)]:py-1 ${
                                             active
                                                 ? darkMode
                                                     ? 'bg-gradient-to-b from-blue-500/[0.16] to-indigo-500/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_-12px_rgba(37,99,235,0.75)] ring-1 ring-blue-400/30'
@@ -483,7 +483,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                   : 'ring-1 ring-transparent hover:bg-slate-100/80'
                                         }`}
                                     >
-                                        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+                                        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center [@media(orientation:landscape)_and_(max-height:560px)]:h-8 [@media(orientation:landscape)_and_(max-height:560px)]:w-8">
                                             {active ? (
                                                 <span
                                                     className={`absolute inset-0 rounded-full bg-gradient-to-br shadow-lg motion-reduce:transition-none transition-transform duration-300 ease-out ${
@@ -502,7 +502,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                             />
                                         </span>
                                         <span
-                                            className={`h-0.5 w-5 shrink-0 rounded-full transition-colors duration-300 ${
+                                            className={`h-0.5 w-5 shrink-0 rounded-full transition-colors duration-300 [@media(orientation:landscape)_and_(max-height:560px)]:w-4 ${
                                                 active
                                                     ? 'bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400'
                                                     : darkMode
@@ -512,14 +512,14 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                             aria-hidden
                                         />
                                         <span
-                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[10px] font-extrabold leading-tight tracking-wide transition-colors duration-300 ${
+                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[11px] font-medium leading-tight tracking-normal transition-colors duration-300 [@media(orientation:landscape)_and_(max-height:560px)]:text-[10px] ${
                                                 active
                                                     ? darkMode
-                                                        ? 'text-blue-300'
-                                                        : 'text-blue-700'
+                                                        ? 'text-slate-100'
+                                                        : 'text-slate-800'
                                                     : darkMode
                                                       ? 'text-slate-400'
-                                                      : 'text-slate-600'
+                                                      : 'text-slate-500'
                                             }`}
                                         >
                                             {label}
