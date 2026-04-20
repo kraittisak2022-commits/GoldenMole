@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme } from '../types';
+import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan } from '../types';
 
 // ============================================
 // Helper: camelCase <-> snake_case conversion
@@ -207,6 +207,8 @@ export const fetchAdmins = async (): Promise<AdminUser[]> => {
         avatar: row.avatar,
         mustChangePassword: !!row.must_change_password,
         uiTheme: (row.ui_theme as AdminUiTheme | undefined) || 'system',
+        sessionActive: !!row.session_active,
+        lastClientSurface: (row.last_client_surface as 'select' | 'desktop' | 'mobile' | null) || 'select',
     }));
 };
 
@@ -222,6 +224,8 @@ export const saveAdmin = async (admin: AdminUser): Promise<boolean> => {
         avatar: admin.avatar || null,
         must_change_password: admin.mustChangePassword ?? false,
         ui_theme: admin.uiTheme ?? 'system',
+        session_active: admin.sessionActive ?? false,
+        last_client_surface: admin.lastClientSurface ?? 'select',
     };
     const { error } = await supabase.from('admin_users').upsert(row, { onConflict: 'id' });
     if (error) { console.error('saveAdmin error:', error); return false; }
@@ -261,6 +265,59 @@ export const saveAdminLog = async (log: AdminLog): Promise<boolean> => {
     };
     const { error } = await supabase.from('admin_logs').insert(row);
     if (error) { console.error('saveAdminLog error:', error); return false; }
+    return true;
+};
+
+// ============================================
+// WORK PLANS
+// ============================================
+export const fetchWorkPlansByAdmin = async (adminId: string): Promise<WorkPlan[]> => {
+    const { data, error } = await supabase
+        .from('work_plans')
+        .select('*')
+        .eq('admin_id', adminId)
+        .order('plan_date', { ascending: false })
+        .order('created_at', { ascending: false });
+    if (error) { console.error('fetchWorkPlansByAdmin error:', error); return []; }
+    return (data || []).map((row: any) => ({
+        id: row.id,
+        adminId: row.admin_id,
+        title: row.title,
+        note: row.note || undefined,
+        planDate: row.plan_date,
+        scope: row.scope,
+        status: row.status,
+        lane: row.lane,
+        carryHistory: row.carry_history || [],
+        workType: row.work_type || undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at || undefined,
+    }));
+};
+
+export const saveWorkPlan = async (plan: WorkPlan): Promise<boolean> => {
+    const row = {
+        id: plan.id,
+        admin_id: plan.adminId,
+        title: plan.title,
+        note: plan.note || '',
+        plan_date: plan.planDate,
+        scope: plan.scope,
+        status: plan.status,
+        lane: plan.lane,
+        carry_history: plan.carryHistory || [],
+        work_type: plan.workType || '',
+        created_at: plan.createdAt,
+        updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('work_plans').upsert(row, { onConflict: 'id' });
+    if (error) { console.error('saveWorkPlan error:', error); return false; }
+    return true;
+};
+
+export const deleteWorkPlan = async (id: string): Promise<boolean> => {
+    const { error } = await supabase.from('work_plans').delete().eq('id', id);
+    if (error) { console.error('deleteWorkPlan error:', error); return false; }
     return true;
 };
 

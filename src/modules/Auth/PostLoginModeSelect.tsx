@@ -1,4 +1,4 @@
-import { Smartphone, Monitor, Sun, Moon } from 'lucide-react';
+import { Smartphone, Monitor, Sun, Moon, ClipboardList, CalendarClock, ArrowRight } from 'lucide-react';
 import { AdminUser } from '../../types';
 
 interface PostLoginModeSelectProps {
@@ -9,6 +9,7 @@ interface PostLoginModeSelectProps {
     onToggleDarkMode: () => void;
     onChooseMobile: () => void;
     onChooseDesktop: () => void;
+    onChooseDesktopMenu: (menuId: string) => void;
 }
 
 const PostLoginModeSelect = ({
@@ -19,6 +20,7 @@ const PostLoginModeSelect = ({
     onToggleDarkMode,
     onChooseMobile,
     onChooseDesktop,
+    onChooseDesktopMenu,
 }: PostLoginModeSelectProps) => {
     const iconSrc = appIcon;
 
@@ -43,7 +45,7 @@ const PostLoginModeSelect = ({
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
 
-            <div className="w-full max-w-md space-y-8">
+            <div className="w-full max-w-3xl space-y-7">
                 <div className="text-center space-y-3">
                     <div
                         className={`mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl shadow-lg ${
@@ -65,7 +67,7 @@ const PostLoginModeSelect = ({
                     </div>
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid gap-4 md:grid-cols-2">
                     <button
                         type="button"
                         onClick={onChooseMobile}
@@ -114,6 +116,79 @@ const PostLoginModeSelect = ({
                         </span>
                     </button>
                 </div>
+
+                <section
+                    className={`rounded-2xl border p-4 sm:p-5 ${
+                        darkMode ? 'border-blue-500/30 bg-blue-500/10' : 'border-blue-200 bg-blue-50/70'
+                    }`}
+                >
+                    <div className="mb-3">
+                        <h2 className="text-base font-bold">บันทึกการทำงานประจำวัน</h2>
+                        <p className={`mt-1 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            เลือกเข้าใช้งานได้ทันทีหลังล็อกอิน
+                        </p>
+                    </div>
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                        <button
+                            type="button"
+                            onClick={() => onChooseDesktopMenu('DailyWizard')}
+                            className={`group min-h-[52px] rounded-xl border px-4 py-2 text-left text-sm font-semibold transition ${
+                                darkMode
+                                    ? 'border-blue-400/40 bg-blue-500/20 hover:bg-blue-500/25'
+                                    : 'border-blue-300 bg-white hover:bg-blue-50'
+                            }`}
+                        >
+                            <span className="inline-flex items-center gap-2">
+                                <ClipboardList size={16} />
+                                เปิดบันทึกงานประจำวัน
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onChooseDesktopMenu('WorkPlanner')}
+                            className={`group min-h-[52px] rounded-xl border px-4 py-2 text-left text-sm font-semibold transition ${
+                                darkMode
+                                    ? 'border-indigo-400/40 bg-indigo-500/20 hover:bg-indigo-500/25'
+                                    : 'border-indigo-300 bg-white hover:bg-indigo-50'
+                            }`}
+                        >
+                            <span className="inline-flex items-center gap-2">
+                                <CalendarClock size={16} />
+                                วางแผนงาน เดือน/สัปดาห์/วัน
+                            </span>
+                        </button>
+                    </div>
+                </section>
+
+                <section
+                    className={`rounded-2xl border p-4 sm:p-5 ${
+                        darkMode ? 'border-white/10 bg-white/[0.03]' : 'border-stone-200 bg-white/80'
+                    }`}
+                >
+                    <h2 className="mb-3 text-base font-bold">เมนูที่เข้าไว</h2>
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                        {[
+                            { id: 'DailyWizard', label: 'บันทึกงานประจำวัน (Daily Wizard)' },
+                            { id: 'WorkPlanner', label: 'วางแผนงานประจำวัน' },
+                            { id: 'Dashboard', label: 'ดูภาพรวมแดชบอร์ด' },
+                            { id: 'DataList', label: 'ดูรายการบันทึกย้อนหลัง' },
+                        ].map(item => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => onChooseDesktopMenu(item.id)}
+                                className={`flex min-h-[48px] items-center justify-between rounded-xl border px-3.5 py-2 text-left text-sm font-medium transition ${
+                                    darkMode
+                                        ? 'border-white/10 bg-white/[0.02] hover:bg-white/[0.07]'
+                                        : 'border-stone-200 bg-white hover:bg-stone-50'
+                                }`}
+                            >
+                                <span>{item.label}</span>
+                                <ArrowRight size={15} className={darkMode ? 'text-slate-500' : 'text-slate-400'} />
+                            </button>
+                        ))}
+                    </div>
+                </section>
             </div>
         </div>
     );

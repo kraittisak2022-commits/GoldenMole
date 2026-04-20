@@ -119,6 +119,33 @@ export interface OrgProfile {
 export interface AppDefaults {
     sandCubicPerTrip?: number;
     laborWorkCategories?: Array<{ id: string; label: string }>;
+    openRouterApiKey?: string;
+    workPlannerByAdmin?: Record<string, {
+        plans: Array<{
+            id: string;
+            title: string;
+            note?: string;
+            planDate: string;
+            scope: 'Monthly' | 'Weekly' | 'Daily';
+            status: 'Todo' | 'Done';
+            createdAt: string;
+            ownerAdminId: string;
+            lane: 'ท่าทราย' | 'แม่สุข' | 'ทดลองน้ำ';
+            carryHistory?: string[];
+            workType?: string;
+        }>;
+        customWorkTypes: string[];
+    }>;
+    aiUsageLogs?: Array<{
+        id: string;
+        adminId: string;
+        adminName: string;
+        prompt: string;
+        model: string;
+        status: 'success' | 'error';
+        message?: string;
+        createdAt: string;
+    }>;
 }
 
 export interface AppSettings {
@@ -144,6 +171,10 @@ export interface AdminUser {
     avatar?: string;
     mustChangePassword?: boolean;
     uiTheme?: AdminUiTheme;
+    /** เซสชันล่าสุดของแอดมิน (ใช้ restore หลังรีเฟรชจากฐานข้อมูล) */
+    sessionActive?: boolean;
+    /** โหมดหน้าจอล่าสุดที่เลือกไว้ */
+    lastClientSurface?: 'select' | 'desktop' | 'mobile';
 }
 
 export interface AdminLog {
@@ -153,4 +184,19 @@ export interface AdminLog {
     action: string;
     details: string;
     timestamp: string;
+}
+
+export interface WorkPlan {
+    id: string;
+    adminId: string;
+    title: string;
+    note?: string;
+    planDate: string;
+    scope: 'Monthly' | 'Weekly' | 'Daily';
+    status: 'Todo' | 'Done';
+    lane: 'ท่าทราย' | 'แม่สุข' | 'ทดลองน้ำ';
+    carryHistory?: string[];
+    workType?: string;
+    createdAt: string;
+    updatedAt?: string;
 }

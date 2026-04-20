@@ -22,6 +22,7 @@ import PostLoginModeSelect from './modules/Auth/PostLoginModeSelect';
 import MobileFieldApp from './modules/Mobile/MobileFieldApp';
 import RecordManager from './modules/DataList/RecordManager';
 import AdminModule from './modules/Admin/AdminModule';
+import WorkPlanner from './modules/Planning/WorkPlanner';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
 
@@ -45,12 +46,7 @@ const DEFAULT_ADMINS: AdminUser[] = [
     },
 ];
 
-const AUTH_SESSION_KEY = 'construction_management_auth_session_v1';
-type AuthSessionCache = {
-    adminId: string;
-    clientSurface: 'select' | 'desktop' | 'mobile';
-    savedAt: number;
-};
+type ClientSurface = 'select' | 'desktop' | 'mobile';
 
 const resolveDarkFromUiTheme = (ui: AdminUiTheme | undefined): boolean => {
     const t = ui ?? 'system';
@@ -93,6 +89,7 @@ const MOCK_TRANSACTIONS: Transaction[] = [
 const MENU_ITEMS = [
     { id: 'Dashboard', icon: LayoutDashboard, l: 'ภาพรวม' },
     { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน (Daily Wizard)' },
+    { id: 'WorkPlanner', icon: ClipboardList, l: 'วางแผนงาน (เดือน/สัปดาห์/วัน)' },
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
     { id: 'Labor', icon: Users, l: 'ค่าแรง/ลา' },
     { id: 'Vehicle', icon: Truck, l: 'การใช้รถ' },
@@ -122,7 +119,7 @@ function App() {
     // --- Auth State ---
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     /** หลังล็อกอิน: เลือกโหมดมือถือหรือเว็บปกติ */
-    const [clientSurface, setClientSurface] = useState<'select' | 'desktop' | 'mobile'>('select');
+    const [clientSurface, setClientSurface] = useState<ClientSurface>('select');
     const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
@@ -162,14 +159,6 @@ function App() {
         setSettings(next);
         db.saveSettings(next);
     }, [isLoading, autoVersionNotes, settings]);
-
-    const clearAuthSessionCache = useCallback(() => {
-        try {
-            localStorage.removeItem(AUTH_SESSION_KEY);
-        } catch {
-            // ignore storage failures
-        }
-    }, []);
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
@@ -232,49 +221,20 @@ function App() {
         setDarkMode(resolveDarkFromUiTheme(ui));
     }, []);
 
-    // Restore auth session after initial data load to prevent re-login on refresh
+    // Restore auth session from Supabase after initial data load
     useEffect(() => {
         if (isLoading || hasRestoredAuthSession.current) return;
         hasRestoredAuthSession.current = true;
-        try {
-            const raw = localStorage.getItem(AUTH_SESSION_KEY);
-            if (!raw) return;
-            const cached = JSON.parse(raw) as AuthSessionCache;
-            if (!cached || !cached.adminId) {
-                clearAuthSessionCache();
-                return;
-            }
-            const matchedAdmin = admins.find(a => a.id === cached.adminId);
-            if (!matchedAdmin) {
-                clearAuthSessionCache();
-                return;
-            }
-            setCurrentAdmin(matchedAdmin);
-            setIsLoggedIn(true);
-            setClientSurface(cached.clientSurface || 'select');
-            applyUiThemeToApp(matchedAdmin.uiTheme);
-        } catch {
-            clearAuthSessionCache();
-        }
-    }, [isLoading, admins, applyUiThemeToApp, clearAuthSessionCache]);
-
-    // Persist successful auth session
-    useEffect(() => {
-        if (!isLoggedIn || !currentAdmin) {
-            clearAuthSessionCache();
-            return;
-        }
-        try {
-            const payload: AuthSessionCache = {
-                adminId: currentAdmin.id,
-                clientSurface,
-                savedAt: Date.now(),
-            };
-            localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(payload));
-        } catch {
-            // ignore storage failures
-        }
-    }, [isLoggedIn, currentAdmin?.id, clientSurface, clearAuthSessionCache]);
+        const activeSessions = admins
+            .filter(a => a.sessionActive)
+            .sort((a, b) => String(b.lastLogin || '').localeCompare(String(a.lastLogin || '')));
+        const matchedAdmin = activeSessions[0];
+        if (!matchedAdmin) return;
+        setCurrentAdmin(matchedAdmin);
+        setIsLoggedIn(true);
+        setClientSurface((matchedAdmin.lastClientSurface as ClientSurface) || 'select');
+        applyUiThemeToApp(matchedAdmin.uiTheme);
+    }, [isLoading, admins, applyUiThemeToApp]);
 
     // Sync dark mode to <html> for full-page background and Tailwind dark:
     useEffect(() => {
@@ -321,23 +281,69 @@ function App() {
         db.saveAdminLog(log);
     }, [currentAdmin]);
 
+    const persistAdminSession = useCallback(async (
+        admin: AdminUser,
+        sessionActive: boolean,
+        surface?: ClientSurface
+    ) => {
+        const nextAdmin: AdminUser = {
+            ...admin,
+            sessionActive,
+            lastClientSurface: surface ?? admin.lastClientSurface ?? 'select',
+        };
+        setAdmins(prev => prev.map(a => a.id === nextAdmin.id ? nextAdmin : a));
+        if (currentAdminRef.current?.id === nextAdmin.id) {
+            setCurrentAdmin(nextAdmin);
+            currentAdminRef.current = nextAdmin;
+        }
+        await db.saveAdmin(nextAdmin);
+        return nextAdmin;
+    }, []);
+
+    const changeClientSurface = useCallback((surface: ClientSurface) => {
+        setClientSurface(surface);
+        const admin = currentAdminRef.current;
+        if (!admin) return;
+        const nextAdmin: AdminUser = {
+            ...admin,
+            sessionActive: true,
+            lastClientSurface: surface,
+        };
+        setAdmins(prev => prev.map(a => a.id === nextAdmin.id ? nextAdmin : a));
+        setCurrentAdmin(nextAdmin);
+        currentAdminRef.current = nextAdmin;
+        void db.saveAdmin(nextAdmin);
+    }, []);
+
     const finalizeSuccessfulLogin = useCallback(async (updatedAdmin: AdminUser) => {
+        const loggedInAdmin: AdminUser = { ...updatedAdmin, sessionActive: true, lastClientSurface: 'select' };
+        const otherActiveAdmins = admins
+            .filter(a => a.id !== loggedInAdmin.id && a.sessionActive)
+            .map(a => ({ ...a, sessionActive: false as const }));
         setClientSurface('select');
-        setAdmins(prev => prev.map(a => a.id === updatedAdmin.id ? updatedAdmin : a));
-        setCurrentAdmin(updatedAdmin);
+        setAdmins(prev => prev.map(a => {
+            if (a.id === loggedInAdmin.id) return loggedInAdmin;
+            if (a.sessionActive) return { ...a, sessionActive: false };
+            return a;
+        }));
+        setCurrentAdmin(loggedInAdmin);
+        currentAdminRef.current = loggedInAdmin;
         setIsLoggedIn(true);
-        await db.saveAdmin(updatedAdmin);
+        await Promise.all([
+            db.saveAdmin(loggedInAdmin),
+            ...otherActiveAdmins.map(a => db.saveAdmin(a)),
+        ]);
         const log: AdminLog = {
             id: Date.now().toString(),
-            adminId: updatedAdmin.id,
-            adminName: updatedAdmin.displayName,
+            adminId: loggedInAdmin.id,
+            adminName: loggedInAdmin.displayName,
             action: 'login',
             details: `สถานะ: สำเร็จ | เหตุการณ์: เข้าสู่ระบบ`,
             timestamp: formatDateTimeTH(),
         };
         setAdminLogs(prev => [log, ...prev]);
         db.saveAdminLog(log);
-    }, []);
+    }, [admins]);
 
     const handleLogin = async (admin: AdminUser, plainPassword: string) => {
         if (admin.mustChangePassword) {
@@ -371,12 +377,14 @@ function App() {
     };
 
     const handleLogout = () => {
-        if (currentAdmin) {
+        const admin = currentAdminRef.current;
+        if (admin) {
             addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
+            void persistAdminSession(admin, false, 'select');
         }
-        clearAuthSessionCache();
         setIsLoggedIn(false);
         setCurrentAdmin(null);
+        currentAdminRef.current = null;
         setClientSurface('select');
         setActiveMenu('Dashboard');
     };
@@ -406,9 +414,10 @@ function App() {
                 setAdminLogs(prev => [log, ...prev]);
                 db.saveAdminLog(log);
             }
-            clearAuthSessionCache();
+            if (admin) void persistAdminSession(admin, false, 'select');
             setIsLoggedIn(false);
             setCurrentAdmin(null);
+            currentAdminRef.current = null;
             setClientSurface('select');
             setActiveMenu('Dashboard');
             setToast('ออกจากระบบอัตโนมัติ — ไม่มีการใช้งานเกิน 45 นาที กรุณาเข้าสู่ระบบใหม่');
@@ -418,7 +427,7 @@ function App() {
             events.forEach(ev => window.removeEventListener(ev, bump as EventListener));
             window.clearInterval(tick);
         };
-    }, [isLoggedIn, clearAuthSessionCache]);
+    }, [isLoggedIn, persistAdminSession]);
 
     const handleMenuClick = useCallback((menuId: string) => {
         setActiveMenu(menuId);
@@ -643,6 +652,16 @@ function App() {
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
             case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'WorkPlanner': return currentAdmin ? (
+                <WorkPlanner
+                    adminId={currentAdmin.id}
+                    adminName={currentAdmin.displayName}
+                    settings={settings}
+                    setSettings={handleSetSettings}
+                    addLog={addLog}
+                    darkMode={darkMode}
+                />
+            ) : null;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return (
                 <SettingsModule
@@ -703,8 +722,12 @@ function App() {
                     currentAdmin={currentAdmin}
                     darkMode={darkMode}
                     onToggleDarkMode={() => setDarkMode(!darkMode)}
-                    onChooseMobile={() => setClientSurface('mobile')}
-                    onChooseDesktop={() => setClientSurface('desktop')}
+                    onChooseMobile={() => changeClientSurface('mobile')}
+                    onChooseDesktop={() => changeClientSurface('desktop')}
+                    onChooseDesktopMenu={(menuId) => {
+                        setActiveMenu(menuId);
+                        changeClientSurface('desktop');
+                    }}
                 />
             </>
         );
@@ -748,7 +771,7 @@ function App() {
                     darkMode={darkMode}
                     onToggleDarkMode={() => setDarkMode(!darkMode)}
                     onLogout={handleLogout}
-                    onSwitchToDesktop={() => setClientSurface('desktop')}
+                    onSwitchToDesktop={() => changeClientSurface('desktop')}
                     onOpenAccount={() => setAccountModalOpen(true)}
                     onSaveTransaction={handleSave}
                     onDeleteTransaction={handleDeleteTransaction}
@@ -888,7 +911,7 @@ function App() {
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
                                 <MoreHorizontal size={18} />
                             </button>
-                            <button type="button" onClick={() => setClientSurface('mobile')} className={`flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-emerald-500/10 text-emerald-400' : 'hover:bg-emerald-50 text-emerald-700'}`} title="โหมดมือถือ (กรอกข้อมูลง่าย)">
+                            <button type="button" onClick={() => changeClientSurface('mobile')} className={`flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-emerald-500/10 text-emerald-400' : 'hover:bg-emerald-50 text-emerald-700'}`} title="โหมดมือถือ (กรอกข้อมูลง่าย)">
                                 <Smartphone size={18} />
                             </button>
                             <button onClick={handleLogout} className="flex items-center justify-center p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="ออกจากระบบ">
@@ -921,7 +944,7 @@ function App() {
                                 </div>
                             </button>
                         )}
-                        <button type="button" onClick={() => { setClientSurface('mobile'); setIsSidebarOpen(false); }} className={`mb-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}>
+                        <button type="button" onClick={() => { changeClientSurface('mobile'); setIsSidebarOpen(false); }} className={`mb-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}>
                             <Smartphone size={16} /> โหมดมือถือ (กรอกเร็ว)
                         </button>
                         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">

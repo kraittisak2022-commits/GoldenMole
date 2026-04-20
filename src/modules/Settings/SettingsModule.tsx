@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -31,6 +31,7 @@ const TAB_HELP: Record<string, string> = {
     landGroups: 'กลุ่ม/โครงการที่ดิน ใช้จัดหมวดโครงการที่ดิน',
     versionNotes: 'สรุปการเปลี่ยนแปลงเวอร์ชันแบบสั้นๆ เพื่อแสดงในหน้าโลโก้และตั้งค่า',
     laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
+    aiLogs: 'ประวัติการเรียกใช้งาน AI จากเมนูวางแผนงาน รวมผลลัพธ์สำเร็จ/ผิดพลาด',
 };
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
@@ -414,6 +415,19 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
         if (value === 'degraded') return { text: 'ผิดปกติ', cls: 'bg-amber-100 text-amber-700' };
         return { text: 'ไม่ทราบ', cls: 'bg-slate-100 text-slate-700' };
     };
+    const aiLogs = settings.appDefaults?.aiUsageLogs || [];
+    const aiLastLog = aiLogs[0];
+    const aiConfigured = !!settings.appDefaults?.openRouterApiKey?.trim();
+    const aiStatus: StatusState = !aiConfigured
+        ? 'offline'
+        : aiLastLog?.status === 'error'
+          ? 'degraded'
+          : 'online';
+    const aiDetail = !aiConfigured
+        ? 'ยังไม่ได้ตั้งค่า OpenRouter API Key'
+        : aiLastLog
+          ? `ล่าสุด: ${aiLastLog.status === 'success' ? 'สำเร็จ' : 'ผิดพลาด'} • ${new Date(aiLastLog.createdAt).toLocaleString('th-TH')}`
+          : 'พร้อมใช้งาน (ยังไม่มีประวัติการเรียก)';
 
     const saveAccountProfile = async () => {
         if (!onUpdateAdminProfile || !currentAdmin) return;
@@ -479,6 +493,7 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
         { key: 'landGroups', l: 'กลุ่มที่ดิน' },
         { key: 'fuelStock', l: 'น้ำมัน & สต็อกยกมา' },
         { key: 'defaults', l: 'ค่าเริ่มต้นระบบ' },
+        { key: 'aiLogs', l: 'AI Logs' },
         { key: 'laborWorkCategories', l: 'ประเภทงานค่าแรง' },
         { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
@@ -678,6 +693,29 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
                             <p className="text-xs text-slate-400">ถ้าไม่แน่ใจ ใช้ 3 คิวต่อเที่ยวเป็นค่ามาตรฐาน</p>
                             <Button onClick={saveAppDefaults}>บันทึกค่าเริ่มต้น</Button>
                         </div>
+                    ) : activeTab === 'aiLogs' ? (
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-lg">ประวัติการใช้งาน AI</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">บันทึกจากโหมด AI Auto คีย์ข้อมูลในระบบวางแผนงาน</p>
+                            <div className="space-y-2">
+                                {(settings.appDefaults?.aiUsageLogs || []).map((log) => (
+                                    <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                            <p className="text-sm font-semibold text-slate-700">{log.adminName} • {log.model}</p>
+                                            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${log.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                {log.status === 'success' ? 'สำเร็จ' : 'ผิดพลาด'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleString('th-TH')}</p>
+                                        <p className="mt-1 text-sm text-slate-700">Prompt: {log.prompt}</p>
+                                        {log.message ? <p className="mt-1 text-xs text-slate-500">Message: {log.message}</p> : null}
+                                    </div>
+                                ))}
+                                {(settings.appDefaults?.aiUsageLogs || []).length === 0 && (
+                                    <p className="text-sm text-slate-400">ยังไม่มีประวัติการใช้งาน AI</p>
+                                )}
+                            </div>
+                        </div>
                     ) : activeTab === 'laborWorkCategories' ? (
                         <div className="space-y-6 max-w-xl">
                             <h3 className="font-bold text-lg">ประเภทงานค่าแรง (Daily Wizard)</h3>
@@ -763,6 +801,7 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
                                     { key: 'host', label: 'Host', icon: <Server size={16} className="text-slate-500" />, value: status.host, detail: status.hostname },
                                     { key: 'dns', label: 'DNS', icon: <Globe size={16} className="text-slate-500" />, value: status.dns, detail: `Origin: ${window.location.origin}` },
                                     { key: 'database', label: 'ฐานข้อมูล (Supabase)', icon: <Database size={16} className="text-slate-500" />, value: status.database, detail: status.latencyMs != null ? `Latency ~ ${status.latencyMs} ms` : 'ยังไม่เคยตรวจสอบ' },
+                                    { key: 'ai', label: 'AI Auto Planner', icon: <Sparkles size={16} className="text-slate-500" />, value: aiStatus, detail: aiDetail },
                                 ].map(item => {
                                     const badge = statusLabel(item.value);
                                     return (
@@ -783,6 +822,7 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
                                     <p><strong>เวอร์ชั่น:</strong> v{appVersion}</p>
                                     <p><strong>อัปเดตล่าสุดเมื่อ:</strong> {appUpdatedAt}</p>
                                     <p><strong>ตรวจสถานะล่าสุด:</strong> {lastCheckedAt || '-'}</p>
+                                    <p><strong>จำนวนการใช้งาน AI:</strong> {aiLogs.length} ครั้ง</p>
                                 </div>
                                 {status.notes.length > 0 && (
                                     <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">

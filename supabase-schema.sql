@@ -155,6 +155,59 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS per_car_cubic NUMERIC;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_type TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_priority TEXT;
 
+-- 5. Work Plans (แยกตารางจริงสำหรับระบบวางแผนงาน)
+CREATE TABLE IF NOT EXISTS work_plans (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    note TEXT,
+    plan_date TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK (scope IN ('Monthly', 'Weekly', 'Daily')),
+    status TEXT NOT NULL CHECK (status IN ('Todo', 'Done')),
+    lane TEXT NOT NULL CHECK (lane IN ('ท่าทราย', 'แม่สุข', 'ทดลองน้ำ')),
+    carry_history JSONB DEFAULT '[]'::jsonb,
+    work_type TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- Backfill: ย้ายข้อมูลเดิมจาก app_defaults.workPlannerByAdmin ไปตาราง work_plans (รันซ้ำได้)
+INSERT INTO work_plans (
+    id, admin_id, title, note, plan_date, scope, status, lane, carry_history, work_type, created_at, updated_at
+)
+SELECT
+    p.value->>'id' AS id,
+    w.key AS admin_id,
+    p.value->>'title' AS title,
+    NULLIF(p.value->>'note', '') AS note,
+    p.value->>'planDate' AS plan_date,
+    p.value->>'scope' AS scope,
+    p.value->>'status' AS status,
+    COALESCE(NULLIF(p.value->>'lane', ''), 'ท่าทราย') AS lane,
+    COALESCE(p.value->'carryHistory', '[]'::jsonb) AS carry_history,
+    NULLIF(p.value->>'workType', '') AS work_type,
+    COALESCE(NULLIF(p.value->>'createdAt', ''), NOW()::text) AS created_at,
+    NOW()::text AS updated_at
+FROM app_settings s
+CROSS JOIN LATERAL jsonb_each(COALESCE(s.app_defaults->'workPlannerByAdmin', '{}'::jsonb)) AS w(key, value)
+CROSS JOIN LATERAL jsonb_array_elements(COALESCE(w.value->'plans', '[]'::jsonb)) AS p(value)
+WHERE s.id = 'default'
+  AND COALESCE(NULLIF(p.value->>'id', ''), '') <> ''
+  AND COALESCE(NULLIF(p.value->>'title', ''), '') <> ''
+  AND COALESCE(NULLIF(p.value->>'planDate', ''), '') <> ''
+  AND COALESCE(NULLIF(p.value->>'scope', ''), '') IN ('Monthly', 'Weekly', 'Daily')
+  AND COALESCE(NULLIF(p.value->>'status', ''), '') IN ('Todo', 'Done')
+ON CONFLICT (id) DO UPDATE SET
+    title = EXCLUDED.title,
+    note = EXCLUDED.note,
+    plan_date = EXCLUDED.plan_date,
+    scope = EXCLUDED.scope,
+    status = EXCLUDED.status,
+    lane = EXCLUDED.lane,
+    carry_history = EXCLUDED.carry_history,
+    work_type = EXCLUDED.work_type,
+    updated_at = NOW()::text;
+
 -- 5. Admin Users
 CREATE TABLE IF NOT EXISTS admin_users (
     id TEXT PRIMARY KEY,
@@ -166,11 +219,15 @@ CREATE TABLE IF NOT EXISTS admin_users (
     last_login TEXT,
     avatar TEXT,
     must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
-    ui_theme TEXT DEFAULT 'system'
+    ui_theme TEXT DEFAULT 'system',
+    session_active BOOLEAN NOT NULL DEFAULT FALSE,
+    last_client_surface TEXT DEFAULT 'select'
 );
 
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS ui_theme TEXT DEFAULT 'system';
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS session_active BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_client_surface TEXT DEFAULT 'select';
 
 -- 6. Admin Logs
 CREATE TABLE IF NOT EXISTS admin_logs (
@@ -191,6 +248,7 @@ ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE land_projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE work_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_logs ENABLE ROW LEVEL SECURITY;
 
@@ -199,6 +257,7 @@ DROP POLICY IF EXISTS "Allow all on employees" ON employees;
 DROP POLICY IF EXISTS "Allow all on transactions" ON transactions;
 DROP POLICY IF EXISTS "Allow all on land_projects" ON land_projects;
 DROP POLICY IF EXISTS "Allow all on app_settings" ON app_settings;
+DROP POLICY IF EXISTS "Allow all on work_plans" ON work_plans;
 DROP POLICY IF EXISTS "Allow all on admin_users" ON admin_users;
 DROP POLICY IF EXISTS "Allow all on admin_logs" ON admin_logs;
 
@@ -206,6 +265,7 @@ CREATE POLICY "Allow all on employees" ON employees FOR ALL USING (true) WITH CH
 CREATE POLICY "Allow all on transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on land_projects" ON land_projects FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on app_settings" ON app_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on work_plans" ON work_plans FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on admin_users" ON admin_users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on admin_logs" ON admin_logs FOR ALL USING (true) WITH CHECK (true);
 
@@ -214,3 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
 CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_id ON admin_logs(admin_id);
+CREATE INDEX IF NOT EXISTS idx_work_plans_admin_id ON work_plans(admin_id);
+CREATE INDEX IF NOT EXISTS idx_work_plans_plan_date ON work_plans(plan_date);
+CREATE INDEX IF NOT EXISTS idx_work_plans_scope ON work_plans(scope);
+CREATE INDEX IF NOT EXISTS idx_work_plans_status ON work_plans(status);
