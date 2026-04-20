@@ -348,7 +348,16 @@ function App() {
     }, [isMobile]);
 
     const handleSave = async (t: Transaction) => {
-        setTransactions(p => [...p, t]);
+        const wasUpdate = transactions.some(x => x.id === t.id);
+        setTransactions(p => {
+            const i = p.findIndex(x => x.id === t.id);
+            if (i >= 0) {
+                const next = [...p];
+                next[i] = t;
+                return next;
+            }
+            return [...p, t];
+        });
         const ok = await db.saveTransaction(t);
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
@@ -362,7 +371,8 @@ function App() {
                 amount: t.amount,
                 description: t.description,
             };
-            addLog('create_transaction', `สร้างรายการ: ${t.category}/${t.subCategory || '-'} วันที่ ${normalizeDate(t.date)} จำนวนเงิน ${t.amount || 0} รายละเอียด: ${t.description || '-'} | snapshot=${JSON.stringify(summary)}`);
+            const verb = wasUpdate ? 'อัปเดตรายการ' : 'สร้างรายการ';
+            addLog(wasUpdate ? 'update_transaction' : 'create_transaction', `${verb}: ${t.category}/${t.subCategory || '-'} วันที่ ${normalizeDate(t.date)} จำนวนเงิน ${t.amount || 0} รายละเอียด: ${t.description || '-'} | snapshot=${JSON.stringify(summary)}`);
         }
 
         setToast(ok ? 'บันทึกสำเร็จ' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');

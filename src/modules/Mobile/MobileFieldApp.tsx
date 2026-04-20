@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
-    Home,
     ClipboardList,
     Users,
     List,
@@ -13,9 +12,7 @@ import {
     ChevronLeft,
     Settings,
     Shield,
-    Calendar,
     ChevronRight,
-    Wallet,
 } from 'lucide-react';
 import {
     AppSettings,
@@ -25,15 +22,13 @@ import {
     AdminUiTheme,
     AdminLog,
 } from '../../types';
-import { getToday, normalizeDate, formatDateBE } from '../../utils';
 import DailyStepRecorder from '../Dashboard/DailyStepRecorder';
 import LaborModule from '../Labor/LaborModule';
 import RecordManager from '../DataList/RecordManager';
 import SettingsModule from '../Settings/SettingsModule';
 import AdminModule from '../Admin/AdminModule';
-import FormatNumber from '../../components/ui/FormatNumber';
 
-type MobileTab = 'home' | 'daily' | 'labor' | 'records' | 'more';
+type MobileTab = 'home' | 'labor' | 'records' | 'more';
 
 interface MobileFieldAppProps {
     settings: AppSettings;
@@ -68,9 +63,8 @@ interface MobileFieldAppProps {
     addLog: (action: string, details: string) => void;
 }
 
-const TAB_BAR: { id: MobileTab; label: string; icon: typeof Home }[] = [
-    { id: 'home', label: 'สรุป', icon: Home },
-    { id: 'daily', label: 'บันทึก', icon: ClipboardList },
+const TAB_BAR: { id: MobileTab; label: string; icon: typeof ClipboardList }[] = [
+    { id: 'home', label: 'บันทึกงาน', icon: ClipboardList },
     { id: 'labor', label: 'ค่าแรง', icon: Users },
     { id: 'records', label: 'รายการ', icon: List },
     { id: 'more', label: 'เมนู', icon: MoreHorizontal },
@@ -87,65 +81,6 @@ const CATEGORY_LABEL_TH: Record<string, string> = {
     DailyLog: 'บันทึกงาน',
     Leave: 'ลา',
 };
-
-const POS_SLICE_COLORS_LIGHT = ['#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8'];
-const POS_SLICE_COLORS_DARK = ['#3b82f6', '#60a5fa', '#93c5fd', '#38bdf8', '#7dd3fc', '#a5f3fc'];
-
-function PosExpenseDonut({
-    slices,
-    centerMain,
-    centerSub,
-    darkMode,
-}: {
-    slices: { value: number; color: string; label: string }[];
-    centerMain: string;
-    centerSub: string;
-    darkMode: boolean;
-}) {
-    const total = slices.reduce((a, s) => a + s.value, 0);
-    const stroke = darkMode ? '#0f172a' : '#ffffff';
-    const holeFill = darkMode ? '#1e293b' : '#ffffff';
-
-    if (total <= 0) {
-        return (
-            <div className="relative mx-auto flex h-[220px] w-[220px] items-center justify-center">
-                <div
-                    className={`flex h-48 w-48 items-center justify-center rounded-full border-8 border-dashed ${
-                        darkMode ? 'border-slate-600 text-slate-500' : 'border-slate-200 text-slate-400'
-                    }`}
-                >
-                    <p className="px-6 text-center text-sm font-medium">ยังไม่มีรายจ่ายในวันนี้</p>
-                </div>
-            </div>
-        );
-    }
-
-    let cumulative = 0;
-    const getCoords = (pct: number) => [Math.cos(2 * Math.PI * pct), Math.sin(2 * Math.PI * pct)] as const;
-
-    return (
-        <div className="relative mx-auto h-[220px] w-[220px]">
-            <svg viewBox="-1 -1 2 2" className="h-full w-full -rotate-90 drop-shadow-sm">
-                {slices.map((slice, i) => {
-                    const pct = slice.value / total;
-                    const start = getCoords(cumulative);
-                    cumulative += pct;
-                    const end = getCoords(cumulative);
-                    const largeArc = pct > 0.5 ? 1 : 0;
-                    const d = [`M ${start[0]} ${start[1]}`, `A 1 1 0 ${largeArc} 1 ${end[0]} ${end[1]}`, 'L 0 0'].join(' ');
-                    return <path key={i} d={d} fill={slice.color} stroke={stroke} strokeWidth="0.04" />;
-                })}
-                <circle cx="0" cy="0" r="0.58" fill={holeFill} />
-            </svg>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pt-1">
-                <span className={`text-xs font-semibold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{centerSub}</span>
-                <span className={`mt-0.5 text-2xl font-black tabular-nums tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                    {centerMain}
-                </span>
-            </div>
-        </div>
-    );
-}
 
 const MobileFieldApp = (props: MobileFieldAppProps) => {
     const {
@@ -177,56 +112,16 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
 
     const [tab, setTab] = useState<MobileTab>('home');
     const [morePanel, setMorePanel] = useState<'root' | 'settings' | 'admin'>('root');
-    const [summaryDate, setSummaryDate] = useState(() => getToday());
     const [recordCatFilter, setRecordCatFilter] = useState<string | null>(null);
-
-    const dayTransactions = useMemo(
-        () => transactions.filter(t => normalizeDate(t.date) === summaryDate),
-        [transactions, summaryDate]
-    );
-
-    const posStats = useMemo(() => {
-        const income = dayTransactions.filter(t => t.type === 'Income').reduce((a, t) => a + (t.amount || 0), 0);
-        const expense = dayTransactions.filter(t => t.type === 'Expense').reduce((a, t) => a + (t.amount || 0), 0);
-        const byCat = new Map<string, number>();
-        for (const t of dayTransactions) {
-            if (t.type !== 'Expense') continue;
-            const c = t.category || 'อื่นๆ';
-            byCat.set(c, (byCat.get(c) || 0) + (t.amount || 0));
-        }
-        const sorted = Array.from(byCat.entries()).sort((a, b) => b[1] - a[1]);
-        const colors = darkMode ? POS_SLICE_COLORS_DARK : POS_SLICE_COLORS_LIGHT;
-        const top = sorted.slice(0, 5);
-        const restSum = sorted.slice(5).reduce((a, [, v]) => a + v, 0);
-        const sliceList: { value: number; color: string; label: string }[] = top.map(([label, value], i) => ({
-            value,
-            color: colors[i % colors.length],
-            label: CATEGORY_LABEL_TH[label] || label,
-        }));
-        if (restSum > 0) {
-            sliceList.push({
-                value: restSum,
-                color: colors[sliceList.length % colors.length],
-                label: 'อื่นๆ',
-            });
-        }
-        const laborHeadcount = dayTransactions
-            .filter(t => t.category === 'Labor' && t.laborStatus === 'Work')
-            .reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
-        return {
-            count: dayTransactions.length,
-            income,
-            expense,
-            sliceList,
-            expenseTotal: expense,
-            laborHeadcount,
-        };
-    }, [dayTransactions, darkMode]);
+    const [recordTypeFilter, setRecordTypeFilter] = useState<'Income' | 'Expense' | null>(null);
 
     const filteredTransactionsForRecords = useMemo(() => {
-        if (!recordCatFilter) return transactions;
-        return transactions.filter(t => t.category === recordCatFilter);
-    }, [transactions, recordCatFilter]);
+        let list = transactions;
+        if (recordCatFilter) list = list.filter(t => t.category === recordCatFilter);
+        if (recordTypeFilter === 'Income') list = list.filter(t => t.type === 'Income');
+        if (recordTypeFilter === 'Expense') list = list.filter(t => t.type === 'Expense');
+        return list;
+    }, [transactions, recordCatFilter, recordTypeFilter]);
 
     const recordFilterChips = useMemo(() => {
         const set = new Set<string>();
@@ -238,21 +133,18 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
 
     const title =
         tab === 'home'
-            ? 'สรุปวันนี้'
-            : tab === 'daily'
-              ? 'บันทึกประจำวัน'
-              : tab === 'labor'
-                ? 'ค่าแรง / ลา'
-                : tab === 'records'
-                  ? 'รายการบันทึก'
-                  : morePanel === 'settings'
-                    ? 'ตั้งค่า'
-                    : morePanel === 'admin'
-                      ? 'จัดการแอดมิน'
-                      : 'เมนู';
+            ? 'บันทึกประจำวัน'
+            : tab === 'labor'
+              ? 'ค่าแรง / ลา'
+              : tab === 'records'
+                ? 'รายการบันทึก'
+                : morePanel === 'settings'
+                  ? 'ตั้งค่า'
+                  : morePanel === 'admin'
+                    ? 'จัดการแอดมิน'
+                    : 'เมนู';
 
-    const showBack =
-        (tab === 'more' && morePanel !== 'root') || tab === 'daily' || tab === 'labor' || tab === 'records';
+    const showBack = (tab === 'more' && morePanel !== 'root') || tab === 'labor' || tab === 'records';
 
     const onHeaderBack = useCallback(() => {
         if (tab === 'more' && morePanel !== 'root') {
@@ -267,18 +159,13 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         : 'bg-gradient-to-b from-[#eef3fb] via-[#e8edf5] to-[#dfe8f4] text-slate-900';
     const cardBg = darkMode ? 'bg-slate-900/90 ring-1 ring-white/10' : 'bg-white shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/80';
     const headerBg = darkMode ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200/80 bg-white/95';
-    const tabBarBg = darkMode ? 'border-slate-800 bg-slate-900/98' : 'border-slate-200 bg-white/98';
-
-    const mainBottomPad =
-        tab === 'home'
-            ? 'pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))]'
-            : 'pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))]';
-
-    const homeSlicePreview = posStats.sliceList.slice(0, 4);
-    const homeSliceMore = posStats.sliceList.length - homeSlicePreview.length;
+    const mainBottomPad = 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]';
 
     return (
-        <div className={`relative h-[100dvh] max-h-[100dvh] w-full overflow-hidden font-sans touch-manipulation ${shellBg}`} style={{ overscrollBehaviorY: 'none' }}>
+        <div
+            className={`mobile-shell-root relative flex min-h-0 w-full flex-col overflow-hidden font-sans touch-manipulation ${shellBg}`}
+            style={{ overscrollBehaviorY: 'none', WebkitTouchCallout: 'none' }}
+        >
             {!darkMode && (
                 <div
                     className="pointer-events-none absolute inset-x-0 top-0 h-52 w-full opacity-90"
@@ -287,10 +174,10 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     }}
                 />
             )}
-            <div className="relative mx-auto flex h-full w-full max-w-full min-w-0 flex-col sm:max-w-lg">
+            <div className="relative mx-auto flex min-h-0 w-full max-w-full min-w-0 flex-1 flex-col sm:max-w-lg">
                 <header
-                    className={`sticky top-0 z-20 flex items-center gap-2 border-b px-3 py-2.5 backdrop-blur-md ${headerBg}`}
-                    style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+                    className={`sticky top-0 z-20 flex items-center gap-2 border-b py-2.5 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] backdrop-blur-md ${headerBg}`}
+                    style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
                 >
                     {showBack ? (
                         <button
@@ -310,7 +197,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             }`}
                         >
                             {appIcon.startsWith('http') || appIcon.startsWith('data:') ? (
-                                <img src={appIcon} alt="" className="h-full w-full object-cover" />
+                                <img src={appIcon} alt={settings.appName} className="h-full w-full object-cover" />
                             ) : (
                                 <span className="text-lg font-black text-white">{appIcon}</span>
                             )}
@@ -318,9 +205,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     )}
                     <div className="min-w-0 flex-1">
                         <h1 className="truncate text-lg font-black leading-tight tracking-tight text-slate-900 dark:text-white">{title}</h1>
-                        {tab !== 'home' && (
-                            <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{settings.appName}</p>
-                        )}
+                        <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{settings.appName}</p>
                     </div>
                     <button
                         type="button"
@@ -335,103 +220,10 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                 </header>
 
                 <main
-                    className={`mobile-field-app min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pt-3 ${mainBottomPad}`}
+                    className={`mobile-field-app min-h-0 flex-1 scroll-pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-y-contain pt-3 ps-[max(0.75rem,env(safe-area-inset-left,0px))] pe-[max(0.75rem,env(safe-area-inset-right,0px))] ${mainBottomPad}`}
                     style={{ WebkitTapHighlightColor: 'transparent', overscrollBehaviorY: 'contain' }}
                 >
                     {tab === 'home' && (
-                        <div className="animate-fade-in space-y-3">
-                            <div className={`rounded-[1.75rem] p-4 shadow-xl shadow-slate-900/5 ring-1 backdrop-blur-sm ${cardBg}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                    <label
-                                        className={`flex min-h-[48px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border px-4 text-base font-bold touch-manipulation ${
-                                            darkMode ? 'border-slate-600 bg-slate-800 text-white' : 'border-slate-200/80 bg-white/80 text-slate-800'
-                                        }`}
-                                    >
-                                        <Calendar className={`h-5 w-5 shrink-0 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`} />
-                                        <input
-                                            type="date"
-                                            value={summaryDate}
-                                            onChange={e => setSummaryDate(e.target.value)}
-                                            className="sr-only"
-                                        />
-                                        <span>{formatDateBE(summaryDate)}</span>
-                                    </label>
-                                </div>
-
-                                <div className="mt-4 text-center">
-                                    <p className={`font-mono text-4xl font-black tabular-nums leading-none tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                                        <FormatNumber value={posStats.expense} />
-                                    </p>
-                                    <p className={`mt-2 text-sm font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>รายจ่ายวันนี้</p>
-                                    <div
-                                        className={`mx-auto mt-3 flex max-w-xs items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-bold ${
-                                            darkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-50 text-emerald-800'
-                                        }`}
-                                    >
-                                        <Wallet size={17} className="shrink-0" />
-                                        <FormatNumber value={posStats.income} />
-                                        <span className="font-semibold opacity-80">รับ</span>
-                                    </div>
-                                </div>
-
-                                <div className="mt-5">
-                                    <PosExpenseDonut
-                                        slices={posStats.sliceList}
-                                        centerMain={`${posStats.count}`}
-                                        centerSub="รายการ"
-                                        darkMode={darkMode}
-                                    />
-                                </div>
-
-                                <div className="mt-2 space-y-2">
-                                    {homeSlicePreview.length === 0 ? (
-                                        <p className={`py-3 text-center text-sm ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>ไม่มีรายจ่ายวันนี้</p>
-                                    ) : (
-                                        homeSlicePreview.map(row => {
-                                            const pct = posStats.expenseTotal > 0 ? (row.value / posStats.expenseTotal) * 100 : 0;
-                                            return (
-                                                <button
-                                                    key={row.label}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setRecordCatFilter(null);
-                                                        setTab('records');
-                                                    }}
-                                                    className={`flex min-h-[52px] w-full items-center gap-3 rounded-2xl border px-3 active:scale-[0.99] touch-manipulation ${
-                                                        darkMode ? 'border-slate-700/80 bg-slate-800/40' : 'border-slate-100 bg-white/70'
-                                                    }`}
-                                                >
-                                                    <span className="h-9 w-1 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
-                                                    <div className="min-w-0 flex-1 text-left">
-                                                        <p className="truncate text-[15px] font-bold">{row.label}</p>
-                                                        <p className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>{pct.toFixed(0)}%</p>
-                                                    </div>
-                                                    <span className="shrink-0 font-mono text-[15px] font-black tabular-nums">
-                                                        <FormatNumber value={row.value} />
-                                                    </span>
-                                                    <ChevronRight className={`h-5 w-5 shrink-0 opacity-40`} />
-                                                </button>
-                                            );
-                                        })
-                                    )}
-                                    {homeSliceMore > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setRecordCatFilter(null);
-                                                setTab('records');
-                                            }}
-                                            className={`w-full rounded-2xl py-3 text-sm font-bold touch-manipulation ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}
-                                        >
-                                            + อีก {homeSliceMore} หมวด · ดูรายการ
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {tab === 'daily' && (
                         <DailyStepRecorder
                             mobileShell
                             employees={employees}
@@ -458,28 +250,67 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     )}
 
                     {tab === 'records' && (
-                        <div className="space-y-2">
-                            <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                {recordFilterChips.map(key => {
-                                    const active = (key || null) === (recordCatFilter || '');
-                                    const label = !key ? 'ทั้งหมด' : CATEGORY_LABEL_TH[key] || key;
-                                    return (
-                                        <button
-                                            key={key || 'all'}
-                                            type="button"
-                                            onClick={() => setRecordCatFilter(key || null)}
-                                            className={`min-h-[40px] shrink-0 rounded-full border px-3.5 text-xs font-bold touch-manipulation ${
-                                                active
-                                                    ? 'border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500'
-                                                    : darkMode
-                                                      ? 'border-transparent bg-slate-800/80 text-slate-300'
-                                                      : 'border-transparent bg-white/90 text-slate-600 shadow-sm'
-                                            }`}
-                                        >
-                                            {label}
-                                        </button>
-                                    );
-                                })}
+                        <div className="space-y-3">
+                            <div className="space-y-2">
+                                <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>ประเภท</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {(
+                                        [
+                                            { type: null as const, label: 'ทั้งหมด' },
+                                            { type: 'Income' as const, label: 'รายรับ' },
+                                            { type: 'Expense' as const, label: 'รายจ่าย' },
+                                        ] as const
+                                    ).map(({ type: tType, label: tLabel }) => {
+                                        const active = recordTypeFilter === tType;
+                                        return (
+                                            <button
+                                                key={tLabel}
+                                                type="button"
+                                                onClick={() => {
+                                                    setRecordTypeFilter(tType);
+                                                    setRecordCatFilter(null);
+                                                }}
+                                                className={`min-h-[40px] shrink-0 rounded-full border px-4 text-xs font-bold touch-manipulation ${
+                                                    active
+                                                        ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600'
+                                                        : darkMode
+                                                          ? 'border-transparent bg-slate-800/80 text-slate-300'
+                                                          : 'border-transparent bg-white/90 text-slate-600 shadow-sm'
+                                                }`}
+                                            >
+                                                {tLabel}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>หมวด</p>
+                                <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    {recordFilterChips.map(key => {
+                                        const active = (key || null) === (recordCatFilter || '');
+                                        const label = !key ? 'ทุกหมวด' : CATEGORY_LABEL_TH[key] || key;
+                                        return (
+                                            <button
+                                                key={key || 'all'}
+                                                type="button"
+                                                onClick={() => {
+                                                    setRecordCatFilter(key || null);
+                                                    setRecordTypeFilter(null);
+                                                }}
+                                                className={`min-h-[40px] shrink-0 rounded-full border px-3.5 text-xs font-bold touch-manipulation ${
+                                                    active
+                                                        ? 'border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500'
+                                                        : darkMode
+                                                          ? 'border-transparent bg-slate-800/80 text-slate-300'
+                                                          : 'border-transparent bg-white/90 text-slate-600 shadow-sm'
+                                                }`}
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                             <RecordManager
                                 compact
@@ -562,6 +393,10 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 <LogOut size={20} />
                                 ออกจากระบบ
                             </button>
+                            <p className={`text-center text-[10px] font-medium leading-relaxed ${darkMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                                เวอร์ชัน {appVersion}
+                                {latestVersionNote ? ` · ${latestVersionNote}` : ''}
+                            </p>
                         </div>
                     )}
 
@@ -591,69 +426,106 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     )}
                 </main>
 
-                {tab === 'home' && (
+                <nav
+                    className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-full touch-manipulation sm:max-w-lg"
+                    aria-label="เมนูหลักมือถือ"
+                    style={{
+                        paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+                        paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+                        paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+                    }}
+                >
                     <div
-                        className="pointer-events-none fixed inset-x-0 z-[38] mx-auto max-w-full px-3 sm:max-w-lg"
-                        style={{ bottom: 'calc(3.65rem + env(safe-area-inset-bottom, 0px))' }}
+                        className={`pointer-events-auto relative mx-auto w-full max-w-full overflow-hidden rounded-[1.25rem] border shadow-[0_-12px_40px_-16px_rgba(15,23,42,0.12),0_16px_48px_-20px_rgba(37,99,235,0.08)] backdrop-blur-2xl ${
+                            darkMode
+                                ? 'border-white/[0.09] bg-gradient-to-b from-slate-800/98 to-slate-900/[0.99] ring-1 ring-white/[0.07]'
+                                : 'border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/90 ring-1 ring-white/90'
+                        }`}
                     >
-                        <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-2xl bg-blue-600 px-4 py-3 shadow-xl shadow-blue-900/25 dark:bg-blue-500">
-                            <div className="min-w-0 text-white">
-                                <p className="text-[10px] font-bold uppercase tracking-wide opacity-90">หน้างานวันนี้</p>
-                                <p className="truncate font-mono text-lg font-black tabular-nums">
-                                    {posStats.count} รายการ · <FormatNumber value={posStats.expense} />
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setTab('daily')}
-                                className="shrink-0 rounded-xl bg-white px-5 py-3 text-sm font-black text-blue-700 shadow-md touch-manipulation active:scale-95 dark:text-blue-800"
-                            >
-                                บันทึกประจำวัน
-                            </button>
+                        <div
+                            className={`pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-[1.25rem] opacity-90 ${
+                                darkMode
+                                    ? 'bg-gradient-to-b from-white/[0.06] to-transparent'
+                                    : 'bg-gradient-to-b from-blue-100/35 via-white/40 to-transparent'
+                            }`}
+                            aria-hidden
+                        />
+                        <div
+                            className="pointer-events-none absolute inset-x-6 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent dark:via-white/12"
+                            aria-hidden
+                        />
+                        <div className="relative z-10 flex items-stretch justify-between gap-0.5 px-1 py-2" role="tablist">
+                            {TAB_BAR.map(({ id, label, icon: Icon }) => {
+                                const active = tab === id;
+                                return (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={active}
+                                        aria-current={active ? 'page' : undefined}
+                                        onClick={() => {
+                                            setTab(id);
+                                            if (id === 'more') setMorePanel('root');
+                                            if (id === 'records') {
+                                                setRecordCatFilter(null);
+                                                setRecordTypeFilter(null);
+                                            }
+                                        }}
+                                        className={`relative flex min-h-[58px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.96] ${
+                                            active
+                                                ? darkMode
+                                                    ? 'bg-blue-500/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-blue-400/25'
+                                                    : 'bg-gradient-to-b from-blue-500/12 to-indigo-500/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-blue-500/20'
+                                                : 'ring-1 ring-transparent hover:bg-slate-100/70 dark:hover:bg-white/[0.04]'
+                                        }`}
+                                    >
+                                        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                                            {active ? (
+                                                <span
+                                                    className={`absolute inset-0 rounded-full bg-gradient-to-br shadow-lg motion-reduce:transition-none transition-transform duration-300 ease-out ${
+                                                        darkMode
+                                                            ? 'from-blue-500 to-indigo-600 shadow-black/40'
+                                                            : 'from-blue-600 to-indigo-600 shadow-blue-600/35'
+                                                    }`}
+                                                />
+                                            ) : null}
+                                            <Icon
+                                                size={22}
+                                                strokeWidth={active ? 2.4 : 2}
+                                                className={`relative z-10 shrink-0 transition-colors duration-300 ${
+                                                    active ? 'text-white' : darkMode ? 'text-slate-500' : 'text-slate-400'
+                                                }`}
+                                            />
+                                        </span>
+                                        <span
+                                            className={`h-0.5 w-6 shrink-0 rounded-full transition-colors duration-300 ${
+                                                active
+                                                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400'
+                                                    : darkMode
+                                                      ? 'bg-slate-600/55'
+                                                      : 'bg-slate-200/90'
+                                            }`}
+                                            aria-hidden
+                                        />
+                                        <span
+                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[10px] font-black leading-tight tracking-wide transition-colors duration-300 ${
+                                                active
+                                                    ? darkMode
+                                                        ? 'text-blue-300'
+                                                        : 'text-blue-700'
+                                                    : darkMode
+                                                      ? 'text-slate-400'
+                                                      : 'text-slate-600'
+                                            }`}
+                                        >
+                                            {label}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
-                )}
-
-                <nav
-                    className={`fixed bottom-0 left-0 right-0 z-40 mx-auto flex max-w-full justify-around border-t backdrop-blur-xl touch-manipulation sm:max-w-lg ${tabBarBg}`}
-                    style={{ paddingBottom: 'max(0.35rem, env(safe-area-inset-bottom, 0px))' }}
-                    aria-label="เมนูหลักมือถือ"
-                >
-                    {TAB_BAR.map(({ id, label, icon: Icon }) => {
-                        const active = tab === id;
-                        return (
-                            <button
-                                key={id}
-                                type="button"
-                                onClick={() => {
-                                    setTab(id);
-                                    if (id === 'more') setMorePanel('root');
-                                }}
-                                className={`flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-black ${
-                                    active
-                                        ? 'text-blue-600 dark:text-blue-400'
-                                        : darkMode
-                                          ? 'text-slate-500'
-                                          : 'text-slate-500'
-                                }`}
-                            >
-                                <span
-                                    className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-colors ${
-                                        active
-                                            ? darkMode
-                                                ? 'bg-blue-500/20 text-blue-300'
-                                                : 'bg-blue-100 text-blue-700'
-                                            : darkMode
-                                              ? 'text-slate-400'
-                                              : 'text-slate-500'
-                                    }`}
-                                >
-                                    <Icon size={22} strokeWidth={active ? 2.5 : 2} className="shrink-0" />
-                                </span>
-                                <span className="truncate px-0.5">{label}</span>
-                            </button>
-                        );
-                    })}
                 </nav>
             </div>
         </div>

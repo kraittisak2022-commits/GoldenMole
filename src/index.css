@@ -10,6 +10,9 @@
         font-size: 16px;
         min-height: 100%;
         min-height: 100dvh;
+        /* iOS Safari: กันขยายฟอนต์อัตโนมัติตอนหมุนจอ / โฟกัส */
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
     }
 
     body {
@@ -47,6 +50,53 @@
 
 .animate-bounce-short {
     animation: bounceShort 0.5s ease-in-out;
+}
+
+/* Mobile home — flat tiles + long-shadow icon (ERP-style menu) */
+.menu-tile {
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 16px -6px rgba(0, 0, 0, 0.22);
+}
+
+.menu-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.14) 0%, transparent 36%, rgba(0, 0, 0, 0.05) 52%, rgba(0, 0, 0, 0.24) 100%);
+}
+
+.menu-icon-long-shadow {
+    filter:
+        drop-shadow(1px 1px 0 rgb(0 0 0 / 0.17)) drop-shadow(2px 2px 0 rgb(0 0 0 / 0.14)) drop-shadow(3px 3px 0 rgb(0 0 0 / 0.12))
+        drop-shadow(4px 4px 0 rgb(0 0 0 / 0.1)) drop-shadow(5px 5px 0 rgb(0 0 0 / 0.08)) drop-shadow(6px 6px 0 rgb(0 0 0 / 0.06))
+        drop-shadow(7px 7px 0 rgb(0 0 0 / 0.04)) drop-shadow(8px 8px 0 rgb(0 0 0 / 0.025));
+}
+
+@keyframes homeMenuTileIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.home-menu-tile-in {
+    animation: homeMenuTileIn 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-menu-tile-in {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
 }
 
 @keyframes fadeIn {
@@ -484,11 +534,18 @@
     animation: login-bar-shimmer 1.8s ease-in-out infinite;
 }
 
-/* โหมดมือถือในแอป — ช่องกรอกใหญ่ อ่านง่าย ลดการซูมบน iOS */
+/* โหมดมือถือในแอป — ช่องกรอกใหญ่ อ่านง่าย ลดการซูมบน iOS (ขนาดตัวอักษร ≥16px) */
+.mobile-field-app {
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
+    /* ลดการเลื่อนแนวนอนโดยไม่ตั้งใจบน iOS เมื่อกวาดในรายการแนวตั้ง */
+    overscroll-behavior-x: contain;
+}
+
 .mobile-field-app input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
 .mobile-field-app select,
 .mobile-field-app textarea {
-    font-size: 1.0625rem;
+    font-size: max(1.0625rem, 16px);
 }
 
 .mobile-field-app input[type="number"],
@@ -496,4 +553,17 @@
 .mobile-field-app input[type="search"],
 .mobile-field-app input[type="tel"] {
     min-height: 2.75rem;
+}
+
+/* iPhone / notch: ความสูง viewport เสถียรขึ้นเมื่อแถบ Safari แสดง-ซ่อน */
+.mobile-shell-root {
+    height: 100dvh;
+    max-height: 100dvh;
+}
+
+@supports (height: 100svh) {
+    .mobile-shell-root {
+        height: min(100dvh, 100svh);
+        max-height: min(100dvh, 100svh);
+    }
 }

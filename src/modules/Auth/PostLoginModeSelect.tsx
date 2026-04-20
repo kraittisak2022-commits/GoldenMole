@@ -24,14 +24,18 @@ const PostLoginModeSelect = ({
 
     return (
         <div
-            className={`min-h-screen min-h-[100dvh] flex flex-col items-center justify-center px-4 py-10 transition-colors duration-300 ${
+            className={`mobile-shell-root flex min-h-0 flex-col items-center justify-center pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] ps-[max(1rem,env(safe-area-inset-left,0px))] pe-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(2.5rem,env(safe-area-inset-top,0px))] transition-colors duration-300 ${
                 darkMode ? 'bg-[#0a0a0f] text-gray-100' : 'bg-gradient-to-b from-stone-50 to-amber-50/40 text-slate-900'
             }`}
         >
             <button
                 type="button"
                 onClick={onToggleDarkMode}
-                className={`fixed top-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border shadow-sm touch-manipulation ${
+                style={{
+                    top: 'max(1rem, env(safe-area-inset-top, 0px))',
+                    right: 'max(1rem, env(safe-area-inset-right, 0px))',
+                }}
+                className={`fixed z-10 flex h-11 w-11 items-center justify-center rounded-full border shadow-sm touch-manipulation ${
                     darkMode ? 'border-white/10 bg-white/10 text-amber-300' : 'border-stone-200 bg-white text-stone-600'
                 }`}
                 aria-label="สลับโหมดสว่าง/มืด"

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -82,6 +82,25 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const norm = normalizeDate(date);
         return transactions.filter(t => normalizeDate(t.date) === norm);
     }, [transactions, date]);
+    const dayStepStats = useMemo(() => {
+        const laborCount = dayTransactions.filter(t => t.category === 'Labor').length;
+        const vehicleCount = dayTransactions.filter(t => t.category === 'Vehicle').length;
+        const tripCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length;
+        const sandCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').length;
+        const fuelCount = dayTransactions.filter(t => t.category === 'Fuel').length;
+        const eventCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length;
+        return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, eventCount };
+    }, [dayTransactions]);
+    const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
+    const resumeStep = useMemo(() => {
+        if (dayStepStats.eventCount > 0) return 6;
+        if (dayStepStats.fuelCount > 0) return 5;
+        if (dayStepStats.sandCount > 0) return 4;
+        if (dayStepStats.tripCount > 0) return 3;
+        if (dayStepStats.vehicleCount > 0) return 2;
+        if (dayStepStats.laborCount > 0) return 1;
+        return 1;
+    }, [dayStepStats]);
     /** จำประเภทงานกำหนดเองจากทุกวัน เพื่อให้วันใหม่แสดงอัตโนมัติ */
     const rememberedCustomCategories = useMemo(() => {
         const customById = new Map<string, { id: string; label: string }>();
@@ -154,6 +173,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [vehDetails, setVehDetails] = useState('');
     const [vehWorkType, setVehWorkType] = useState<WorkType>('FullDay');
     const [vehLocation] = useState(settings.locations[0] || '');
+    const [editingVehicleTxId, setEditingVehicleTxId] = useState<string | null>(null);
 
     const applyVehicleDriverAllowance = async (driverId: string, workType: WorkType) => {
         if (!driverId) {
@@ -176,6 +196,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         if (workType === 'HalfDay') daily /= 2;
         setVehWage(String(daily));
     };
+
+    const loadVehicleForEdit = useCallback((t: Transaction) => {
+        const x = t as any;
+        setEditingVehicleTxId(t.id);
+        setVehCar(t.vehicleId || '');
+        setVehDriver(t.driverId || '');
+        setVehMachineWage(t.vehicleWage != null ? String(t.vehicleWage) : '');
+        setVehWage(t.driverWage != null ? String(t.driverWage) : '');
+        setVehDetails(t.workDetails || '');
+        setVehWorkType(x.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
+    }, []);
+
+    useEffect(() => {
+        setEditingVehicleTxId(null);
+    }, [date]);
 
     // Daily Log State (Vehicle Trips - Multi-card Canvas)
     const [tripEntries, setTripEntries] = useState<Array<{ id: string; vehicle: string; driver: string; work: string; cubicPerTrip: string }>>([
@@ -323,27 +358,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             setFuelDetails('');
         }
 
-        // Vehicle (latest simple entry)
-        const vehTx = dayTransactions
-            .filter(t => t.category === 'Vehicle')
-            .sort((a, b) => a.id.localeCompare(b.id));
-        if (vehTx.length > 0) {
-            const latestVeh = vehTx[vehTx.length - 1] as any;
-            setVehCar(latestVeh.vehicleId || '');
-            setVehDriver(latestVeh.driverId || '');
-            setVehMachineWage(latestVeh.vehicleWage != null ? String(latestVeh.vehicleWage) : '');
-            setVehWage(latestVeh.driverWage != null ? String(latestVeh.driverWage) : '');
-            setVehDetails(latestVeh.workDetails || '');
-            setVehWorkType(latestVeh.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
-        } else {
-            setVehCar('');
-            setVehDriver('');
-            setVehMachineWage('');
-            setVehWage('');
-            setVehDetails('');
-            setVehWorkType('FullDay');
+        // Vehicle (latest simple entry) — ไม่ทับฟอร์มขณะกำลังแก้ไขรายการจากการ์ด
+        if (!editingVehicleTxId) {
+            const vehTx = dayTransactions
+                .filter(t => t.category === 'Vehicle')
+                .sort((a, b) => a.id.localeCompare(b.id));
+            if (vehTx.length > 0) {
+                const latestVeh = vehTx[vehTx.length - 1] as any;
+                setVehCar(latestVeh.vehicleId || '');
+                setVehDriver(latestVeh.driverId || '');
+                setVehMachineWage(latestVeh.vehicleWage != null ? String(latestVeh.vehicleWage) : '');
+                setVehWage(latestVeh.driverWage != null ? String(latestVeh.driverWage) : '');
+                setVehDetails(latestVeh.workDetails || '');
+                setVehWorkType(latestVeh.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
+            } else {
+                setVehCar('');
+                setVehDriver('');
+                setVehMachineWage('');
+                setVehWage('');
+                setVehDetails('');
+                setVehWorkType('FullDay');
+            }
         }
-    }, [date, dayTransactions, rememberedCustomCategories]);
+    }, [date, dayTransactions, rememberedCustomCategories, editingVehicleTxId]);
 
     const nextStep = () => {
         // กันลืมกดบันทึก: ถ้ายังกด "ถัดไป" โดยไม่มีข้อมูลในแต่ละขั้น ให้เตือนก่อน
@@ -370,6 +407,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         setStep(s => Math.min(s + 1, STEPS.length - 1));
     };
     const prevStep = () => setStep(s => Math.max(s - 1, 0));
+    const handleStartRecord = () => {
+        if (hasExistingWizardData) {
+            setStep(resumeStep);
+            return;
+        }
+        nextStep();
+    };
 
     const isWizardTx = (t: Transaction) =>
         t.category === 'Labor' ||
@@ -709,8 +753,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         💡 ระบบจะดึงข้อมูลเก่าของวันนี้มาแสดงให้ตรวจสอบด้วยครับ
                                     </div>
                                 )}
-                                <Button onClick={nextStep} className="mt-8 px-8 py-3 text-lg shadow-lg shadow-indigo-200">
-                                    เริ่มบันทึก <ChevronRight className="ml-2" />
+                                {hasExistingWizardData && (
+                                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
+                                        <p className="mb-2 font-bold">พบข้อมูลวันที่นี้แล้ว สามารถกดเพื่อเข้าไปแก้ไขต่อได้</p>
+                                        <div className="grid grid-cols-3 gap-2 text-[11px]">
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">ค่าแรง {dayStepStats.laborCount}</div>
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">การใช้รถ {dayStepStats.vehicleCount}</div>
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">เที่ยวรถ {dayStepStats.tripCount}</div>
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">ทราย {dayStepStats.sandCount}</div>
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">น้ำมัน {dayStepStats.fuelCount}</div>
+                                            <div className="rounded-lg bg-white/90 px-2 py-1.5 text-center dark:bg-white/10">เหตุการณ์ {dayStepStats.eventCount}</div>
+                                        </div>
+                                    </div>
+                                )}
+                                <Button onClick={handleStartRecord} className="mt-8 px-8 py-3 text-lg shadow-lg shadow-indigo-200">
+                                    {hasExistingWizardData ? 'แก้ไขข้อมูลที่บันทึกแล้ว' : 'เริ่มบันทึก'} <ChevronRight className="ml-2" />
                                 </Button>
                             </div>
                         )}
@@ -1089,15 +1146,71 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Truck className="text-amber-500" /> บันทึกการใช้รถ</h3>
                                 <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
                                     {dayTransactions.filter(t => t.category === 'Vehicle').map(t => (
-                                        <div key={t.id} className="min-w-[200px] p-2 bg-amber-50 border border-amber-100 rounded-lg text-xs">
-                                            <div className="font-bold text-amber-900">{t.vehicleId}</div>
+                                        <div
+                                            key={t.id}
+                                            className={`min-w-[200px] max-w-[240px] shrink-0 relative rounded-lg border p-2 pr-9 text-xs transition-colors ${editingVehicleTxId === t.id ? 'border-amber-400 bg-amber-100/80 ring-1 ring-amber-300' : 'border-amber-100 bg-amber-50'}`}
+                                        >
+                                            <div className="absolute right-1 top-1 flex gap-0.5">
+                                                <button
+                                                    type="button"
+                                                    title="แก้ไข"
+                                                    onClick={() => loadVehicleForEdit(t)}
+                                                    className="rounded-md p-1.5 text-amber-700 hover:bg-amber-200/80 active:bg-amber-300/80"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                {onDeleteTransaction && (
+                                                    <button
+                                                        type="button"
+                                                        title="ลบ"
+                                                        onClick={() => {
+                                                            if (!window.confirm('ลบรายการรถนี้?')) return;
+                                                            onDeleteTransaction(t.id);
+                                                            if (editingVehicleTxId === t.id) {
+                                                                setEditingVehicleTxId(null);
+                                                                setVehCar('');
+                                                                setVehDriver('');
+                                                                setVehMachineWage('');
+                                                                setVehWage('');
+                                                                setVehDetails('');
+                                                                setVehWorkType('FullDay');
+                                                            }
+                                                        }}
+                                                        className="rounded-md p-1.5 text-amber-700 hover:bg-red-100 hover:text-red-600 active:bg-red-200"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="font-bold text-amber-900 pr-1">{t.vehicleId}</div>
                                             <div className="text-amber-800/90 text-[10px] font-semibold">{(t as any).workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}</div>
-                                            <div className="text-amber-700">{t.workDetails}</div>
+                                            <div className="text-amber-700 line-clamp-3">{t.workDetails}</div>
+                                            <div className="mt-1 text-[10px] font-medium text-amber-900/80">฿{(t.amount ?? 0).toLocaleString()}</div>
                                         </div>
                                     ))}
                                     {dayTransactions.filter(t => t.category === 'Vehicle').length === 0 && <span className="text-sm text-slate-400 italic">ยังไม่มีรายการรถวันนี้</span>}
                                 </div>
                                 <div className="space-y-4 bg-white p-4 rounded-xl border mb-4">
+                                    {editingVehicleTxId && (
+                                        <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+                                            <span className="font-semibold">กำลังแก้ไขรายการรถ</span>
+                                            <button
+                                                type="button"
+                                                className="shrink-0 rounded-lg border border-amber-300 bg-white px-2 py-1 font-medium text-amber-800 hover:bg-amber-100"
+                                                onClick={() => {
+                                                    setEditingVehicleTxId(null);
+                                                    setVehCar('');
+                                                    setVehDriver('');
+                                                    setVehMachineWage('');
+                                                    setVehWage('');
+                                                    setVehDetails('');
+                                                    setVehWorkType('FullDay');
+                                                }}
+                                            >
+                                                ยกเลิก
+                                            </button>
+                                        </div>
+                                    )}
                                     <p className="text-xs text-slate-500">คนขับ: แสดงเฉพาะพนักงานที่มีตำแหน่ง &quot;คนขับรถ&quot; — เลือกแล้วเบี้ยเลี้ยงจะใช้ค่าแรงในวันนั้น</p>
                                     <div className="grid grid-cols-2 gap-4">
                                         <Select label="รถ/เครื่องจักร" value={vehCar} onChange={(e: any) => setVehCar(e.target.value)}><option value="">-- เลือกรถ --</option>{settings.cars.map(c => <option key={c}>{c}</option>)}</Select>
@@ -1147,14 +1260,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <Button onClick={() => {
                                         if (!vehCar || !vehDriver) return alert('ข้อมูลไม่ครบ');
                                         const dayLabel = vehWorkType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+                                        const id = editingVehicleTxId || Date.now().toString();
                                         onSaveTransaction({
-                                            id: Date.now().toString(), date, type: 'Expense', category: 'Vehicle',
+                                            id, date, type: 'Expense', category: 'Vehicle',
                                             description: `รถ: ${vehCar} (${vehDetails}) [${dayLabel}]`, amount: Number(vehWage) + Number(vehMachineWage),
                                             vehicleId: vehCar, driverId: vehDriver, vehicleWage: Number(vehMachineWage), driverWage: Number(vehWage),
                                             workDetails: vehDetails, location: vehLocation, workType: vehWorkType
                                         } as Transaction);
+                                        setEditingVehicleTxId(null);
                                         setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(''); setVehWorkType('FullDay');
-                                    }} className="w-full bg-amber-500 hover:bg-amber-600">บันทึกรายการรถ</Button>
+                                    }} className="w-full bg-amber-500 hover:bg-amber-600">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
                                 </div>
                                 <div className="mt-auto flex justify-between">
                                     <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
@@ -1207,7 +1322,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                 {/* Morning / Afternoon Trip Counts + Cubic per trip */}
                                 <div className="bg-gradient-to-r from-amber-50 to-blue-50 dark:from-amber-500/10 dark:to-blue-500/10 p-4 rounded-xl border border-amber-100 dark:border-white/10 mb-4">
-                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">จำนวนเที่ยวรวม</p>
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">จำนวนเที่ยวรวม</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">เว้นว่างได้ หากวันนี้ใช้รถขนงานอย่างอื่นและไม่มีการวิ่งเที่ยว</p>
                                     <div className="grid grid-cols-3 gap-3">
                                         <div>
                                             <label className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1 block">☀️ ช่วงเช้า (เที่ยว)</label>
@@ -1327,7 +1443,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <Button onClick={() => {
                                         const valid = tripEntries.filter(e => e.vehicle);
                                         if (valid.length === 0) return alert('กรุณาเลือกรถอย่างน้อย 1 คัน');
-                                        if (totalTrips === 0) return alert('กรุณาใส่จำนวนเที่ยว (เช้า หรือ บ่าย)');
                                         const tripsPerCar = Math.floor(totalTrips / valid.length);
                                         const remainder = totalTrips % valid.length;
                                         const cubicDefault = Number(cubicPerTrip) || 3;
