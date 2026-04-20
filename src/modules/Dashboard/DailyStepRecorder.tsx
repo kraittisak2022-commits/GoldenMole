@@ -36,6 +36,13 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'washHome', label: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200' },
     { id: 'other', label: 'ทำอื่นๆ', color: 'bg-slate-500', bgLight: 'bg-slate-50 border-slate-200' },
 ];
+const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
+const isMonthlyEmployee = (emp?: Employee) => {
+    if (!emp?.type) return false;
+    const normalized = String(emp.type).trim().toLowerCase();
+    return normalized === 'monthly' || normalized === 'รายเดือน';
+};
+const toDailyWage = (emp: Employee, wage: number) => (isMonthlyEmployee(emp) ? wage / 30 : wage);
 
 const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage }: DailyStepRecorderProps) => {
     const [step, setStep] = useState(0);
@@ -145,6 +152,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             } else {
                 setWorkAssignments({});
             }
+            if (Array.isArray(latest.customWorkCategories)) {
+                setCustomCategories(
+                    latest.customWorkCategories.filter((c: any) =>
+                        c && typeof c.id === 'string' && typeof c.label === 'string'
+                    )
+                );
+            } else if (latest.workAssignments) {
+                const recoveredCustom = Object.keys(latest.workAssignments)
+                    .filter(catId => !DEFAULT_WORK_CATEGORY_IDS.has(catId))
+                    .map(catId => ({ id: catId, label: catId }));
+                setCustomCategories(recoveredCustom);
+            } else {
+                setCustomCategories([]);
+            }
             if (latest.workTypeByEmployee) {
                 const half = new Set<string>();
                 Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
@@ -161,6 +182,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             }
         } else {
             setWorkAssignments({});
+            setCustomCategories([]);
             setHalfDayEmpIds(new Set());
             setDrumsWashedAtHome('');
         }
@@ -423,12 +445,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             if (attendance.length > 0) {
                                 const latest = attendance[attendance.length - 1] as any;
                                 const wa: Record<string, string[]> | undefined = latest.workAssignments;
+                                const customCategoryMap = new Map<string, string>(
+                                    Array.isArray(latest.customWorkCategories)
+                                        ? latest.customWorkCategories
+                                            .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
+                                            .map((c: any) => [c.id, c.label])
+                                        : []
+                                );
                                 if (wa) {
                                     workGroups = Object.entries(wa)
                                         .map(([catId, empIds]) => {
                                             const def = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
                                             return {
-                                                label: def?.label || catId,
+                                                label: def?.label || customCategoryMap.get(catId) || catId,
                                                 count: (empIds || []).length,
                                             };
                                         })
@@ -868,7 +897,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                         const wage = ensureEmployeeWage ? await ensureEmployeeWage(e) : (e.baseWage ?? 0);
                                                         const wt = halfDayEmpIds.has(id) ? 'HalfDay' : 'FullDay';
                                                         workTypeByEmployee[id] = wt;
-                                                        const daily = e.type === 'Monthly' ? wage / 30 : wage;
+                                                        const daily = toDailyWage(e, wage);
                                                         total += wt === 'HalfDay' ? daily / 2 : daily;
                                                     }
                                                 } catch {
@@ -877,7 +906,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
                                                 const drumsHome = (workAssignments['washHome']?.length ?? 0) > 0 ? (Number(drumsWashedAtHome) || 0) : undefined;
-                                                const t = { ...base, type: 'Expense', category: 'Labor', subCategory: 'Attendance', laborStatus: 'Work', workTypeByEmployee, description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}`, amount: total, workAssignments: { ...workAssignments }, drumsWashedAtHome: drumsHome };
+                                                const t = {
+                                                    ...base,
+                                                    type: 'Expense',
+                                                    category: 'Labor',
+                                                    subCategory: 'Attendance',
+                                                    laborStatus: 'Work',
+                                                    workTypeByEmployee,
+                                                    description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}`,
+                                                    amount: total,
+                                                    workAssignments: { ...workAssignments },
+                                                    customWorkCategories: [...customCategories],
+                                                    drumsWashedAtHome: drumsHome
+                                                };
                                                 onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base">
                                                 <CheckCircle2 size={18} className="mr-2" /> บันทึกค่าแรง ({Object.values(workAssignments).flat().length + selectedEmps.length} คน)
@@ -915,8 +956,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             if (!val) { setVehWage(''); return; }
                                             const emp = employees.find(x => x.id === val);
                                             if (emp && ensureEmployeeWage) {
-                                                try { const w = await ensureEmployeeWage(emp); setVehWage(String(w)); } catch (_) {}
-                                            } else if (emp?.baseWage != null) setVehWage(String(emp.baseWage));
+                                                try {
+                                                    const w = await ensureEmployeeWage(emp);
+                                                    const dailyWage = toDailyWage(emp, w);
+                                                    setVehWage(String(dailyWage));
+                                                } catch (_) {}
+                                            } else if (emp?.baseWage != null) {
+                                                const dailyWage = toDailyWage(emp, emp.baseWage);
+                                                setVehWage(String(dailyWage));
+                                            }
                                         }}>
                                             <option value="">-- เลือกคนขับ --</option>
                                             {driverEmployees.map(e => <option key={e.id} value={e.id}>{e.nickname || e.name || e.id}</option>)}
