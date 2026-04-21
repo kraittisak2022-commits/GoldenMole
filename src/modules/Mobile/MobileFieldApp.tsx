@@ -42,6 +42,7 @@ interface MobileFieldAppProps {
     autoVersionNotes: string[];
     appIcon: string;
     darkMode: boolean;
+    touchLayout?: boolean;
     onToggleDarkMode: () => void;
     onLogout: () => void;
     onSwitchToDesktop: () => void;
@@ -94,6 +95,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         autoVersionNotes,
         appIcon,
         darkMode,
+        touchLayout = false,
         onToggleDarkMode,
         onLogout,
         onSwitchToDesktop,
@@ -112,6 +114,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     const [morePanel, setMorePanel] = useState<'root' | 'settings' | 'admin'>('root');
     const [recordCatFilter, setRecordCatFilter] = useState<string | null>(null);
     const [recordTypeFilter, setRecordTypeFilter] = useState<'Income' | 'Expense' | null>(null);
+    const [densityMode, setDensityMode] = useState<'comfortable' | 'compact'>('comfortable');
 
     const filteredTransactionsForRecords = useMemo(() => {
         let list = transactions;
@@ -165,6 +168,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     return (
         <div
             className={`mobile-shell-root relative flex min-h-0 w-full flex-col overflow-hidden font-sans touch-manipulation ${shellBg}`}
+            data-density={densityMode}
             style={{ overscrollBehaviorY: 'none', WebkitTouchCallout: 'none' }}
         >
             {!darkMode && (
@@ -227,6 +231,8 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     {tab === 'home' && (
                         <DailyStepRecorder
                             mobileShell
+                            touchLayout={touchLayout}
+                            densityMode={densityMode}
                             employees={employees}
                             settings={settings}
                             transactions={transactions}
@@ -354,6 +360,14 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                           },
                                       ]
                                     : []),
+                                {
+                                    key: 'density',
+                                    icon: List,
+                                    title: densityMode === 'compact' ? 'ความหนาแน่น: กระชับ' : 'ความหนาแน่น: สบายตา',
+                                    sub: 'แตะเพื่อสลับการจัดระยะ',
+                                    onClick: () => setDensityMode(prev => prev === 'compact' ? 'comfortable' : 'compact'),
+                                    tone: 'default' as const,
+                                },
                                 {
                                     key: 'desktop',
                                     icon: Monitor,

@@ -21,6 +21,7 @@ const DASHBOARD_MAIN_TABS = [
 const DASHBOARD_DETAIL_TABS = [
     { id: 'Labor', label: 'ค่าแรง' },
     { id: 'Vehicle', label: 'การใช้รถ' },
+    { id: 'Sand', label: 'ล้างทราย' },
     { id: 'Fuel', label: 'น้ำมัน' },
     { id: 'Land', label: 'ที่ดิน' },
     { id: 'Income', label: 'รายรับ' },

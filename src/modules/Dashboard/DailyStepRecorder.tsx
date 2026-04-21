@@ -21,6 +21,10 @@ interface DailyStepRecorderProps {
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     /** โหมดเว็บมือถือ: ลดรายละเอียด ซ่อนคอลัมน์สรุปขวาและแท็บรายงาน */
     mobileShell?: boolean;
+    /** โหมดสัมผัสสำหรับแท็บเล็ต/ไฮบริด */
+    touchLayout?: boolean;
+    /** ความหนาแน่นหน้าจอสำหรับ mobile shell */
+    densityMode?: 'comfortable' | 'compact';
 }
 
 function useMediaQuery(query: string) {
@@ -162,11 +166,15 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
-const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false }: DailyStepRecorderProps) => {
+const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
     /** จอสัมผัส / มือถือ: ปุ่มและช่องกดใหญ่ขึ้น */
-    const touchUI = mobileShell || isTouchLayout;
-    const navBtnClass = touchUI ? 'min-h-[48px] px-5 text-base font-semibold touch-manipulation' : '';
+    const touchUI = mobileShell || touchLayout || isTouchLayout;
+    const isCompactDensity = mobileShell && densityMode === 'compact';
+    const navBtnClass = touchUI ? 'min-h-[48px] px-5 text-base font-semibold touch-manipulation focus-ring-strong' : 'focus-ring-strong';
+    const stepActionWrapClass = mobileShell
+        ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-auto flex justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90'
+        : 'mt-auto flex justify-between gap-3 pt-3';
     const [step, setStep] = useState(0);
     const [date, setDate] = useState(getToday());
     const [viewMode, setViewMode] = useState<'record' | 'report'>('record');
@@ -877,6 +885,32 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         setLaborStatus('Work');
         setStep(1);
     };
+    useEffect(() => {
+        if (!touchUI) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            const tag = target.tagName.toLowerCase();
+            const editable = target.isContentEditable || tag === 'textarea' || tag === 'select';
+            if (editable) return;
+            if (event.key === 'Enter' && !event.shiftKey) {
+                const primary = document.querySelector<HTMLButtonElement>('[data-hotkey-primary="true"]');
+                if (primary && !primary.disabled) {
+                    event.preventDefault();
+                    primary.click();
+                }
+            }
+            if (event.key === 'Escape') {
+                const cancel = document.querySelector<HTMLButtonElement>('[data-hotkey-cancel="true"]');
+                if (cancel && !cancel.disabled) {
+                    event.preventDefault();
+                    cancel.click();
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [touchUI]);
 
     const isWizardTx = (t: Transaction) =>
         t.category === 'Labor' ||
@@ -929,7 +963,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
     return (
         <div
-            className={`animate-fade-in relative w-full max-w-full min-w-0 ${mobileShell ? 'min-h-0 bg-transparent p-0 sm:p-0' : 'min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-transparent p-3 sm:p-4 lg:p-6'}`}
+            className={`animate-fade-in relative w-full max-w-full min-w-0 ${mobileShell ? 'min-h-0 bg-transparent p-0 sm:p-0' : 'min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-transparent p-3 sm:p-4 lg:p-6'} ${isCompactDensity ? 'mobile-density-compact' : ''}`}
         >
             {/* Header + โหมด บันทึก | รายงาน — โหมดมือถือ: เฉพาะแถบขั้นตอน แตะง่าย */}
             {mobileShell ? (
@@ -1476,7 +1510,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 บันทึก
                                             </button>
                                         </div>
-                                        <div className="mt-auto flex justify-between gap-3 pt-3">
+                                        <div className={stepActionWrapClass}>
                                             <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                             <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                         </div>
@@ -1764,13 +1798,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     drumsWashedAtHome: drumsHome
                                                 };
                                                 onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
-                                            }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base">
+                                            }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
                                                 <CheckCircle2 size={18} className="mr-2" /> บันทึกค่าแรง ({[...new Set([
                                                     ...Object.values(workAssignments).flat(),
                                                     ...dayTransactions.filter(t => t.category === 'Vehicle' && !!t.driverId).map(t => t.driverId as string),
                                                 ])].length} คน)
                                             </Button>
-                                            <div className="flex justify-between gap-3">
+                                            <div className={stepActionWrapClass}>
                                                 <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                                 <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                             </div>
@@ -1836,6 +1870,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <span className="font-semibold">กำลังแก้ไขรายการรถ</span>
                                             <button
                                                 type="button"
+                                                data-hotkey-cancel="true"
                                                 className="shrink-0 rounded-lg border border-amber-300 bg-white px-2 py-1 font-medium text-amber-800 hover:bg-amber-100"
                                                 onClick={() => {
                                                     setEditingVehicleTxId(null);
@@ -1967,9 +2002,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         } as Transaction);
                                         setEditingVehicleTxId(null);
                                         setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(''); setVehWorkType('FullDay');
-                                    }} className="w-full bg-amber-500 hover:bg-amber-600">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
+                                    }} className="w-full bg-amber-500 hover:bg-amber-600 focus-ring-strong" data-hotkey-primary="true">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
                                 </div>
-                                <div className="mt-auto flex justify-between gap-3">
+                                <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                     <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
@@ -2124,21 +2159,38 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 </Select>
                                             </div>
                                             <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
-                                                <Input
-                                                    label="คิว/เที่ยว (คันนี้)"
-                                                    type="number"
-                                                    value={entry.cubicPerTrip}
-                                                    onChange={(e: any) => updateTripCard(entry.id, 'cubicPerTrip', e.target.value)}
-                                                    placeholder={String(detectDefaultCubicPerTrip(entry.vehicle, 3))}
-                                                />
+                                                <div className="space-y-2">
+                                                    <NumberPickerInput
+                                                        value={entry.cubicPerTrip}
+                                                        onChange={(v) => updateTripCard(entry.id, 'cubicPerTrip', v)}
+                                                        listMin={3}
+                                                        listMax={8}
+                                                        scrollAnchor={6}
+                                                        min={0}
+                                                        placeholder={String(detectDefaultCubicPerTrip(entry.vehicle, 3))}
+                                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:focus:ring-amber-500/30 focus:border-emerald-500 dark:focus:border-amber-500/50 transition-all bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                                    />
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['3', '6'].map(v => (
+                                                            <button
+                                                                key={`${entry.id}-cubic-${v}`}
+                                                                type="button"
+                                                                onClick={() => updateTripCard(entry.id, 'cubicPerTrip', v)}
+                                                                className="touch-manipulation rounded-lg border border-blue-200/90 bg-blue-50/80 px-3 py-2 text-xs font-bold text-blue-800 shadow-sm transition hover:bg-blue-100 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-100 dark:hover:bg-blue-500/25"
+                                                            >
+                                                                {v}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-500 flex items-center">
                                                     ค่าแนะนำ: 6 ล้อ = 3, 10 ล้อ = 6 (แก้เองได้รายวัน)
                                                 </div>
                                             </div>
                                             <Input label="รายละเอียดงาน" value={entry.work} onChange={(e: any) => updateTripCard(entry.id, 'work', e.target.value)} placeholder="ขนดิน, ขนทราย..." />
-                                            {mobileShell && tripWorkSuggestions.length > 0 && (
+                                            {['ขนดิน', 'ขนหิน', 'ขนทราย', 'ซื้อของ'].length > 0 && (
                                                 <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
-                                                    {tripWorkSuggestions.slice(0, 8).map(s => (
+                                                    {['ขนดิน', 'ขนหิน', 'ขนทราย', 'ซื้อของ'].map(s => (
                                                         <button
                                                             key={`${entry.id}-${s}`}
                                                             type="button"
@@ -2193,7 +2245,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     }} className="w-full bg-blue-500 hover:bg-blue-600 py-3 text-base">
                                         <CheckCircle2 size={18} className="mr-2" /> บันทึกทั้งหมด ({tripEntries.filter(e => e.vehicle).length} คัน, {totalTrips} เที่ยวรวม)
                                     </Button>
-                                    <div className="flex justify-between gap-3">
+                                    <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                         <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
@@ -2462,7 +2514,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
                                 </div>
 
-                                <div className="pt-3 border-t space-y-2">
+                                <div className={mobileShell ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-2 space-y-2 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90' : 'pt-3 border-t space-y-2'}>
                                     <Button onClick={() => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
@@ -2505,10 +2557,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
                                         setDrumsWashedAtHome('');
                                         setSandMorningStart(''); setSandAfternoonStart(''); setSandEveningEnd('');
-                                    }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5">
+                                    }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <Droplets size={16} className="mr-1" /> บันทึกข้อมูลล้างทราย ({sandGrandTotal} คิว)
                                     </Button>
-                                    <div className="flex justify-between gap-3">
+                                    <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                         <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
@@ -2578,8 +2630,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     {/* Date */}
                                     <div>
                                         <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">วันที่</label>
-                                        <input type="date" value={date} readOnly
-                                            className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-white/5" />
+                                        <div className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-white/5">
+                                            {formatDateBE(date)}
+                                        </div>
                                     </div>
 
                                     {/* Fuel Type - Radio style */}
@@ -2716,7 +2769,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             fuelMovement: 'stock_in'
                                         } as Transaction);
                                         setFuelAmount(''); setFuelLiters(''); setFuelDetails('');
-                                    }} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-base font-bold rounded-xl transition-colors">
+                                    }} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-base font-bold rounded-xl transition-colors focus-ring-strong" data-hotkey-primary="true">
                                         บันทึกซื้อน้ำมันเข้า
                                     </button>
 
@@ -2824,7 +2877,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </button>
                                 </div>
 
-                                <div className="mt-auto flex justify-between gap-3 pt-3">
+                                <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                     <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
@@ -2971,11 +3024,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
                                         } as Transaction);
                                         setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal('');
-                                    }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5">
+                                    }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <Wallet size={16} className="mr-1" /> บันทึกรายรับ
                                     </Button>
                                 </div>
-                                <div className="mt-auto flex justify-between gap-3 pt-3">
+                                <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                     <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
@@ -3073,7 +3126,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
                                 </div>
 
-                                <div className="pt-3 border-t space-y-2">
+                                <div className={mobileShell ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-2 space-y-2 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90' : 'pt-3 border-t space-y-2'}>
                                     <Button onClick={() => {
                                         if (!eventDesc.trim()) return alert('กรุณาระบุรายละเอียดเหตุการณ์');
                                         onSaveTransaction({
@@ -3082,10 +3135,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             eventType, eventPriority
                                         } as Transaction);
                                         setEventDesc(''); setEventType('info'); setEventPriority('normal');
-                                    }} className="w-full bg-orange-500 hover:bg-orange-600 py-2.5">
+                                    }} className="w-full bg-orange-500 hover:bg-orange-600 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <AlertTriangle size={16} className="mr-1" /> บันทึกเหตุการณ์
                                     </Button>
-                                    <div className="flex justify-between gap-3">
+                                    <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
                                         <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>

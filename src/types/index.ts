@@ -24,6 +24,7 @@ export interface KPIEvaluation {
 
 export interface Employee {
     id: string; name: string; nickname: string; type: EmployeeType; baseWage?: number; phone?: string; startDate?: string;
+    inactive?: boolean;
     /** ตำแหน่งเดียว (เก่า) — ใช้ positions แทนได้ */
     position?: string;
     /** หลายตำแหน่ง เช่น ['คนขับรถ', 'รับจ้างรายวัน'] */
@@ -67,7 +68,11 @@ export interface Transaction {
     fuelType?: 'Diesel' | 'Benzine';
     fuelMovement?: 'stock_in' | 'stock_out';
     payrollPeriod?: { start: string; end: string; };
-    payrollSnapshot?: any;
+    payrollSnapshot?: PayrollSnapshot;
+    payrollLockAction?: 'unlock' | 'relock';
+    unlockedByAdminId?: string;
+    unlockedByAdminName?: string;
+    unlockedAt?: string;
     // Daily Log Fields
     machineId?: string;
     machineHours?: number;
@@ -99,6 +104,20 @@ export interface Transaction {
     eventType?: string;
     eventPriority?: string;
     eventTime?: string;
+}
+
+export interface PayrollSnapshot {
+    fullDays: number;
+    halfDays: number;
+    basePay: number;
+    ot: number;
+    special: number;
+    driverAllowance: number;
+    adv: number;
+    customBonus: number;
+    customDeduction: number;
+    adjNote?: string;
+    net: number;
 }
 
 export interface SandProduction {
@@ -146,6 +165,7 @@ export interface AppDefaults {
         message?: string;
         createdAt: string;
     }>;
+    hiddenTransactionIds?: string[];
 }
 
 export interface AppSettings {

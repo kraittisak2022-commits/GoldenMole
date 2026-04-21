@@ -9,6 +9,7 @@ import { Transaction, AppSettings, Employee } from '../../types';
 
 const SpecificDashboard = ({ type, transactions, settings, employees = [], dateFilter }: { type: string, transactions: Transaction[], settings: AppSettings, employees?: Employee[], dateFilter: any }) => {
     const [expandedDate, setExpandedDate] = useState<string | null>(null);
+    const [sandInsightPeriod, setSandInsightPeriod] = useState<'week' | 'month' | 'year'>('week');
 
     const filteredTransactions = useMemo(() => {
         const start = new Date(dateFilter.start);
@@ -60,6 +61,99 @@ const SpecificDashboard = ({ type, transactions, settings, employees = [], dateF
     };
 
     const formatThaiDate = (d: string) => new Date(d).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' });
+
+    if (type === 'Sand') {
+        const perDay = new Map<string, { obtained: number; home: number; remaining: number }>();
+        filteredTransactions
+            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
+            .forEach(t => {
+                const d = t.date.slice(0, 10);
+                const prev = perDay.get(d) || { obtained: 0, home: 0, remaining: 0 };
+                const obtained = Math.max(prev.obtained, Number((t as any).drumsObtained || 0));
+                const home = Math.max(prev.home, Number((t as any).drumsWashedAtHome || 0));
+                perDay.set(d, { obtained, home, remaining: Math.max(0, obtained - home) });
+            });
+        const toWeekStart = (dateStr: string) => {
+            const d = new Date(`${dateStr}T12:00:00`);
+            const day = d.getDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            const start = new Date(d);
+            start.setDate(d.getDate() + diff);
+            return start.toISOString().split('T')[0];
+        };
+        const grouped = new Map<string, { label: string; obtained: number; home: number; remaining: number }>();
+        Array.from(perDay.entries()).forEach(([dateStr, stat]) => {
+            let key = dateStr;
+            let label = new Date(`${dateStr}T12:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+            if (sandInsightPeriod === 'week') {
+                const wk = toWeekStart(dateStr);
+                const wkEnd = new Date(`${wk}T12:00:00`);
+                wkEnd.setDate(wkEnd.getDate() + 6);
+                const wkEndNorm = wkEnd.toISOString().split('T')[0];
+                key = wk;
+                label = `${new Date(`${wk}T12:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${new Date(`${wkEndNorm}T12:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+            } else if (sandInsightPeriod === 'month') {
+                const d = new Date(`${dateStr}T12:00:00`);
+                key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                label = d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+            } else {
+                const d = new Date(`${dateStr}T12:00:00`);
+                key = String(d.getFullYear());
+                label = d.toLocaleDateString('th-TH', { year: 'numeric' });
+            }
+            const prev = grouped.get(key) || { label, obtained: 0, home: 0, remaining: 0 };
+            grouped.set(key, {
+                label,
+                obtained: prev.obtained + stat.obtained,
+                home: prev.home + stat.home,
+                remaining: prev.remaining + stat.remaining,
+            });
+        });
+        const rows = Array.from(grouped.entries()).map(([key, value]) => ({ key, ...value })).sort((a, b) => b.key.localeCompare(a.key));
+
+        return (
+            <div className="space-y-4 animate-fade-in">
+                <Card className="border border-cyan-200/80 bg-gradient-to-br from-cyan-50/80 to-teal-50/70 p-4 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:to-teal-500/10">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-bold text-cyan-800 dark:text-cyan-100">ภาพรวมล้างทราย</p>
+                            <p className="text-xs text-cyan-700/80 dark:text-cyan-200/80">เทียบจำนวนถังที่ได้ / ล้างที่บ้าน / คงเหลือสุทธิ</p>
+                        </div>
+                        <div className="flex rounded-xl border border-cyan-200 bg-white/70 p-1 dark:border-cyan-500/30 dark:bg-white/5">
+                            {([
+                                ['week', 'สัปดาห์'],
+                                ['month', 'เดือน'],
+                                ['year', 'ปี'],
+                            ] as const).map(([id, label]) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => setSandInsightPeriod(id)}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${sandInsightPeriod === id ? 'bg-cyan-600 text-white' : 'text-cyan-700 hover:bg-cyan-100 dark:text-cyan-200 dark:hover:bg-cyan-500/20'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {rows.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-cyan-300/80 bg-white/70 px-3 py-4 text-center text-xs text-cyan-700 dark:border-cyan-500/30 dark:bg-white/5 dark:text-cyan-200">ยังไม่มีข้อมูลล้างทรายในช่วงที่เลือก</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {rows.map(row => (
+                                <div key={row.key} className="grid grid-cols-1 gap-2 rounded-xl border border-cyan-100 bg-white/85 p-3 text-xs sm:grid-cols-4 dark:border-cyan-500/20 dark:bg-white/5">
+                                    <div className="font-semibold text-slate-700 dark:text-slate-100">{row.label}</div>
+                                    <div className="text-emerald-700 dark:text-emerald-300">ได้วันนี้: <span className="font-bold">{row.obtained}</span></div>
+                                    <div className="text-rose-700 dark:text-rose-300">ล้างที่บ้าน: <span className="font-bold">{row.home}</span></div>
+                                    <div className="text-cyan-700 dark:text-cyan-300">คงเหลือสุทธิ: <span className="font-bold">{row.remaining}</span></div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Card>
+            </div>
+        );
+    }
 
     if (type === 'Labor') {
         const totalWage = getSum('Labor');

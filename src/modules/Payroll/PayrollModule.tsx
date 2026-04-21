@@ -1,16 +1,19 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { CheckCircle2, History, Eye, XCircle, Printer, Users, Plus, Minus, Banknote, Calendar, Wallet } from 'lucide-react';
+import { CheckCircle2, History, Eye, XCircle, Printer, Users, Plus, Minus, Banknote, Calendar, Wallet, Lock, Unlock } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { getFirstDayOfMonth, getLastDayOfMonth, getToday, formatDateBE } from '../../utils';
-import { Employee, Transaction } from '../../types';
+import { Employee, Transaction, SalaryHistoryItem, PayrollSnapshot } from '../../types';
 
 interface PayrollModuleProps {
     employees: Employee[];
     transactions: Transaction[];
     onSaveTransaction: (t: Transaction) => void;
+    canUnlockPeriod?: boolean;
+    onUnlockPeriod?: (period: { start: string; end: string }, reason: string) => void;
+    onRelockPeriod?: (period: { start: string; end: string }, reason: string) => void;
 }
 
 /** คำนวณแบงค์จ่าย (1000, 500, 100) จากยอดบาท */
@@ -25,7 +28,24 @@ function getBanknoteBreakdown(amount: number): { b1000: number; b500: number; b1
     return { b1000, b500, b100, remainder };
 }
 
-const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollModuleProps) => {
+function getDailyWageByDate(emp: Employee, date: string): number {
+    const base = emp.baseWage ?? 0;
+    if (!emp.salaryHistory || emp.salaryHistory.length === 0) {
+        return emp.type === 'Monthly' ? base / 30 : base;
+    }
+    const history = [...emp.salaryHistory]
+        .filter((h: SalaryHistoryItem) => !!h?.date)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    if (history.length === 0) return emp.type === 'Monthly' ? base / 30 : base;
+    let wage = history[0].oldWage || base;
+    for (const h of history) {
+        if (h.date <= date) wage = h.newWage;
+        else break;
+    }
+    return emp.type === 'Monthly' ? wage / 30 : wage;
+}
+
+const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPeriod = false, onUnlockPeriod, onRelockPeriod }: PayrollModuleProps) => {
     const [view, setView] = useState<'Calculate' | 'History'>('Calculate');
     const [range, setRange] = useState({ start: getFirstDayOfMonth(), end: getLastDayOfMonth() });
     const [search, setSearch] = useState('');
@@ -36,6 +56,8 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
     const [historySearch, setHistorySearch] = useState('');
     const [historyRange, setHistoryRange] = useState({ start: '2024-01-01', end: '2026-12-31' });
     const [viewHistoryItem, setViewHistoryItem] = useState<Transaction | null>(null);
+    const [lockModal, setLockModal] = useState<{ mode: 'unlock' | 'relock'; period: { start: string; end: string } } | null>(null);
+    const [lockReason, setLockReason] = useState('');
 
     // --- NEW: Payroll Manual Adjustments ---
     // store by empId: { bonus: number, deduction: number, note: string }
@@ -71,8 +93,9 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
             if (t.workTypeByEmployee && emp.id in t.workTypeByEmployee) return t.workTypeByEmployee[emp.id] === 'HalfDay';
             return t.workType === 'HalfDay';
         };
-        const fullDays = empTrans.filter(t => t.laborStatus === 'Work' && !isHalfDay(t)).length;
-        const halfDays = empTrans.filter(t => isHalfDay(t)).length;
+        const workedTrans = empTrans.filter(t => t.laborStatus === 'Work');
+        const fullDays = workedTrans.filter(t => !isHalfDay(t)).length;
+        const halfDays = workedTrans.filter(t => isHalfDay(t)).length;
         const ot = empTrans.reduce((s, t) => s + (t.otAmount || 0), 0);
         const adv = empTrans.reduce((s, t) => s + (t.advanceAmount || 0), 0);
         const special = empTrans.reduce((s, t) => s + (t.specialAmount || 0), 0);
@@ -81,11 +104,20 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
         const adj = adjustments[emp.id] || { bonus: 0, deduction: 0, note: '' };
 
         const base = emp.baseWage ?? 0;
-        let basePay = emp.type === 'Monthly' ? base : (fullDays * base) + (halfDays * (base / 2));
+        let basePay = 0;
+        if (emp.type === 'Monthly') {
+            basePay = base;
+        } else {
+            basePay = workedTrans.reduce((sum, t) => {
+                const dailyWage = getDailyWageByDate(emp, t.date);
+                return sum + (isHalfDay(t) ? dailyWage / 2 : dailyWage);
+            }, 0);
+        }
         const totalIncome = basePay + ot + special + driverAllowance + adj.bonus;
         const totalDeductions = adv + adj.deduction;
         const netPay = totalIncome - totalDeductions;
         const isPaid = checkOverlap(emp.id, range.start, range.end);
+        const needsWageReview = workedTrans.length > 0 && basePay <= 0;
 
         return {
             ...emp,
@@ -102,7 +134,8 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
             isPaid,
             customBonus: adj.bonus,
             customDeduction: adj.deduction,
-            adjNote: adj.note
+            adjNote: adj.note,
+            needsWageReview
         };
     };
 
@@ -113,13 +146,26 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
     const paidInPeriod = payrollData.filter(p => p.isPaid);
     const paidCount = paidInPeriod.length;
     const totalPaidInPeriod = useMemo(() => paidInPeriod.reduce((sum, p) => sum + p.net, 0), [payrollData]);
+    const payrollWarnings = useMemo(() => {
+        const warns: string[] = [];
+        const wageMissing = payrollData.filter(p => !p.isPaid && p.needsWageReview);
+        if (wageMissing.length > 0) {
+            const names = wageMissing.slice(0, 5).map(p => p.nickname || p.name).join(', ');
+            warns.push(`พบพนักงานมีวันทำงานแต่ค่าแรงเป็น 0: ${names}${wageMissing.length > 5 ? ` (+${wageMissing.length - 5})` : ''}`);
+        }
+        const unlockedSource = transactions.some(t => t.category !== 'Payroll' && t.date >= range.start && t.date <= range.end);
+        if (!unlockedSource) {
+            warns.push('ไม่พบข้อมูลบันทึกงาน/ค่าแรงในงวดนี้ (ตรวจสอบช่วงวันที่ก่อนกดจ่าย)');
+        }
+        return warns;
+    }, [payrollData, transactions, range.start, range.end]);
 
     const handleConfirmPayment = (p: any, bypassAlert = false) => {
         if (p.isPaid) {
             if (!bypassAlert) alert(`จ่ายเงินให้ ${p.name} ซ้ำไม่ได้ (มีการจ่ายในงวดนี้ไปแล้ว)`);
             return false;
         }
-        const payrollDetails = {
+        const payrollDetails: PayrollSnapshot = {
             fullDays: p.fullDays,
             halfDays: p.halfDays,
             basePay: p.basePay,
@@ -172,6 +218,39 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
         const inName = t.description.toLowerCase().includes(historySearch.toLowerCase());
         return inDate && inName;
     });
+    const periodLockStateMap = useMemo(() => {
+        const state = new Map<string, 'unlock' | 'relock'>();
+        const items = transactions
+            .filter(t => t.category === 'PayrollUnlock' && t.payrollPeriod)
+            .sort((a, b) => {
+                const d = a.date.localeCompare(b.date);
+                if (d !== 0) return d;
+                return String(a.id).localeCompare(String(b.id));
+            });
+        items.forEach(t => {
+            const key = `${t.payrollPeriod!.start}|${t.payrollPeriod!.end}`;
+            state.set(key, t.payrollLockAction || 'unlock');
+        });
+        return state;
+    }, [transactions]);
+    const lockHistory = useMemo(() => {
+        return transactions
+            .filter(t => t.category === 'PayrollUnlock' && t.payrollPeriod)
+            .sort((a, b) => {
+                const d = b.date.localeCompare(a.date);
+                if (d !== 0) return d;
+                return String(b.id).localeCompare(String(a.id));
+            });
+    }, [transactions]);
+    const handleSubmitLockAction = () => {
+        if (!lockModal) return;
+        const reason = lockReason.trim();
+        if (!reason) return;
+        if (lockModal.mode === 'unlock') onUnlockPeriod?.(lockModal.period, reason);
+        if (lockModal.mode === 'relock') onRelockPeriod?.(lockModal.period, reason);
+        setLockModal(null);
+        setLockReason('');
+    };
 
     const slipRef = useRef<HTMLDivElement>(null);
     const handlePrintSlip = () => {
@@ -303,6 +382,14 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                             </div>
                         </div>
                     </Card>
+                    {payrollWarnings.length > 0 && (
+                        <Card className="p-4 border-amber-200 bg-amber-50/70">
+                            <p className="text-sm font-bold text-amber-800 mb-2">ตรวจสอบก่อนจ่ายเงินเดือน</p>
+                            <ul className="text-sm text-amber-900 space-y-1">
+                                {payrollWarnings.map((w, i) => <li key={i}>- {w}</li>)}
+                            </ul>
+                        </Card>
+                    )}
 
                     {/* Employee List */}
                     <div className="space-y-4">
@@ -448,13 +535,15 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                     <th className="p-4 font-bold">วันที่จ่าย</th>
                                     <th className="p-4 font-bold">ชื่อพนักงาน / รายละเอียด</th>
                                     <th className="p-4 font-bold">งวดบัญชี</th>
+                                    {canUnlockPeriod && <th className="p-4 font-bold text-center w-28">สถานะงวด</th>}
                                     <th className="p-4 font-bold text-right">ยอดสุทธิ (บาท)</th>
                                     <th className="p-4 font-bold text-center w-28">การดำเนินการ</th>
+                                    {canUnlockPeriod && <th className="p-4 font-bold text-center w-36">ปลดล็อกงวด</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {filteredHistory.length === 0 ? (
-                                    <tr><td colSpan={5} className="p-12 text-center text-slate-400">ไม่พบประวัติการจ่ายในช่วงเวลานี้</td></tr>
+                                    <tr><td colSpan={canUnlockPeriod ? 7 : 5} className="p-12 text-center text-slate-400">ไม่พบประวัติการจ่ายในช่วงเวลานี้</td></tr>
                                 ) : (
                                     filteredHistory.map(t => (
                                         <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
@@ -463,12 +552,64 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                                                 <div className="font-bold text-slate-800">{t.description}</div>
                                             </td>
                                             <td className="p-4 text-slate-600">{t.payrollPeriod ? `${formatDateBE(t.payrollPeriod.start)} – ${formatDateBE(t.payrollPeriod.end)}` : '-'}</td>
+                                            {canUnlockPeriod && (
+                                                <td className="p-4 text-center">
+                                                    {(() => {
+                                                        const canCheck = !!t.payrollPeriod;
+                                                        const key = t.payrollPeriod ? `${t.payrollPeriod.start}|${t.payrollPeriod.end}` : '';
+                                                        const unlocked = canCheck && (periodLockStateMap.get(key) || 'relock') === 'unlock';
+                                                        return (
+                                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${unlocked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                {unlocked ? <Unlock size={12} /> : <Lock size={12} />}
+                                                                {unlocked ? 'ปลดล็อก' : 'ล็อก'}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </td>
+                                            )}
                                             <td className="p-4 text-right font-bold text-emerald-600">฿{(t.amount ?? 0).toLocaleString()}</td>
                                             <td className="p-4 text-center">
                                                 <Button variant="ghost" onClick={() => setViewHistoryItem(t)} className="text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
                                                     <Eye size={14} className="mr-1.5 inline" /> ดูรายละเอียด
                                                 </Button>
                                             </td>
+                                            {canUnlockPeriod && (
+                                                <td className="p-4 text-center">
+                                                    {(() => {
+                                                        const canUnlock = !!t.payrollPeriod;
+                                                        const key = t.payrollPeriod ? `${t.payrollPeriod.start}|${t.payrollPeriod.end}` : '';
+                                                        const already = canUnlock && (periodLockStateMap.get(key) || 'relock') === 'unlock';
+                                                        return (
+                                                            <div className="flex flex-col gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    disabled={!canUnlock || already}
+                                                                    onClick={() => {
+                                                                        if (!t.payrollPeriod) return;
+                                                                        setLockModal({ mode: 'unlock', period: t.payrollPeriod });
+                                                                        setLockReason('');
+                                                                    }}
+                                                                    className={`border rounded-lg px-3 py-1.5 text-sm ${already ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-amber-700 hover:bg-amber-50 border-amber-200'}`}
+                                                                >
+                                                                    {already ? 'ปลดล็อกแล้ว' : 'ปลดล็อกงวด'}
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    disabled={!canUnlock || !already}
+                                                                    onClick={() => {
+                                                                        if (!t.payrollPeriod) return;
+                                                                        setLockModal({ mode: 'relock', period: t.payrollPeriod });
+                                                                        setLockReason('');
+                                                                    }}
+                                                                    className="border rounded-lg px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 border-slate-200"
+                                                                >
+                                                                    ล็อกกลับ
+                                                                </Button>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </td>
+                                            )}
                                         </tr>
                                     ))
                                 )}
@@ -476,6 +617,59 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction }: PayrollMo
                         </table>
                     </div>
                 </Card>
+            )}
+            {canUnlockPeriod && (
+                <Card className="p-4 border-slate-200/70">
+                    <h3 className="font-bold text-slate-800 mb-3">ประวัติปลดล็อก/ล็อกกลับงวดเงินเดือน</h3>
+                    {lockHistory.length === 0 ? (
+                        <p className="text-sm text-slate-400">ยังไม่มีประวัติ</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {lockHistory.map((t) => (
+                                <div key={t.id} className="rounded-xl border border-slate-200 p-3 bg-slate-50/70 text-sm">
+                                    <p className="font-semibold text-slate-800">
+                                        {(t.payrollLockAction || 'unlock') === 'unlock' ? 'ปลดล็อกงวด' : 'ล็อกกลับงวด'}: {t.payrollPeriod ? `${formatDateBE(t.payrollPeriod.start)} - ${formatDateBE(t.payrollPeriod.end)}` : '-'}
+                                    </p>
+                                    <p className="text-slate-600 mt-1">
+                                        โดย: {t.unlockedByAdminName || '-'} | เวลา: {t.unlockedAt || formatDateBE(t.date)}
+                                    </p>
+                                    <p className="text-slate-700 mt-1">เหตุผล: {t.note || '-'}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Card>
+            )}
+            {lockModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+                    <Card className="w-full max-w-lg p-5">
+                        <h3 className="text-lg font-bold text-slate-800">
+                            {lockModal.mode === 'unlock' ? 'ปลดล็อกงวดเงินเดือน' : 'ล็อกกลับงวดเงินเดือน'}
+                        </h3>
+                        <p className="text-sm text-slate-600 mt-1">
+                            งวด {formatDateBE(lockModal.period.start)} - {formatDateBE(lockModal.period.end)}
+                        </p>
+                        <div className="mt-4">
+                            <Input
+                                label="เหตุผล (บังคับ)"
+                                type="text"
+                                value={lockReason}
+                                onChange={(e: any) => setLockReason(e.target.value)}
+                                placeholder="ระบุเหตุผลเพื่อบันทึก audit log"
+                            />
+                        </div>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <Button variant="ghost" onClick={() => { setLockModal(null); setLockReason(''); }}>ยกเลิก</Button>
+                            <Button
+                                onClick={handleSubmitLockAction}
+                                disabled={!lockReason.trim()}
+                                className={lockModal.mode === 'unlock' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-slate-700 hover:bg-slate-800 text-white'}
+                            >
+                                {lockModal.mode === 'unlock' ? 'ยืนยันปลดล็อก' : 'ยืนยันล็อกกลับ'}
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
             )}
 
             {/* View History Detail Modal - ใบสำคัญจ่ายเงินเดือน */}

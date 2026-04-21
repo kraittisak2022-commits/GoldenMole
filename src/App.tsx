@@ -104,6 +104,24 @@ const MENU_ITEMS = [
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];
 
+const isDateInRange = (date: string, start: string, end: string) => {
+    const d = normalizeDate(date);
+    return d >= normalizeDate(start) && d <= normalizeDate(end);
+};
+const getPeriodLockState = (txs: Transaction[], period: { start: string; end: string }) => {
+    const key = `${normalizeDate(period.start)}|${normalizeDate(period.end)}`;
+    const items = txs
+        .filter(x => x.category === 'PayrollUnlock' && x.payrollPeriod && `${normalizeDate(x.payrollPeriod.start)}|${normalizeDate(x.payrollPeriod.end)}` === key)
+        .sort((a, b) => {
+            const d = normalizeDate(a.date).localeCompare(normalizeDate(b.date));
+            if (d !== 0) return d;
+            return String(a.id).localeCompare(String(b.id));
+        });
+    if (items.length === 0) return false;
+    const latest = items[items.length - 1];
+    return (latest.payrollLockAction || 'unlock') === 'unlock';
+};
+
 function App() {
     const appVersion = import.meta.env.VITE_APP_VERSION || 'dev';
     const appLastUpdated = import.meta.env.VITE_APP_UPDATED_AT || '';
@@ -128,11 +146,13 @@ function App() {
     const [activeMenu, setActiveMenu] = useState('Dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const [isTouchLayout, setIsTouchLayout] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
+    const [undoAction, setUndoAction] = useState<{ message: string; expiresAt: number; onUndo: () => void } | null>(null);
     const latestVersionNote = (settings.versionNotes && settings.versionNotes.length > 0)
         ? settings.versionNotes[settings.versionNotes.length - 1]
         : (autoVersionNotes[0] || 'พร้อมใช้งาน');
@@ -142,6 +162,11 @@ function App() {
     const [loadProgress, setLoadProgress] = useState(0);
     const [loadMessage, setLoadMessage] = useState('กำลังเตรียมระบบ...');
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
+    const visibleTransactions = useMemo(() => {
+        const hidden = new Set(settings.appDefaults?.hiddenTransactionIds || []);
+        if (hidden.size === 0) return transactions;
+        return transactions.filter(t => !hidden.has(t.id));
+    }, [transactions, settings.appDefaults?.hiddenTransactionIds]);
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
     const hasRestoredAuthSession = useRef(false);
@@ -254,16 +279,22 @@ function App() {
         return () => mq.removeEventListener('change', onChange);
     }, [isLoggedIn, currentAdmin?.id, currentAdmin?.uiTheme]);
 
-    // Detect mobile vs desktop
+    // Detect viewport + touch layout (phone vs tablet touch / hybrid touch)
     useEffect(() => {
-        const checkMobile = () => {
-            const mobile = window.innerWidth < 1024;
-            setIsMobile(mobile);
-            setIsSidebarOpen(!mobile);
+        const checkLayout = () => {
+            const width = window.innerWidth;
+            const isPhoneViewport = width < 768;
+            const isNarrowViewport = width < 1024;
+            const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+            const touchCapable = coarsePointer || navigator.maxTouchPoints > 0;
+            const touchFriendlyLayout = isPhoneViewport || (touchCapable && width < 1366);
+            setIsMobile(isNarrowViewport);
+            setIsTouchLayout(touchFriendlyLayout);
+            setIsSidebarOpen(!isNarrowViewport);
         };
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
+        checkLayout();
+        window.addEventListener('resize', checkLayout);
+        return () => window.removeEventListener('resize', checkLayout);
     }, []);
 
     // --- Auth Helpers ---
@@ -435,6 +466,18 @@ function App() {
     }, [isMobile]);
 
     const handleSave = async (t: Transaction) => {
+        if (t.category !== 'Payroll' && t.category !== 'PayrollUnlock') {
+            const lockRef = transactions.find(x =>
+                x.category === 'Payroll' &&
+                x.payrollPeriod &&
+                isDateInRange(t.date, x.payrollPeriod.start, x.payrollPeriod.end)
+            );
+            if (lockRef && !getPeriodLockState(transactions, lockRef.payrollPeriod!)) {
+                setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้แก้ข้อมูลย้อนหลัง`);
+                setTimeout(() => setToast(null), 4500);
+                return;
+            }
+        }
         const wasUpdate = transactions.some(x => x.id === t.id);
         setTransactions(p => {
             const i = p.findIndex(x => x.id === t.id);
@@ -520,24 +563,67 @@ function App() {
     }, []);
 
     const handleDeleteTransaction = useCallback((id: string) => {
-        setTransactions(prev => {
-            const target = prev.find(t => t.id === id);
-            if (target && currentAdmin) {
-                const snap = {
-                    id: target.id,
-                    date: normalizeDate(target.date),
-                    type: target.type,
-                    category: target.category,
-                    subCategory: target.subCategory,
-                    amount: target.amount,
-                    description: target.description,
-                };
-                addLog('delete_transaction', `ลบรายการ: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | before=${JSON.stringify(snap)}`);
+        const target = transactions.find(t => t.id === id);
+        if (!target) return;
+        if (target.category !== 'Payroll') {
+            const lockRef = transactions.find(x =>
+                x.category === 'Payroll' &&
+                x.payrollPeriod &&
+                isDateInRange(target.date, x.payrollPeriod.start, x.payrollPeriod.end)
+            );
+            if (lockRef && !getPeriodLockState(transactions, lockRef.payrollPeriod!)) {
+                setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้ลบรายการย้อนหลัง`);
+                setTimeout(() => setToast(null), 4500);
+                return;
             }
-            return prev.filter(t => t.id !== id);
+        }
+        if (currentAdmin) {
+            const snap = {
+                id: target.id,
+                date: normalizeDate(target.date),
+                type: target.type,
+                category: target.category,
+                subCategory: target.subCategory,
+                amount: target.amount,
+                description: target.description,
+            };
+            addLog('soft_delete_transaction', `ซ่อนรายการ: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | snapshot=${JSON.stringify(snap)}`);
+        }
+        const prevHidden = settings.appDefaults?.hiddenTransactionIds || [];
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                hiddenTransactionIds: Array.from(new Set([...(prev.appDefaults?.hiddenTransactionIds || []), id])),
+            },
+        }));
+        const expiresAt = Date.now() + 20000;
+        setUndoAction({
+            message: 'ซ่อนรายการแล้ว (Undo ได้ใน 20 วินาที)',
+            expiresAt,
+            onUndo: () => {
+                setSettings(prev => ({
+                    ...prev,
+                    appDefaults: {
+                        ...(prev.appDefaults || {}),
+                        hiddenTransactionIds: (prev.appDefaults?.hiddenTransactionIds || []).filter(x => x !== id),
+                    },
+                }));
+                setToast('กู้คืนรายการแล้ว');
+                setTimeout(() => setToast(null), 2500);
+                setUndoAction(null);
+            },
         });
-        db.deleteTransaction(id);
-    }, [addLog, currentAdmin]);
+        // keep a no-op read to bind previous hidden list for stale closures
+        void prevHidden;
+    }, [addLog, currentAdmin, settings.appDefaults?.hiddenTransactionIds, transactions]);
+
+    useEffect(() => {
+        if (!undoAction) return;
+        const ms = Math.max(0, undoAction.expiresAt - Date.now());
+        const timer = window.setTimeout(() => setUndoAction(null), ms);
+        return () => window.clearTimeout(timer);
+    }, [undoAction]);
 
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
         setProjects(prev => {
@@ -620,18 +706,59 @@ function App() {
 
     const renderContent = () => {
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
-            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} settings={settings} setSettings={handleSetSettings} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
-            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
-            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
-            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={transactions} />;
-            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
-            case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
-            case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
+            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={visibleTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={visibleTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={visibleTransactions} onSave={handleSave} onDelete={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
+            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={visibleTransactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
+            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
+            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={visibleTransactions} />;
+            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
+            case 'Payroll': return <PayrollModule
+                employees={employees}
+                transactions={visibleTransactions}
+                onSaveTransaction={handleSave}
+                canUnlockPeriod={currentAdmin?.role === 'SuperAdmin'}
+                onUnlockPeriod={(period, reason) => {
+                    const unlockTx: Transaction = {
+                        id: Date.now().toString() + '_unlock',
+                        date: getToday(),
+                        type: 'Expense',
+                        category: 'PayrollUnlock',
+                        description: `ปลดล็อกงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
+                        amount: 0,
+                        payrollPeriod: period,
+                        payrollLockAction: 'unlock',
+                        unlockedByAdminId: currentAdmin?.id,
+                        unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
+                        unlockedAt: formatDateTimeTH(),
+                        note: reason,
+                    };
+                    handleSave(unlockTx);
+                    addLog('unlock_payroll_period', `ปลดล็อกงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
+                }}
+                onRelockPeriod={(period, reason) => {
+                    const relockTx: Transaction = {
+                        id: Date.now().toString() + '_relock',
+                        date: getToday(),
+                        type: 'Expense',
+                        category: 'PayrollUnlock',
+                        description: `ล็อกกลับงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
+                        amount: 0,
+                        payrollPeriod: period,
+                        payrollLockAction: 'relock',
+                        unlockedByAdminId: currentAdmin?.id,
+                        unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
+                        unlockedAt: formatDateTimeTH(),
+                        note: reason,
+                    };
+                    handleSave(relockTx);
+                    addLog('relock_payroll_period', `ล็อกกลับงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
+                }}
+            />;
+            case 'DataList': return <RecordManager transactions={visibleTransactions} onDeleteTransaction={handleDeleteTransaction} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'WorkPlanner': return currentAdmin ? (
                 <WorkPlanner
                     adminId={currentAdmin.id}
@@ -695,6 +822,12 @@ function App() {
         return (
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {undoAction && (
+                    <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
+                        <span>{undoAction.message}</span>
+                        <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
+                    </div>
+                )}
                 <PostLoginModeSelect
                     appName={settings.appName}
                     appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
@@ -716,6 +849,12 @@ function App() {
         return (
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {undoAction && (
+                    <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
+                        <span>{undoAction.message}</span>
+                        <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
+                    </div>
+                )}
                 <AdminProfileModal
                     open={accountModalOpen}
                     onClose={() => setAccountModalOpen(false)}
@@ -748,6 +887,7 @@ function App() {
                     autoVersionNotes={autoVersionNotes}
                     appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
                     darkMode={darkMode}
+                    touchLayout={isTouchLayout}
                     onToggleDarkMode={() => setDarkMode(!darkMode)}
                     onLogout={handleLogout}
                     onSwitchToDesktop={() => changeClientSurface('desktop')}
@@ -781,6 +921,12 @@ function App() {
             )}
 
             {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+            {undoAction && (
+                <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
+                    <span>{undoAction.message}</span>
+                    <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
+                </div>
+            )}
 
             {currentAdmin && (
                 <AdminProfileModal
