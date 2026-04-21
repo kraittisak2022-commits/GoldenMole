@@ -4,6 +4,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import DatePicker from '../../components/ui/DatePicker';
+import NumberPickerInput from '../../components/ui/NumberPickerInput';
 import Select from '../../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate } from '../../utils';
 import { toDailyWage } from '../../utils/laborWage';
@@ -118,8 +119,54 @@ const buildSmartSuggestions = (rawValues: Array<string | undefined>, limit = 8) 
     return result;
 };
 
+/** ค่าพรีเซ็ตก่อน แล้วต่อด้วยค่าจากประวัติ (ไม่ซ้ำ) */
+const mergePresetsWithDedupedHistory = (presets: string[], historyRaw: string[], limit = 14): string[] => {
+    const hist = buildSmartSuggestions(historyRaw, limit);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const p of presets) {
+        const s = String(p).trim();
+        if (!s) continue;
+        if (seen.has(s)) continue;
+        seen.add(s);
+        out.push(s);
+    }
+    for (const h of hist) {
+        if (seen.has(h)) continue;
+        seen.add(h);
+        out.push(h);
+        if (out.length >= limit) break;
+    }
+    return out;
+};
+
+/** แจ้งเตือนเท่านั้น (ไม่บล็อกบันทึก): มีพนักงานในงานล้างทรายที่บ้าน แต่ยังไม่ระบุถังล้างที่บ้าน */
+function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
+    const labor = txs.filter(
+        t => t.category === 'Labor' && (t.subCategory === 'Attendance' || t.laborStatus === 'Work')
+    );
+    let washHomeWorkers = 0;
+    for (const t of labor) {
+        const wa = sanitizeWorkAssignments((t as any).workAssignments);
+        const homeIds = wa['washHome'];
+        const n = Array.isArray(homeIds) ? homeIds.length : 0;
+        washHomeWorkers = Math.max(washHomeWorkers, n);
+    }
+    const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+    const fromSand = sand.length > 0 ? Math.max(0, ...sand.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
+    const fromLabor = labor.length > 0 ? Math.max(0, ...labor.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
+    const homeDrums = Math.max(fromSand, fromLabor);
+    if (washHomeWorkers >= 1 && homeDrums <= 0) {
+        return `มีพนักงานในประเภทงาน "ล้างทรายที่บ้าน" ${washHomeWorkers} คน แต่ยังไม่ระบุจำนวนถังที่ล้างที่บ้านวันนี้ — กรุณาตรวจสอบและกรอกในขั้นล้างทรายหรือบันทึกค่าแรง`;
+    }
+    return null;
+}
+
 const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false }: DailyStepRecorderProps) => {
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
+    /** จอสัมผัส / มือถือ: ปุ่มและช่องกดใหญ่ขึ้น */
+    const touchUI = mobileShell || isTouchLayout;
+    const navBtnClass = touchUI ? 'min-h-[48px] px-5 text-base font-semibold touch-manipulation' : '';
     const [step, setStep] = useState(0);
     const [date, setDate] = useState(getToday());
     const [viewMode, setViewMode] = useState<'record' | 'report'>('record');
@@ -136,6 +183,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const norm = normalizeDate(date);
         return transactions.filter(t => normalizeDate(t.date) === norm);
     }, [transactions, date]);
+    const washHomeDrumsAlertMessage = useMemo(() => getWashHomeDrumsMismatchMessage(dayTransactions), [dayTransactions]);
     const otDescSuggestions = useMemo(() => {
         const fromHistory = transactions
             .filter(t => t.category === 'Labor' && t.subCategory === 'OT')
@@ -160,6 +208,62 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             .map(t => t.workDetails || t.description);
         return buildSmartSuggestions(fromHistory, 10);
     }, [transactions]);
+    const fuelPurchaseAmountTemplates = useMemo(() => {
+        const hist = transactions
+            .filter(
+                t =>
+                    t.category === 'Fuel' &&
+                    (t.fuelMovement || 'stock_in') === 'stock_in' &&
+                    !t.vehicleId &&
+                    t.amount != null &&
+                    Number(t.amount) > 0
+            )
+            .map(t => String(Math.round(Number(t.amount))));
+        return buildSmartSuggestions(hist, 14);
+    }, [transactions]);
+    const fuelPurchaseLitersTemplates = useMemo(() => {
+        const hist = transactions
+            .filter(
+                t =>
+                    t.category === 'Fuel' &&
+                    (t.fuelMovement || 'stock_in') === 'stock_in' &&
+                    !t.vehicleId &&
+                    t.quantity != null &&
+                    Number(t.quantity) > 0
+            )
+            .map(t => String(Math.round(Number(t.quantity))));
+        return buildSmartSuggestions(hist, 12);
+    }, [transactions]);
+    const fuelVehicleLitersTemplates = useMemo(() => {
+        const hist = transactions
+            .filter(
+                t =>
+                    t.category === 'Fuel' &&
+                    ((t as any).fuelMovement === 'stock_out' || !!t.vehicleId) &&
+                    t.quantity != null &&
+                    Number(t.quantity) > 0
+            )
+            .map(t => String(Math.round(Number(t.quantity))));
+        return buildSmartSuggestions(hist, 12);
+    }, [transactions]);
+    const fuelDetailsQuickChips = useMemo(() => {
+        const presets = ['ซื้อที่ปั๊มหน้าแคมป์', 'ขายทราย', 'ขายหิน', 'ขายแร่', 'เพิ่ม'];
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const p of presets) {
+            const s = p.trim();
+            if (!s || seen.has(s)) continue;
+            seen.add(s);
+            out.push(s);
+        }
+        for (const s of fuelDetailSuggestions) {
+            if (seen.has(s)) continue;
+            seen.add(s);
+            out.push(s);
+            if (out.length >= 18) break;
+        }
+        return out;
+    }, [fuelDetailSuggestions]);
     const eventDescSuggestions = useMemo(() => {
         const fromHistory = transactions
             .filter(t => t.category === 'DailyLog' && t.subCategory === 'Event')
@@ -346,6 +450,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
     const driverEmployees = useMemo(() => employees.filter(e => getEmpPositions(e).includes('คนขับรถ')), [employees]);
 
+    const vehicleMachineWageTemplates = useMemo(() => {
+        const hist = transactions
+            .filter(t => t.category === 'Vehicle' && (t as any).vehicleWage != null && Number((t as any).vehicleWage) > 0)
+            .map(t => String(Math.round(Number((t as any).vehicleWage))));
+        return mergePresetsWithDedupedHistory(['3000', '4500'], hist, 14);
+    }, [transactions]);
+    const vehicleDriverWageTemplates = useMemo(() => {
+        const hist = transactions
+            .filter(t => t.category === 'Vehicle' && (t as any).driverWage != null && Number((t as any).driverWage) > 0)
+            .map(t => String(Math.round(Number((t as any).driverWage))));
+        return mergePresetsWithDedupedHistory(['200', '600', '800'], hist, 14);
+    }, [transactions]);
     // Labor State
     const [laborSearch, setLaborSearch] = useState('');
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
@@ -364,13 +480,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         if (!latestLaborAttendance) return 0;
         return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
     }, [latestLaborAttendance]);
-    const washHomeWorkersToday = useMemo(() => {
-        const fromForm = workAssignments['washHome']?.length ?? 0;
-        const fromSaved = dayTransactions
-            .filter(t => t.category === 'Labor')
-            .map(t => (((t as any).workAssignments?.washHome as string[] | undefined)?.length ?? 0));
-        return Math.max(fromForm, ...(fromSaved.length > 0 ? fromSaved : [0]));
-    }, [workAssignments, dayTransactions]);
 
     // Vehicle State
     const [vehCar, setVehCar] = useState('');
@@ -479,7 +588,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [fuelDetails, setFuelDetails] = useState('');
     const [fuelVehicle, setFuelVehicle] = useState('');
     const [fuelVehicleLiters, setFuelVehicleLiters] = useState('');
-    const [fuelVehicleAmount, setFuelVehicleAmount] = useState('');
     const [fuelVehicleType, setFuelVehicleType] = useState<'Diesel' | 'Benzine'>('Diesel');
     const [fuelVehicleDetails, setFuelVehicleDetails] = useState('');
 
@@ -698,13 +806,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             const latestFuelOut = fuelOutTx[fuelOutTx.length - 1] as any;
             setFuelVehicle(latestFuelOut.vehicleId || '');
             setFuelVehicleLiters(latestFuelOut.quantity != null ? String(latestFuelOut.quantity) : '');
-            setFuelVehicleAmount(latestFuelOut.amount != null ? String(latestFuelOut.amount) : '');
             setFuelVehicleType(latestFuelOut.fuelType || 'Diesel');
-            setFuelVehicleDetails(latestFuelOut.workDetails || '');
+            const wd = String(latestFuelOut.workDetails || '').trim();
+            setFuelVehicleDetails(/^\d{1,2}:\d{2}$/.test(wd) ? wd : '');
         } else {
             setFuelVehicle('');
             setFuelVehicleLiters('');
-            setFuelVehicleAmount('');
             setFuelVehicleType('Diesel');
             setFuelVehicleDetails('');
         }
@@ -827,10 +934,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             {/* Header + โหมด บันทึก | รายงาน — โหมดมือถือ: เฉพาะแถบขั้นตอน แตะง่าย */}
             {mobileShell ? (
                 viewMode === 'record' && (
-                    <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200/90 bg-white/95 px-1.5 py-2 shadow-sm backdrop-blur-md [@media(orientation:landscape)_and_(max-height:560px)]:mb-2 [@media(orientation:landscape)_and_(max-height:560px)]:py-1.5 dark:border-white/10 dark:bg-slate-900/95">
+                    <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200/90 bg-white/95 px-1.5 py-2 shadow-sm backdrop-blur-md md:mb-4 md:px-2 md:py-2.5 [@media(orientation:landscape)_and_(max-height:560px)]:mb-2 [@media(orientation:landscape)_and_(max-height:560px)]:py-1.5 dark:border-white/10 dark:bg-slate-900/95">
                         <div
                             ref={stepScrollerRef}
-                            className="relative overflow-x-auto overscroll-x-contain hide-scrollbar touch-pan-x [-webkit-overflow-scrolling:touch]"
+                            className="relative overflow-x-auto overscroll-x-contain hide-scrollbar touch-pan-x [-webkit-overflow-scrolling:touch] md:overflow-x-visible"
                         >
                             {canScrollStepLeft && (
                                 <div
@@ -844,14 +951,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     aria-hidden
                                 />
                             )}
-                            <div className="flex w-max min-w-full gap-1 pb-0.5 snap-x snap-mandatory">
+                            <div className="flex w-max min-w-full gap-1 pb-0.5 snap-x snap-mandatory md:min-w-0 md:w-full md:flex-wrap md:justify-center md:gap-2 md:pb-0">
                             {STEPS.map((s, i) => (
                                 <button
                                     type="button"
                                     key={s.id}
                                     data-step={i}
                                     onClick={() => setStep(i)}
-                                    className={`flex min-h-[44px] shrink-0 snap-start items-center justify-center rounded-xl px-3.5 text-sm font-bold transition-all active:scale-[0.98] touch-manipulation [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[38px] [@media(orientation:landscape)_and_(max-height:560px)]:px-3 [@media(orientation:landscape)_and_(max-height:560px)]:text-xs ${
+                                    className={`flex min-h-[44px] shrink-0 snap-start items-center justify-center rounded-xl px-3.5 text-sm font-bold transition-all active:scale-[0.98] touch-manipulation md:min-h-[48px] md:px-4 md:text-base [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[38px] [@media(orientation:landscape)_and_(max-height:560px)]:px-3 [@media(orientation:landscape)_and_(max-height:560px)]:text-xs ${
                                         step === i
                                             ? 'bg-indigo-600 text-white shadow-md'
                                             : i < step
@@ -865,7 +972,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             </div>
                         </div>
                         {(canScrollStepLeft || canScrollStepRight) && (
-                            <p className="mt-1 px-1 text-[10px] font-medium text-slate-400 dark:text-slate-500">ปัดซ้าย/ขวาเพื่อดูขั้นตอนทั้งหมด</p>
+                            <p className="mt-1 px-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 md:hidden">ปัดซ้าย/ขวาเพื่อดูขั้นตอนทั้งหมด</p>
                         )}
                     </div>
                 )
@@ -881,7 +988,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             <button
                                 type="button"
                                 onClick={() => setViewMode('record')}
-                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all sm:flex-initial sm:text-base ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10'}`}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg font-medium transition-all touch-manipulation sm:flex-initial ${touchUI ? 'min-h-[48px] px-4 py-3 text-base' : 'px-4 py-2.5 text-sm sm:text-base'} ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10'}`}
                             >
                                 <ClipboardList size={16} />
                                 บันทึก
@@ -889,7 +996,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             <button
                                 type="button"
                                 onClick={() => setViewMode('report')}
-                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all sm:flex-initial sm:text-base ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10'}`}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg font-medium transition-all touch-manipulation sm:flex-initial ${touchUI ? 'min-h-[48px] px-4 py-3 text-base' : 'px-4 py-2.5 text-sm sm:text-base'} ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10'}`}
                             >
                                 <FileText size={16} />
                                 รายงาน
@@ -897,13 +1004,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         </div>
                     </div>
                     {viewMode === 'record' && (
-                        <div className="flex w-full gap-1.5 overflow-x-auto pb-1 hide-scrollbar sm:gap-2 sm:w-auto">
+                        <div className={`flex w-full overflow-x-auto pb-1 hide-scrollbar sm:w-auto ${touchUI ? 'gap-2' : 'gap-1.5 sm:gap-2'}`}>
                             {STEPS.map((s, i) => (
                                 <button
                                     type="button"
                                     key={s.id}
                                     onClick={() => setStep(i)}
-                                    className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors sm:gap-2 sm:px-3 ${
+                                    className={`flex shrink-0 cursor-pointer items-center font-medium transition-colors touch-manipulation ${
+                                        touchUI
+                                            ? 'min-h-[44px] gap-2 rounded-xl px-3.5 py-2 text-sm sm:px-4 sm:text-base'
+                                            : 'gap-1 rounded-full px-2 py-1.5 text-xs sm:gap-2 sm:px-3'
+                                    } ${
                                         step === i
                                             ? 'bg-indigo-600 text-white'
                                             : i < step
@@ -912,8 +1023,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     }`}
                                     title={`ไปที่ขั้น: ${s.label}`}
                                 >
-                                    <s.icon size={12} />
-                                    <span className="hidden sm:inline">{s.label}</span>
+                                    <s.icon size={touchUI ? 16 : 12} />
+                                    <span className={touchUI ? 'inline' : 'hidden sm:inline'}>{s.label}</span>
                                 </button>
                             ))}
                         </div>
@@ -988,6 +1099,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 const emp = employees.find(e => e.id === id);
                                 return emp?.nickname || emp?.name || id;
                             });
+                            const washHomeDrumsReportAlert = getWashHomeDrumsMismatchMessage(txs);
 
                             // กลุ่มประเภทงานจาก Attendance (canvas) ถ้ามี
                             const attendance = laborAttendance;
@@ -1021,6 +1133,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <h3 className="font-bold text-lg">{formatReportDate(dateStr)}</h3>
                                         <p className="text-slate-300 text-sm mt-0.5">สรุปบันทึกงานประจำวัน</p>
                                     </div>
+                                    {washHomeDrumsReportAlert && (
+                                        <div className="border-b border-amber-200/60 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+                                            <p className="flex items-start gap-2 text-xs font-semibold text-amber-900 dark:text-amber-100">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                                                <span><span className="font-bold">แจ้งเตือน:</span> {washHomeDrumsReportAlert}</span>
+                                            </p>
+                                        </div>
+                                    )}
                                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-7">
                                         <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-4 border border-emerald-100 dark:border-emerald-500/30">
                                             <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-semibold text-sm mb-1"><Users size={16} /> ค่าแรง</div>
@@ -1128,7 +1248,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             <div className={`grid w-full min-w-0 max-w-full grid-cols-1 gap-4 sm:gap-6 lg:gap-8 ${mobileShell ? '' : 'xl:grid-cols-12'}`}>
                 {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
                 <div className={`min-w-0 space-y-6 ${mobileShell ? '' : 'xl:col-span-8'}`}>
-                    <Card className={`relative flex flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4' : 'min-h-[500px] p-6'}`}>
+                    <Card className={`relative flex flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[500px] p-6'}`}>
 
                         {/* Step 0: Date */}
                         {step === 0 && (
@@ -1138,7 +1258,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 </div>
                                 <h3 className={`font-bold text-slate-800 dark:text-slate-100 ${mobileShell ? 'text-base' : 'text-xl'}`}>เลือกวันที่</h3>
                                 <div className={mobileShell ? 'w-full' : 'w-full max-w-sm'}>
-                                    <DatePicker label={mobileShell ? '' : 'วันที่'} value={date} onChange={setDate} />
+                                    <DatePicker label={mobileShell ? '' : 'วันที่'} value={date} onChange={setDate} touchFriendly={touchUI} />
                                 </div>
                                 {!mobileShell && (
                                     <div className="max-w-md rounded-xl border border-orange-100 bg-orange-50 p-4 text-center text-sm text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-200">
@@ -1151,7 +1271,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <p className="break-words text-xs font-semibold text-slate-700 dark:text-slate-100">พบข้อมูลวันที่นี้แล้ว</p>
                                             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">แก้ไขต่อได้</span>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-4">
                                             <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-2 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10"><div className="font-semibold text-emerald-700 dark:text-emerald-300">ค่าแรง</div><div className="mt-0.5 text-base font-black text-emerald-800 dark:text-emerald-200">{dayStepStats.laborCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-500/10"><div className="font-semibold text-amber-700 dark:text-amber-300">การใช้รถ</div><div className="mt-0.5 text-base font-black text-amber-800 dark:text-amber-200">{dayStepStats.vehicleCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-blue-200/80 bg-blue-50/80 px-2.5 py-2 text-center dark:border-blue-500/25 dark:bg-blue-500/10"><div className="font-semibold text-blue-700 dark:text-blue-300">เที่ยวรถ</div><div className="mt-0.5 text-base font-black text-blue-800 dark:text-blue-200">{dayStepStats.tripCount}</div></div>
@@ -1162,7 +1282,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                     </div>
                                 )}
-                                <Button onClick={handleStartRecord} className="mt-6 w-full max-w-xs rounded-xl border border-slate-300 bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 [@media(orientation:landscape)_and_(max-height:560px)]:mt-3 sm:w-auto sm:max-w-none sm:px-8 sm:text-base dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100">
+                                <Button onClick={handleStartRecord} className={`mt-6 w-full max-w-xs rounded-xl border border-slate-300 bg-slate-900 px-6 font-semibold text-white shadow-sm hover:bg-slate-800 [@media(orientation:landscape)_and_(max-height:560px)]:mt-3 sm:w-auto sm:max-w-none sm:px-8 dark:border-white/20 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 touch-manipulation ${touchUI ? 'min-h-[52px] py-3.5 text-base' : 'py-3 text-sm sm:text-base'}`}>
                                     {hasExistingWizardData ? 'แก้ไขข้อมูลที่บันทึกแล้ว' : 'เริ่มบันทึก'} <ChevronRight className="ml-2" />
                                 </Button>
                             </div>
@@ -1184,7 +1304,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </span>
                                         </div>
                                         {mobileLaborCanvasPreview.length > 0 ? (
-                                            <div className="space-y-2 [@media(orientation:landscape)_and_(max-height:560px)]:grid [@media(orientation:landscape)_and_(max-height:560px)]:grid-cols-2 [@media(orientation:landscape)_and_(max-height:560px)]:gap-2 [@media(orientation:landscape)_and_(max-height:560px)]:space-y-0">
+                                            <div className="space-y-2 md:grid md:grid-cols-2 md:gap-2 md:space-y-0 lg:grid-cols-3 [@media(orientation:landscape)_and_(max-height:560px)]:grid [@media(orientation:landscape)_and_(max-height:560px)]:grid-cols-2 [@media(orientation:landscape)_and_(max-height:560px)]:gap-2 [@media(orientation:landscape)_and_(max-height:560px)]:space-y-0">
                                                 {mobileLaborCanvasPreview.map(row => (
                                                     <div key={row.catId} className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-white/10 dark:bg-white/5">
                                                         <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{row.label}</p>
@@ -1207,9 +1327,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
                                 )}
 
-                                <div className="flex gap-3 mb-4">
-                                    <button onClick={() => setLaborStatus('Work')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'Work' ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>✅ มาทำงาน</button>
-                                    <button onClick={() => setLaborStatus('OT')} className={`flex-1 py-3 rounded-xl border text-base transition-all ${laborStatus === 'OT' ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>🕒 OT</button>
+                                <div className="mb-4 flex gap-3">
+                                    <button type="button" onClick={() => setLaborStatus('Work')} className={`flex-1 touch-manipulation rounded-xl border text-base transition-all ${touchUI ? 'min-h-[52px] py-3.5' : 'py-3'} ${laborStatus === 'Work' ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>✅ มาทำงาน</button>
+                                    <button type="button" onClick={() => setLaborStatus('OT')} className={`flex-1 touch-manipulation rounded-xl border text-base transition-all ${touchUI ? 'min-h-[52px] py-3.5' : 'py-3'} ${laborStatus === 'OT' ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>🕒 OT</button>
                                 </div>
                                 {laborStatus === 'Work' && !mobileShell && (
                                     <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">💡 มาทำงานปกติ = เต็มวัน (ไม่ต้องกด) — ถ้ามาครึ่งวันให้กดปุ่ม &quot;½ ครึ่งวัน&quot ที่ชื่อคนนั้น</p>
@@ -1252,14 +1372,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     <input placeholder="ค้นหาชื่อ..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)}
                                                         className="text-sm border border-slate-200 dark:border-white/15 rounded-lg px-3 py-1.5 w-32 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder:text-slate-400" />
                                                 </div>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                                                     {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).map(emp => {
                                                         const isSelected = selectedEmps.includes(emp.id);
                                                         const displayName = getEmployeeDisplayName(emp);
                                                         return (
-                                                            <button key={emp.id}
+                                                            <button key={emp.id} type="button"
                                                                 onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
-                                                                className={`px-3 py-2.5 rounded-xl text-sm text-left font-medium transition-all border-2 ${isSelected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}>
+                                                                className={`rounded-xl text-left font-medium transition-all border-2 touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${isSelected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}>
                                                                 {displayName}{emp.name && displayName !== emp.name ? ` (${emp.name})` : ''}
                                                             </button>
                                                         );
@@ -1270,15 +1390,34 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             {/* OT Rate */}
                                             <div>
                                                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">ค่า OT (บาท/คน/ชม.)</label>
-                                                <input type="number" placeholder="" value={otRate} onChange={e => setOtRate(e.target.value)}
-                                                    className="w-full px-4 py-3.5 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                                <NumberPickerInput
+                                                    placeholder=""
+                                                    value={otRate}
+                                                    onChange={setOtRate}
+                                                    listMin={0}
+                                                    listMax={2000}
+                                                    listStep={50}
+                                                    scrollAnchor={100}
+                                                    min={0}
+                                                    className="w-full px-4 py-3.5 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
+                                                />
                                             </div>
 
                                             {/* OT Hours */}
                                             <div>
                                                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">จำนวนชั่วโมง OT</label>
-                                                <input type="number" placeholder="เช่น 2.5" value={otHours} onChange={e => setOtHours(e.target.value)}
-                                                    className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                                <NumberPickerInput
+                                                    placeholder="เช่น 2.5"
+                                                    value={otHours}
+                                                    onChange={setOtHours}
+                                                    listMin={0}
+                                                    listMax={24}
+                                                    listStep={0.5}
+                                                    scrollAnchor={2}
+                                                    min={0}
+                                                    step={0.5}
+                                                    className="w-full px-4 py-3 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
+                                                />
                                             </div>
 
                                             {/* OT Description */}
@@ -1287,13 +1426,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 <input type="text" placeholder="ทำอะไร..." value={otDesc} onChange={e => setOtDesc(e.target.value)}
                                                     className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                                 {mobileShell && otDescSuggestions.length > 0 && (
-                                                    <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                    <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
                                                         {otDescSuggestions.slice(0, 8).map(s => (
                                                             <button
                                                                 key={s}
                                                                 type="button"
                                                                 onClick={() => setOtDesc(s)}
-                                                                className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                                className="shrink-0 min-h-[36px] touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 md:min-h-[40px] md:px-3 md:py-2 md:text-xs"
                                                             >
                                                                 {s}
                                                             </button>
@@ -1337,9 +1476,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 บันทึก
                                             </button>
                                         </div>
-                                        <div className="mt-auto pt-3 flex justify-between">
-                                            <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                            <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                        <div className="mt-auto flex justify-between gap-3 pt-3">
+                                            <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                            <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                         </div>
                                     </div>
                                 )}
@@ -1358,7 +1497,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-36 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300" />
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-[180px] overflow-y-auto">
+                                            <div className="grid max-h-[180px] grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-3 sm:p-3 md:max-h-[240px] md:grid-cols-4 lg:grid-cols-5">
                                                 {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).map(emp => {
                                                     const isAssigned = Object.values(workAssignments).some(ids => ids.includes(emp.id));
                                                     const isSelected = selectedEmps.includes(emp.id);
@@ -1371,7 +1510,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                             draggable onDragStart={() => setDragEmployee(emp.id)} onDragEnd={() => setDragEmployee(null)}
                                                             onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
                                                             title={leaveRecord ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}` : isAbsent && saved === undefined ? '' : ''}
-                                                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center
+                                                            className={`rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base sm:text-lg' : 'px-2.5 py-2 text-xs sm:text-sm'}
                                                         ${leaveRecord ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400 ring-1 ring-yellow-200' :
                                                                     isAssigned ? 'bg-emerald-100 text-emerald-600 border border-emerald-300 opacity-50' :
                                                                         isSelected ? 'bg-indigo-600 text-white shadow-md scale-105' :
@@ -1389,7 +1528,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         {/* Work Category Canvas Boxes */}
                                         <div className="flex-1 overflow-y-auto mb-3">
                                             <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
-                                            <div className="grid grid-cols-2 gap-3">
+                                            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
                                                 {[...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, ...getCustomCategoryStyle(c.id) }))].map(cat => {
                                                     const assigned = workAssignments[cat.id] || [];
                                                     const isCustomCategory = !DEFAULT_WORK_CATEGORY_IDS.has(cat.id);
@@ -1417,7 +1556,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                                 });
                                                                 setDragEmployee(null);
                                                             }}
-                                                            className={`p-3 rounded-xl border-2 border-dashed min-h-[80px] transition-all ${cat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
+                                                            className={`rounded-xl border-2 border-dashed transition-all p-3 ${touchUI ? 'min-h-[104px]' : 'min-h-[80px]'} ${cat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
                                                         >
                                                             <div className="mb-1.5 flex items-start justify-between gap-2">
                                                                 <span
@@ -1452,10 +1591,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                                     const emp = employees.find(e => e.id === eid);
                                                                     const isHalf = halfDayEmpIds.has(eid);
                                                                     return emp ? (
-                                                                        <span key={eid} className="px-2 py-1 bg-white rounded-lg text-xs font-semibold border flex items-center gap-1">
+                                                                        <span key={eid} className={`flex items-center gap-1 rounded-lg border bg-white font-semibold ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}>
                                                                             {getEmployeeDisplayName(emp)}
-                                                                            <button type="button" onClick={(ev) => { ev.stopPropagation(); setHalfDayEmpIds(prev => { const n = new Set(prev); if (n.has(eid)) n.delete(eid); else n.add(eid); return n; }); }} className={`min-w-[1.5rem] px-1 py-0.5 rounded text-[10px] font-bold ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`} title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}>½</button>
-                                                                            <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: prev[cat.id].filter(id => id !== eid) }))} className="text-red-400 hover:text-red-600 ml-0.5 text-base leading-none">×</button>
+                                                                            <button type="button" onClick={(ev) => { ev.stopPropagation(); setHalfDayEmpIds(prev => { const n = new Set(prev); if (n.has(eid)) n.delete(eid); else n.add(eid); return n; }); }} className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`} title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}>½</button>
+                                                                            <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: prev[cat.id].filter(id => id !== eid) }))} className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}>×</button>
                                                                         </span>) : null;
                                                                 })}
                                                                 {assigned.length === 0 && <span className="text-xs text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
@@ -1475,7 +1614,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                                         return u;
                                                                     });
                                                                     setSelectedEmps([]);
-                                                                }} className="mt-1.5 w-full py-1.5 text-xs bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-bold">
+                                                                }} className={`mt-1.5 w-full rounded-lg bg-indigo-100 font-bold text-indigo-700 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}>
                                                                     ⬇️ ย้าย {selectedEmps.length} คน มาที่นี่
                                                                 </button>
                                                             )}
@@ -1631,9 +1770,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     ...dayTransactions.filter(t => t.category === 'Vehicle' && !!t.driverId).map(t => t.driverId as string),
                                                 ])].length} คน)
                                             </Button>
-                                            <div className="flex justify-between">
-                                                <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                                <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                            <div className="flex justify-between gap-3">
+                                                <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                                <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                             </div>
                                         </div>
                                     </>
@@ -1713,7 +1852,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                     )}
                                     <p className="text-xs text-slate-500">คนขับ: แสดงเฉพาะพนักงานที่มีตำแหน่ง &quot;คนขับรถ&quot; — เลือกแล้วเบี้ยเลี้ยงจะใช้ค่าแรงในวันนั้น</p>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5">
                                         <Select label="รถ/เครื่องจักร" value={vehCar} onChange={(e: any) => setVehCar(e.target.value)}><option value="">-- เลือกรถ --</option>{settings.cars.map(c => <option key={c}>{c}</option>)}</Select>
                                         <Select label="คนขับ" value={vehDriver} onChange={(e: any) => {
                                             const val = e.target.value;
@@ -1750,21 +1889,53 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-400">ครึ่งวัน = เบี้ยเลี้ยงคนขับครึ่งหนึ่งของค่าแรงรายวัน (ค่าจ้างรถไม่เปลี่ยน)</p>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <Input label="ค่าจ้างรถ (บาท)" type="number" value={vehMachineWage} onChange={(e: any) => setVehMachineWage(e.target.value)} />
-                                        <Input label="เบี้ยเลี้ยงคนขับ (ใช้ค่าแรงในวันนั้น)" type="number" value={vehWage} onChange={(e: any) => setVehWage(e.target.value)} />
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5">
+                                        <div className="space-y-2">
+                                            <Input label="ค่าจ้างรถ (บาท)" type="number" value={vehMachineWage} onChange={(e: any) => setVehMachineWage(e.target.value)} />
+                                            <div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {vehicleMachineWageTemplates.map(v => (
+                                                        <button
+                                                            key={`vmw-${v}`}
+                                                            type="button"
+                                                            onClick={() => setVehMachineWage(v)}
+                                                            className="touch-manipulation rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-100 dark:hover:bg-amber-500/25"
+                                                        >
+                                                            {Number(v).toLocaleString()}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Input label="เบี้ยเลี้ยงคนขับ (ใช้ค่าแรงในวันนั้น)" type="number" value={vehWage} onChange={(e: any) => setVehWage(e.target.value)} />
+                                            <div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {vehicleDriverWageTemplates.map(v => (
+                                                        <button
+                                                            key={`vdw-${v}`}
+                                                            type="button"
+                                                            onClick={() => setVehWage(v)}
+                                                            className="touch-manipulation rounded-lg border border-emerald-200/90 bg-emerald-50/90 px-3 py-2 text-sm font-bold text-emerald-900 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+                                                        >
+                                                            {Number(v).toLocaleString()}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="flex flex-col gap-1">
                                         <label className="text-sm font-medium text-slate-700 dark:text-slate-200">รายละเอียดงาน</label>
                                         <textarea className="border border-slate-200 dark:border-white/15 rounded-xl p-2 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400" rows={2} value={vehDetails} onChange={e => setVehDetails(e.target.value)} placeholder="ขนดิน, ปรับพื้นที่..." />
                                         {mobileShell && vehicleDetailSuggestions.length > 0 && (
-                                            <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                            <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
                                                 {vehicleDetailSuggestions.slice(0, 8).map(s => (
                                                     <button
                                                         key={s}
                                                         type="button"
                                                         onClick={() => setVehDetails(s)}
-                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                        className="shrink-0 min-h-[36px] touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 md:min-h-[40px] md:px-3 md:py-2 md:text-xs"
                                                     >
                                                         {s}
                                                     </button>
@@ -1798,9 +1969,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(''); setVehWorkType('FullDay');
                                     }} className="w-full bg-amber-500 hover:bg-amber-600">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
                                 </div>
-                                <div className="mt-auto flex justify-between">
-                                    <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                <div className="mt-auto flex justify-between gap-3">
+                                    <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -1850,16 +2021,32 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 <div className="bg-gradient-to-r from-amber-50 to-blue-50 dark:from-amber-500/10 dark:to-blue-500/10 p-4 rounded-xl border border-amber-100 dark:border-white/10 mb-4">
                                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">จำนวนเที่ยวรวม</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">เว้นว่างได้ หากวันนี้ใช้รถขนงานอย่างอื่นและไม่มีการวิ่งเที่ยว</p>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1 block">☀️ ช่วงเช้า (เที่ยว)</label>
-                                            <input type="number" placeholder="0" value={tripMorning} onChange={e => setTripMorning(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-amber-200 dark:border-amber-500/35 rounded-xl text-center text-lg font-bold text-amber-800 dark:text-amber-200 bg-white dark:bg-white/5 focus:border-amber-400 focus:outline-none transition-colors" />
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
+                                        <div className="space-y-2">
+                                            <label className="mb-1 block text-xs font-medium text-amber-700 dark:text-amber-300">☀️ ช่วงเช้า (เที่ยว)</label>
+                                            <NumberPickerInput
+                                                placeholder="0"
+                                                value={tripMorning}
+                                                onChange={setTripMorning}
+                                                listMin={0}
+                                                listMax={200}
+                                                scrollAnchor={90}
+                                                min={0}
+                                                className="w-full px-3 py-2.5 border-2 border-amber-200 bg-white text-center text-lg font-bold text-amber-800 transition-colors focus:border-amber-400 focus:outline-none dark:border-amber-500/35 dark:bg-white/5 dark:text-amber-200"
+                                            />
                                         </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1 block">🌙 ช่วงบ่าย (เที่ยว)</label>
-                                            <input type="number" placeholder="0" value={tripAfternoon} onChange={e => setTripAfternoon(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-500/35 rounded-xl text-center text-lg font-bold text-blue-800 dark:text-blue-200 bg-white dark:bg-white/5 focus:border-blue-400 focus:outline-none transition-colors" />
+                                        <div className="space-y-2">
+                                            <label className="mb-1 block text-xs font-medium text-blue-700 dark:text-blue-300">🌙 ช่วงบ่าย (เที่ยว)</label>
+                                            <NumberPickerInput
+                                                placeholder="0"
+                                                value={tripAfternoon}
+                                                onChange={setTripAfternoon}
+                                                listMin={0}
+                                                listMax={200}
+                                                scrollAnchor={90}
+                                                min={0}
+                                                className="w-full px-3 py-2.5 border-2 border-blue-200 bg-white text-center text-lg font-bold text-blue-800 transition-colors focus:border-blue-400 focus:outline-none dark:border-blue-500/35 dark:bg-white/5 dark:text-blue-200"
+                                            />
                                         </div>
                                     </div>
                                     {totalTrips > 0 && (() => {
@@ -1915,7 +2102,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     </button>
                                                 )}
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 mb-2">
+                                            <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-2 md:mb-3 md:gap-4">
                                                 <Select label="รถ" value={entry.vehicle} onChange={(e: any) => {
                                                     const nextVehicle = e.target.value;
                                                     setTripEntries(prev => prev.map(item => {
@@ -1936,7 +2123,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     {driverEmployees.map(e => <option key={e.id} value={e.id}>{e.nickname || e.name}</option>)}
                                                 </Select>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 mb-2">
+                                            <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
                                                 <Input
                                                     label="คิว/เที่ยว (คันนี้)"
                                                     type="number"
@@ -1950,13 +2137,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </div>
                                             <Input label="รายละเอียดงาน" value={entry.work} onChange={(e: any) => updateTripCard(entry.id, 'work', e.target.value)} placeholder="ขนดิน, ขนทราย..." />
                                             {mobileShell && tripWorkSuggestions.length > 0 && (
-                                                <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
                                                     {tripWorkSuggestions.slice(0, 8).map(s => (
                                                         <button
                                                             key={`${entry.id}-${s}`}
                                                             type="button"
                                                             onClick={() => updateTripCard(entry.id, 'work', s)}
-                                                            className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                            className="shrink-0 min-h-[36px] touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 md:min-h-[40px] md:px-3 md:py-2 md:text-xs"
                                                         >
                                                             {s}
                                                         </button>
@@ -2006,9 +2193,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     }} className="w-full bg-blue-500 hover:bg-blue-600 py-3 text-base">
                                         <CheckCircle2 size={18} className="mr-2" /> บันทึกทั้งหมด ({tripEntries.filter(e => e.vehicle).length} คัน, {totalTrips} เที่ยวรวม)
                                     </Button>
-                                    <div className="flex justify-between">
-                                        <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <div className="flex justify-between gap-3">
+                                        <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -2090,13 +2277,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <div className="grid grid-cols-3 gap-3 mb-2">
                                             <div>
                                                 <label className="text-xs font-medium text-amber-700 mb-1 block">☀️ เช้า (คิว)</label>
-                                                <input type="number" placeholder="0" value={sand1Morning} onChange={e => setSand1Morning(e.target.value)}
-                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none" />
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand1Morning}
+                                                    onChange={setSand1Morning}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none"
+                                                />
                                             </div>
                                             <div>
                                                 <label className="text-xs font-medium text-blue-700 mb-1 block">🌙 บ่าย (คิว)</label>
-                                                <input type="number" placeholder="0" value={sand1Afternoon} onChange={e => setSand1Afternoon(e.target.value)}
-                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none" />
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand1Afternoon}
+                                                    onChange={setSand1Afternoon}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none"
+                                                />
                                             </div>
                                             <div className="flex flex-col items-center justify-center bg-white/70 rounded-xl border">
                                                 <span className="text-[10px] text-slate-400">รวม</span>
@@ -2121,13 +2324,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <div className="grid grid-cols-3 gap-3 mb-2">
                                             <div>
                                                 <label className="text-xs font-medium text-amber-700 mb-1 block">☀️ เช้า (คิว)</label>
-                                                <input type="number" placeholder="0" value={sand2Morning} onChange={e => setSand2Morning(e.target.value)}
-                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none" />
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand2Morning}
+                                                    onChange={setSand2Morning}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none"
+                                                />
                                             </div>
                                             <div>
                                                 <label className="text-xs font-medium text-blue-700 mb-1 block">🌙 บ่าย (คิว)</label>
-                                                <input type="number" placeholder="0" value={sand2Afternoon} onChange={e => setSand2Afternoon(e.target.value)}
-                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none" />
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand2Afternoon}
+                                                    onChange={setSand2Afternoon}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none"
+                                                />
                                             </div>
                                             <div className="flex flex-col items-center justify-center bg-white/70 rounded-xl border">
                                                 <span className="text-[10px] text-slate-400">รวม</span>
@@ -2191,9 +2410,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     จำนวนถังที่ได้วันนี้
                                                 </label>
                                                 <div className="flex items-center gap-2">
-                                                    <input type="number" min="0" placeholder="0" value={sandDrumsObtained} onChange={e => setSandDrumsObtained(e.target.value)}
-                                                        className="w-24 px-3 py-2 border-2 border-emerald-200 dark:border-emerald-500/35 rounded-xl text-center text-base font-bold text-emerald-800 dark:text-emerald-200 bg-white dark:bg-white/5 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
-                                                    <span className="text-emerald-700 dark:text-emerald-300 text-sm font-medium">ถัง</span>
+                                                    <NumberPickerInput
+                                                        min={0}
+                                                        placeholder="0"
+                                                        value={sandDrumsObtained}
+                                                        onChange={setSandDrumsObtained}
+                                                        listMin={0}
+                                                        listMax={100}
+                                                        scrollAnchor={40}
+                                                        wrapperClassName="flex min-w-0 max-w-[10.5rem] flex-1 items-stretch gap-1"
+                                                        className="w-24 min-w-0 flex-1 px-3 py-2 border-2 border-emerald-200 dark:border-emerald-500/35 rounded-xl text-center text-base font-bold text-emerald-800 dark:text-emerald-200 bg-white dark:bg-white/5 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                                                    />
+                                                    <span className="shrink-0 text-sm font-medium text-emerald-700 dark:text-emerald-300">ถัง</span>
                                                 </div>
                                             </div>
                                             <div className="rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/80 dark:bg-rose-500/10 px-3 py-3">
@@ -2202,15 +2430,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     จำนวนทรายที่ล้างที่บ้านวันนี้
                                                 </label>
                                                 <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="number"
-                                                        min="0"
+                                                    <NumberPickerInput
+                                                        min={0}
                                                         placeholder="0"
                                                         value={drumsWashedAtHome}
-                                                        onChange={e => setDrumsWashedAtHome(e.target.value)}
-                                                        className="w-24 px-3 py-2 border-2 border-rose-200 dark:border-rose-500/35 rounded-xl text-center text-base font-bold text-rose-800 dark:text-rose-200 bg-white dark:bg-white/5 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 outline-none transition-all"
+                                                        onChange={setDrumsWashedAtHome}
+                                                        listMin={0}
+                                                        listMax={100}
+                                                        scrollAnchor={40}
+                                                        wrapperClassName="flex min-w-0 max-w-[10.5rem] flex-1 items-stretch gap-1"
+                                                        className="w-24 min-w-0 flex-1 px-3 py-2 border-2 border-rose-200 dark:border-rose-500/35 rounded-xl text-center text-base font-bold text-rose-800 dark:text-rose-200 bg-white dark:bg-white/5 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 outline-none transition-all"
                                                     />
-                                                    <span className="text-rose-700 dark:text-rose-300 text-sm font-medium">ถัง</span>
+                                                    <span className="shrink-0 text-sm font-medium text-rose-700 dark:text-rose-300">ถัง</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -2228,11 +2459,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{drumStockSummary.cumulativeRemaining}</p>
                                             </div>
                                         </div>
-                                        {washHomeWorkersToday > 1 && (Number(drumsWashedAtHome) || 0) <= 0 && (
-                                            <p className="mt-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                                                มีพนักงานล้างที่บ้าน {washHomeWorkersToday} คน — ต้องกรอกจำนวนทรายที่ล้างที่บ้านวันนี้
-                                            </p>
-                                        )}
                                     </div>
                                 </div>
 
@@ -2240,9 +2466,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <Button onClick={() => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
-                                        if (washHomeWorkersToday > 1 && drumsHomeToday <= 0) {
-                                            return alert(`มีพนักงานประเภทงาน "ล้างทรายที่บ้าน" ${washHomeWorkersToday} คน กรุณากรอก "จำนวนทรายที่ล้างที่บ้านวันนี้" ก่อนบันทึก`);
-                                        }
                                         if (sandGrandTotal === 0 && drumsToday === 0) return alert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
                                         const opNames1 = sand1Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const opNames2 = sand2Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
@@ -2285,9 +2508,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5">
                                         <Droplets size={16} className="mr-1" /> บันทึกข้อมูลล้างทราย ({sandGrandTotal} คิว)
                                     </Button>
-                                    <div className="flex justify-between">
-                                        <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <div className="flex justify-between gap-3">
+                                        <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -2381,10 +2604,34 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                     {/* Quantity + Unit */}
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                        <div className="min-w-0">
-                                            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">จำนวนลิตร</label>
-                                            <input type="number" placeholder="" value={fuelLiters} onChange={e => setFuelLiters(e.target.value)}
-                                                className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                        <div className="min-w-0 space-y-2">
+                                            <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">จำนวนลิตร</label>
+                                            <NumberPickerInput
+                                                placeholder=""
+                                                value={fuelLiters}
+                                                onChange={setFuelLiters}
+                                                listMin={0}
+                                                listMax={200}
+                                                scrollAnchor={90}
+                                                min={0}
+                                                className="w-full min-w-0 px-4 py-3 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
+                                            />
+                                            <div>
+                                                {fuelPurchaseLitersTemplates.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {fuelPurchaseLitersTemplates.map(v => (
+                                                            <button
+                                                                key={`fpl-${v}`}
+                                                                type="button"
+                                                                onClick={() => setFuelLiters(v)}
+                                                                className="touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+                                                            >
+                                                                {Number(v).toLocaleString()} ลิตร
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="min-w-0">
                                             <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">หน่วย</label>
@@ -2397,10 +2644,26 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
 
                                     {/* Price */}
-                                    <div>
-                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">ราคาซื้อน้ำมัน (บาท)</label>
+                                    <div className="space-y-2">
+                                        <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">ราคาซื้อน้ำมัน (บาท)</label>
                                         <input type="number" placeholder="" value={fuelAmount} onChange={e => setFuelAmount(e.target.value)}
                                             className="w-full px-4 py-4 border border-slate-300 dark:border-white/15 rounded-xl text-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                        <div>
+                                            {fuelPurchaseAmountTemplates.length > 0 && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {fuelPurchaseAmountTemplates.map(v => (
+                                                        <button
+                                                            key={`fpa-${v}`}
+                                                            type="button"
+                                                            onClick={() => setFuelAmount(v)}
+                                                            className="touch-manipulation rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 shadow-sm transition hover:bg-rose-100 dark:border-rose-500/35 dark:bg-rose-500/15 dark:text-rose-100 dark:hover:bg-rose-500/25"
+                                                        >
+                                                            ฿{Number(v).toLocaleString()}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Details (optional) */}
@@ -2408,18 +2671,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">รายละเอียดเพิ่มเติม <span className="text-slate-400 dark:text-slate-500 font-normal">(ไม่บังคับ)</span></label>
                                         <input type="text" placeholder="เช่น ซื้อที่ปั๊มหน้าแคมป์" value={fuelDetails} onChange={e => setFuelDetails(e.target.value)}
                                             className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
-                                        {mobileShell && fuelDetailSuggestions.length > 0 && (
-                                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
-                                                {fuelDetailSuggestions.slice(0, 8).map(s => (
-                                                    <button
-                                                        key={s}
-                                                        type="button"
-                                                        onClick={() => setFuelDetails(s)}
-                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
-                                                    >
-                                                        {s}
-                                                    </button>
-                                                ))}
+                                        {fuelDetailsQuickChips.length > 0 && (
+                                            <div className="mt-2">
+                                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                                    {fuelDetailsQuickChips.map(t => (
+                                                        <button
+                                                            key={`fdc-${t}`}
+                                                            type="button"
+                                                            onClick={() => setFuelDetails(t)}
+                                                            className="inline-flex touch-manipulation items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+                                                        >
+                                                            {t}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -2481,33 +2746,39 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </select>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                        <div className="min-w-0">
-                                            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">ใช้น้ำมัน (ลิตร)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={fuelVehicleLiters}
-                                                onChange={e => setFuelVehicleLiters(e.target.value)}
-                                                className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors"
-                                            />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">มูลค่า (บาท) <span className="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={fuelVehicleAmount}
-                                                onChange={e => setFuelVehicleAmount(e.target.value)}
-                                                className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors"
-                                            />
+                                    <div className="min-w-0 space-y-2">
+                                        <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">ใช้น้ำมัน (ลิตร)</label>
+                                        <NumberPickerInput
+                                            placeholder=""
+                                            value={fuelVehicleLiters}
+                                            onChange={setFuelVehicleLiters}
+                                            listMin={0}
+                                            listMax={200}
+                                            scrollAnchor={90}
+                                            min={0}
+                                            className="w-full min-w-0 px-4 py-3 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
+                                        />
+                                        <div>
+                                            {fuelVehicleLitersTemplates.length > 0 && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {fuelVehicleLitersTemplates.map(v => (
+                                                        <button
+                                                            key={`fvl-${v}`}
+                                                            type="button"
+                                                            onClick={() => setFuelVehicleLiters(v)}
+                                                            className="touch-manipulation rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/35 dark:bg-indigo-500/15 dark:text-indigo-100 dark:hover:bg-indigo-500/25"
+                                                        >
+                                                            {Number(v).toLocaleString()} ลิตร
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">รายละเอียด <span className="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
+                                        <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">เวลาเติมน้ำมัน <span className="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
                                         <input
-                                            type="text"
-                                            placeholder="เช่น เติมก่อนวิ่งหน้างาน A"
+                                            type="time"
                                             value={fuelVehicleDetails}
                                             onChange={e => setFuelVehicleDetails(e.target.value)}
                                             className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors"
@@ -2516,7 +2787,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <button onClick={() => {
                                         if (!fuelVehicle) return alert('กรุณาเลือกรถ');
                                         if (!fuelVehicleLiters || Number(fuelVehicleLiters) <= 0) return alert('กรุณาระบุปริมาณน้ำมันที่ใช้');
-                                        const amount = Number(fuelVehicleAmount) || 0;
+                                        const amount = 0;
                                         const liters = Number(fuelVehicleLiters) || 0;
                                         const fuelVehicleWarnings: string[] = [];
                                         const duplicateFuelOut = dayTransactions.find(t =>
@@ -2529,34 +2800,33 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         );
                                         if (duplicateFuelOut) fuelVehicleWarnings.push(`มีรายการใช้น้ำมันของรถ ${fuelVehicle} ค่าเดียวกันอยู่แล้ว`);
                                         if (liters > 5000) fuelVehicleWarnings.push('ปริมาณน้ำมันที่ใช้สูงกว่าปกติมาก');
-                                        if (amount > 200000) fuelVehicleWarnings.push('มูลค่าน้ำมันสูงกว่าปกติมาก');
                                         if (!shouldContinueWithWarning(fuelVehicleWarnings, 'ตรวจพบรายการใช้น้ำมันรายรถที่อาจซ้ำ/ผิดปกติ')) return;
+                                        const timePart = fuelVehicleDetails.trim() ? ` เวลา ${fuelVehicleDetails}` : '';
                                         onSaveTransaction({
                                             id: `fuel_car_${Date.now()}`,
                                             date,
                                             type: 'Expense',
                                             category: 'Fuel',
                                             subCategory: 'VehicleUsage',
-                                            description: `ใช้น้ำมันรถ ${fuelVehicle}: ${Number(fuelVehicleLiters)} ลิตร (${fuelVehicleType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'})${amount > 0 ? ` มูลค่า ${amount} บาท` : ''}${fuelVehicleDetails ? ` - ${fuelVehicleDetails}` : ''}`,
+                                            description: `ใช้น้ำมันรถ ${fuelVehicle}: ${Number(fuelVehicleLiters)} ลิตร (${fuelVehicleType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'})${timePart}`,
                                             amount,
                                             quantity: Number(fuelVehicleLiters),
                                             unit: 'L',
                                             fuelType: fuelVehicleType,
                                             fuelMovement: 'stock_out',
                                             vehicleId: fuelVehicle,
-                                            workDetails: fuelVehicleDetails
+                                            workDetails: fuelVehicleDetails.trim() || undefined
                                         } as Transaction);
                                         setFuelVehicleLiters('');
-                                        setFuelVehicleAmount('');
                                         setFuelVehicleDetails('');
                                     }} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-base font-bold rounded-xl transition-colors">
                                         บันทึกการใช้น้ำมันรายรถ
                                     </button>
                                 </div>
 
-                                <div className="mt-auto pt-3 flex justify-between">
-                                    <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                <div className="mt-auto flex justify-between gap-3 pt-3">
+                                    <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -2705,9 +2975,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <Wallet size={16} className="mr-1" /> บันทึกรายรับ
                                     </Button>
                                 </div>
-                                <div className="mt-auto pt-3 flex justify-between">
-                                    <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                <div className="mt-auto flex justify-between gap-3 pt-3">
+                                    <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -2775,13 +3045,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             placeholder="เช่น ฝนตกหนักต้องหยุดงาน, เครื่องจักรเสีย, ทรายถูกส่งมาไม่ครบ, งานเสร็จเร็วกว่ากำหนด..."
                                             className="w-full px-3 py-3 border-2 border-slate-200 rounded-xl text-sm focus:border-orange-400 focus:outline-none transition-colors" rows={4} />
                                         {mobileShell && eventDescSuggestions.length > 0 && (
-                                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
                                                 {eventDescSuggestions.slice(0, 8).map(s => (
                                                     <button
                                                         key={s}
                                                         type="button"
                                                         onClick={() => setEventDesc(s)}
-                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                        className="shrink-0 min-h-[36px] touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 md:min-h-[40px] md:px-3 md:py-2 md:text-xs"
                                                     >
                                                         {s}
                                                     </button>
@@ -2790,9 +3060,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         )}
                                     </div>
 
-                                    {/* Quick templates */}
+                                    {/* Quick phrase chips */}
                                     <div>
-                                        <p className="text-[10px] text-slate-400 mb-1">🏷️ เทมเพลตด่วน:</p>
                                         <div className="flex flex-wrap gap-1.5">
                                             {['ฝนตก หยุดงาน', 'เครื่องจักรเสีย', 'ทรายไม่ครบ', 'คนงานมาสาย', 'งานเสร็จตามแผน', 'ไฟฟ้าดับ', 'อุบัติเหตุเล็กน้อย'].map(tmpl => (
                                                 <button key={tmpl} onClick={() => setEventDesc(prev => prev ? `${prev}, ${tmpl}` : tmpl)}
@@ -2816,9 +3085,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     }} className="w-full bg-orange-500 hover:bg-orange-600 py-2.5">
                                         <AlertTriangle size={16} className="mr-1" /> บันทึกเหตุการณ์
                                     </Button>
-                                    <div className="flex justify-between">
-                                        <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <div className="flex justify-between gap-3">
+                                        <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
+                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -2899,6 +3168,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                     );
                                 })()}
+
+                                {washHomeDrumsAlertMessage && (
+                                    <div className={`w-full text-left ${mobileShell ? 'mb-4' : 'mb-6'}`}>
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/35 dark:bg-amber-500/15">
+                                            <p className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-100">
+                                                <AlertTriangle size={16} className="shrink-0 text-amber-600 dark:text-amber-300" />
+                                                แจ้งเตือน
+                                            </p>
+                                            <p className="mt-1.5 pl-0.5 text-xs font-medium leading-relaxed text-amber-900/95 dark:text-amber-100/95 sm:text-sm">
+                                                {washHomeDrumsAlertMessage}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {!mobileShell && (
                                 <>

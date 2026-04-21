@@ -8,9 +8,11 @@ interface DatePickerProps {
     value: string; // YYYY-MM-DD
     onChange: (date: string) => void;
     className?: string;
+    /** ปุ่มวันและช่องกดใหญ่ขึ้น (จอสัมผัส / Daily Wizard) */
+    touchFriendly?: boolean;
 }
 
-const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, className = '' }) => {
+const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, className = '', touchFriendly = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
     const [currentMonth, setCurrentMonth] = useState(() => {
@@ -107,9 +109,11 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                 className="relative cursor-pointer"
                 onClick={() => (isOpen ? setIsOpen(false) : openCalendar())}
             >
-                <div className="flex items-center w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 hover:border-emerald-400 dark:hover:border-emerald-500/50 transition-colors shadow-sm">
-                    <span className="flex-1 text-center font-bold text-lg">{value ? formatDateBE(value) : 'เลือกวันที่'}</span>
-                    <CalendarIcon className="text-slate-400 dark:text-slate-500 shrink-0 ml-2" />
+                <div
+                    className={`flex w-full items-center rounded-xl border border-slate-200 bg-white text-slate-800 shadow-sm transition-colors hover:border-emerald-400 dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:border-emerald-500/50 touch-manipulation ${touchFriendly ? 'min-h-[52px] px-4 py-4' : 'px-4 py-3'}`}
+                >
+                    <span className={`flex-1 text-center font-bold ${touchFriendly ? 'text-xl' : 'text-lg'}`}>{value ? formatDateBE(value) : 'เลือกวันที่'}</span>
+                    <CalendarIcon className={`shrink-0 text-slate-400 dark:text-slate-500 ml-2 ${touchFriendly ? 'h-6 w-6' : ''}`} />
                 </div>
             </div>
 
@@ -127,7 +131,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                         <button
                             type="button"
                             onClick={handlePrevMonth}
-                            className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"
+                            className={`rounded-full text-slate-600 transition-colors hover:bg-slate-100 touch-manipulation ${touchFriendly ? 'min-h-11 min-w-11 p-2' : 'p-2'}`}
                         >
                             <ChevronLeft size={24} />
                         </button>
@@ -137,7 +141,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                         <button
                             type="button"
                             onClick={handleNextMonth}
-                            className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"
+                            className={`rounded-full text-slate-600 transition-colors hover:bg-slate-100 touch-manipulation ${touchFriendly ? 'min-h-11 min-w-11 p-2' : 'p-2'}`}
                         >
                             <ChevronRight size={24} />
                         </button>
@@ -151,9 +155,10 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                         ))}
                     </div>
 
-                    <div className="grid grid-cols-7 gap-2">
+                    <div className={`grid grid-cols-7 ${touchFriendly ? 'gap-2.5' : 'gap-2'}`}>
                         {days.map((date, index) => {
-                            if (!date) return <div key={`empty-${index}`} className="h-10 w-10"></div>;
+                            const cell = touchFriendly ? 'h-11 w-11' : 'h-10 w-10';
+                            if (!date) return <div key={`empty-${index}`} className={cell}></div>;
 
                             const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                             const isSelected = value === dateString;
@@ -165,7 +170,8 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                                     type="button"
                                     onClick={() => handleSelectDate(date)}
                                     className={`
-                                        h-10 w-10 rounded-full flex items-center justify-center text-base transition-all font-medium
+                                        ${cell} rounded-full flex items-center justify-center transition-all font-medium touch-manipulation
+                                        ${touchFriendly ? 'text-lg' : 'text-base'}
                                         ${isSelected
                                             ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 font-bold scale-110'
                                             : isToday
@@ -183,7 +189,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, classNa
                         <button
                             type="button"
                             onClick={() => handleSelectDate(new Date())}
-                            className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
+                            className={`font-bold text-emerald-600 hover:text-emerald-700 touch-manipulation ${touchFriendly ? 'min-h-12 rounded-xl px-4 py-3 text-base' : 'text-sm'}`}
                         >
                             วันนี้: {formatDateBE(new Date().toISOString().split('T')[0])}
                         </button>
