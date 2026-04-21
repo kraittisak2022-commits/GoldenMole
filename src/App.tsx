@@ -618,37 +618,17 @@ function App() {
         return { ok: true };
     }, [applyUiThemeToApp]);
 
-    /** ล้างข้อมูลที่บันทึกทั้งหมด (ธุรกรรม + โครงการที่ดิน) ไม่ลบพนักงานและตั้งค่า */
-    const handleClearAllData = useCallback(async () => {
-        if (!confirm('ต้องการล้างข้อมูลที่บันทึกทั้งหมด (รายการธุรกรรม + โครงการที่ดิน) หรือไม่?\n\nข้อมูลพนักงานและตั้งค่าจะไม่ถูกลบ')) return;
-        try {
-            if (currentAdmin) {
-                addLog('clear_daily_data', 'การดำเนินการ: ล้างข้อมูลที่บันทึกทั้งหมด | ครอบคลุม: ธุรกรรม + โครงการที่ดิน | ต้นทาง: เมนู การตั้งค่า');
-            }
-            await db.deleteAllTransactions();
-            await db.deleteAllProjects();
-            setTransactions([]);
-            setProjects([]);
-            setToast('ล้างข้อมูลที่บันทึกทั้งหมดแล้ว');
-            setTimeout(() => setToast(null), 3000);
-        } catch (e) {
-            console.error(e);
-            setToast('เกิดข้อผิดพลาดในการล้างข้อมูล');
-            setTimeout(() => setToast(null), 3000);
-        }
-    }, []);
-
     const renderContent = () => {
         switch (activeMenu) {
             case 'Dashboard': return <Dashboard transactions={transactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={transactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={transactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
+            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Maintenance': return <MaintenanceModule settings={settings} transactions={transactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
             case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={transactions} />;
-            case 'Income': return <IncomeEntry settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
+            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={transactions} />;
             case 'Payroll': return <PayrollModule employees={employees} transactions={transactions} onSaveTransaction={handleSave} />;
             case 'DataList': return <RecordManager transactions={transactions} onDeleteTransaction={handleDeleteTransaction} />;
             case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} employees={employees} settings={settings} transactions={transactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
@@ -668,7 +648,6 @@ function App() {
                     settings={settings}
                     setSettings={handleSetSettings}
                     autoVersionNotes={autoVersionNotes}
-                    onClearAllData={handleClearAllData}
                     currentAdmin={currentAdmin}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
                 />
@@ -779,7 +758,6 @@ function App() {
                     ensureEmployeeWage={ensureEmployeeWage}
                     handleSetSettings={handleSetSettings}
                     handleSetAdmins={handleSetAdmins}
-                    onClearAllData={handleClearAllData}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
                     addLog={addLog}
                 />

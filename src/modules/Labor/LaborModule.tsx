@@ -5,6 +5,13 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
+import {
+    LABOR_MENU_WORK_CATEGORY_ID,
+    LABOR_MENU_WORK_CATEGORY_LABEL,
+    dailyWageForWorkType,
+    getLaborWorkAndOtEmployeeIdsForDate,
+    getVehicleDriverIdsForDate,
+} from '../../utils/laborWage';
 import { Employee, WorkType, AppSettings, Transaction } from '../../types';
 
 interface LaborModuleProps {
@@ -113,21 +120,42 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         setEditingId(t.id);
     };
 
-    const handleSave = async () => {
-        if (selectedIds.length === 0) return alert('เลือกพนักงาน');
-        const newId = Date.now().toString();
-        const base = { id: newId, date: formDate, employeeIds: selectedIds };
+    const getEmployeeDisplayName = (emp?: Employee) => {
+        if (!emp) return '';
+        const nickname = String(emp.nickname || '').trim();
+        if (nickname) return nickname;
+        const name = String(emp.name || '').trim();
+        if (name) return name;
+        return `#${emp?.id || ''}`;
+    };
 
-        if (activeTab === 'Attendance' || activeTab === 'OT') {
-            const existingSameDay = (transactions || [])
-                .filter((t: Transaction) => normalizeDate(t.date) === normDate && t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT') && t.id !== editingId);
-            const existingLaborIds = existingSameDay.flatMap((t: Transaction) => t.employeeIds || []);
-            const alreadyRecorded = selectedIds.filter((id: string) => existingLaborIds.includes(id));
+    const handleSave = async () => {
+        const newId = Date.now().toString();
+        const driverIdsToday = getVehicleDriverIdsForDate(transactions || [], formDate);
+        const existingLaborIdSet = getLaborWorkAndOtEmployeeIdsForDate(transactions || [], formDate, editingId);
+
+        if (activeTab === 'Attendance') {
+            const allEmps = [...new Set([...selectedIds, ...driverIdsToday])];
+            if (allEmps.length === 0) return alert('กรุณาเลือกพนักงาน หรือมีรายการใช้รถที่ระบุคนขับในวันนี้');
+            const alreadyRecorded = allEmps.filter((id: string) => existingLaborIdSet.has(id));
             if (alreadyRecorded.length > 0) {
-                const names = alreadyRecorded.map((id: string) => employees.find((e: Employee) => e.id === id)?.nickname || id).join(', ');
+                const names = alreadyRecorded.map((id: string) => (getEmployeeDisplayName(employees.find((e: Employee) => e.id === id)) || id)).join(', ');
                 return alert(`ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้มีรายการค่าแรง/OT วันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "บันทึกงานประจำวัน" หรือลบรายการเดิมก่อน`);
             }
         }
+
+        if (activeTab === 'OT') {
+            if (selectedIds.length === 0) return alert('เลือกพนักงาน');
+            const alreadyRecorded = selectedIds.filter((id: string) => existingLaborIdSet.has(id));
+            if (alreadyRecorded.length > 0) {
+                const names = alreadyRecorded.map((id: string) => (getEmployeeDisplayName(employees.find((e: Employee) => e.id === id)) || id)).join(', ');
+                return alert(`ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้มีรายการค่าแรง/OT วันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "บันทึกงานประจำวัน" หรือลบรายการเดิมก่อน`);
+            }
+        }
+
+        if (activeTab !== 'Attendance' && activeTab !== 'OT' && selectedIds.length === 0) return alert('เลือกพนักงาน');
+
+        const base = { id: newId, date: formDate };
 
         if (editingId && onDeleteTransaction) {
             onDeleteTransaction(editingId);
@@ -135,43 +163,72 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         }
 
         if (activeTab === 'Attendance') {
+            const allEmps = [...new Set([...selectedIds, ...getVehicleDriverIdsForDate(transactions || [], formDate)])];
             const special = Number(specialPay);
             let total = 0;
+            const workTypeByEmployee: Record<string, 'FullDay' | 'HalfDay'> = {};
             try {
-                for (const id of selectedIds) {
+                for (const id of allEmps) {
                     const emp = employees.find((e: Employee) => e.id === id);
                     if (!emp) continue;
                     const wage = ensureEmployeeWage ? await ensureEmployeeWage(emp) : (emp.baseWage ?? 0);
-                    const daily = emp.type === 'Monthly' ? wage / 30 : wage;
-                    total += (workType === 'HalfDay' ? daily / 2 : daily) + special;
+                    workTypeByEmployee[id] = workType;
+                    total += dailyWageForWorkType(emp, wage, workType) + special;
                 }
             } catch {
                 return;
             }
-            onSaveTransaction({
-                ...base, type: 'Expense', category: 'Labor', subCategory: 'Attendance',
-                laborStatus: 'Work', workType,
-                description: `งาน: ${jobDetail} (${workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}) ${special > 0 ? `+พิเศษ ${special}` : ''}`,
-                location, amount: total, specialAmount: special
-            });
-        } else if (activeTab === 'OT') {
-            // Updated OT Logic
+            const driverOnlyIds = driverIdsToday.filter((id) => !selectedIds.includes(id));
+            const driverOnlyNames = [...new Set(driverOnlyIds)]
+                .map((id) => getEmployeeDisplayName(employees.find((e: Employee) => e.id === id)))
+                .filter(Boolean)
+                .join(', ');
+            const namesInMenu = selectedIds
+                .map((id) => getEmployeeDisplayName(employees.find((e: Employee) => e.id === id)))
+                .filter(Boolean)
+                .join(', ');
+            const workLabel = workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+            const descCore = `ค่าแรง (${allEmps.length} คน) ${workLabel} [${LABOR_MENU_WORK_CATEGORY_LABEL}: ${namesInMenu || '—'}] [งาน: ${jobDetail}]${special > 0 ? ` +พิเศษ ${special}/คน` : ''}`;
+            const description = driverOnlyNames ? `${descCore} [คนขับจากงานใช้รถ: ${driverOnlyNames}]` : descCore;
+            const workAssignments: Record<string, string[]> = {};
+            if (selectedIds.length > 0) workAssignments[LABOR_MENU_WORK_CATEGORY_ID] = [...selectedIds];
             onSaveTransaction({
                 ...base,
+                employeeIds: allEmps,
+                type: 'Expense',
+                category: 'Labor',
+                subCategory: 'Attendance',
+                laborStatus: 'Work',
+                workType,
+                workTypeByEmployee,
+                workAssignments,
+                customWorkCategories: [{ id: LABOR_MENU_WORK_CATEGORY_ID, label: LABOR_MENU_WORK_CATEGORY_LABEL }],
+                description,
+                location,
+                amount: total,
+                specialAmount: special,
+            } as Transaction);
+        } else if (activeTab === 'OT') {
+            const hours = Number(formOtHours) || 0;
+            const rate = Number(otAmount) || 0;
+            const empNames = selectedIds.map((id) => getEmployeeDisplayName(employees.find((e: Employee) => e.id === id))).filter(Boolean).join(', ');
+            onSaveTransaction({
+                ...base,
+                employeeIds: selectedIds,
                 type: 'Expense',
                 category: 'Labor',
                 subCategory: 'OT',
                 laborStatus: 'OT',
-                description: `OT: ${formOtDesc || 'เหมาจ่าย'} (${formOtHours ? formOtHours + ' ชม.' : ''})`,
-                amount: Number(otAmount) * selectedIds.length,
-                otAmount: Number(otAmount),
-                otHours: formOtHours ? Number(formOtHours) : undefined,
-                otDescription: formOtDesc
-            });
+                description: `OT ${formOtDesc || 'เหมาจ่าย'} (${hours}ชม.) ${selectedIds.length}คน [${empNames}]`,
+                amount: rate * hours * selectedIds.length,
+                otAmount: rate,
+                otHours: formOtHours ? hours : undefined,
+                otDescription: formOtDesc,
+            } as Transaction);
         } else if (activeTab === 'Advance') {
-            onSaveTransaction({ ...base, type: 'Expense', category: 'Labor', subCategory: 'Advance', laborStatus: 'Advance', description: `เบิกล่วงหน้า`, amount: Number(advanceAmount) * selectedIds.length, advanceAmount: Number(advanceAmount) });
+            onSaveTransaction({ ...base, employeeIds: selectedIds, type: 'Expense', category: 'Labor', subCategory: 'Advance', laborStatus: 'Advance', description: `เบิกล่วงหน้า`, amount: Number(advanceAmount) * selectedIds.length, advanceAmount: Number(advanceAmount) });
         } else if (activeTab === 'Leave') {
-            onSaveTransaction({ ...base, type: 'Leave', category: 'Leave', laborStatus: 'Leave', leaveType, description: `ลา${leaveType === 'Sick' ? 'ป่วย' : 'กิจ'}: ${leaveReason}`, amount: 0, leaveReason, leaveDays: Number(leaveDays) });
+            onSaveTransaction({ ...base, employeeIds: selectedIds, type: 'Leave', category: 'Leave', laborStatus: 'Leave', leaveType, description: `ลา${leaveType === 'Sick' ? 'ป่วย' : 'กิจ'}: ${leaveReason}`, amount: 0, leaveReason, leaveDays: Number(leaveDays) });
         }
         triggerSuccess();
         setSelectedIds([]);

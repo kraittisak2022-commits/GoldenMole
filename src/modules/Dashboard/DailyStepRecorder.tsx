@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import DatePicker from '../../components/ui/DatePicker';
 import Select from '../../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate } from '../../utils';
+import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 
 interface DailyStepRecorderProps {
@@ -40,8 +41,9 @@ const STEPS = [
     { id: 3, label: 'เที่ยวรถ', shortLabel: 'เที่ยว', icon: Truck },
     { id: 4, label: 'ล้างทราย', shortLabel: 'ทราย', icon: Droplets },
     { id: 5, label: 'น้ำมัน', shortLabel: 'น้ำมัน', icon: Fuel },
-    { id: 6, label: 'เหตุการณ์', shortLabel: 'เหตุการณ์', icon: AlertTriangle },
-    { id: 7, label: 'ตรวจสอบ', shortLabel: 'สรุป', icon: CheckCircle2 }
+    { id: 6, label: 'รายรับ', shortLabel: 'รายรับ', icon: Wallet },
+    { id: 7, label: 'เหตุการณ์', shortLabel: 'เหตุการณ์', icon: AlertTriangle },
+    { id: 8, label: 'ตรวจสอบ', shortLabel: 'สรุป', icon: CheckCircle2 }
 ];
 
 // Default work categories for labor canvas
@@ -98,12 +100,23 @@ const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
     if (name.includes('6ล้อ') || name.includes('หกล้อ')) return 3;
     return fallback;
 };
-const isMonthlyEmployee = (emp?: Employee) => {
-    if (!emp?.type) return false;
-    const normalized = String(emp.type).trim().toLowerCase();
-    return normalized === 'monthly' || normalized === 'รายเดือน';
+const buildSmartSuggestions = (rawValues: Array<string | undefined>, limit = 8) => {
+    const seen = new Set<string>();
+    const cleaned = rawValues
+        .map(v => String(v || '').trim())
+        .filter(Boolean)
+        .filter(v => v.length >= 2);
+    const result: string[] = [];
+    for (let i = cleaned.length - 1; i >= 0; i -= 1) {
+        const value = cleaned[i];
+        const key = normalizeCategoryLabel(value);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(value);
+        if (result.length >= limit) break;
+    }
+    return result;
 };
-const toDailyWage = (emp: Employee, wage: number) => (isMonthlyEmployee(emp) ? wage / 30 : wage);
 
 const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false }: DailyStepRecorderProps) => {
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
@@ -123,14 +136,45 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const norm = normalizeDate(date);
         return transactions.filter(t => normalizeDate(t.date) === norm);
     }, [transactions, date]);
+    const otDescSuggestions = useMemo(() => {
+        const fromHistory = transactions
+            .filter(t => t.category === 'Labor' && t.subCategory === 'OT')
+            .map(t => (t as any).otDescription || t.description);
+        return buildSmartSuggestions([...(settings.jobDescriptions || []), ...fromHistory], 10);
+    }, [transactions, settings.jobDescriptions]);
+    const vehicleDetailSuggestions = useMemo(() => {
+        const fromHistory = transactions
+            .filter(t => t.category === 'Vehicle')
+            .map(t => t.workDetails || t.description);
+        return buildSmartSuggestions(fromHistory, 10);
+    }, [transactions]);
+    const tripWorkSuggestions = useMemo(() => {
+        const fromHistory = transactions
+            .filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip')
+            .map(t => t.workDetails || t.description);
+        return buildSmartSuggestions(fromHistory, 10);
+    }, [transactions]);
+    const fuelDetailSuggestions = useMemo(() => {
+        const fromHistory = transactions
+            .filter(t => t.category === 'Fuel')
+            .map(t => t.workDetails || t.description);
+        return buildSmartSuggestions(fromHistory, 10);
+    }, [transactions]);
+    const eventDescSuggestions = useMemo(() => {
+        const fromHistory = transactions
+            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Event')
+            .map(t => t.description);
+        return buildSmartSuggestions(fromHistory, 10);
+    }, [transactions]);
     const dayStepStats = useMemo(() => {
         const laborCount = dayTransactions.filter(t => t.category === 'Labor').length;
         const vehicleCount = dayTransactions.filter(t => t.category === 'Vehicle').length;
         const tripCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length;
         const sandCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').length;
         const fuelCount = dayTransactions.filter(t => t.category === 'Fuel').length;
+        const incomeCount = dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').length;
         const eventCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length;
-        return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, eventCount };
+        return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, incomeCount, eventCount };
     }, [dayTransactions]);
     const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
     const [newCategoryName, setNewCategoryName] = useState('');
@@ -143,7 +187,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         return laborAttendance[laborAttendance.length - 1];
     }, [dayTransactions]);
     const resumeStep = useMemo(() => {
-        if (dayStepStats.eventCount > 0) return 6;
+        if (dayStepStats.eventCount > 0) return 7;
+        if (dayStepStats.incomeCount > 0) return 6;
         if (dayStepStats.fuelCount > 0) return 5;
         if (dayStepStats.sandCount > 0) return 4;
         if (dayStepStats.tripCount > 0) return 3;
@@ -260,6 +305,38 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         const fuelBaht = dayTransactions.filter(t => t.category === 'Fuel').reduce((acc, t) => acc + (t.amount || 0), 0);
         return { laborCount, sandCubic, vehicleOrDailyCount, fuelBaht };
     }, [dayTransactions]);
+    const duplicateTxMeta = useMemo(() => {
+        const signatureToIds = new Map<string, string[]>();
+        const makeSig = (t: Transaction) => [
+            t.category || '',
+            t.subCategory || '',
+            String(t.amount || 0),
+            (t.description || '').trim().toLowerCase(),
+            t.vehicleId || '',
+            t.driverId || '',
+            t.employeeId || '',
+            (t.employeeIds || []).slice().sort().join(','),
+            String((t as any).tripMorning || 0),
+            String((t as any).tripAfternoon || 0),
+            String((t as any).drumsObtained || 0),
+            String((t as any).drumsWashedAtHome || 0),
+        ].join('|');
+        dayTransactions.forEach((t) => {
+            const sig = makeSig(t);
+            const prev = signatureToIds.get(sig) || [];
+            prev.push(t.id);
+            signatureToIds.set(sig, prev);
+        });
+        const duplicateIds = new Set<string>();
+        let groups = 0;
+        signatureToIds.forEach((ids) => {
+            if (ids.length > 1) {
+                groups += 1;
+                ids.forEach((id) => duplicateIds.add(id));
+            }
+        });
+        return { duplicateIds, groups, count: duplicateIds.size };
+    }, [dayTransactions]);
     const shouldContinueWithWarning = useCallback((messages: string[], title = 'พบข้อมูลที่อาจซ้ำหรือผิดปกติ') => {
         if (messages.length === 0) return true;
         const text = `${title}\n- ${messages.join('\n- ')}\n\nต้องการบันทึกต่อหรือไม่?`;
@@ -283,6 +360,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     // Canvas-style work category assignments: { categoryId: employeeId[] }
     const [workAssignments, setWorkAssignments] = useState<Record<string, string[]>>({});
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
+    const latestLaborDrumsWashedAtHome = useMemo(() => {
+        if (!latestLaborAttendance) return 0;
+        return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
+    }, [latestLaborAttendance]);
+    const washHomeWorkersToday = useMemo(() => {
+        const fromForm = workAssignments['washHome']?.length ?? 0;
+        const fromSaved = dayTransactions
+            .filter(t => t.category === 'Labor')
+            .map(t => (((t as any).workAssignments?.washHome as string[] | undefined)?.length ?? 0));
+        return Math.max(fromForm, ...(fromSaved.length > 0 ? fromSaved : [0]));
+    }, [workAssignments, dayTransactions]);
 
     // Vehicle State
     const [vehCar, setVehCar] = useState('');
@@ -337,7 +425,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     ]);
     const [tripMorning, setTripMorning] = useState('');
     const [tripAfternoon, setTripAfternoon] = useState('');
-    const [cubicPerTrip, setCubicPerTrip] = useState('3');
     const totalTrips = (Number(tripMorning) || 0) + (Number(tripAfternoon) || 0);
     const addTripCard = () => setTripEntries(prev => [...prev, { id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
     const removeTripCard = (id: string) => setTripEntries(prev => prev.length > 1 ? prev.filter(e => e.id !== id) : prev);
@@ -354,6 +441,32 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [sandMorningStart, setSandMorningStart] = useState('');
     const [sandAfternoonStart, setSandAfternoonStart] = useState('');
     const [sandEveningEnd, setSandEveningEnd] = useState('');
+    const drumStockSummary = useMemo(() => {
+        const selectedDate = normalizeDate(date);
+        const perDay = new Map<string, { obtained: number; home: number }>();
+        transactions
+            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
+            .forEach((t) => {
+                const d = normalizeDate(t.date);
+                const prev = perDay.get(d) || { obtained: 0, home: 0 };
+                const obtained = Math.max(prev.obtained, Number((t as any).drumsObtained || 0));
+                const home = Math.max(prev.home, Number((t as any).drumsWashedAtHome || 0));
+                perDay.set(d, { obtained, home });
+            });
+
+        const cumulativeBeforeToday = Array.from(perDay.entries())
+            .filter(([d]) => d < selectedDate)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .reduce((sum, [, v]) => sum + Math.max(0, v.obtained - v.home), 0);
+
+        const savedToday = perDay.get(selectedDate) || { obtained: 0, home: 0 };
+        const todayObtained = String(sandDrumsObtained).trim() === '' ? savedToday.obtained : (Number(sandDrumsObtained) || 0);
+        const todayHome = String(drumsWashedAtHome).trim() === '' ? savedToday.home : (Number(drumsWashedAtHome) || 0);
+        const todayNet = Math.max(0, todayObtained - todayHome);
+        const cumulativeRemaining = cumulativeBeforeToday + todayNet;
+
+        return { cumulativeBeforeToday, todayObtained, todayHome, todayNet, cumulativeRemaining };
+    }, [transactions, date, sandDrumsObtained, drumsWashedAtHome]);
     const sand1Total = (Number(sand1Morning) || 0) + (Number(sand1Afternoon) || 0);
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
@@ -369,6 +482,54 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [fuelVehicleAmount, setFuelVehicleAmount] = useState('');
     const [fuelVehicleType, setFuelVehicleType] = useState<'Diesel' | 'Benzine'>('Diesel');
     const [fuelVehicleDetails, setFuelVehicleDetails] = useState('');
+
+    // Income State (Daily Wizard)
+    const [incomeType, setIncomeType] = useState('');
+    const [incomeQty, setIncomeQty] = useState('');
+    const [incomeUnitPrice, setIncomeUnitPrice] = useState('');
+    const [incomeTotal, setIncomeTotal] = useState('');
+    const [newIncomeType, setNewIncomeType] = useState('');
+    const [incomeTypeAddOpen, setIncomeTypeAddOpen] = useState(false);
+    const incomeAddInputRef = useRef<HTMLInputElement>(null);
+    const handleIncomeCalc = (field: 'qty' | 'price' | 'total', value: string) => {
+        if (field === 'qty') {
+            setIncomeQty(value);
+            setIncomeTotal(String((Number(value) || 0) * (Number(incomeUnitPrice) || 0)));
+            return;
+        }
+        if (field === 'price') {
+            setIncomeUnitPrice(value);
+            setIncomeTotal(String((Number(incomeQty) || 0) * (Number(value) || 0)));
+            return;
+        }
+        setIncomeTotal(value);
+        if ((Number(incomeQty) || 0) > 0) {
+            setIncomeUnitPrice(String((Number(value) || 0) / (Number(incomeQty) || 1)));
+        }
+    };
+    const handleAddIncomeType = () => {
+        const label = newIncomeType.trim();
+        if (!label) return;
+        const exists = (settings.incomeTypes || []).some(v => String(v).trim().toLowerCase() === label.toLowerCase());
+        if (exists) {
+            alert('มีประเภทนี้อยู่แล้ว');
+            return;
+        }
+        setSettings?.((prev: AppSettings) => ({
+            ...prev,
+            incomeTypes: [...(prev.incomeTypes || []), label],
+        }));
+        setNewIncomeType('');
+        setIncomeType(label);
+        incomeAddInputRef.current?.focus();
+    };
+    const handleRemoveIncomeType = (label: string) => {
+        setSettings?.((prev: AppSettings) => ({
+            ...prev,
+            incomeTypes: (prev.incomeTypes || []).filter(v => v !== label),
+        }));
+        if (incomeType === label) setIncomeType('');
+    };
 
     // Events State
     const [eventDesc, setEventDesc] = useState('');
@@ -584,7 +745,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             3: todaysTx.some(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip'),
             4: todaysTx.some(t => t.category === 'DailyLog' && t.subCategory === 'Sand'),
             5: todaysTx.some(t => t.category === 'Fuel'),
-            6: todaysTx.some(t => t.category === 'DailyLog' && t.subCategory === 'Event'),
+            6: todaysTx.some(t => t.category === 'Income' && t.type === 'Income'),
+            7: todaysTx.some(t => t.category === 'DailyLog' && t.subCategory === 'Event'),
         };
 
         if (stepNeedsData[step] === false) {
@@ -800,14 +962,25 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             const trips = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                             const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
                             const fuel = txs.filter(t => t.category === 'Fuel');
+                            const income = txs.filter(t => t.category === 'Income' && t.type === 'Income');
                             const events = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event');
                             const laborSum = labor.reduce((s, t) => s + t.amount, 0);
                             const vehicleSum = vehicle.reduce((s, t) => s + t.amount, 0);
                             const tripsTotal = trips.reduce((s, t) => s + ((t as any).perCarTrips || (t as any).tripCount || 0), 0);
                             const tripsCubic = trips.reduce((s, t) => s + ((t as any).perCarCubic || (t as any).totalCubic || 0), 0);
                             const sandCubic = sand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-                            const sandDrums = sand.reduce((s, t) => s + ((t as any).drumsObtained || 0), 0);
+                            const sandDrumsTotal = sand.length > 0
+                                ? Math.max(0, ...sand.map(t => Number((t as any).drumsObtained || 0)))
+                                : 0;
+                            const sandHomeDrums = sand.length > 0
+                                ? Math.max(0, ...sand.map(t => Number((t as any).drumsWashedAtHome || 0)))
+                                : 0;
+                            const laborAttendance = labor.filter(t => t.subCategory === 'Attendance') as any[];
+                            const latestAttendance = laborAttendance.length > 0 ? laborAttendance[laborAttendance.length - 1] : null;
+                            const homeDrums = Math.max(0, sandHomeDrums || Number(latestAttendance?.drumsWashedAtHome || 0));
+                            const sandDrums = Math.max(0, sandDrumsTotal - homeDrums);
                             const fuelSum = fuel.reduce((s, t) => s + t.amount, 0);
+                            const incomeSum = income.reduce((s, t) => s + t.amount, 0);
                             const workerIdSet = new Set<string>(labor.flatMap(t => t.employeeIds || []));
                             const workerCount = workerIdSet.size;
                             const workerIds = Array.from(workerIdSet);
@@ -817,7 +990,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             });
 
                             // กลุ่มประเภทงานจาก Attendance (canvas) ถ้ามี
-                            const attendance = labor.filter(t => t.subCategory === 'Attendance') as any[];
+                            const attendance = laborAttendance;
                             let workGroups: { label: string; count: number }[] = [];
                             if (attendance.length > 0) {
                                 const latest = attendance[attendance.length - 1] as any;
@@ -848,7 +1021,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <h3 className="font-bold text-lg">{formatReportDate(dateStr)}</h3>
                                         <p className="text-slate-300 text-sm mt-0.5">สรุปบันทึกงานประจำวัน</p>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-6">
+                                    <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-7">
                                         <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-4 border border-emerald-100 dark:border-emerald-500/30">
                                             <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-semibold text-sm mb-1"><Users size={16} /> ค่าแรง</div>
                                             <p className="text-lg font-bold text-emerald-800 dark:text-emerald-100">฿{laborSum.toLocaleString()}</p>
@@ -868,7 +1041,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300 font-semibold text-sm mb-1"><Droplets size={16} /> ล้างทราย</div>
                                             <p className="text-lg font-bold text-cyan-800 dark:text-cyan-100">{sandCubic} คิว</p>
                                             <p className="text-xs text-cyan-600 dark:text-cyan-200 mt-0.5">
-                                                {sandDrums > 0 && <>🪣 {sandDrums} ถัง • </>}
+                                                {sandDrums > 0 && <>🪣 {sandDrums} ถังสุทธิ{homeDrums > 0 ? ` (หักบ้าน ${homeDrums})` : ''} • </>}
                                                 {sand.length} รายการ
                                             </p>
                                         </div>
@@ -876,6 +1049,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-semibold text-sm mb-1"><Fuel size={16} /> น้ำมัน</div>
                                             <p className="text-lg font-bold text-red-800 dark:text-red-100">฿{fuelSum.toLocaleString()}</p>
                                             <p className="text-xs text-red-600 dark:text-red-200 mt-0.5">{fuel.length} รายการ</p>
+                                        </div>
+                                        <div className="bg-lime-50 dark:bg-lime-500/10 rounded-xl p-4 border border-lime-100 dark:border-lime-500/30">
+                                            <div className="flex items-center gap-2 text-lime-700 dark:text-lime-300 font-semibold text-sm mb-1"><Wallet size={16} /> รายรับ</div>
+                                            <p className="text-lg font-bold text-lime-800 dark:text-lime-100">฿{incomeSum.toLocaleString()}</p>
+                                            <p className="text-xs text-lime-600 dark:text-lime-200 mt-0.5">{income.length} รายการ</p>
                                         </div>
                                         <div className="bg-orange-50 dark:bg-orange-500/10 rounded-xl p-4 border border-orange-100 dark:border-orange-500/30">
                                             <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 font-semibold text-sm mb-1"><AlertTriangle size={16} /> เหตุการณ์</div>
@@ -968,15 +1146,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
                                 )}
                                 {hasExistingWizardData && (
-                                    <div className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200">
-                                        <p className="mb-2 break-words text-xs font-semibold">พบข้อมูลวันที่นี้แล้ว สามารถกดเพื่อเข้าไปแก้ไขต่อได้</p>
-                                        <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-3">
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">ค่าแรง {dayStepStats.laborCount}</div>
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">การใช้รถ {dayStepStats.vehicleCount}</div>
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">เที่ยวรถ {dayStepStats.tripCount}</div>
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">ทราย {dayStepStats.sandCount}</div>
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">น้ำมัน {dayStepStats.fuelCount}</div>
-                                            <div className="min-w-0 break-words rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/5">เหตุการณ์ {dayStepStats.eventCount}</div>
+                                    <div className="w-full min-w-0 rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50/60 p-3.5 text-xs text-slate-700 shadow-sm dark:border-indigo-500/20 dark:bg-gradient-to-br dark:from-white/[0.05] dark:to-indigo-500/[0.08] dark:text-slate-200">
+                                        <div className="mb-2.5 flex items-center justify-between gap-2">
+                                            <p className="break-words text-xs font-semibold text-slate-700 dark:text-slate-100">พบข้อมูลวันที่นี้แล้ว</p>
+                                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">แก้ไขต่อได้</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+                                            <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-2 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10"><div className="font-semibold text-emerald-700 dark:text-emerald-300">ค่าแรง</div><div className="mt-0.5 text-base font-black text-emerald-800 dark:text-emerald-200">{dayStepStats.laborCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-500/10"><div className="font-semibold text-amber-700 dark:text-amber-300">การใช้รถ</div><div className="mt-0.5 text-base font-black text-amber-800 dark:text-amber-200">{dayStepStats.vehicleCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-blue-200/80 bg-blue-50/80 px-2.5 py-2 text-center dark:border-blue-500/25 dark:bg-blue-500/10"><div className="font-semibold text-blue-700 dark:text-blue-300">เที่ยวรถ</div><div className="mt-0.5 text-base font-black text-blue-800 dark:text-blue-200">{dayStepStats.tripCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-2 text-center dark:border-cyan-500/25 dark:bg-cyan-500/10"><div className="font-semibold text-cyan-700 dark:text-cyan-300">ทราย</div><div className="mt-0.5 text-base font-black text-cyan-800 dark:text-cyan-200">{dayStepStats.sandCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-2 text-center dark:border-rose-500/25 dark:bg-rose-500/10"><div className="font-semibold text-rose-700 dark:text-rose-300">น้ำมัน</div><div className="mt-0.5 text-base font-black text-rose-800 dark:text-rose-200">{dayStepStats.fuelCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-lime-200/80 bg-lime-50/80 px-2.5 py-2 text-center dark:border-lime-500/25 dark:bg-lime-500/10"><div className="font-semibold text-lime-700 dark:text-lime-300">รายรับ</div><div className="mt-0.5 text-base font-black text-lime-800 dark:text-lime-200">{dayStepStats.incomeCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-orange-200/80 bg-orange-50/80 px-2.5 py-2 text-center dark:border-orange-500/25 dark:bg-orange-500/10"><div className="font-semibold text-orange-700 dark:text-orange-300">เหตุการณ์</div><div className="mt-0.5 text-base font-black text-orange-800 dark:text-orange-200">{dayStepStats.eventCount}</div></div>
                                         </div>
                                     </div>
                                 )}
@@ -1104,6 +1286,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5 block">รายละเอียดงาน OT</label>
                                                 <input type="text" placeholder="ทำอะไร..." value={otDesc} onChange={e => setOtDesc(e.target.value)}
                                                     className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                                {mobileShell && otDescSuggestions.length > 0 && (
+                                                    <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                        {otDescSuggestions.slice(0, 8).map(s => (
+                                                            <button
+                                                                key={s}
+                                                                type="button"
+                                                                onClick={() => setOtDesc(s)}
+                                                                className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                            >
+                                                                {s}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* OT Summary */}
@@ -1152,12 +1348,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 {laborStatus === 'Work' && (
                                     <>
                                         {/* Employee Pool - Draggable chips */}
-                                        <div className="mb-3">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-sm font-bold text-slate-500">👥 พนักงาน — คลิกเลือกแล้วกดย้ายใส่กล่องงาน</span>
-                                                <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border rounded-lg px-3 py-1.5 w-32" />
+                                        <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                                                <span className="text-sm font-bold text-slate-600">👥 เลือกพนักงานเพื่อย้ายลงกล่องงาน</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                                                        {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).length}/{employees.length} คน
+                                                    </span>
+                                                    <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-36 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300" />
+                                                </div>
                                             </div>
-                                            <div className="flex flex-wrap gap-2 bg-slate-50 p-3 rounded-xl border max-h-[120px] overflow-y-auto">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-[180px] overflow-y-auto">
                                                 {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).map(emp => {
                                                     const isAssigned = Object.values(workAssignments).some(ids => ids.includes(emp.id));
                                                     const isSelected = selectedEmps.includes(emp.id);
@@ -1170,7 +1371,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                             draggable onDragStart={() => setDragEmployee(emp.id)} onDragEnd={() => setDragEmployee(null)}
                                                             onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
                                                             title={leaveRecord ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}` : isAbsent && saved === undefined ? '' : ''}
-                                                            className={`px-3 py-2 rounded-xl text-sm font-semibold cursor-grab active:cursor-grabbing select-none transition-all
+                                                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center
                                                         ${leaveRecord ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400 ring-1 ring-yellow-200' :
                                                                     isAssigned ? 'bg-emerald-100 text-emerald-600 border border-emerald-300 opacity-50' :
                                                                         isSelected ? 'bg-indigo-600 text-white shadow-md scale-105' :
@@ -1368,8 +1569,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
                                                 const allAssigned = Object.entries(workAssignments).flatMap(([, ids]) => ids);
-                                                const allEmps = [...new Set([...allAssigned, ...selectedEmps])];
-                                                if (allEmps.length === 0) return alert('เลือกหรือลากพนักงานใส่กล่องงานก่อนครับ');
+                                                const driverWorkedToday = dayTransactions
+                                                    .filter(t => t.category === 'Vehicle' && !!t.driverId)
+                                                    .map(t => t.driverId as string);
+                                                const allEmps = [...new Set([...allAssigned, ...driverWorkedToday])];
+                                                if (allEmps.length === 0) return alert('กรุณาลากพนักงานใส่กล่องงานก่อน หรือมีรายการใช้รถที่ระบุคนขับในวันนี้');
                                                 const existingLaborIds = dayTransactions
                                                     .filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
                                                     .flatMap(t => t.employeeIds || []);
@@ -1384,6 +1588,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     const cat = allCats.find(c => c.id === catId); const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
                                                     return `${cat?.label || catId}: ${names}`;
                                                 }).join(' | ');
+                                                const driverOnlyIds = driverWorkedToday.filter(id => !allAssigned.includes(id));
+                                                const driverOnlyNames = [...new Set(driverOnlyIds)]
+                                                    .map(id => getEmployeeDisplayName(employees.find(e => e.id === id)))
+                                                    .filter(Boolean)
+                                                    .join(', ');
                                                 const workTypeByEmployee: Record<string, 'FullDay' | 'HalfDay'> = {};
                                                 let total = 0;
                                                 try {
@@ -1409,7 +1618,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     subCategory: 'Attendance',
                                                     laborStatus: 'Work',
                                                     workTypeByEmployee,
-                                                    description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}`,
+                                                    description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}${driverOnlyNames ? ` [คนขับจากงานใช้รถ: ${driverOnlyNames}]` : ''}`,
                                                     amount: total,
                                                     workAssignments: { ...workAssignments },
                                                     customWorkCategories: [...customCategories],
@@ -1417,7 +1626,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 };
                                                 onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base">
-                                                <CheckCircle2 size={18} className="mr-2" /> บันทึกค่าแรง ({Object.values(workAssignments).flat().length + selectedEmps.length} คน)
+                                                <CheckCircle2 size={18} className="mr-2" /> บันทึกค่าแรง ({[...new Set([
+                                                    ...Object.values(workAssignments).flat(),
+                                                    ...dayTransactions.filter(t => t.category === 'Vehicle' && !!t.driverId).map(t => t.driverId as string),
+                                                ])].length} คน)
                                             </Button>
                                             <div className="flex justify-between">
                                                 <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
@@ -1545,6 +1757,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <div className="flex flex-col gap-1">
                                         <label className="text-sm font-medium text-slate-700 dark:text-slate-200">รายละเอียดงาน</label>
                                         <textarea className="border border-slate-200 dark:border-white/15 rounded-xl p-2 text-sm bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400" rows={2} value={vehDetails} onChange={e => setVehDetails(e.target.value)} placeholder="ขนดิน, ปรับพื้นที่..." />
+                                        {mobileShell && vehicleDetailSuggestions.length > 0 && (
+                                            <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                {vehicleDetailSuggestions.slice(0, 8).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        type="button"
+                                                        onClick={() => setVehDetails(s)}
+                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <Button onClick={() => {
                                         if (!vehCar || !vehDriver) return alert('ข้อมูลไม่ครบ');
@@ -1597,10 +1823,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 if (activeCars.length === 0) return 0;
                                                 const tripsPerCar = Math.floor(totalTrips / activeCars.length);
                                                 const remainder = totalTrips % activeCars.length;
-                                                const fallback = Number(cubicPerTrip) || 3;
                                                 return activeCars.reduce((sum, entry, idx) => {
                                                     const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
-                                                    const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, fallback);
+                                                    const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
                                                     return sum + (carTrips * carCubicPerTrip);
                                                 }, 0);
                                             })();
@@ -1625,7 +1850,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 <div className="bg-gradient-to-r from-amber-50 to-blue-50 dark:from-amber-500/10 dark:to-blue-500/10 p-4 rounded-xl border border-amber-100 dark:border-white/10 mb-4">
                                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">จำนวนเที่ยวรวม</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">เว้นว่างได้ หากวันนี้ใช้รถขนงานอย่างอื่นและไม่มีการวิ่งเที่ยว</p>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1 block">☀️ ช่วงเช้า (เที่ยว)</label>
                                             <input type="number" placeholder="0" value={tripMorning} onChange={e => setTripMorning(e.target.value)}
@@ -1636,25 +1861,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             <input type="number" placeholder="0" value={tripAfternoon} onChange={e => setTripAfternoon(e.target.value)}
                                                 className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-500/35 rounded-xl text-center text-lg font-bold text-blue-800 dark:text-blue-200 bg-white dark:bg-white/5 focus:border-blue-400 focus:outline-none transition-colors" />
                                         </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1 block">📦 คิว/เที่ยว</label>
-                                            <input type="number" placeholder="3" value={cubicPerTrip} onChange={e => setCubicPerTrip(e.target.value)}
-                                                className="w-full px-3 py-2.5 border-2 border-emerald-200 dark:border-emerald-500/35 rounded-xl text-center text-lg font-bold text-emerald-800 dark:text-emerald-200 bg-white dark:bg-white/5 focus:border-emerald-400 focus:outline-none transition-colors" />
-                                        </div>
                                     </div>
                                     {totalTrips > 0 && (() => {
                                         const validCount = tripEntries.filter(e => e.vehicle).length || 1;
                                         const tripsPerCar = Math.floor(totalTrips / validCount);
                                         const remainder = totalTrips % validCount;
                                         // Calculate total cubic from each car's own cubic-per-trip setting
-                                        const cubicDefault = Number(cubicPerTrip) || 3;
                                         let displayTotalCubic = 0;
                                         tripEntries.filter(e => e.vehicle).forEach((entry, idx) => {
                                             const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
-                                            const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, cubicDefault);
+                                            const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
                                             displayTotalCubic += carTrips * carCubicPerTrip;
                                         });
-                                        if (validCount <= 1) displayTotalCubic = totalTrips * cubicDefault;
+                                        if (validCount <= 1) displayTotalCubic = totalTrips * (Number(tripEntries[0]?.cubicPerTrip) || detectDefaultCubicPerTrip(tripEntries[0]?.vehicle || '', 3));
                                         return (
                                             <div className="mt-3 p-3 bg-white/70 rounded-lg text-sm font-medium text-slate-600 space-y-1">
                                                 <div className="text-center">
@@ -1701,8 +1920,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     const nextVehicle = e.target.value;
                                                     setTripEntries(prev => prev.map(item => {
                                                         if (item.id !== entry.id) return item;
-                                                        const fallback = Number(cubicPerTrip) || 3;
-                                                        const autoCubic = detectDefaultCubicPerTrip(nextVehicle, fallback);
+                                                        const autoCubic = detectDefaultCubicPerTrip(nextVehicle, 3);
                                                         return {
                                                             ...item,
                                                             vehicle: nextVehicle,
@@ -1724,13 +1942,27 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     type="number"
                                                     value={entry.cubicPerTrip}
                                                     onChange={(e: any) => updateTripCard(entry.id, 'cubicPerTrip', e.target.value)}
-                                                    placeholder={String(detectDefaultCubicPerTrip(entry.vehicle, Number(cubicPerTrip) || 3))}
+                                                    placeholder={String(detectDefaultCubicPerTrip(entry.vehicle, 3))}
                                                 />
                                                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-500 flex items-center">
                                                     ค่าแนะนำ: 6 ล้อ = 3, 10 ล้อ = 6 (แก้เองได้รายวัน)
                                                 </div>
                                             </div>
                                             <Input label="รายละเอียดงาน" value={entry.work} onChange={(e: any) => updateTripCard(entry.id, 'work', e.target.value)} placeholder="ขนดิน, ขนทราย..." />
+                                            {mobileShell && tripWorkSuggestions.length > 0 && (
+                                                <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                    {tripWorkSuggestions.slice(0, 8).map(s => (
+                                                        <button
+                                                            key={`${entry.id}-${s}`}
+                                                            type="button"
+                                                            onClick={() => updateTripCard(entry.id, 'work', s)}
+                                                            className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                        >
+                                                            {s}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
 
@@ -1754,11 +1986,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         if (!shouldContinueWithWarning(tripWarnings, 'ตรวจพบรายการเที่ยวรถที่อาจซ้ำ/ผิดปกติ')) return;
                                         const tripsPerCar = Math.floor(totalTrips / valid.length);
                                         const remainder = totalTrips % valid.length;
-                                        const cubicDefault = Number(cubicPerTrip) || 3;
                                         valid.forEach((entry, idx) => {
                                             const driverName = employees.find(e => e.id === entry.driver)?.nickname || '';
                                             const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
-                                            const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, cubicDefault);
+                                            const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
                                             const carCubic = carTrips * carCubicPerTrip;
                                             onSaveTransaction({
                                                 id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
@@ -1797,16 +2028,36 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     const totalDrumsDay = sandTxToday.length > 0
                                         ? Math.max(0, ...sandTxToday.map(t => (t as any).drumsObtained ?? 0))
                                         : (Number(sandDrumsObtained) || 0);
-                                    const drumsDisplay = totalDrumsDay > 0;
+                                    const savedHomeDrumsFromSand = sandTxToday.length > 0
+                                        ? Math.max(0, ...sandTxToday.map(t => Number((t as any).drumsWashedAtHome || 0)))
+                                        : 0;
+                                    const homeDrums = Math.max(0, Number(drumsWashedAtHome) || savedHomeDrumsFromSand || latestLaborDrumsWashedAtHome || 0);
+                                    const netDrumsDay = Math.max(0, totalDrumsDay - homeDrums);
+                                    const drumsDisplay = totalDrumsDay > 0 || homeDrums > 0;
                                     return (
                                         <>
                                             {sandTxToday.length > 0 && (
                                                 <>
                                                     {drumsDisplay && (
-                                                        <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3">
-                                                            <span className="text-sm font-bold text-amber-800">🪣 จำนวนถังที่ได้วันนี้</span>
-                                                            <span className="text-xl font-black text-amber-700">{totalDrumsDay} ถัง</span>
-                                                            <span className="text-[10px] text-amber-600">(รวมทั้งวัน ช่วงเช้า+บ่าย)</span>
+                                                        <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+                                                            <div className="mb-2 flex items-center justify-between">
+                                                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">🪣 สรุปจำนวนถังวันนี้</span>
+                                                                <span className="text-xs text-slate-500 dark:text-slate-400">สุทธิหลังหักล้างที่บ้าน</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-3 gap-2 text-center">
+                                                                <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/80 px-2 py-2 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+                                                                    <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">ได้วันนี้</div>
+                                                                    <div className="text-base font-black text-emerald-700 dark:text-emerald-300">{totalDrumsDay}</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-rose-200/80 bg-rose-50/80 px-2 py-2 dark:border-rose-500/25 dark:bg-rose-500/10">
+                                                                    <div className="text-[10px] font-semibold text-rose-700 dark:text-rose-300">ล้างที่บ้าน</div>
+                                                                    <div className="text-base font-black text-rose-700 dark:text-rose-300">{homeDrums}</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-2 py-2 dark:border-amber-500/25 dark:bg-amber-500/10">
+                                                                    <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">คงเหลือสุทธิ</div>
+                                                                    <div className="text-base font-black text-amber-700 dark:text-amber-300">{netDrumsDay}</div>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
                                                     <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
@@ -1815,14 +2066,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                             const drums = (t as any).drumsObtained ?? 0;
                                                             const isDrumsOnly = sandTotal === 0 && drums > 0;
                                                             return (
-                                                            <div key={t.id} className="min-w-[180px] p-2.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs relative">
-                                                                <div className="font-bold text-cyan-800">🌊 {t.description}</div>
+                                                            <div key={t.id} className="min-w-[190px] p-2.5 bg-white border border-slate-200 rounded-xl text-xs relative shadow-sm dark:bg-white/[0.03] dark:border-white/10">
+                                                                <div className="font-bold text-slate-700 dark:text-slate-200">🌊 {t.description}</div>
                                                                 {isDrumsOnly ? (
-                                                                    <div className="text-teal-700 font-semibold">🪣 {drums} ถัง</div>
+                                                                    <div className="text-teal-700 dark:text-teal-300 font-semibold mt-1">🪣 {drums} ถัง</div>
                                                                 ) : (
-                                                                    <div className="text-cyan-700 font-semibold">เช้า {(t as any).sandMorning || 0} + บ่าย {(t as any).sandAfternoon || 0} = {sandTotal} คิว</div>
+                                                                    <div className="text-slate-600 dark:text-slate-300 font-semibold mt-1">เช้า {(t as any).sandMorning || 0} + บ่าย {(t as any).sandAfternoon || 0} = {sandTotal} คิว</div>
                                                                 )}
-                                                                {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-cyan-300 hover:text-red-500"><Trash2 size={10} /></button>}
+                                                                {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                                             </div>
                                                         );})}
                                                     </div>
@@ -1932,22 +2183,66 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
 
                                     {/* จำนวนถังที่ได้วันนี้ */}
-                                    <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-gradient-to-r from-slate-50 to-slate-100/80 dark:from-white/[0.04] dark:to-white/[0.02] p-4 shadow-sm">
-                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
-                                            <span className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-700 dark:text-amber-300">🪣</span>
-                                            จำนวนถังที่ได้วันนี้
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="number" min="0" placeholder="0" value={sandDrumsObtained} onChange={e => setSandDrumsObtained(e.target.value)}
-                                                className="w-24 px-4 py-2.5 border-2 border-slate-200 dark:border-white/15 rounded-xl text-center text-lg font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all" />
-                                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">ถัง</span>
+                                    <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-gradient-to-br from-slate-50 via-white to-slate-100/80 dark:from-white/[0.05] dark:via-white/[0.03] dark:to-white/[0.02] p-4 shadow-sm">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-500/10 px-3 py-3">
+                                                <label className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1.5 flex items-center gap-2">
+                                                    <span className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">➕</span>
+                                                    จำนวนถังที่ได้วันนี้
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <input type="number" min="0" placeholder="0" value={sandDrumsObtained} onChange={e => setSandDrumsObtained(e.target.value)}
+                                                        className="w-24 px-3 py-2 border-2 border-emerald-200 dark:border-emerald-500/35 rounded-xl text-center text-base font-bold text-emerald-800 dark:text-emerald-200 bg-white dark:bg-white/5 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+                                                    <span className="text-emerald-700 dark:text-emerald-300 text-sm font-medium">ถัง</span>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/80 dark:bg-rose-500/10 px-3 py-3">
+                                                <label className="text-xs font-bold text-rose-700 dark:text-rose-300 mb-1.5 flex items-center gap-2">
+                                                    <span className="w-6 h-6 rounded-lg bg-rose-500/20 flex items-center justify-center">➖</span>
+                                                    จำนวนทรายที่ล้างที่บ้านวันนี้
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder="0"
+                                                        value={drumsWashedAtHome}
+                                                        onChange={e => setDrumsWashedAtHome(e.target.value)}
+                                                        className="w-24 px-3 py-2 border-2 border-rose-200 dark:border-rose-500/35 rounded-xl text-center text-base font-bold text-rose-800 dark:text-rose-200 bg-white dark:bg-white/5 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 outline-none transition-all"
+                                                    />
+                                                    <span className="text-rose-700 dark:text-rose-300 text-sm font-medium">ถัง</span>
+                                                </div>
+                                            </div>
                                         </div>
+                                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-white/[0.03] px-3 py-2">
+                                                <p className="text-[10px] text-slate-500 dark:text-slate-400">จำนวนถังที่ได้วันนี้</p>
+                                                <p className="text-lg font-black text-slate-700 dark:text-slate-100">{Number(sandDrumsObtained) || 0}</p>
+                                            </div>
+                                            <div className="rounded-xl border border-teal-200/80 dark:border-teal-500/30 bg-teal-50/70 dark:bg-teal-500/10 px-3 py-2">
+                                                <p className="text-[10px] text-teal-700/90 dark:text-teal-300">ล้างที่บ้านวันนี้</p>
+                                                <p className="text-lg font-black text-teal-700 dark:text-teal-300">{Number(drumsWashedAtHome) || 0}</p>
+                                            </div>
+                                            <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-500/10 px-3 py-2">
+                                                <p className="text-[10px] text-emerald-700/90 dark:text-emerald-300">จำนวนถังคงเหลือ</p>
+                                                <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{drumStockSummary.cumulativeRemaining}</p>
+                                            </div>
+                                        </div>
+                                        {washHomeWorkersToday > 1 && (Number(drumsWashedAtHome) || 0) <= 0 && (
+                                            <p className="mt-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                                                มีพนักงานล้างที่บ้าน {washHomeWorkersToday} คน — ต้องกรอกจำนวนทรายที่ล้างที่บ้านวันนี้
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
                                 <div className="pt-3 border-t space-y-2">
                                     <Button onClick={() => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
+                                        const drumsHomeToday = Number(drumsWashedAtHome) || 0;
+                                        if (washHomeWorkersToday > 1 && drumsHomeToday <= 0) {
+                                            return alert(`มีพนักงานประเภทงาน "ล้างทรายที่บ้าน" ${washHomeWorkersToday} คน กรุณากรอก "จำนวนทรายที่ล้างที่บ้านวันนี้" ก่อนบันทึก`);
+                                        }
                                         if (sandGrandTotal === 0 && drumsToday === 0) return alert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
                                         const opNames1 = sand1Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const opNames2 = sand2Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
@@ -1962,6 +2257,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 description: `ล้างทราย เครื่องร่อน 1 (เก่า)${opNames1 ? ` [${opNames1}]` : ''}`, amount: 0,
                                                 sandMorning: Number(sand1Morning) || 0, sandAfternoon: Number(sand1Afternoon) || 0,
                                                 sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
+                                                drumsWashedAtHome: drumsHomeToday,
                                                 ...timePayload
                                             } as Transaction);
                                         }
@@ -1971,18 +2267,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 description: `ล้างทราย เครื่องร่อน 2 (ใหม่)${opNames2 ? ` [${opNames2}]` : ''}`, amount: 0,
                                                 sandMorning: Number(sand2Morning) || 0, sandAfternoon: Number(sand2Afternoon) || 0,
                                                 sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
+                                                drumsWashedAtHome: drumsHomeToday,
                                                 ...timePayload
                                             } as Transaction);
                                         }
                                         if (sandGrandTotal === 0 && drumsToday > 0) {
                                             onSaveTransaction({
                                                 id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
-                                                description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday,
+                                                description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
                                                 ...timePayload
                                             } as Transaction);
                                         }
                                         setSand1Morning(''); setSand1Afternoon(''); setSand2Morning(''); setSand2Afternoon('');
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
+                                        setDrumsWashedAtHome('');
                                         setSandMorningStart(''); setSandAfternoonStart(''); setSandEveningEnd('');
                                     }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5">
                                         <Droplets size={16} className="mr-1" /> บันทึกข้อมูลล้างทราย ({sandGrandTotal} คิว)
@@ -2110,6 +2408,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">รายละเอียดเพิ่มเติม <span className="text-slate-400 dark:text-slate-500 font-normal">(ไม่บังคับ)</span></label>
                                         <input type="text" placeholder="เช่น ซื้อที่ปั๊มหน้าแคมป์" value={fuelDetails} onChange={e => setFuelDetails(e.target.value)}
                                             className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
+                                        {mobileShell && fuelDetailSuggestions.length > 0 && (
+                                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                {fuelDetailSuggestions.slice(0, 8).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        type="button"
+                                                        onClick={() => setFuelDetails(s)}
+                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Save button */}
@@ -2249,8 +2561,159 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             </div>
                         )}
 
-                        {/* Step 6: Important Events */}
+                        {/* Step 6: Income */}
                         {step === 6 && (
+                            <div className="h-full min-w-0 flex flex-col animate-slide-up overflow-x-hidden">
+                                <h3 className="font-bold text-lg flex items-center gap-2 mb-3"><Wallet className="text-lime-600" /> บันทึกรายรับประจำวัน</h3>
+                                {dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').length > 0 && (
+                                    <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
+                                        {dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').map(t => (
+                                            <div key={t.id} className="min-w-[220px] p-3 bg-lime-50 border border-lime-200 rounded-xl text-xs relative">
+                                                <div className="font-bold text-lime-800">{t.description || 'รายรับ'}</div>
+                                                <div className="text-lime-700 font-semibold mt-1">฿{(t.amount || 0).toLocaleString()}</div>
+                                                {t.quantity != null && <div className="text-lime-600 mt-0.5">ปริมาณ: {t.quantity} {t.unit || ''}</div>}
+                                                {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-2 right-2 p-0.5 text-lime-300 hover:text-red-500"><Trash2 size={10} /></button>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex-1 space-y-3">
+                                    <div className="flex flex-col gap-1.5 w-full">
+                                        <label className="text-sm font-medium text-slate-700">ประเภทรายรับ</label>
+                                        <input
+                                            type="text"
+                                            value={incomeType}
+                                            onChange={(e) => setIncomeType(e.target.value)}
+                                            list="income-type-suggestions"
+                                            placeholder="พิมพ์หรือเลือกจากตัวช่วยกรอก"
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-800 transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                        />
+                                        <datalist id="income-type-suggestions">
+                                            {(settings.incomeTypes || []).map((t) => (
+                                                <option key={t} value={t} />
+                                            ))}
+                                        </datalist>
+                                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                            {(settings.incomeTypes || []).map((t) => (
+                                                <span
+                                                    key={`quick-income-${t}`}
+                                                    className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIncomeType(t)}
+                                                        className="hover:text-emerald-900"
+                                                        title={`เลือก ${t}`}
+                                                    >
+                                                        {t}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveIncomeType(t)}
+                                                        className="rounded p-0.5 text-emerald-500 hover:bg-red-50 hover:text-red-500"
+                                                        title={`ลบ ${t}`}
+                                                    >
+                                                        <Trash2 size={10} />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                            {incomeTypeAddOpen ? (
+                                                <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-dashed border-lime-400 bg-white px-2 py-0.5 ps-2.5">
+                                                    <input
+                                                        ref={incomeAddInputRef}
+                                                        value={newIncomeType}
+                                                        onChange={(e) => setNewIncomeType(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleAddIncomeType();
+                                                            }
+                                                            if (e.key === 'Escape') {
+                                                                e.preventDefault();
+                                                                setNewIncomeType('');
+                                                                setIncomeTypeAddOpen(false);
+                                                            }
+                                                        }}
+                                                        onBlur={() => {
+                                                            window.setTimeout(() => {
+                                                                if (!newIncomeType.trim()) setIncomeTypeAddOpen(false);
+                                                            }, 120);
+                                                        }}
+                                                        placeholder="ชื่อประเภทใหม่"
+                                                        className="min-w-[6rem] max-w-[10rem] flex-1 border-0 bg-transparent py-1 text-xs text-slate-800 outline-none placeholder:text-slate-400"
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={handleAddIncomeType}
+                                                        className="shrink-0 rounded-full p-1 text-lime-600 hover:bg-lime-100"
+                                                        title="เพิ่มประเภท"
+                                                    >
+                                                        <CheckCircle2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={() => {
+                                                            setNewIncomeType('');
+                                                            setIncomeTypeAddOpen(false);
+                                                        }}
+                                                        className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                                        title="ยกเลิก"
+                                                    >
+                                                        <span className="text-xs leading-none">×</span>
+                                                    </button>
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIncomeTypeAddOpen(true);
+                                                        requestAnimationFrame(() => incomeAddInputRef.current?.focus());
+                                                    }}
+                                                    className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-lime-400 bg-lime-50/80 px-2.5 py-1 text-xs font-semibold text-lime-700 hover:bg-lime-100"
+                                                >
+                                                    <Plus size={12} strokeWidth={2.5} />
+                                                    เพิ่ม
+                                                </button>
+                                            )}
+                                            {(settings.incomeTypes || []).length === 0 && !incomeTypeAddOpen && (
+                                                <span className="text-[11px] text-slate-500">ยังไม่มีประเภทรายรับ — กด + เพิ่ม</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <Input label="ปริมาณ" type="number" value={incomeQty} onChange={(e: any) => handleIncomeCalc('qty', e.target.value)} />
+                                        <Input label="ราคา/หน่วย" type="number" value={incomeUnitPrice} onChange={(e: any) => handleIncomeCalc('price', e.target.value)} />
+                                        <Input label="รวม (บาท)" type="number" value={incomeTotal} onChange={(e: any) => handleIncomeCalc('total', e.target.value)} />
+                                    </div>
+                                    <Button onClick={() => {
+                                        if (!incomeType || !incomeTotal) return alert('กรุณากรอกประเภทรายรับและยอดรวม');
+                                        onSaveTransaction({
+                                            id: Date.now().toString(),
+                                            date,
+                                            type: 'Income',
+                                            category: 'Income',
+                                            description: incomeType,
+                                            amount: Number(incomeTotal) || 0,
+                                            quantity: incomeQty ? Number(incomeQty) : undefined,
+                                            unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
+                                        } as Transaction);
+                                        setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal('');
+                                    }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5">
+                                        <Wallet size={16} className="mr-1" /> บันทึกรายรับ
+                                    </Button>
+                                </div>
+                                <div className="mt-auto pt-3 flex justify-between">
+                                    <Button variant="secondary" onClick={prevStep}>ย้อนกลับ</Button>
+                                    <Button onClick={nextStep}>ถัดไป <ChevronRight size={18} /></Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 7: Important Events */}
+                        {step === 7 && (
                             <div className="h-full flex flex-col animate-slide-up">
                                 <div className="flex justify-between items-center mb-3">
                                     <h3 className="font-bold text-lg flex items-center gap-2"><AlertTriangle className="text-orange-500" /> เหตุการณ์สำคัญประจำวัน</h3>
@@ -2311,6 +2774,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <textarea value={eventDesc} onChange={e => setEventDesc(e.target.value)}
                                             placeholder="เช่น ฝนตกหนักต้องหยุดงาน, เครื่องจักรเสีย, ทรายถูกส่งมาไม่ครบ, งานเสร็จเร็วกว่ากำหนด..."
                                             className="w-full px-3 py-3 border-2 border-slate-200 rounded-xl text-sm focus:border-orange-400 focus:outline-none transition-colors" rows={4} />
+                                        {mobileShell && eventDescSuggestions.length > 0 && (
+                                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                                                {eventDescSuggestions.slice(0, 8).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        type="button"
+                                                        onClick={() => setEventDesc(s)}
+                                                        className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Quick templates */}
@@ -2348,7 +2825,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                         )}
 
                         {/* Step 7: Summary */}
-                        {step === 7 && (
+                        {step === 8 && (
                             <div className="h-full flex flex-col animate-slide-up text-center">
                                 <div className={`flex flex-col items-center justify-center ${mobileShell ? 'mb-4' : 'mb-6'}`}>
                                     <FileText size={mobileShell ? 40 : 48} className="mb-3 text-emerald-400" />
@@ -2358,7 +2835,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     )}
                                 </div>
 
-                                <div className={`grid w-full grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3 ${mobileShell ? 'mb-4' : 'mb-6'}`}>
+                                <div className={`grid w-full grid-cols-3 gap-2 sm:grid-cols-7 sm:gap-3 ${mobileShell ? 'mb-4' : 'mb-6'}`}>
                                     <div className="bg-emerald-50 p-2 sm:p-3 rounded-xl border border-emerald-100 text-center">
                                         <div className="text-lg sm:text-2xl font-bold text-emerald-600">{dayTransactions.filter(t => t.category === 'Labor').length}</div>
                                         <div className="text-[10px] sm:text-xs text-emerald-800">ค่าแรง</div>
@@ -2379,6 +2856,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <div className="text-lg sm:text-2xl font-bold text-red-600">{dayTransactions.filter(t => t.category === 'Fuel').length}</div>
                                         <div className="text-[10px] sm:text-xs text-red-800">น้ำมัน</div>
                                     </div>
+                                    <div className="bg-lime-50 p-2 sm:p-3 rounded-xl border border-lime-100 text-center">
+                                        <div className="text-lg sm:text-2xl font-bold text-lime-600">{dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').length}</div>
+                                        <div className="text-[10px] sm:text-xs text-lime-800">รายรับ</div>
+                                    </div>
                                     <div className="bg-orange-50 p-2 sm:p-3 rounded-xl border border-orange-100 text-center">
                                         <div className="text-lg sm:text-2xl font-bold text-orange-600">{dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length}</div>
                                         <div className="text-[10px] sm:text-xs text-orange-800">เหตุการณ์</div>
@@ -2392,6 +2873,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     const hasTrips = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                                     const hasSand = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
                                     const hasFuel = dayTransactions.some(t => t.category === 'Fuel');
+                                    const hasIncome = dayTransactions.some(t => t.category === 'Income' && t.type === 'Income');
                                     const hasEvent = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'Event');
                                     const missing: string[] = [];
                                     if (!hasLabor) missing.push('ค่าแรง');
@@ -2399,6 +2881,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     if (!hasTrips) missing.push('เที่ยวรถ');
                                     if (!hasSand) missing.push('ล้างทราย');
                                     if (!hasFuel) missing.push('น้ำมัน');
+                                    if (!hasIncome) missing.push('รายรับ');
                                     if (!hasEvent) missing.push('เหตุการณ์');
                                     if (missing.length === 0) return null;
                                     if (mobileShell) {
@@ -2506,77 +2989,86 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                 <div className="xl:col-span-4 flex min-w-0 w-full flex-col gap-4">
                     {/* Right: Daily Dashboard — กว้างเต็มแถวจนถึง xl; จาก xl เป็นคอลัมน์ข้าง (~≥320px) */}
                     {/* สรุปด่วน: การ์ดแนวตั้ง อ่านง่าย; จอเล็ก 2×2 / แถบข้าง xl สแต็ก 1 คอลัมน์ */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-3 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#0f111a]/50">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 px-0.5">สรุปวันนี้</p>
-                        <div className="grid grid-cols-2 xl:grid-cols-1 gap-2.5 sm:gap-3 [contain:layout]">
-                            {[
-                                {
-                                    label: 'คนงาน',
-                                    unit: 'คน',
-                                    display: String(atAGlanceStats.laborCount),
-                                    Icon: Users,
-                                    card: 'bg-emerald-50/90 dark:bg-emerald-500/10 border-emerald-100/90 dark:border-emerald-500/25',
-                                    iconWrap: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400',
-                                    labelClass: 'text-emerald-800/90 dark:text-emerald-200',
-                                    valueClass: 'text-emerald-700 dark:text-emerald-300',
-                                },
-                                {
-                                    label: 'ทรายล้าง',
-                                    unit: 'คิว',
-                                    display: atAGlanceStats.sandCubic.toLocaleString(),
-                                    Icon: Droplets,
-                                    card: 'bg-cyan-50/90 dark:bg-cyan-500/10 border-cyan-100/90 dark:border-cyan-500/25',
-                                    iconWrap: 'bg-cyan-500/15 dark:bg-cyan-500/25 text-cyan-600 dark:text-cyan-400',
-                                    labelClass: 'text-cyan-800/90 dark:text-cyan-200',
-                                    valueClass: 'text-cyan-700 dark:text-cyan-300',
-                                },
-                                {
-                                    label: 'รถ / รายวัน',
-                                    unit: 'รายการ',
-                                    display: String(atAGlanceStats.vehicleOrDailyCount),
-                                    Icon: Truck,
-                                    card: 'bg-orange-50/90 dark:bg-orange-500/10 border-orange-100/90 dark:border-orange-500/25',
-                                    iconWrap: 'bg-orange-500/15 dark:bg-orange-500/25 text-orange-600 dark:text-orange-400',
-                                    labelClass: 'text-orange-800/90 dark:text-orange-200',
-                                    valueClass: 'text-orange-700 dark:text-orange-300',
-                                },
-                                {
-                                    label: 'น้ำมัน',
-                                    unit: 'บาท',
-                                    display: atAGlanceStats.fuelBaht.toLocaleString(),
-                                    Icon: Fuel,
-                                    card: 'bg-rose-50/90 dark:bg-rose-500/10 border-rose-100/90 dark:border-rose-500/25',
-                                    iconWrap: 'bg-rose-500/15 dark:bg-rose-500/25 text-rose-600 dark:text-rose-400',
-                                    labelClass: 'text-rose-800/90 dark:text-rose-200',
-                                    valueClass: 'text-rose-700 dark:text-rose-300',
-                                    prefix: '฿',
-                                },
-                            ].map((item) => {
-                                const GlanceIcon = item.Icon;
-                                return (
-                                    <Card
-                                        key={item.label}
-                                        className={`min-w-0 min-h-[5.25rem] sm:min-h-[5.75rem] p-3 sm:p-3.5 ${item.card} flex flex-col gap-2 border shadow-sm`}
-                                    >
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                        <div className="mb-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">สรุปวันนี้</p>
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                {new Date(date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white p-2.5 shadow-inner dark:border-white/10 dark:from-white/[0.04] dark:to-white/[0.02] [contain:layout]">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+                                {[
+                                    {
+                                        label: 'คนงาน',
+                                        unit: 'คน',
+                                        display: String(atAGlanceStats.laborCount),
+                                        Icon: Users,
+                                        cell: 'bg-emerald-500/[0.08] dark:bg-emerald-500/10 border-emerald-200/70 dark:border-emerald-500/20',
+                                        iconWrap: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
+                                        labelClass: 'text-emerald-900/80 dark:text-emerald-200',
+                                        valueClass: 'text-emerald-800 dark:text-emerald-200',
+                                    },
+                                    {
+                                        label: 'ทรายล้าง',
+                                        unit: 'คิว',
+                                        display: atAGlanceStats.sandCubic.toLocaleString(),
+                                        Icon: Droplets,
+                                        cell: 'bg-cyan-500/[0.08] dark:bg-cyan-500/10 border-cyan-200/70 dark:border-cyan-500/20',
+                                        iconWrap: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300',
+                                        labelClass: 'text-cyan-900/80 dark:text-cyan-200',
+                                        valueClass: 'text-cyan-800 dark:text-cyan-200',
+                                    },
+                                    {
+                                        label: 'รถ / รายวัน',
+                                        unit: 'รายการ',
+                                        display: String(atAGlanceStats.vehicleOrDailyCount),
+                                        Icon: Truck,
+                                        cell: 'bg-orange-500/[0.08] dark:bg-orange-500/10 border-orange-200/70 dark:border-orange-500/20',
+                                        iconWrap: 'bg-orange-500/20 text-orange-800 dark:text-orange-300',
+                                        labelClass: 'text-orange-900/85 dark:text-orange-200',
+                                        valueClass: 'text-orange-800 dark:text-orange-200',
+                                    },
+                                    {
+                                        label: 'น้ำมัน',
+                                        unit: 'บาท',
+                                        display: atAGlanceStats.fuelBaht.toLocaleString(),
+                                        Icon: Fuel,
+                                        cell: 'bg-rose-500/[0.08] dark:bg-rose-500/10 border-rose-200/70 dark:border-rose-500/20',
+                                        iconWrap: 'bg-rose-500/20 text-rose-700 dark:text-rose-300',
+                                        labelClass: 'text-rose-900/85 dark:text-rose-200',
+                                        valueClass: 'text-rose-800 dark:text-rose-200',
+                                        prefix: '฿',
+                                    },
+                                ].map((item) => {
+                                    const GlanceIcon = item.Icon;
+                                    return (
                                         <div
-                                            className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center shrink-0 ${item.iconWrap}`}
-                                            aria-hidden
+                                            key={item.label}
+                                            className={`flex min-w-0 items-center gap-2 rounded-lg border px-2 py-2 sm:px-2.5 sm:py-2.5 ${item.cell}`}
                                         >
-                                            <GlanceIcon className="w-[18px] h-[18px] sm:w-[19px] sm:h-[19px]" strokeWidth={2.25} />
+                                            <div
+                                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${item.iconWrap}`}
+                                                aria-hidden
+                                            >
+                                                <GlanceIcon className="h-[15px] w-[15px]" strokeWidth={2.25} />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className={`truncate text-[10px] font-bold leading-tight ${item.labelClass}`} title={item.label}>
+                                                    {item.label}
+                                                </p>
+                                                <p className={`mt-0.5 flex flex-wrap items-baseline gap-x-1 leading-none ${item.valueClass}`}>
+                                                    <span className="text-lg font-black tabular-nums tracking-tight sm:text-xl">
+                                                        {'prefix' in item && item.prefix ? <span className="font-black">{item.prefix}</span> : null}
+                                                        {item.display}
+                                                    </span>
+                                                    <span className={`text-[9px] font-semibold opacity-85 ${item.labelClass}`}>{item.unit}</span>
+                                                </p>
+                                            </div>
                                         </div>
-                                        <p className={`text-[11px] sm:text-xs font-bold leading-snug line-clamp-2 ${item.labelClass}`} title={item.label}>
-                                            {item.label}
-                                        </p>
-                                        <div className="mt-auto flex flex-wrap items-baseline gap-x-1 gap-y-0">
-                                            <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight leading-none ${item.valueClass}`}>
-                                                {'prefix' in item && item.prefix ? <span className="font-black">{item.prefix}</span> : null}
-                                                {item.display}
-                                            </span>
-                                            <span className={`text-[10px] sm:text-xs font-semibold ${item.labelClass} opacity-80`}>{item.unit}</span>
-                                        </div>
-                                    </Card>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
 
@@ -2598,6 +3090,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                             <span className="text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center">
                                 {dayTransactions.length} รายการ
                             </span>
+                            {duplicateTxMeta.count > 0 && (
+                                <span className="text-xs font-bold bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center">
+                                    ซ้ำ {duplicateTxMeta.count} รายการ
+                                </span>
+                            )}
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
@@ -2607,16 +3104,22 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     <p className="font-medium">ยังไม่มีรายการบันทึก</p>
                                 </div>
                             ) : (
-                                dayTransactions.map(t => (
-                                    <div key={t.id} className="p-3 bg-white dark:bg-white/[0.03] rounded-xl border border-slate-100 dark:border-white/5 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:shadow-md transition-all group relative">
+                                dayTransactions.map(t => {
+                                    const isDuplicate = duplicateTxMeta.duplicateIds.has(t.id);
+                                    return (
+                                    <div key={t.id} className={`p-3 bg-white dark:bg-white/[0.03] rounded-xl border hover:shadow-md transition-all group relative ${isDuplicate ? 'border-rose-200 dark:border-rose-500/30 bg-rose-50/40 dark:bg-rose-500/10' : 'border-slate-100 dark:border-white/5 hover:border-indigo-300 dark:hover:border-indigo-500/50'}`}>
                                         <div className="flex justify-between items-start mb-1.5">
                                             <span className={`text-[9px] sm:text-[10px] uppercase font-bold px-1.5 py-0.5 rounded tracking-wide ${t.category === 'Labor' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' :
                                                 t.category === 'Vehicle' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' :
+                                                    t.category === 'Income' ? 'bg-lime-100 dark:bg-lime-500/20 text-lime-700 dark:text-lime-400' :
                                                     t.category === 'Fuel' ? 'bg-red-100 dark:bg-rose-500/20 text-red-700 dark:text-rose-400' :
                                                         t.category === 'DailyLog' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
                                                             'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400'
                                                 }`}>{t.category}</span>
-                                            {t.amount > 0 && <span className="font-bold text-sm text-slate-800 dark:text-white text-right">฿{t.amount.toLocaleString()}</span>}
+                                            <div className="flex items-center gap-2">
+                                                {isDuplicate && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300">อาจซ้ำ</span>}
+                                                {t.amount > 0 && <span className="font-bold text-sm text-slate-800 dark:text-white text-right">฿{t.amount.toLocaleString()}</span>}
+                                            </div>
                                         </div>
                                         <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 leading-snug">{t.description}</p>
 
@@ -2636,7 +3139,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </button>
                                         )}
                                     </div>
-                                ))
+                                )})
                             )}
                         </div>
 

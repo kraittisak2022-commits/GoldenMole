@@ -52,7 +52,6 @@ interface MobileFieldAppProps {
     ensureEmployeeWage: (emp: Employee) => Promise<number>;
     handleSetSettings: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     handleSetAdmins: (updater: AdminUser[] | ((prev: AdminUser[]) => AdminUser[])) => void;
-    onClearAllData: () => void | Promise<void>;
     onUpdateAdminProfile: (updates: {
         displayName?: string;
         avatar?: string;
@@ -105,7 +104,6 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         ensureEmployeeWage,
         handleSetSettings,
         handleSetAdmins,
-        onClearAllData,
         onUpdateAdminProfile,
         addLog,
     } = props;
@@ -407,7 +405,6 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 settings={settings}
                                 setSettings={handleSetSettings}
                                 autoVersionNotes={autoVersionNotes}
-                                onClearAllData={onClearAllData}
                                 currentAdmin={currentAdmin}
                                 onUpdateAdminProfile={onUpdateAdminProfile}
                             />
@@ -437,17 +434,15 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     }}
                 >
                     <div
-                        className={`pointer-events-auto relative mx-auto w-full max-w-full overflow-hidden rounded-[1.25rem] border shadow-[0_-12px_40px_-16px_rgba(15,23,42,0.12),0_16px_48px_-20px_rgba(37,99,235,0.08)] backdrop-blur-2xl ${
+                        className={`pointer-events-auto relative mx-auto w-full max-w-full overflow-hidden rounded-[1.35rem] border shadow-[0_-8px_24px_-20px_rgba(15,23,42,0.18)] backdrop-blur-xl ${
                             darkMode
-                                ? 'border-white/[0.09] bg-gradient-to-b from-slate-800/98 to-slate-900/[0.99] ring-1 ring-white/[0.07]'
-                                : 'border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/90 ring-1 ring-white/90'
+                                ? 'border-white/[0.08] bg-gradient-to-b from-slate-800/95 via-slate-850/95 to-slate-900/[0.99] ring-1 ring-white/[0.06]'
+                                : 'border-slate-200 bg-white ring-1 ring-slate-100/90'
                         }`}
                     >
                         <div
                             className={`pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-[1.25rem] opacity-90 ${
-                                darkMode
-                                    ? 'bg-gradient-to-b from-white/[0.06] to-transparent'
-                                    : 'bg-gradient-to-b from-blue-100/35 via-white/40 to-transparent'
+                                darkMode ? 'bg-gradient-to-b from-white/[0.06] to-transparent' : 'bg-gradient-to-b from-white/75 to-transparent'
                             }`}
                             aria-hidden
                         />
@@ -473,14 +468,14 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                 setRecordTypeFilter(null);
                                             }
                                         }}
-                                        className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.97] [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[52px] [@media(orientation:landscape)_and_(max-height:560px)]:py-1 ${
+                                        className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.98] [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[52px] [@media(orientation:landscape)_and_(max-height:560px)]:py-1 ${
                                             active
                                                 ? darkMode
-                                                    ? 'bg-gradient-to-b from-blue-500/[0.16] to-indigo-500/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_-12px_rgba(37,99,235,0.75)] ring-1 ring-blue-400/30'
-                                                    : 'bg-gradient-to-b from-blue-500/14 to-indigo-500/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.68),0_10px_18px_-14px_rgba(37,99,235,0.45)] ring-1 ring-blue-500/20'
+                                                    ? 'bg-gradient-to-b from-indigo-500/25 to-blue-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_18px_-12px_rgba(59,130,246,0.45)] ring-1 ring-indigo-300/35'
+                                                    : 'bg-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-slate-200'
                                                 : darkMode
-                                                  ? 'ring-1 ring-transparent hover:bg-white/[0.045]'
-                                                  : 'ring-1 ring-transparent hover:bg-slate-100/80'
+                                                  ? 'ring-1 ring-transparent hover:bg-white/[0.05]'
+                                                  : 'ring-1 ring-transparent hover:bg-slate-50'
                                         }`}
                                     >
                                         <span className="relative flex h-9 w-9 shrink-0 items-center justify-center [@media(orientation:landscape)_and_(max-height:560px)]:h-8 [@media(orientation:landscape)_and_(max-height:560px)]:w-8">
@@ -489,7 +484,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                     className={`absolute inset-0 rounded-full bg-gradient-to-br shadow-lg motion-reduce:transition-none transition-transform duration-300 ease-out ${
                                                         darkMode
                                                             ? 'from-blue-500 to-indigo-600 shadow-black/40'
-                                                            : 'from-blue-600 to-indigo-600 shadow-blue-600/35'
+                                                            : 'from-slate-700 to-slate-800 shadow-slate-400/20'
                                                     }`}
                                                 />
                                             ) : null}
@@ -497,25 +492,15 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                                 size={20}
                                                 strokeWidth={active ? 2.4 : 2}
                                                 className={`relative z-10 shrink-0 transition-colors duration-300 ${
-                                                    active ? 'text-white' : darkMode ? 'text-slate-400' : 'text-slate-500'
+                                                    active ? 'text-white' : darkMode ? 'text-slate-300' : 'text-slate-500'
                                                 }`}
                                             />
                                         </span>
                                         <span
-                                            className={`h-0.5 w-5 shrink-0 rounded-full transition-colors duration-300 [@media(orientation:landscape)_and_(max-height:560px)]:w-4 ${
-                                                active
-                                                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400'
-                                                    : darkMode
-                                                      ? 'bg-slate-600/55'
-                                                      : 'bg-slate-200/90'
-                                            }`}
-                                            aria-hidden
-                                        />
-                                        <span
-                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[11px] font-medium leading-tight tracking-normal transition-colors duration-300 [@media(orientation:landscape)_and_(max-height:560px)]:text-[10px] ${
+                                            className={`max-w-[5rem] truncate px-0.5 text-center text-[10px] font-medium leading-tight tracking-wide transition-colors duration-300 [@media(orientation:landscape)_and_(max-height:560px)]:text-[10px] ${
                                                 active
                                                     ? darkMode
-                                                        ? 'text-slate-100'
+                                                        ? 'text-white'
                                                         : 'text-slate-800'
                                                     : darkMode
                                                       ? 'text-slate-400'

@@ -5,7 +5,8 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
-import { AppSettings, Employee, Transaction } from '../../types';
+import { AppSettings, Employee, Transaction, WorkType } from '../../types';
+import { dailyWageForWorkType } from '../../utils/laborWage';
 
 interface VehicleEntryProps {
     settings: AppSettings;
@@ -13,6 +14,7 @@ interface VehicleEntryProps {
     transactions?: Transaction[];
     onSave: (t: any) => void;
     onDelete?: (id: string) => void;
+    ensureEmployeeWage?: (emp: Employee) => Promise<number>;
 }
 
 const VEHICLE_DEFAULT_RATES: Record<string, number> = {
@@ -26,9 +28,10 @@ const VEHICLE_DEFAULT_RATES: Record<string, number> = {
 const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
 const driverEmployees = (employees: Employee[]) => employees.filter(e => getEmpPositions(e).includes('คนขับรถ'));
 
-const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete }: VehicleEntryProps) => {
+const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete, ensureEmployeeWage }: VehicleEntryProps) => {
     const [section, setSection] = useState<'entry' | 'stats' | 'history'>('entry');
     const [form, setForm] = useState({ date: getToday(), car: '', driver: '', location: '', wage: '', vehicleWage: '', workDetails: '' });
+    const [workType, setWorkType] = useState<WorkType>('FullDay');
     const [editingId, setEditingId] = useState<string | null>(null);
     const drivers = driverEmployees(employees);
 
@@ -70,9 +73,27 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
         }
     }, [form.car]);
 
+    const applyDriverAllowance = async (driverId: string, wt: WorkType) => {
+        if (!driverId) {
+            setForm((prev) => ({ ...prev, wage: '' }));
+            return;
+        }
+        const emp = employees.find((e) => e.id === driverId);
+        if (!emp) return;
+        try {
+            const w = ensureEmployeeWage ? await ensureEmployeeWage(emp) : (emp.baseWage ?? 0);
+            const allowance = dailyWageForWorkType(emp, w, wt);
+            setForm((prev) => ({ ...prev, wage: String(allowance) }));
+        } catch {
+            /* ignore */
+        }
+    };
+
     useEffect(() => {
         if (dayVehicleTx.length > 0 && !editingId) {
             const latest = dayVehicleTx[dayVehicleTx.length - 1];
+            const wt: WorkType = (latest as any).workType === 'HalfDay' ? 'HalfDay' : 'FullDay';
+            setWorkType(wt);
             setForm(prev => ({
                 ...prev,
                 car: latest.vehicleId || prev.car,
@@ -86,6 +107,8 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
     }, [form.date, dayVehicleTx, editingId]);
 
     const loadForEdit = (t: Transaction) => {
+        const wt: WorkType = (t as any).workType === 'HalfDay' ? 'HalfDay' : 'FullDay';
+        setWorkType(wt);
         setForm(prev => ({
             ...prev,
             car: t.vehicleId || '',
@@ -100,25 +123,39 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
 
     const handleSave = () => {
         if (!form.car || !form.driver) return alert("ข้อมูลไม่ครบ");
+        const duplicateVeh = dayVehicleTx.find(
+            (t) =>
+                t.id !== editingId &&
+                t.vehicleId === form.car &&
+                t.driverId === form.driver &&
+                ((t.workType || 'FullDay') === workType)
+        );
+        if (duplicateVeh) {
+            if (!window.confirm(`มีรายการรถคันนี้กับคนขับนี้อยู่แล้วในวันนี้ (${form.car}) — ต้องการบันทึกซ้ำหรือไม่?`)) return;
+        }
         if (editingId && onDelete) {
             onDelete(editingId);
             setEditingId(null);
         }
+        const dayLabel = workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+        const detailsPart = (form.workDetails || '').trim();
         onSave({
             id: Date.now().toString(),
             date: form.date,
             type: 'Expense',
             category: 'Vehicle',
-            description: `ขับรถ: ${form.car} ${form.workDetails ? `(${form.workDetails})` : ''}`,
+            description: `รถ: ${form.car} (${detailsPart || '—'}) [${dayLabel}]`,
             amount: Number(form.wage) + Number(form.vehicleWage),
             driverId: form.driver,
             vehicleId: form.car,
             driverWage: Number(form.wage),
             vehicleWage: Number(form.vehicleWage),
             location: form.location,
-            workDetails: form.workDetails
+            workDetails: form.workDetails,
+            workType,
         } as Transaction);
         setForm(prev => ({ ...prev, wage: '', workDetails: '', car: '', driver: '' }));
+        setWorkType('FullDay');
     };
 
     return (
@@ -165,11 +202,45 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                     {settings.cars.map((c: string) => <option key={c}>{c}</option>)}
                 </Select>
                 <div className="grid grid-cols-2 gap-4">
-                    <Select label="คนขับ (เฉพาะตำแหน่งคนขับรถ)" value={form.driver} onChange={(e: any) => setForm({ ...form, driver: e.target.value })}>
+                    <Select
+                        label="คนขับ (เฉพาะตำแหน่งคนขับรถ)"
+                        value={form.driver}
+                        onChange={(e: any) => {
+                            const val = e.target.value;
+                            setForm({ ...form, driver: val });
+                            void applyDriverAllowance(val, workType);
+                        }}
+                    >
                         <option value="">-- เลือกคนขับ --</option>
-                        {drivers.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname || e.name}</option>)}
+                        {drivers.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname || e.name || e.id}</option>)}
                     </Select>
                     <Input label="ค่าเบี้ยเลี้ยงคนขับ" type="number" value={form.wage} onChange={(e: any) => setForm({ ...form, wage: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-slate-700">การทำงานของคนขับ (เดียวกับ Daily Wizard)</span>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setWorkType('FullDay');
+                                void applyDriverAllowance(form.driver, 'FullDay');
+                            }}
+                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${workType === 'FullDay' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}
+                        >
+                            เต็มวัน
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setWorkType('HalfDay');
+                                void applyDriverAllowance(form.driver, 'HalfDay');
+                            }}
+                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${workType === 'HalfDay' ? 'border-amber-500 bg-amber-500 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300'}`}
+                        >
+                            ครึ่งวัน
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-500">ครึ่งวัน = เบี้ยเลี้ยงคนขับครึ่งหนึ่งของค่าแรงรายวัน (ค่าจ้างรถไม่เปลี่ยน)</p>
                 </div>
                 <Input label="ค่าจ้างรถ (บาท)" type="number" value={form.vehicleWage} onChange={(e: any) => setForm({ ...form, vehicleWage: e.target.value })} className="input-highlight border-amber-200 text-amber-700" />
                 <Select label="สถานที่" value={form.location} onChange={(e: any) => setForm({ ...form, location: e.target.value })}>

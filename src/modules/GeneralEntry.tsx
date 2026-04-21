@@ -192,15 +192,21 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         const unitLabel = form.unit === 'แกลลอน' ? 'แกลลอน' : form.unit === 'ถัง' ? 'ถัง' : 'ลิตร';
         if (type === 'Fuel') {
             const warnings: string[] = [];
-            const duplicate = dayFuelTx.find(t =>
-                t.id !== editingId &&
-                inferFuelMovement(t) === form.fuelMovement &&
-                (t.fuelType || 'Diesel') === form.fuelType &&
-                (t.vehicleId || '') === (form.fuelMovement === 'stock_out' ? form.vehicleId : '') &&
-                (Number(t.quantity) || 0) === qtyNum &&
-                (Number(t.amount) || 0) === (Number(form.amount) || 0)
-            );
-            if (duplicate) warnings.push('พบรายการน้ำมันค่าเดียวกันอยู่แล้วในวันนี้');
+            const duplicate = dayFuelTx.find((t) => {
+                if (t.id === editingId) return false;
+                const mov = inferFuelMovement(t);
+                if (mov !== form.fuelMovement) return false;
+                if ((t.fuelType || 'Diesel') !== form.fuelType) return false;
+                if (form.fuelMovement === 'stock_in') {
+                    if (t.vehicleId) return false;
+                    if ((t.fuelMovement || 'stock_in') !== 'stock_in') return false;
+                } else {
+                    if ((t.fuelMovement !== 'stock_out' && !t.vehicleId) || !form.vehicleId) return false;
+                    if ((t.vehicleId || '') !== form.vehicleId) return false;
+                }
+                return (Number(t.quantity) || 0) === qtyNum && (Number(t.amount) || 0) === (Number(form.amount) || 0);
+            });
+            if (duplicate) warnings.push(form.fuelMovement === 'stock_in' ? 'พบรายการซื้อน้ำมันค่าเดียวกันอยู่แล้วในวันนี้' : `มีรายการใช้น้ำมันของรถ ${form.vehicleId} ค่าเดียวกันอยู่แล้ว`);
             if (qtyNum > 5000) warnings.push('ปริมาณน้ำมันสูงกว่าปกติมาก');
             if ((Number(form.amount) || 0) > 200000) warnings.push('ยอดเงินสูงกว่าปกติมาก');
             if (!confirmWarnings(warnings)) return;

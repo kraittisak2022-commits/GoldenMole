@@ -402,6 +402,9 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
         const days = numDays;
         const sandWashedPerDay: number[] = [];
         const sandTransportedPerDay: number[] = [];
+        const drumsObtainedPerDay: number[] = [];
+        const drumsHomePerDay: number[] = [];
+        const drumsRemainingCumulativePerDay: number[] = [];
         const dayLabels: string[] = [];
 
         const dateStrings: string[] = [];
@@ -417,6 +420,10 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             const daySand = filtered.filter(t => t.date?.slice(0, 10) === dateStr && t.category === 'DailyLog' && t.subCategory === 'Sand');
             const washed = daySand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
             sandWashedPerDay.push(washed);
+            const drumsObtained = daySand.length > 0 ? Math.max(0, ...daySand.map(t => Number((t as any).drumsObtained || 0))) : 0;
+            const drumsHome = daySand.length > 0 ? Math.max(0, ...daySand.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
+            drumsObtainedPerDay.push(drumsObtained);
+            drumsHomePerDay.push(drumsHome);
 
             // ขนทราย: จาก DailyLog VehicleTrip (จำนวนเที่ยว * ประมาณคิวต่อเที่ยว) หรือ Vehicle
             const dayTrips = filtered.filter(t => t.date?.slice(0, 10) === dateStr && (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip' || t.category === 'Vehicle'));
@@ -427,18 +434,27 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
 
         const totalWashed = sandWashedPerDay.reduce((s, v) => s + v, 0);
         const totalTransported = sandTransportedPerDay.reduce((s, v) => s + v, 0);
+        const totalDrumsObtained = drumsObtainedPerDay.reduce((s, v) => s + v, 0);
+        const totalDrumsHome = drumsHomePerDay.reduce((s, v) => s + v, 0);
         const avgWashedPerDay = days > 0 ? Math.round(totalWashed / days) : 0;
         const avgTransportedPerDay = days > 0 ? Math.round(totalTransported / days) : 0;
         const sandRemaining = totalWashed - totalTransported;
         const netPerDay = avgWashedPerDay - avgTransportedPerDay;
+        let drumCum = 0;
+        for (let i = 0; i < drumsObtainedPerDay.length; i++) {
+            drumCum += Math.max(0, drumsObtainedPerDay[i] - drumsHomePerDay[i]);
+            drumsRemainingCumulativePerDay.push(drumCum);
+        }
+        const drumsRemaining = drumsRemainingCumulativePerDay[drumsRemainingCumulativePerDay.length - 1] || 0;
         const daysRemaining = netPerDay > 0 ? '∞ (ผลิตเกินขน)' :
             netPerDay === 0 ? '0 (สมดุล)' :
                 `${Math.max(0, Math.ceil(Math.abs(sandRemaining) / Math.abs(netPerDay)))} วัน`;
 
         return {
             sandWashedPerDay, sandTransportedPerDay, dayLabels, dateStrings,
+            drumsObtainedPerDay, drumsHomePerDay, drumsRemainingCumulativePerDay,
             totalWashed, totalTransported, avgWashedPerDay, avgTransportedPerDay,
-            sandRemaining, daysRemaining, netPerDay
+            sandRemaining, daysRemaining, netPerDay, totalDrumsObtained, totalDrumsHome, drumsRemaining
         };
     }, [filtered, dateFilter, numDays, start]);
 
@@ -479,7 +495,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             </div>
 
             {/* Sand Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                 <Card className="p-5 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-3 opacity-10"><Droplets size={70} color="#3b82f6" /></div>
                     <div className="flex items-center gap-2 text-blue-500 mb-2">
@@ -520,6 +536,33 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                     </div>
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white">{sandAnalytics.daysRemaining}</h3>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">ทรายพอล้างอีก</p>
+                </Card>
+                <Card className="p-5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10"><Droplets size={70} color="#16a34a" /></div>
+                    <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                        <Droplets size={18} />
+                        <span className="text-sm font-medium">จำนวนถังที่ได้</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{sandAnalytics.totalDrumsObtained.toLocaleString()} ถัง</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">รวมในช่วงที่เลือก</p>
+                </Card>
+                <Card className="p-5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10"><Droplets size={70} color="#dc2626" /></div>
+                    <div className="flex items-center gap-2 text-rose-600 mb-2">
+                        <Droplets size={18} />
+                        <span className="text-sm font-medium">ล้างที่บ้าน</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-rose-700 dark:text-rose-300">{sandAnalytics.totalDrumsHome.toLocaleString()} ถัง</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">รวมในช่วงที่เลือก</p>
+                </Card>
+                <Card className="p-5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10"><TrendingUp size={70} color="#0ea5e9" /></div>
+                    <div className="flex items-center gap-2 text-sky-600 mb-2">
+                        <TrendingUp size={18} />
+                        <span className="text-sm font-medium">จำนวนถังคงเหลือ</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-sky-700 dark:text-sky-300">{sandAnalytics.drumsRemaining.toLocaleString()} ถัง</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">สะสมสุทธิ (ได้ - ล้างบ้าน)</p>
                 </Card>
             </div>
 
@@ -638,6 +681,50 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
                                 </>
                             );
                         })()}
+                    </div>
+                </Card>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="p-6">
+                    <h3 className="font-bold mb-4 text-slate-700 dark:text-slate-200">กราฟรายวัน: ถังที่ได้ vs ล้างที่บ้าน</h3>
+                    <div className="h-60">
+                        <div className="flex gap-4 mb-3">
+                            <span className="flex items-center gap-1 text-xs dark:text-slate-300"><div className="w-3 h-3 rounded-sm bg-emerald-500" /> ถังที่ได้</span>
+                            <span className="flex items-center gap-1 text-xs dark:text-slate-300"><div className="w-3 h-3 rounded-sm bg-rose-500" /> ล้างที่บ้าน</span>
+                        </div>
+                        <div className="flex items-end gap-2 h-48">
+                            {sandAnalytics.dayLabels.map((label, i) => {
+                                const maxVal = Math.max(...sandAnalytics.drumsObtainedPerDay, ...sandAnalytics.drumsHomePerDay, 1);
+                                const inH = (sandAnalytics.drumsObtainedPerDay[i] / maxVal) * 100;
+                                const outH = (sandAnalytics.drumsHomePerDay[i] / maxVal) * 100;
+                                return (
+                                    <div key={i} className="flex-1 flex flex-col items-center">
+                                        <div className="w-full flex gap-0.5 items-end h-40">
+                                            <div className="flex-1 bg-emerald-500 rounded-t-md transition-all duration-500" style={{ height: `${inH}%` }} title={`ได้: ${sandAnalytics.drumsObtainedPerDay[i]} ถัง`} />
+                                            <div className="flex-1 bg-rose-500 rounded-t-md transition-all duration-500" style={{ height: `${outH}%` }} title={`ล้างบ้าน: ${sandAnalytics.drumsHomePerDay[i]} ถัง`} />
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{label}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-6">
+                    <h3 className="font-bold mb-4 text-slate-700 dark:text-slate-200">กราฟสะสม: จำนวนถังคงเหลือ</h3>
+                    <div className="h-60">
+                        <LineChart data={sandAnalytics.drumsRemainingCumulativePerDay} color="#0ea5e9" height={180} />
+                        <div className="flex justify-between mt-2">
+                            {sandAnalytics.dayLabels.map((l, i) => (
+                                <span key={i} className="text-[10px] text-slate-400 dark:text-slate-500">{l}</span>
+                            ))}
+                        </div>
+                        <div className="mt-3 flex gap-4 text-xs text-slate-500 dark:text-slate-400">
+                            <span>เริ่มต้น: 0 ถัง</span>
+                            <span className="text-sky-700 dark:text-sky-300 font-bold">
+                                คงเหลือสะสม: {sandAnalytics.drumsRemaining.toLocaleString()} ถัง
+                            </span>
+                        </div>
                     </div>
                 </Card>
             </div>

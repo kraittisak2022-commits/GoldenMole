@@ -10,7 +10,6 @@ interface SettingsModuleProps {
     settings: AppSettings;
     setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     autoVersionNotes?: string[];
-    onClearAllData?: () => Promise<void>;
     currentAdmin?: AdminUser | null;
     onUpdateAdminProfile?: (updates: {
         displayName?: string;
@@ -39,7 +38,7 @@ const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, '
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 
-const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearAllData, currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
+const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -311,7 +310,7 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
     };
     const cancelEdit = () => setEditingItem(null);
     const saveEdit = () => {
-        if (editingItem == null || activeTab === 'positionsLocal' || activeTab === 'general' || activeTab === 'clearData' || !LIST_TAB_KEYS.includes(activeTab as any)) return;
+        if (editingItem == null || activeTab === 'positionsLocal' || activeTab === 'general' || !LIST_TAB_KEYS.includes(activeTab as any)) return;
         const key = activeTab as keyof AppSettings;
         const arr = [...((settings[key] as string[]) || [])];
         if (editingItem.index >= 0 && editingItem.index < arr.length) {
@@ -498,7 +497,6 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
         { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
         { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
-        { key: 'clearData', l: 'ล้างข้อมูล' },
     ];
 
     return (
@@ -768,19 +766,6 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], onClearA
                                 })}
                                 {laborWorkCategories.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีประเภทงานที่ตั้งค่าไว้</p>}
                             </div>
-                        </div>
-                    ) : activeTab === 'clearData' ? (
-                        <div className="space-y-6 max-w-lg">
-                            <h3 className="font-bold text-lg mb-2 text-red-600">ล้างข้อมูลที่บันทึกทั้งหมด</h3>
-                            <p className="text-sm text-slate-600">
-                                การกระทำนี้จะลบ <strong>รายการธุรกรรมทั้งหมด</strong> และ <strong>โครงการที่ดินทั้งหมด</strong> ออกจากระบบ
-                                <br />ข้อมูล <strong>พนักงาน</strong> และ <strong>ตั้งค่าทั้งหมด</strong> จะไม่ถูกลบ
-                            </p>
-                            {onClearAllData && (
-                                <Button onClick={onClearAllData} className="bg-red-600 hover:bg-red-700 text-white border-0">
-                                    ล้างข้อมูลที่บันทึกทั้งหมด
-                                </Button>
-                            )}
                         </div>
                     ) : activeTab === 'systemStatus' ? (
                         <div className="space-y-5">

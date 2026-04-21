@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
-import { Wallet, History, Pencil, Trash2, Calendar, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Wallet, History, Pencil, Trash2, Calendar, TrendingUp, ChevronDown, ChevronUp, Plus, CheckCircle2 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate } from '../utils';
 import { Transaction, AppSettings } from '../types';
 
@@ -17,20 +16,52 @@ const formatMonthLabel = (yyyyMm: string) => {
 
 interface IncomeEntryProps {
     settings: AppSettings;
+    setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     onSave: (t: Transaction) => void;
     onDelete?: (id: string) => void;
     transactions: Transaction[];
 }
 
-const IncomeEntry = ({ settings, onSave, onDelete, transactions }: IncomeEntryProps) => {
+const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: IncomeEntryProps) => {
     const [form, setForm] = useState({ date: getToday(), qty: '', price: '', total: '', type: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [newIncomeType, setNewIncomeType] = useState('');
+    const [incomeTypeAddOpen, setIncomeTypeAddOpen] = useState(false);
+    const incomeAddInputRef = useRef<HTMLInputElement>(null);
     const [filterMonth, setFilterMonth] = useState<string>(''); // '' = ทั้งหมด
     const [showMonthlyExpand, setShowMonthlyExpand] = useState(true);
     const [showHistoryExpand, setShowHistoryExpand] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const incomeList = useMemo(() => transactions.filter(t => t.type === 'Income'), [transactions]);
+    const incomeList = useMemo(
+        () => transactions.filter((t) => t.type === 'Income' && t.category === 'Income'),
+        [transactions]
+    );
+
+    const handleAddIncomeType = () => {
+        const label = newIncomeType.trim();
+        if (!label) return;
+        const exists = (settings.incomeTypes || []).some((v) => String(v).trim().toLowerCase() === label.toLowerCase());
+        if (exists) {
+            alert('มีประเภทนี้อยู่แล้ว');
+            return;
+        }
+        setSettings?.((prev) => ({
+            ...prev,
+            incomeTypes: [...(prev.incomeTypes || []), label],
+        }));
+        setNewIncomeType('');
+        setForm((f) => ({ ...f, type: label }));
+        incomeAddInputRef.current?.focus();
+    };
+
+    const handleRemoveIncomeType = (label: string) => {
+        setSettings?.((prev) => ({
+            ...prev,
+            incomeTypes: (prev.incomeTypes || []).filter((v) => v !== label),
+        }));
+        setForm((f) => (f.type === label ? { ...f, type: '' } : f));
+    };
 
     const byMonth = useMemo(() => {
         const map = new Map<string, { total: number; count: number; items: Transaction[] }>();
@@ -88,7 +119,7 @@ const IncomeEntry = ({ settings, onSave, onDelete, transactions }: IncomeEntryPr
     };
 
     const handleSave = () => {
-        if (!form.type || !form.total) return alert('กรอกข้อมูลให้ครบ');
+        if (!form.type.trim() || !form.total) return alert('กรอกข้อมูลให้ครบ');
         if (editingId && onDelete) {
             onDelete(editingId);
             setEditingId(null);
@@ -98,7 +129,7 @@ const IncomeEntry = ({ settings, onSave, onDelete, transactions }: IncomeEntryPr
             date: form.date,
             type: 'Income',
             category: 'Income',
-            description: form.type,
+            description: form.type.trim(),
             amount: Number(form.total),
             quantity: form.qty ? Number(form.qty) : undefined,
             unitPrice: form.price ? Number(form.price) : undefined,
@@ -187,10 +218,104 @@ const IncomeEntry = ({ settings, onSave, onDelete, transactions }: IncomeEntryPr
                 <h3 className="font-bold text-lg mb-6 flex items-center gap-2 text-slate-800 dark:text-slate-100"><Wallet className="text-emerald-500" /> บันทึกรายรับ</h3>
                 <div className="space-y-4">
                     <Input label="วันที่" type="date" value={form.date} onChange={(e: any) => { setForm({ ...form, date: e.target.value }); setEditingId(null); }} />
-                    <Select label="ประเภท" value={form.type} onChange={(e: any) => setForm({ ...form, type: e.target.value })}>
-                        <option value="">-- เลือกประเภท --</option>
-                        {settings.incomeTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </Select>
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-200">ประเภทรายรับ</label>
+                        <input
+                            type="text"
+                            value={form.type}
+                            onChange={(e) => setForm({ ...form, type: e.target.value })}
+                            list="income-type-suggestions-menu"
+                            placeholder="พิมพ์หรือเลือกจากตัวช่วย (เดียวกับ Daily Wizard)"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-800 dark:border-white/15 dark:bg-white/5 dark:text-slate-100"
+                        />
+                        <datalist id="income-type-suggestions-menu">
+                            {(settings.incomeTypes || []).map((t) => (
+                                <option key={t} value={t} />
+                            ))}
+                        </datalist>
+                        {setSettings && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                {(settings.incomeTypes || []).map((t) => (
+                                    <span
+                                        key={`inc-chip-${t}`}
+                                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                                    >
+                                        <button type="button" onClick={() => setForm((f) => ({ ...f, type: t }))} className="hover:text-emerald-900">
+                                            {t}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveIncomeType(t)}
+                                            className="rounded p-0.5 text-emerald-500 hover:bg-red-50 hover:text-red-500"
+                                            title={`ลบ ${t}`}
+                                        >
+                                            <Trash2 size={10} />
+                                        </button>
+                                    </span>
+                                ))}
+                                {incomeTypeAddOpen ? (
+                                    <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-dashed border-lime-400 bg-white px-2 py-0.5 ps-2.5 dark:bg-white/5">
+                                        <input
+                                            ref={incomeAddInputRef}
+                                            value={newIncomeType}
+                                            onChange={(e) => setNewIncomeType(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleAddIncomeType();
+                                                }
+                                                if (e.key === 'Escape') {
+                                                    e.preventDefault();
+                                                    setNewIncomeType('');
+                                                    setIncomeTypeAddOpen(false);
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                window.setTimeout(() => {
+                                                    if (!newIncomeType.trim()) setIncomeTypeAddOpen(false);
+                                                }, 120);
+                                            }}
+                                            placeholder="ชื่อประเภทใหม่"
+                                            className="min-w-[6rem] max-w-[10rem] flex-1 border-0 bg-transparent py-1 text-xs text-slate-800 outline-none dark:text-slate-100"
+                                            autoFocus
+                                        />
+                                        <button
+                                            type="button"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={handleAddIncomeType}
+                                            className="shrink-0 rounded-full p-1 text-lime-600 hover:bg-lime-100"
+                                            title="เพิ่มประเภท"
+                                        >
+                                            <CheckCircle2 size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => {
+                                                setNewIncomeType('');
+                                                setIncomeTypeAddOpen(false);
+                                            }}
+                                            className="shrink-0 text-xs text-slate-400 hover:text-slate-600"
+                                        >
+                                            ×
+                                        </button>
+                                    </span>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIncomeTypeAddOpen(true);
+                                            requestAnimationFrame(() => incomeAddInputRef.current?.focus());
+                                        }}
+                                        className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-lime-400 bg-lime-50/80 px-2.5 py-1 text-xs font-semibold text-lime-700 hover:bg-lime-100 dark:bg-lime-500/10 dark:text-lime-200"
+                                    >
+                                        <Plus size={12} strokeWidth={2.5} />
+                                        เพิ่ม
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         <Input label="ปริมาณ" type="number" value={form.qty} onChange={(e: any) => handleCalc('qty', e.target.value)} />
                         <Input label="ราคา/หน่วย" type="number" value={form.price} onChange={(e: any) => handleCalc('price', e.target.value)} />
