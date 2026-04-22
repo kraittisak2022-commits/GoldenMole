@@ -30,6 +30,7 @@ const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
+import { readSavedLocale, saveLocale, t, type AppLocale } from './utils/i18n';
 import { usePwaInstall } from './hooks/usePwaInstall';
 import {
     dropOfflineQueueItem,
@@ -68,6 +69,46 @@ const MOBILE_PIN_KEY = 'cm_mobile_pin_v1';
 const MOBILE_PIN_LOCK_MS = 90 * 1000;
 const MOBILE_PIN_MAX_FAIL = 5;
 const MOBILE_PIN_MIN_LENGTH = 4;
+const BOOTSTRAP_CACHE_KEY = 'cm_bootstrap_cache_v1';
+
+type BootstrapCachePayload = {
+    savedAt: number;
+    employees: Employee[];
+    transactions: Transaction[];
+    projects: LandProject[];
+    settings: AppSettings;
+    admins: AdminUser[];
+    adminLogs: AdminLog[];
+};
+
+const readBootstrapCache = (): BootstrapCachePayload | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(BOOTSTRAP_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<BootstrapCachePayload>;
+        if (!parsed || !Array.isArray(parsed.employees) || !Array.isArray(parsed.transactions) || !parsed.settings) {
+            return null;
+        }
+        return {
+            savedAt: Number(parsed.savedAt) || Date.now(),
+            employees: parsed.employees as Employee[],
+            transactions: parsed.transactions as Transaction[],
+            projects: Array.isArray(parsed.projects) ? (parsed.projects as LandProject[]) : [],
+            settings: parsed.settings as AppSettings,
+            admins: Array.isArray(parsed.admins) ? (parsed.admins as AdminUser[]) : [],
+            adminLogs: Array.isArray(parsed.adminLogs) ? (parsed.adminLogs as AdminLog[]) : [],
+        };
+    } catch {
+        return null;
+    }
+};
+
+const saveBootstrapCache = (payload: Omit<BootstrapCachePayload, 'savedAt'>) => {
+    if (typeof window === 'undefined') return;
+    const next: BootstrapCachePayload = { savedAt: Date.now(), ...payload };
+    window.localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(next));
+};
 
 type MobilePinState = {
     hash: string;
@@ -106,7 +147,7 @@ const MOCK_SETTINGS: AppSettings = {
     versionNotes: ['เปิดใช้ Daily Wizard และซิงก์ข้อมูลกับ Supabase'],
     fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
     orgProfile: {},
-    appDefaults: { sandCubicPerTrip: 3 },
+    appDefaults: { sandCubicPerTrip: 3, vehicleDefaultMachineWage: 4500 },
 };
 const MOCK_TRANSACTIONS: Transaction[] = [
     { id: '1', date: getToday(), type: 'Expense', category: 'Fuel', description: 'เติมน้ำมัน (ดีเซล)', amount: 2000, quantity: 60, unit: 'L', vehicleId: 'รถดรัมโอเว่น', fuelType: 'Diesel', fuelMovement: 'stock_out' },
@@ -229,6 +270,7 @@ function App() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
+    const [locale, setLocale] = useState<AppLocale>(() => readSavedLocale());
     const [undoAction, setUndoAction] = useState<{ message: string; expiresAt: number; onUndo: () => void } | null>(null);
     const lazyFallback = (
         <div className="flex min-h-[240px] items-center justify-center">
@@ -247,7 +289,7 @@ function App() {
     const [idleTick, setIdleTick] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [loadProgress, setLoadProgress] = useState(0);
-    const [loadMessage, setLoadMessage] = useState('กำลังเตรียมระบบ...');
+    const [loadMessage, setLoadMessage] = useState(t(readSavedLocale(), 'loadingPreparing'));
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
     const [mobilePinEnabled, setMobilePinEnabled] = useState(false);
     const [pinInput, setPinInput] = useState('');
@@ -345,11 +387,19 @@ function App() {
         }
         const onOnline = () => { void syncOfflineQueue(); };
         window.addEventListener('online', onOnline);
+        const timer = window.setInterval(() => {
+            if (navigator.onLine) void syncOfflineQueue();
+        }, 30_000);
         return () => {
             unsub();
             window.removeEventListener('online', onOnline);
+            window.clearInterval(timer);
         };
     }, []);
+
+    useEffect(() => {
+        saveLocale(locale);
+    }, [locale]);
 
     const readMobilePinState = useCallback((): MobilePinState | null => {
         try {
@@ -410,22 +460,32 @@ function App() {
         };
 
         const loadData = async () => {
+            const cached = readBootstrapCache();
             try {
-                setIsLoading(true);
+                setIsLoading(!cached);
                 setLoadProgress(5);
-                setLoadMessage('กำลังเตรียมระบบ...');
+                setLoadMessage(t(locale, 'loadingPreparing'));
+                if (cached) {
+                    setEmployees(cached.employees);
+                    setTransactions(cached.transactions);
+                    setProjects(cached.projects);
+                    setSettings(cached.settings);
+                    setAdmins(cached.admins.length > 0 ? cached.admins : DEFAULT_ADMINS);
+                    setAdminLogs(cached.adminLogs);
+                    setLoadProgress(40);
+                }
 
                 // Seed default data if needed (only once)
                 if (!hasSeeded.current) {
                     setLoadProgress(20);
-                    setLoadMessage('กำลังเตรียมข้อมูลเริ่มต้น...');
+                    setLoadMessage(t(locale, 'loadingSeed'));
                     hasSeeded.current = true;
                     await db.seedDefaultData(MOCK_EMPLOYEES, MOCK_TRANSACTIONS, MOCK_PROJECTS, MOCK_SETTINGS, DEFAULT_ADMINS);
                 }
 
                 // Load all data in parallel
                 setLoadProgress(55);
-                setLoadMessage('กำลังโหลดข้อมูลจากฐานข้อมูล...');
+                setLoadMessage(t(locale, 'loadingRemote'));
                 const [emps, txs, projs, sett, adms, logs] = await Promise.all([
                     withTimeout(db.fetchEmployees(), 12000, MOCK_EMPLOYEES),
                     withTimeout(db.fetchTransactions(), 12000, MOCK_TRANSACTIONS),
@@ -436,19 +496,29 @@ function App() {
                 ]);
 
                 setLoadProgress(85);
-                setLoadMessage('กำลังประมวลผลข้อมูล...');
+                setLoadMessage(t(locale, 'loadingProcess'));
                 setEmployees(emps);
                 setTransactions(txs);
                 setProjects(projs);
-                setSettings(sett || MOCK_SETTINGS);
-                setAdmins(adms.length > 0 ? adms : DEFAULT_ADMINS);
+                const nextSettings = sett || MOCK_SETTINGS;
+                const nextAdmins = adms.length > 0 ? adms : DEFAULT_ADMINS;
+                setSettings(nextSettings);
+                setAdmins(nextAdmins);
                 setAdminLogs(logs);
+                saveBootstrapCache({
+                    employees: emps,
+                    transactions: txs,
+                    projects: projs,
+                    settings: nextSettings,
+                    admins: nextAdmins,
+                    adminLogs: logs,
+                });
                 setLoadProgress(100);
-                setLoadMessage('โหลดข้อมูลสำเร็จ');
+                setLoadMessage(t(locale, 'loadingOk'));
             } catch (err) {
                 console.error('Failed to load data from Supabase:', err);
                 setLoadProgress(80);
-                setLoadMessage('เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังใช้ข้อมูลสำรอง...');
+                setLoadMessage(t(locale, 'loadingFallback'));
                 // Fallback to mock data
                 setEmployees(MOCK_EMPLOYEES);
                 setTransactions(MOCK_TRANSACTIONS);
@@ -456,13 +526,13 @@ function App() {
                 setSettings(MOCK_SETTINGS);
                 setAdmins(DEFAULT_ADMINS);
                 setLoadProgress(100);
-                setLoadMessage('โหลดข้อมูลสำรองสำเร็จ');
+                setLoadMessage(t(locale, 'loadingFallbackOk'));
             } finally {
                 setIsLoading(false);
             }
         };
         loadData();
-    }, []);
+    }, [locale]);
 
     const applyUiThemeToApp = useCallback((ui: AdminUiTheme | undefined) => {
         setDarkMode(resolveDarkFromUiTheme(ui));
@@ -1251,8 +1321,12 @@ function App() {
         return (
             <div className="flex items-center justify-center min-h-screen min-h-[100dvh] bg-[#0a0a0f]">
                 <div className="text-center w-full max-w-sm px-6">
-                    <Loader2 className="w-12 h-12 text-amber-400 animate-spin mx-auto mb-4" />
-                    <p className="text-gray-300 text-sm font-medium mb-2">{loadMessage}</p>
+                    <div className="animate-pulse space-y-3">
+                        <div className="mx-auto h-10 w-10 rounded-full bg-amber-400/30" />
+                        <div className="mx-auto h-3 w-48 rounded bg-white/15" />
+                        <div className="mx-auto h-3 w-36 rounded bg-white/10" />
+                    </div>
+                    <p className="text-gray-300 text-sm font-medium mt-4 mb-2">{loadMessage}</p>
                     <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                         <div
                             className="h-full bg-amber-400 transition-all duration-300"
@@ -1439,8 +1513,10 @@ function App() {
                     autoVersionNotes={autoVersionNotes}
                     appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
                     darkMode={darkMode}
+                    locale={locale}
                     touchLayout={isTouchLayout}
                     onToggleDarkMode={() => setDarkMode(!darkMode)}
+                    onToggleLocale={() => setLocale(prev => (prev === 'th' ? 'en' : 'th'))}
                     onLogout={handleLogout}
                     onSwitchToDesktop={() => changeClientSurface('desktop')}
                     onOpenAccount={() => setAccountModalOpen(true)}
@@ -1698,6 +1774,13 @@ function App() {
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">
                         {/* Dark Mode Toggle */}
+                        <button
+                            onClick={() => setLocale(prev => (prev === 'th' ? 'en' : 'th'))}
+                            className={`p-2 rounded-xl transition-all ${darkMode ? 'bg-gray-800 text-indigo-300 hover:bg-gray-700 border border-gray-700' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                            title={t(locale, 'toggleLanguage')}
+                        >
+                            {t(locale, 'languageShort')}
+                        </button>
                         <button
                             onClick={() => setDarkMode(!darkMode)}
                             className={`p-2 rounded-xl transition-all ${darkMode ? 'bg-gray-800 text-amber-400 hover:bg-gray-700 border border-gray-700' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}

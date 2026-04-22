@@ -22,6 +22,7 @@ import {
     AdminUiTheme,
     AdminLog,
 } from '../../types';
+import type { AppLocale } from '../../utils/i18n';
 import type { OfflineSyncSnapshot } from '../../services/offlineSync';
 import type { OfflineQueueItem } from '../../services/offlineSync';
 import DailyStepRecorder from '../Dashboard/DailyStepRecorder';
@@ -44,9 +45,11 @@ interface MobileFieldAppProps {
     autoVersionNotes: string[];
     appIcon: string;
     darkMode: boolean;
+    locale: AppLocale;
     financialMaskEnabled?: boolean;
     touchLayout?: boolean;
     onToggleDarkMode: () => void;
+    onToggleLocale: () => void;
     onLogout: () => void;
     onSwitchToDesktop: () => void;
     onOpenAccount: () => void;
@@ -110,9 +113,11 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         autoVersionNotes,
         appIcon,
         darkMode,
+        locale,
         touchLayout = false,
         financialMaskEnabled = false,
         onToggleDarkMode,
+        onToggleLocale,
         onLogout,
         onSwitchToDesktop,
         onOpenAccount,
@@ -146,7 +151,15 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     const [recordsTodayOnly, setRecordsTodayOnly] = useState(false);
     const [recordSort, setRecordSort] = useState<'dateDesc' | 'amountDesc' | 'amountAsc'>('dateDesc');
     const [densityMode, setDensityMode] = useState<'comfortable' | 'compact'>('comfortable');
-    const lazyFallback = <div className={`rounded-3xl p-5 text-center text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>กำลังโหลด...</div>;
+    const tr = useCallback((th: string, en: string) => (locale === 'en' ? en : th), [locale]);
+    const lazyFallback = (
+        <div className={`rounded-3xl p-4 ${darkMode ? 'bg-slate-900/80' : 'bg-white'} animate-pulse`}>
+            <div className={`h-4 w-24 rounded ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`} />
+            <div className={`mt-3 h-3 w-full rounded ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`} />
+            <div className={`mt-2 h-3 w-4/5 rounded ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`} />
+            <div className={`mt-2 h-3 w-2/3 rounded ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`} />
+        </div>
+    );
 
     const filteredTransactionsForRecords = useMemo(() => {
         let list = transactions;
@@ -199,18 +212,18 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
 
     const title =
         tab === 'home'
-            ? 'บันทึกประจำวัน'
+            ? tr('บันทึกประจำวัน', 'Daily Entry')
             : tab === 'labor'
-              ? 'ค่าแรง / ลา'
+              ? tr('ค่าแรง / ลา', 'Labor / Leave')
               : tab === 'records'
-                ? 'รายการบันทึก'
+                ? tr('รายการบันทึก', 'Records')
                 : morePanel === 'settings'
-                  ? 'ตั้งค่า'
+                  ? tr('ตั้งค่า', 'Settings')
                   : morePanel === 'admin'
-                    ? 'จัดการแอดมิน'
+                    ? tr('จัดการแอดมิน', 'Admin Management')
                     : morePanel === 'sync'
-                        ? 'ศูนย์ซิงก์'
-                    : 'เมนู';
+                        ? tr('ศูนย์ซิงก์', 'Sync Center')
+                    : tr('เมนู', 'Menu');
 
     const showBack = (tab === 'more' && morePanel !== 'root') || tab === 'labor' || tab === 'records';
 
@@ -281,6 +294,16 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             {settings.appName} · {offlineSync.lastMessage}
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        onClick={onToggleLocale}
+                        className={`flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center rounded-2xl px-2 text-xs font-bold touch-manipulation active:scale-95 md:h-12 ${
+                            darkMode ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-slate-700'
+                        }`}
+                        aria-label={tr('สลับภาษา', 'Switch language')}
+                    >
+                        {locale === 'en' ? 'EN' : 'TH'}
+                    </button>
                     <button
                         type="button"
                         onClick={onToggleDarkMode}
@@ -374,9 +397,9 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                     onChange={(e) => setRecordSort(e.target.value as 'dateDesc' | 'amountDesc' | 'amountAsc')}
                                     className={`min-h-[44px] rounded-xl border px-3 text-sm ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}
                                 >
-                                    <option value="dateDesc">เรียงล่าสุด</option>
-                                    <option value="amountDesc">จำนวนเงินมากสุด</option>
-                                    <option value="amountAsc">จำนวนเงินน้อยสุด</option>
+                                    <option value="dateDesc">{tr('เรียงล่าสุด', 'Latest first')}</option>
+                                    <option value="amountDesc">{tr('จำนวนเงินมากสุด', 'Highest amount')}</option>
+                                    <option value="amountAsc">{tr('จำนวนเงินน้อยสุด', 'Lowest amount')}</option>
                                 </select>
                             </div>
                             <button
@@ -388,7 +411,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                         : darkMode ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-slate-200 bg-white text-slate-600'
                                 }`}
                             >
-                                {recordsTodayOnly ? 'กำลังกรอง: วันนี้เท่านั้น' : 'แสดงเฉพาะวันนี้'}
+                                {recordsTodayOnly ? tr('กำลังกรอง: วันนี้เท่านั้น', 'Filter: today only') : tr('แสดงเฉพาะวันนี้', 'Show only today')}
                             </button>
                             <div className="space-y-2">
                                 <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>ประเภท</p>

@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import DailyStepRecorder from './DailyStepRecorder';
 import { AppSettings } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
@@ -14,6 +14,9 @@ const baseSettings: AppSettings = {
     maintenanceTypes: [],
     locations: ['หน้างาน'],
     landGroups: [],
+    appDefaults: {
+        vehicleDefaultMachineWage: 4500,
+    },
 };
 
 const basePayload: WizardDraftPayload = {
@@ -89,6 +92,8 @@ describe('DailyStepRecorder integration', () => {
         );
 
         expect(screen.getByText(/พบแบบร่างที่ยังไม่เสร็จ/)).toBeInTheDocument();
+        expect(screen.queryByText(/มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง/)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /ดูรายละเอียด/ }));
         expect(screen.getByText(/มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง/)).toBeInTheDocument();
     });
 
@@ -122,5 +127,19 @@ describe('DailyStepRecorder integration', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('uses org default vehicle machine wage from settings', () => {
+        render(
+            <DailyStepRecorder
+                employees={[{ id: 'd1', name: 'Driver', nickname: 'DRV', type: 'Daily', baseWage: 500, positions: ['คนขับรถ'] } as any]}
+                settings={{ ...baseSettings, appDefaults: { ...(baseSettings.appDefaults || {}), vehicleDefaultMachineWage: 4700 } }}
+                transactions={[]}
+                initialDate="2026-04-24"
+                initialStep={2}
+                onSaveTransaction={() => {}}
+            />
+        );
+        expect(screen.getByDisplayValue('4700')).toBeInTheDocument();
     });
 });

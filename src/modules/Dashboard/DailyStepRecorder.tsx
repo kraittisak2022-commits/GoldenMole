@@ -6,7 +6,7 @@ import Input from '../../components/ui/Input';
 import DatePicker from '../../components/ui/DatePicker';
 import NumberPickerInput from '../../components/ui/NumberPickerInput';
 import Select from '../../components/ui/Select';
-import { getToday, formatDateBE, normalizeDate } from '../../utils';
+import { getToday, formatDateBE, normalizeDate, formatDisplayNumber } from '../../utils';
 import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
@@ -271,68 +271,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             .map(t => t.workDetails || t.description);
         return buildSmartSuggestions(fromHistory, 10);
     }, [transactions]);
-    const fuelDetailSuggestions = useMemo(() => {
-        const fromHistory = transactions
-            .filter(t => t.category === 'Fuel')
-            .map(t => t.workDetails || t.description);
-        return buildSmartSuggestions(fromHistory, 10);
-    }, [transactions]);
-    const fuelPurchaseAmountTemplates = useMemo(() => {
-        const hist = transactions
-            .filter(
-                t =>
-                    t.category === 'Fuel' &&
-                    (t.fuelMovement || 'stock_in') === 'stock_in' &&
-                    !t.vehicleId &&
-                    t.amount != null &&
-                    Number(t.amount) > 0
-            )
-            .map(t => String(Math.round(Number(t.amount))));
-        return buildSmartSuggestions(hist, 14);
-    }, [transactions]);
-    const fuelPurchaseLitersTemplates = useMemo(() => {
-        const hist = transactions
-            .filter(
-                t =>
-                    t.category === 'Fuel' &&
-                    (t.fuelMovement || 'stock_in') === 'stock_in' &&
-                    !t.vehicleId &&
-                    t.quantity != null &&
-                    Number(t.quantity) > 0
-            )
-            .map(t => String(Math.round(Number(t.quantity))));
-        return buildSmartSuggestions(hist, 12);
-    }, [transactions]);
-    const fuelVehicleLitersTemplates = useMemo(() => {
-        const hist = transactions
-            .filter(
-                t =>
-                    t.category === 'Fuel' &&
-                    ((t as any).fuelMovement === 'stock_out' || !!t.vehicleId) &&
-                    t.quantity != null &&
-                    Number(t.quantity) > 0
-            )
-            .map(t => String(Math.round(Number(t.quantity))));
-        return buildSmartSuggestions(hist, 12);
-    }, [transactions]);
-    const fuelDetailsQuickChips = useMemo(() => {
-        const presets = ['ซื้อที่ปั๊มหน้าแคมป์', 'ขายทราย', 'ขายหิน', 'ขายแร่', 'เพิ่ม'];
-        const seen = new Set<string>();
-        const out: string[] = [];
-        for (const p of presets) {
-            const s = p.trim();
-            if (!s || seen.has(s)) continue;
-            seen.add(s);
-            out.push(s);
-        }
-        for (const s of fuelDetailSuggestions) {
-            if (seen.has(s)) continue;
-            seen.add(s);
-            out.push(s);
-            if (out.length >= 18) break;
-        }
-        return out;
-    }, [fuelDetailSuggestions]);
     const eventDescSuggestions = useMemo(() => {
         const fromHistory = transactions
             .filter(t => t.category === 'DailyLog' && t.subCategory === 'Event')
@@ -522,23 +460,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
     const driverEmployees = useMemo(() => employees.filter(e => getEmpPositions(e).includes('คนขับรถ')), [employees]);
 
-    const vehicleMachineWageTemplates = useMemo(() => {
-        const hist = transactions
-            .filter(t => t.category === 'Vehicle' && (t as any).vehicleWage != null && Number((t as any).vehicleWage) > 0)
-            .map(t => String(Math.round(Number((t as any).vehicleWage))));
-        return mergePresetsWithDedupedHistory(['3000', '4500'], hist, 14);
-    }, [transactions]);
-    const vehicleDriverWageTemplates = useMemo(() => {
-        const hist = transactions
-            .filter(t => t.category === 'Vehicle' && (t as any).driverWage != null && Number((t as any).driverWage) > 0)
-            .map(t => String(Math.round(Number((t as any).driverWage))));
-        return mergePresetsWithDedupedHistory(['200', '600', '800'], hist, 14);
-    }, [transactions]);
+    const defaultVehicleMachineWage = useMemo(
+        () => String(settings.appDefaults?.vehicleDefaultMachineWage ?? 4500),
+        [settings.appDefaults?.vehicleDefaultMachineWage]
+    );
+    const vehicleMachineWageTemplates = [defaultVehicleMachineWage];
     // Labor State
     const [laborSearch, setLaborSearch] = useState('');
     const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
     const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
-    const [poolVisibleEmployeeCount, setPoolVisibleEmployeeCount] = useState(60);
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
     /** รายคน: เฉพาะคนที่มาครึ่งวัน (ไม่มีในนี้ = เต็มวันปกติ) */
@@ -560,8 +490,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         [filteredLaborEmployees, otVisibleEmployeeCount]
     );
     const poolVisibleEmployees = useMemo(
-        () => filteredLaborEmployees.slice(0, poolVisibleEmployeeCount),
-        [filteredLaborEmployees, poolVisibleEmployeeCount]
+        () => filteredLaborEmployees,
+        [filteredLaborEmployees]
     );
     const latestLaborDrumsWashedAtHome = useMemo(() => {
         if (!latestLaborAttendance) return 0;
@@ -572,7 +502,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [vehCar, setVehCar] = useState('');
     const [vehDriver, setVehDriver] = useState('');
     const [vehWage, setVehWage] = useState('');
-    const [vehMachineWage, setVehMachineWage] = useState('');
+    const [vehMachineWage, setVehMachineWage] = useState(defaultVehicleMachineWage);
     const [vehDetails, setVehDetails] = useState('');
     const [vehWorkType, setVehWorkType] = useState<WorkType>('FullDay');
     const [vehLocation] = useState(settings.locations[0] || '');
@@ -605,7 +535,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         setEditingVehicleTxId(t.id);
         setVehCar(t.vehicleId || '');
         setVehDriver(t.driverId || '');
-        setVehMachineWage(t.vehicleWage != null ? String(t.vehicleWage) : '');
+        setVehMachineWage(t.vehicleWage != null ? String(t.vehicleWage) : defaultVehicleMachineWage);
         setVehWage(t.driverWage != null ? String(t.driverWage) : '');
         setVehDetails(t.workDetails || '');
         setVehWorkType(x.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
@@ -741,6 +671,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [autosaveSavedAt, setAutosaveSavedAt] = useState<number | null>(null);
     const [autosaveErrorReason, setAutosaveErrorReason] = useState<DraftSaveError>('none');
+    const [draftOfferExpanded, setDraftOfferExpanded] = useState(false);
+    const [rightSummaryCompact, setRightSummaryCompact] = useState(false);
     const [draftMergeSections, setDraftMergeSections] = useState<Record<DraftMergeSection, boolean>>({
         labor: true,
         vehicle: true,
@@ -750,6 +682,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         income: true,
         event: true,
     });
+    useEffect(() => {
+        setDraftOfferExpanded(false);
+    }, [draftOffer?.savedAt]);
+    useEffect(() => {
+        if (!vehMachineWage) setVehMachineWage(defaultVehicleMachineWage);
+    }, [defaultVehicleMachineWage, vehMachineWage]);
 
     const applyWizardDraft = useCallback((p: WizardDraftPayload, sections: DraftMergeSection[] = ALL_DRAFT_MERGE_SECTIONS) => {
         const pick = (section: DraftMergeSection) => sections.includes(section);
@@ -771,7 +709,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setVehCar(p.vehCar);
             setVehDriver(p.vehDriver);
             setVehWage(p.vehWage);
-            setVehMachineWage(p.vehMachineWage);
+            setVehMachineWage(p.vehMachineWage || defaultVehicleMachineWage);
             setVehDetails(p.vehDetails);
             setVehWorkType(p.vehWorkType);
             setEditingVehicleTxId(p.editingVehicleTxId);
@@ -1182,14 +1120,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 const latestVeh = vehTx[vehTx.length - 1] as any;
                 setVehCar(latestVeh.vehicleId || '');
                 setVehDriver(latestVeh.driverId || '');
-                setVehMachineWage(latestVeh.vehicleWage != null ? String(latestVeh.vehicleWage) : '');
+                setVehMachineWage(latestVeh.vehicleWage != null ? String(latestVeh.vehicleWage) : defaultVehicleMachineWage);
                 setVehWage(latestVeh.driverWage != null ? String(latestVeh.driverWage) : '');
                 setVehDetails(latestVeh.workDetails || '');
                 setVehWorkType(latestVeh.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
             } else {
                 setVehCar('');
                 setVehDriver('');
-                setVehMachineWage('');
+                setVehMachineWage(defaultVehicleMachineWage);
                 setVehWage('');
                 setVehDetails('');
                 setVehWorkType('FullDay');
@@ -1285,7 +1223,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     }, [touchUI]);
     useEffect(() => {
         setOtVisibleEmployeeCount(48);
-        setPoolVisibleEmployeeCount(60);
     }, [debouncedLaborSearch, step, laborStatus]);
 
     const isWizardTx = (t: Transaction) =>
@@ -1552,44 +1489,44 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                     )}
                                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-7">
-                                        <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-4 border border-emerald-100 dark:border-emerald-500/30">
-                                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-semibold text-sm mb-1"><Users size={16} /> ค่าแรง</div>
-                                            <p className="text-lg font-bold text-emerald-800 dark:text-emerald-100">฿{laborSum.toLocaleString()}</p>
-                                            <p className="text-xs text-emerald-600 dark:text-emerald-200 mt-0.5">{workerCount} คน • {labor.length} รายการ</p>
+                                        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3.5 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"><Users size={14} /> ค่าแรง</div>
+                                            <p className="text-base font-semibold text-emerald-800 dark:text-emerald-100">฿{formatDisplayNumber(laborSum)}</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-emerald-600 dark:text-emerald-200">{workerCount} คน • {labor.length} รายการ</p>
                                         </div>
-                                        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-xl p-4 border border-amber-100 dark:border-amber-500/30">
-                                            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-semibold text-sm mb-1"><Truck size={16} /> ใช้รถ</div>
-                                            <p className="text-lg font-bold text-amber-800 dark:text-amber-100">฿{vehicleSum.toLocaleString()}</p>
-                                            <p className="text-xs text-amber-600 dark:text-amber-200 mt-0.5">{vehicle.length} รายการ</p>
+                                        <div className="rounded-xl border border-amber-100 bg-amber-50 p-3.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"><Truck size={14} /> ใช้รถ</div>
+                                            <p className="text-base font-semibold text-amber-800 dark:text-amber-100">฿{formatDisplayNumber(vehicleSum)}</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-200">{vehicle.length} รายการ</p>
                                         </div>
-                                        <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-4 border border-blue-100 dark:border-blue-500/30">
-                                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-semibold text-sm mb-1"><Truck size={16} /> เที่ยวรถ</div>
-                                            <p className="text-lg font-bold text-blue-800 dark:text-blue-100">{tripsTotal} เที่ยว</p>
-                                            <p className="text-xs text-blue-600 dark:text-blue-200 mt-0.5">{tripsCubic} คิว • {trips.length} รายการ</p>
+                                        <div className="rounded-xl border border-blue-100 bg-blue-50 p-3.5 dark:border-blue-500/30 dark:bg-blue-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300"><Truck size={14} /> เที่ยวรถ</div>
+                                            <p className="text-base font-semibold text-blue-800 dark:text-blue-100">{tripsTotal} เที่ยว</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-blue-600 dark:text-blue-200">{tripsCubic} คิว • {trips.length} รายการ</p>
                                         </div>
-                                        <div className="bg-cyan-50 dark:bg-cyan-500/10 rounded-xl p-4 border border-cyan-100 dark:border-cyan-500/30">
-                                            <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300 font-semibold text-sm mb-1"><Droplets size={16} /> ล้างทราย</div>
-                                            <p className="text-lg font-bold text-cyan-800 dark:text-cyan-100">{sandCubic} คิว</p>
-                                            <p className="text-xs text-cyan-600 dark:text-cyan-200 mt-0.5">
+                                        <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3.5 dark:border-cyan-500/30 dark:bg-cyan-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-cyan-700 dark:text-cyan-300"><Droplets size={14} /> ล้างทราย</div>
+                                            <p className="text-base font-semibold text-cyan-800 dark:text-cyan-100">{sandCubic} คิว</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-cyan-600 dark:text-cyan-200">
                                                 {sandDrums > 0 && <>🪣 {sandDrums} ถังสุทธิ{homeDrums > 0 ? ` (หักบ้าน ${homeDrums})` : ''} • </>}
                                                 {sand.length} รายการ
                                             </p>
                                         </div>
-                                        <div className="bg-red-50 dark:bg-red-500/10 rounded-xl p-4 border border-red-100 dark:border-red-500/30">
-                                            <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-semibold text-sm mb-1"><Fuel size={16} /> น้ำมัน</div>
-                                            <p className="text-lg font-bold text-red-800 dark:text-red-100">฿{fuelSum.toLocaleString()}</p>
-                                            <p className="text-xs text-red-600 dark:text-red-200 mt-0.5">{fuel.length} รายการ</p>
+                                        <div className="rounded-xl border border-red-100 bg-red-50 p-3.5 dark:border-red-500/30 dark:bg-red-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-300"><Fuel size={14} /> น้ำมัน</div>
+                                            <p className="text-base font-semibold text-red-800 dark:text-red-100">฿{formatDisplayNumber(fuelSum)}</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-red-600 dark:text-red-200">{fuel.length} รายการ</p>
                                         </div>
-                                        <div className="bg-lime-50 dark:bg-lime-500/10 rounded-xl p-4 border border-lime-100 dark:border-lime-500/30">
-                                            <div className="flex items-center gap-2 text-lime-700 dark:text-lime-300 font-semibold text-sm mb-1"><Wallet size={16} /> รายรับ</div>
-                                            <p className="text-lg font-bold text-lime-800 dark:text-lime-100">฿{incomeSum.toLocaleString()}</p>
-                                            <p className="text-xs text-lime-600 dark:text-lime-200 mt-0.5">{income.length} รายการ</p>
+                                        <div className="rounded-xl border border-lime-100 bg-lime-50 p-3.5 dark:border-lime-500/30 dark:bg-lime-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-lime-700 dark:text-lime-300"><Wallet size={14} /> รายรับ</div>
+                                            <p className="text-base font-semibold text-lime-800 dark:text-lime-100">฿{formatDisplayNumber(incomeSum)}</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-lime-600 dark:text-lime-200">{income.length} รายการ</p>
                                         </div>
-                                        <div className="bg-orange-50 dark:bg-orange-500/10 rounded-xl p-4 border border-orange-100 dark:border-orange-500/30">
-                                            <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 font-semibold text-sm mb-1"><AlertTriangle size={16} /> เหตุการณ์</div>
-                                            <p className="text-lg font-bold text-orange-800 dark:text-orange-100">{events.length} รายการ</p>
+                                        <div className="rounded-xl border border-orange-100 bg-orange-50 p-3.5 dark:border-orange-500/30 dark:bg-orange-500/10">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-orange-700 dark:text-orange-300"><AlertTriangle size={14} /> เหตุการณ์</div>
+                                            <p className="text-base font-semibold text-orange-800 dark:text-orange-100">{events.length} รายการ</p>
                                             {events.length > 0 && (
-                                                <ul className="text-xs text-orange-600 mt-1 space-y-0.5 truncate max-h-12 overflow-hidden">
+                                                <ul className="mt-1 max-h-12 space-y-0.5 overflow-hidden truncate text-[11px] font-normal text-orange-600">
                                                     {events.slice(0, 2).map(t => <li key={t.id}>• {t.description}</li>)}
                                                     {events.length > 2 && <li>+ อีก {events.length - 2}</li>}
                                                 </ul>
@@ -1695,41 +1632,57 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     mobileShell ? '' : 'mx-0'
                                 }`}
                             >
-                                <p className="font-bold">พบแบบร่างที่ยังไม่เสร็จ (ขั้น {STEPS[draftOffer.payload.step]?.shortLabel || draftOffer.payload.step})</p>
-                                <p className="mt-1 text-xs opacity-90">
-                                    บันทึกล่าสุด {new Date(draftOffer.savedAt).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-                                </p>
-                                {draftOffer.hasConflict && (
-                                    <p className="mt-1.5 text-xs font-semibold">
-                                        มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง (เดิม {draftOffer.conflictDraftTxCount} รายการ, ปัจจุบัน {draftOffer.conflictCurrentTxCount} รายการ) อาจเกิดการชนกันของข้อมูล
-                                    </p>
-                                )}
-                                {draftOffer.hasConflict && (
-                                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
-                                        {[
-                                            ['labor', 'ค่าแรง'],
-                                            ['vehicle', 'ใช้รถ'],
-                                            ['trip', 'เที่ยวรถ'],
-                                            ['sand', 'ล้างทราย'],
-                                            ['fuel', 'น้ำมัน'],
-                                            ['income', 'รายรับ'],
-                                            ['event', 'เหตุการณ์'],
-                                        ].map(([key, label]) => {
-                                            const sectionKey = key as DraftMergeSection;
-                                            return (
-                                                <label key={key} className="flex items-center gap-1 rounded border border-rose-200/60 bg-white/60 px-2 py-1 dark:border-rose-500/25 dark:bg-rose-500/5">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={draftMergeSections[sectionKey]}
-                                                        onChange={(e) =>
-                                                            setDraftMergeSections(prev => ({ ...prev, [sectionKey]: e.target.checked }))
-                                                        }
-                                                    />
-                                                    <span>{label}</span>
-                                                </label>
-                                            );
-                                        })}
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-bold">พบแบบร่างที่ยังไม่เสร็จ (ขั้น {STEPS[draftOffer.payload.step]?.shortLabel || draftOffer.payload.step})</p>
+                                        <p className="mt-1 text-xs opacity-90">
+                                            บันทึกล่าสุด {new Date(draftOffer.savedAt).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                                        </p>
+                                        {draftOffer.hasConflict && (
+                                            <p className="mt-1 text-xs font-medium opacity-90">
+                                                พบความต่างข้อมูลระหว่างแบบร่างกับข้อมูลล่าสุด
+                                            </p>
+                                        )}
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDraftOfferExpanded(prev => !prev)}
+                                        className="shrink-0 rounded-lg border border-rose-200/70 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-white dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-100"
+                                    >
+                                        {draftOfferExpanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                                    </button>
+                                </div>
+                                {draftOfferExpanded && draftOffer.hasConflict && (
+                                    <>
+                                        <p className="mt-1.5 text-xs font-semibold">
+                                            มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง (เดิม {draftOffer.conflictDraftTxCount} รายการ, ปัจจุบัน {draftOffer.conflictCurrentTxCount} รายการ) อาจเกิดการชนกันของข้อมูล
+                                        </p>
+                                        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
+                                            {[
+                                                ['labor', 'ค่าแรง'],
+                                                ['vehicle', 'ใช้รถ'],
+                                                ['trip', 'เที่ยวรถ'],
+                                                ['sand', 'ล้างทราย'],
+                                                ['fuel', 'น้ำมัน'],
+                                                ['income', 'รายรับ'],
+                                                ['event', 'เหตุการณ์'],
+                                            ].map(([key, label]) => {
+                                                const sectionKey = key as DraftMergeSection;
+                                                return (
+                                                    <label key={key} className="flex items-center gap-1 rounded border border-rose-200/60 bg-white/60 px-2 py-1 dark:border-rose-500/25 dark:bg-rose-500/5">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={draftMergeSections[sectionKey]}
+                                                            onChange={(e) =>
+                                                                setDraftMergeSections(prev => ({ ...prev, [sectionKey]: e.target.checked }))
+                                                            }
+                                                        />
+                                                        <span>{label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
                                 )}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <Button
@@ -2090,23 +2043,28 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </div>
                                                     );
                                                 })}
+                                                {poolVisibleEmployees.length === 0 && (
+                                                    <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white/70 p-3 text-center text-xs text-slate-500">
+                                                        ยังไม่มีพนักงานที่ตรงคำค้นหา
+                                                        {laborSearch.trim() && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setLaborSearch('')}
+                                                                className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                                            >
+                                                                ล้างคำค้น
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
-                                            {filteredLaborEmployees.length > poolVisibleEmployees.length && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPoolVisibleEmployeeCount(prev => prev + 40)}
-                                                    className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                                                >
-                                                    แสดงรายการเพิ่ม ({poolVisibleEmployees.length}/{filteredLaborEmployees.length})
-                                                </button>
-                                            )}
                                             {selectedEmps.length > 0 && <p className="text-xs text-indigo-600 mt-1.5 font-medium">เลือก {selectedEmps.length} คน — กดปุ่ม "ย้าย" ในกล่องงานด้านล่าง</p>}
                                         </div>
 
                                         {/* Work Category Canvas Boxes */}
                                         <div className="flex-1 overflow-y-auto mb-3">
                                             <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
-                                            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
+                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
                                                 {[...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, ...getCustomCategoryStyle(c.id) }))].map(cat => {
                                                     const assigned = workAssignments[cat.id] || [];
                                                     const isCustomCategory = !DEFAULT_WORK_CATEGORY_IDS.has(cat.id);
@@ -2134,17 +2092,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 });
                                                                 setDragEmployee(null);
                                                             }}
-                                                            className={`rounded-xl border-2 border-dashed transition-all p-3 ${touchUI ? 'min-h-[104px]' : 'min-h-[80px]'} ${cat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
+                                                            className={`rounded-xl border-2 border-dashed transition-all p-2.5 ${touchUI ? 'min-h-[96px]' : 'min-h-[76px]'} ${cat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
                                                         >
-                                                            <div className="mb-1.5 flex items-start justify-between gap-2">
+                                                            <div className="mb-1.5">
                                                                 <span
-                                                                    className={`min-w-0 max-w-[75%] rounded-lg px-2 py-1 text-[10px] font-semibold leading-tight text-white sm:text-xs ${cat.color}`}
+                                                                    className={`block w-full rounded-lg px-2 py-1 text-[11px] font-medium leading-snug text-white sm:text-xs ${cat.color}`}
                                                                     title={cat.label}
                                                                 >
-                                                                    <span className="line-clamp-2 break-words">{cat.label}</span>
+                                                                    <span className="block break-words">{cat.label}</span>
                                                                 </span>
-                                                                <div className="flex shrink-0 items-center gap-2">
-                                                                    <span className="text-xs font-bold text-slate-400">{assigned.length} คน</span>
+                                                                <div className="mt-1.5 flex items-center justify-end gap-2">
+                                                                    <span className="text-[11px] font-medium text-slate-400">{assigned.length} คน</span>
                                                                     {isCustomCategory && (
                                                                         <button
                                                                             type="button"
@@ -2156,7 +2114,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                     return next;
                                                                                 });
                                                                             }}
-                                                                            className="text-[11px] px-2 py-0.5 rounded-md border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                                                            className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-100"
                                                                             title="ลบกล่องประเภทงานนี้เฉพาะวันนี้"
                                                                         >
                                                                             ลบ
@@ -2164,7 +2122,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            <div className="flex flex-wrap gap-1.5">
+                                                            <div className="flex flex-wrap gap-1">
                                                                 {assigned.map(eid => {
                                                                     const emp = employees.find(e => e.id === eid);
                                                                     const isHalf = halfDayEmpIds.has(eid);
@@ -2175,7 +2133,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                             <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: prev[cat.id].filter(id => id !== eid) }))} className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}>×</button>
                                                                         </span>) : null;
                                                                 })}
-                                                                {assigned.length === 0 && <span className="text-xs text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
+                                                                {assigned.length === 0 && <span className="text-[11px] text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
                                                             </div>
                                                             {selectedEmps.length > 0 && (
                                                                 <button onClick={async () => {
@@ -2394,7 +2352,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 setEditingVehicleTxId(null);
                                                                 setVehCar('');
                                                                 setVehDriver('');
-                                                                setVehMachineWage('');
+                                                                setVehMachineWage(defaultVehicleMachineWage);
                                                                 setVehWage('');
                                                                 setVehDetails('');
                                                                 setVehWorkType('FullDay');
@@ -2426,7 +2384,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     setEditingVehicleTxId(null);
                                                     setVehCar('');
                                                     setVehDriver('');
-                                                    setVehMachineWage('');
+                                                    setVehMachineWage(defaultVehicleMachineWage);
                                                     setVehWage('');
                                                     setVehDetails('');
                                                     setVehWorkType('FullDay');
@@ -2494,20 +2452,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                         <div className="space-y-2">
                                             <Input label="เบี้ยเลี้ยงคนขับ (ใช้ค่าแรงในวันนั้น)" type="number" value={vehWage} onChange={(e: any) => setVehWage(e.target.value)} />
-                                            <div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {vehicleDriverWageTemplates.map(v => (
-                                                        <button
-                                                            key={`vdw-${v}`}
-                                                            type="button"
-                                                            onClick={() => setVehWage(v)}
-                                                            className="touch-manipulation rounded-lg border border-emerald-200/90 bg-emerald-50/90 px-3 py-2 text-sm font-bold text-emerald-900 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
-                                                        >
-                                                            {Number(v).toLocaleString()}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            <div />
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-1">
@@ -2554,7 +2499,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             workDetails: vehDetails, location: vehLocation, workType: vehWorkType
                                         } as Transaction);
                                         setEditingVehicleTxId(null);
-                                        setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(''); setVehWorkType('FullDay');
+                                        setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(defaultVehicleMachineWage); setVehWorkType('FullDay');
                                     }} className="w-full bg-amber-500 hover:bg-amber-600 focus-ring-strong" data-hotkey-primary="true">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
                                 </div>
                                 <div className={stepActionWrapClass}>
@@ -3228,22 +3173,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 min={0}
                                                 className="w-full min-w-0 px-4 py-3 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
                                             />
-                                            <div>
-                                                {fuelPurchaseLitersTemplates.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {fuelPurchaseLitersTemplates.map(v => (
-                                                            <button
-                                                                key={`fpl-${v}`}
-                                                                type="button"
-                                                                onClick={() => setFuelLiters(v)}
-                                                                className="touch-manipulation rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
-                                                            >
-                                                                {Number(v).toLocaleString()} ลิตร
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <div />
                                         </div>
                                         <div className="min-w-0">
                                             <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">หน่วย</label>
@@ -3260,22 +3190,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">ราคาซื้อน้ำมัน (บาท)</label>
                                         <input type="number" placeholder="" value={fuelAmount} onChange={e => setFuelAmount(e.target.value)}
                                             className="w-full px-4 py-4 border border-slate-300 dark:border-white/15 rounded-xl text-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
-                                        <div>
-                                            {fuelPurchaseAmountTemplates.length > 0 && (
-                                                <div className="flex flex-wrap gap-2">
-                                                    {fuelPurchaseAmountTemplates.map(v => (
-                                                        <button
-                                                            key={`fpa-${v}`}
-                                                            type="button"
-                                                            onClick={() => setFuelAmount(v)}
-                                                            className="touch-manipulation rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 shadow-sm transition hover:bg-rose-100 dark:border-rose-500/35 dark:bg-rose-500/15 dark:text-rose-100 dark:hover:bg-rose-500/25"
-                                                        >
-                                                            ฿{Number(v).toLocaleString()}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <div />
                                     </div>
 
                                     {/* Details (optional) */}
@@ -3283,22 +3198,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">รายละเอียดเพิ่มเติม <span className="text-slate-400 dark:text-slate-500 font-normal">(ไม่บังคับ)</span></label>
                                         <input type="text" placeholder="เช่น ซื้อที่ปั๊มหน้าแคมป์" value={fuelDetails} onChange={e => setFuelDetails(e.target.value)}
                                             className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
-                                        {fuelDetailsQuickChips.length > 0 && (
-                                            <div className="mt-2">
-                                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                    {fuelDetailsQuickChips.map(t => (
-                                                        <button
-                                                            key={`fdc-${t}`}
-                                                            type="button"
-                                                            onClick={() => setFuelDetails(t)}
-                                                            className="inline-flex touch-manipulation items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
-                                                        >
-                                                            {t}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Save button */}
@@ -3373,22 +3272,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             min={0}
                                             className="w-full min-w-0 px-4 py-3 border border-slate-300 bg-white text-base text-slate-800 transition-colors focus:border-slate-500 focus:outline-none dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:border-slate-400"
                                         />
-                                        <div>
-                                            {fuelVehicleLitersTemplates.length > 0 && (
-                                                <div className="flex flex-wrap gap-2">
-                                                    {fuelVehicleLitersTemplates.map(v => (
-                                                        <button
-                                                            key={`fvl-${v}`}
-                                                            type="button"
-                                                            onClick={() => setFuelVehicleLiters(v)}
-                                                            className="touch-manipulation rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/35 dark:bg-indigo-500/15 dark:text-indigo-100 dark:hover:bg-indigo-500/25"
-                                                        >
-                                                            {Number(v).toLocaleString()} ลิตร
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <div />
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">เวลาเติมน้ำมัน <span className="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
@@ -3913,14 +3797,23 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     {/* Right: Daily Dashboard — กว้างเต็มแถวจนถึง xl; จาก xl เป็นคอลัมน์ข้าง (~≥320px) */}
                     {/* สรุปด่วน: การ์ดแนวตั้ง อ่านง่าย; จอเล็ก 2×2 / แถบข้าง xl สแต็ก 1 คอลัมน์ */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                        <div className="mb-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">สรุปวันนี้</p>
-                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                                {new Date(date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </p>
+                        <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">สรุปวันนี้</p>
+                                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                    {new Date(date + 'T12:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setRightSummaryCompact(prev => !prev)}
+                                className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/[0.06] dark:text-slate-200"
+                            >
+                                {rightSummaryCompact ? 'ขยาย' : 'ย่อ'}
+                            </button>
                         </div>
                         <div className="rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white p-2.5 shadow-inner dark:border-white/10 dark:from-white/[0.04] dark:to-white/[0.02] [contain:layout]">
-                            <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
                                 {[
                                     {
                                         label: 'คนงาน',
@@ -3935,7 +3828,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     {
                                         label: 'ทรายล้าง',
                                         unit: 'คิว',
-                                        display: atAGlanceStats.sandCubic.toLocaleString(),
+                                        display: formatDisplayNumber(atAGlanceStats.sandCubic),
                                         Icon: Droplets,
                                         cell: 'bg-cyan-500/[0.08] dark:bg-cyan-500/10 border-cyan-200/70 dark:border-cyan-500/20',
                                         iconWrap: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300',
@@ -3955,7 +3848,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     {
                                         label: 'น้ำมัน',
                                         unit: 'บาท',
-                                        display: atAGlanceStats.fuelBaht.toLocaleString(),
+                                        display: formatDisplayNumber(atAGlanceStats.fuelBaht),
                                         Icon: Fuel,
                                         cell: 'bg-rose-500/[0.08] dark:bg-rose-500/10 border-rose-200/70 dark:border-rose-500/20',
                                         iconWrap: 'bg-rose-500/20 text-rose-700 dark:text-rose-300',
@@ -3968,24 +3861,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     return (
                                         <div
                                             key={item.label}
-                                            className={`flex min-w-0 items-center gap-2 rounded-lg border px-2 py-2 sm:px-2.5 sm:py-2.5 ${item.cell}`}
+                                            className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 sm:gap-2 sm:px-2.5 sm:py-2 ${item.cell}`}
                                         >
-                                            <div
-                                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${item.iconWrap}`}
-                                                aria-hidden
-                                            >
-                                                <GlanceIcon className="h-[15px] w-[15px]" strokeWidth={2.25} />
-                                            </div>
+                                            {!rightSummaryCompact && (
+                                                <div
+                                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.iconWrap}`}
+                                                    aria-hidden
+                                                >
+                                                    <GlanceIcon className="h-[14px] w-[14px]" strokeWidth={2.1} />
+                                                </div>
+                                            )}
                                             <div className="min-w-0 flex-1">
                                                 <p className={`truncate text-[10px] font-bold leading-tight ${item.labelClass}`} title={item.label}>
                                                     {item.label}
                                                 </p>
-                                                <p className={`mt-0.5 flex flex-wrap items-baseline gap-x-1 leading-none ${item.valueClass}`}>
-                                                    <span className="text-lg font-black tabular-nums tracking-tight sm:text-xl">
-                                                        {'prefix' in item && item.prefix ? <span className="font-black">{item.prefix}</span> : null}
+                                                <p className={`mt-0.5 leading-tight ${item.valueClass}`}>
+                                                    <span
+                                                        className="block max-w-full text-sm font-bold tabular-nums tracking-tight sm:text-base"
+                                                        title={`${'prefix' in item && item.prefix ? item.prefix : ''}${item.display} ${item.unit}`}
+                                                    >
+                                                        {'prefix' in item && item.prefix ? <span className="font-bold">{item.prefix}</span> : null}
                                                         {item.display}
                                                     </span>
-                                                    <span className={`text-[9px] font-semibold opacity-85 ${item.labelClass}`}>{item.unit}</span>
+                                                    {!rightSummaryCompact && <span className={`block text-[9px] font-medium opacity-80 ${item.labelClass}`}>{item.unit}</span>}
                                                 </p>
                                             </div>
                                         </div>

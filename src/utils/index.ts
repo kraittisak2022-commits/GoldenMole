@@ -78,6 +78,16 @@ export const FormatNumber = ({ value }: { value: number }) => {
     return value.toLocaleString();
 };
 
+/** มาตรฐานการแสดงผลตัวเลขเดียวกันทั้งระบบ */
+export const formatDisplayNumber = (value: number, maximumFractionDigits = 2) =>
+    new Intl.NumberFormat('th-TH', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits,
+    }).format(Number.isFinite(value) ? value : 0);
+
+export const formatDisplayCurrency = (value: number, prefix = '฿') =>
+    `${prefix}${formatDisplayNumber(value)}`;
+
 export const formatNumberShort = (value: number) => {
     let short = value.toLocaleString();
     if (value >= 1000000) short = (value / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';

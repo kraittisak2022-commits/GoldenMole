@@ -37,6 +37,8 @@ const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes',
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
+type TableDiagnostic = { table: string; read: StatusState; write: StatusState; note?: string };
+const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings', 'work_plans', 'admin_users', 'admin_logs'] as const;
 
 const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const [activeTab, setActiveTab] = useState('general');
@@ -93,7 +95,11 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
     });
     const [defaultsForm, setDefaultsForm] = useState({
         sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3),
+        vehicleDefaultMachineWage: String(settings.appDefaults?.vehicleDefaultMachineWage ?? 4500),
     });
+    const [tableDiagnostics, setTableDiagnostics] = useState<TableDiagnostic[]>(
+        DIAG_TABLES.map((table) => ({ table, read: 'unknown', write: 'unknown' }))
+    );
     const [newLaborCategory, setNewLaborCategory] = useState('');
     const [editingLaborCategoryId, setEditingLaborCategoryId] = useState<string | null>(null);
     const [editingLaborCategoryLabel, setEditingLaborCategoryLabel] = useState('');
@@ -139,7 +145,10 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
     }, [settings.fuelOpeningStockLiters]);
 
     useEffect(() => {
-        setDefaultsForm({ sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3) });
+        setDefaultsForm({
+            sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3),
+            vehicleDefaultMachineWage: String(settings.appDefaults?.vehicleDefaultMachineWage ?? 4500),
+        });
     }, [settings.appDefaults]);
 
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
@@ -217,11 +226,13 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
 
     const saveAppDefaults = () => {
         const v = Number(defaultsForm.sandCubicPerTrip);
+        const vehicleWage = Number(defaultsForm.vehicleDefaultMachineWage);
         setSettings({
             ...settings,
             appDefaults: {
                 ...settings.appDefaults,
                 sandCubicPerTrip: v > 0 ? v : 3,
+                vehicleDefaultMachineWage: vehicleWage > 0 ? vehicleWage : 4500,
             },
         });
         alert('บันทึกค่าเริ่มต้นระบบแล้ว');
@@ -375,6 +386,53 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
             database = online === 'offline' ? 'offline' : 'degraded';
             notes.push(`Database request failed: ${e?.message || 'unknown error'}`);
         }
+
+        const tableResults: TableDiagnostic[] = [];
+        for (const table of DIAG_TABLES) {
+            let read: StatusState = 'unknown';
+            let write: StatusState = 'unknown';
+            let note = '';
+            try {
+                const { error } = await withTimeout(supabase.from(table).select('id').limit(1), 7000);
+                read = error ? 'degraded' : 'online';
+                if (error) note = `read: ${error.message}`;
+            } catch (e: any) {
+                read = online === 'offline' ? 'offline' : 'degraded';
+                note = `read: ${e?.message || 'failed'}`;
+            }
+            // Safe write check: only admin_logs is tested with insert+delete roundtrip.
+            if (table !== 'admin_logs') {
+                write = 'unknown';
+                note = note ? `${note} | write: ไม่ได้ทดสอบ` : 'write: ไม่ได้ทดสอบ';
+            } else {
+                const probeId = `diag_${Date.now()}`;
+                try {
+                    const { error: insertError } = await withTimeout(
+                        supabase.from('admin_logs').insert({
+                            id: probeId,
+                            admin_id: 'diag',
+                            admin_name: 'diag',
+                            action: 'diagnostic_probe',
+                            details: 'diagnostic write probe',
+                            timestamp: new Date().toISOString(),
+                        }),
+                        7000
+                    );
+                    if (insertError) {
+                        write = 'degraded';
+                        note = note ? `${note} | write: ${insertError.message}` : `write: ${insertError.message}`;
+                    } else {
+                        await withTimeout(supabase.from('admin_logs').delete().eq('id', probeId), 7000);
+                        write = 'online';
+                    }
+                } catch (e: any) {
+                    write = online === 'offline' ? 'offline' : 'degraded';
+                    note = note ? `${note} | write: ${e?.message || 'failed'}` : `write: ${e?.message || 'failed'}`;
+                }
+            }
+            tableResults.push({ table, read, write, note });
+        }
+        setTableDiagnostics(tableResults);
 
         const latencyMs = Math.round(performance.now() - startedAt);
         setStatus(prev => ({
@@ -688,6 +746,14 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
                                 value={defaultsForm.sandCubicPerTrip}
                                 onChange={(e: any) => setDefaultsForm({ ...defaultsForm, sandCubicPerTrip: e.target.value })}
                             />
+                            <Input
+                                label="ค่าจ้างรถเริ่มต้น (บาท)"
+                                type="number"
+                                min={0}
+                                step={100}
+                                value={defaultsForm.vehicleDefaultMachineWage}
+                                onChange={(e: any) => setDefaultsForm({ ...defaultsForm, vehicleDefaultMachineWage: e.target.value })}
+                            />
                             <p className="text-xs text-slate-400">ถ้าไม่แน่ใจ ใช้ 3 คิวต่อเที่ยวเป็นค่ามาตรฐาน</p>
                             <Button onClick={saveAppDefaults}>บันทึกค่าเริ่มต้น</Button>
                         </div>
@@ -820,6 +886,27 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
                                         </ul>
                                     </div>
                                 )}
+                            </Card>
+                            <Card className="p-4 bg-white border-slate-200">
+                                <h4 className="font-semibold text-slate-700 mb-2">Diagnostics รายตาราง (RLS / สิทธิ์)</h4>
+                                <div className="space-y-2">
+                                    {tableDiagnostics.map((row) => {
+                                        const readBadge = statusLabel(row.read);
+                                        const writeBadge = statusLabel(row.write);
+                                        return (
+                                            <div key={row.table} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="font-semibold text-slate-700">{row.table}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`rounded-full px-2 py-0.5 font-bold ${readBadge.cls}`}>read: {readBadge.text}</span>
+                                                        <span className={`rounded-full px-2 py-0.5 font-bold ${writeBadge.cls}`}>write: {writeBadge.text}</span>
+                                                    </div>
+                                                </div>
+                                                {row.note && <p className="mt-1 text-[11px] text-slate-500 break-all">{row.note}</p>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </Card>
                         </div>
                     ) : activeTab === 'positionsLocal' ? (

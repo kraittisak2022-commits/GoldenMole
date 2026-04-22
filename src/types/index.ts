@@ -137,6 +137,7 @@ export interface OrgProfile {
 
 export interface AppDefaults {
     sandCubicPerTrip?: number;
+    vehicleDefaultMachineWage?: number;
     laborWorkCategories?: Array<{ id: string; label: string }>;
     openRouterApiKey?: string;
     workPlannerByAdmin?: Record<string, {

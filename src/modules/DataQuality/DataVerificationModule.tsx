@@ -77,7 +77,11 @@ const dupKey = (t: Transaction) => {
     const d = normalizeDate(t.date);
     const desc = (t.description || '').trim();
     const sub = t.subCategory || '';
-    return `${d}|${t.category}|${sub}|${t.amount}|${desc}`;
+    // Vehicle category: same day with different vehicles/drivers is normal, not duplicate.
+    const vehicleScope = t.category === 'Vehicle'
+        ? `|veh:${t.vehicleId || '-'}|drv:${t.driverId || '-'}`
+        : '';
+    return `${d}|${t.category}|${sub}|${t.amount}|${desc}${vehicleScope}`;
 };
 
 const buildExactDuplicateFixGuide = (items: Transaction[]) => {
@@ -251,7 +255,10 @@ const DataVerificationModule = ({
             if (skip.has(t.category)) continue;
             const td = normalizeDate(t.date);
             if (td < rs || td > re) continue;
-            const key = `${td}|${t.category}|${t.subCategory || ''}`;
+            // Vehicle category: compare near-duplicates within same vehicle/driver only.
+            const key = t.category === 'Vehicle'
+                ? `${td}|${t.category}|${t.subCategory || ''}|veh:${t.vehicleId || '-'}|drv:${t.driverId || '-'}`
+                : `${td}|${t.category}|${t.subCategory || ''}`;
             const arr = bucket.get(key) || [];
             arr.push(t);
             bucket.set(key, arr);
