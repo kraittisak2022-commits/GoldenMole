@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Lock, User, Eye, EyeOff, Shield, Loader2, Sun, Moon } from 'lucide-react';
 import { AdminUser } from '../../types';
 import { verifyStoredPassword } from '../../utils/passwordAuth';
+import { fetchAdmins } from '../../services/dataService';
 
 interface LoginPageProps {
     admins: AdminUser[];
@@ -221,7 +222,16 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
         try {
             const normalizedInput = normalizeUsername(u);
             // รองรับข้อมูลเก่าที่อาจมีช่องว่างหน้า/ท้ายใน username
-            const admin = admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
+            let admin = admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
+            // Fallback: ถ้า admins ใน state ยังไม่ทันอัปเดต ให้ดึงจากฐานอีกครั้งก่อนตัดสินว่าไม่พบผู้ใช้
+            if (!admin) {
+                try {
+                    const latestAdmins = await fetchAdmins();
+                    admin = latestAdmins.find(a => normalizeUsername(a.username || '') === normalizedInput);
+                } catch {
+                    // ignore fallback fetch error; handled by generic error below
+                }
+            }
             if (!admin) {
                 setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
                 triggerShake();
