@@ -80,6 +80,25 @@ const dupKey = (t: Transaction) => {
     return `${d}|${t.category}|${sub}|${t.amount}|${desc}`;
 };
 
+const buildExactDuplicateFixGuide = (items: Transaction[]) => {
+    const ids = items.map(i => i.id).join(', ');
+    return {
+        why: 'ระบบพบรายการที่วัน/หมวด/หมวดย่อย/จำนวนเงิน/รายละเอียด ตรงกันทุกช่อง',
+        howToFix: 'ตรวจว่าเป็นการบันทึกซ้ำจริงหรือไม่: ถ้าซ้ำให้ลบรายการที่เกิน, ถ้าตั้งใจแยกรายการให้แก้รายละเอียดหรือจำนวนเงินให้ต่างกันชัดเจน',
+        ids,
+    };
+};
+
+const buildNearDuplicateFixGuide = (reason: string) => {
+    if (reason.includes('เวลาใกล้กัน')) {
+        return 'ตรวจเวลาและรายการอ้างอิงหน้างาน: ถ้าเป็นงานเดียวกันให้รวมเป็นรายการเดียว, ถ้าคนละงานให้ใส่รายละเอียดแยกจุดงาน/รอบงานให้ชัด';
+    }
+    if (reason.includes('รายละเอียดใกล้เคียง')) {
+        return 'ตรวจคำอธิบาย: ถ้าหมายถึงเหตุการณ์เดียวกันให้ลบตัวที่ซ้ำ, ถ้าคนละเหตุการณ์ให้เพิ่มเลขรถ/ชื่อพนักงาน/สถานที่ในรายละเอียด';
+    }
+    return 'ตรวจหลักฐานหน้างานและยอดเงินจริง: ถ้าซ้ำให้ลบรายการซ้ำ, ถ้าไม่ซ้ำให้ปรับคำอธิบายหรือจำนวนเงินให้แยกจากกันชัดเจน';
+};
+
 const normalizeText = (value: string) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 const tokenSet = (value: string) => new Set(normalizeText(value).split(' ').filter(Boolean));
 const textSimilarity = (a: string, b: string) => {
@@ -271,12 +290,21 @@ const DataVerificationModule = ({
         findings.sort((a, b) => b.date.localeCompare(a.date));
         return findings.slice(0, 200);
     }, [transactions, rangeStart, rangeEnd]);
-    const duplicateDaySet = useMemo(() => {
+    const exactDuplicateDaySet = useMemo(() => {
         const s = new Set<string>();
         exactDuplicateClusters.forEach(c => s.add(normalizeDate(c.items[0].date)));
+        return s;
+    }, [exactDuplicateClusters]);
+    const nearDuplicateDaySet = useMemo(() => {
+        const s = new Set<string>();
         nearDuplicateFindings.forEach(f => s.add(f.date));
         return s;
-    }, [exactDuplicateClusters, nearDuplicateFindings]);
+    }, [nearDuplicateFindings]);
+    const duplicateDaySet = useMemo(() => {
+        const s = new Set<string>(exactDuplicateDaySet);
+        nearDuplicateDaySet.forEach(d => s.add(d));
+        return s;
+    }, [exactDuplicateDaySet, nearDuplicateDaySet]);
     const duplicateClusterCount = exactDuplicateClusters.length + nearDuplicateFindings.length;
     const qualityScore = useMemo(() => {
         const deduction = dayAnalysis.emptyDays.length * Math.max(0, emptyWeight) + duplicateClusterCount * Math.max(0, duplicateWeight);
@@ -353,7 +381,7 @@ const DataVerificationModule = ({
         const emptySet = new Set(dayAnalysis.emptyDays);
         const rangeSet = new Set(datesInRange);
         const firstWeekday = new Date(`${monthBounds.start}T12:00:00`).getDay();
-        const cells: Array<{ date: string; day: number; inRange: boolean; empty: boolean; duplicate: boolean; isSunday: boolean; isHoliday: boolean } | null> = [];
+        const cells: Array<{ date: string; day: number; inRange: boolean; empty: boolean; duplicate: boolean; nearDuplicate: boolean; isSunday: boolean; isHoliday: boolean } | null> = [];
         for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
         for (const d of monthDates) {
             const day = Number(d.slice(8, 10));
@@ -362,14 +390,15 @@ const DataVerificationModule = ({
                 day,
                 inRange: rangeSet.has(d),
                 empty: emptySet.has(d),
-                duplicate: duplicateDaySet.has(d),
+                duplicate: exactDuplicateDaySet.has(d),
+                nearDuplicate: nearDuplicateDaySet.has(d),
                 isSunday: isSunday(d),
                 isHoliday: isThaiHoliday(d),
             });
         }
         while (cells.length % 7 !== 0) cells.push(null);
         return cells;
-    }, [rangeStart, datesInRange, dayAnalysis.emptyDays, duplicateDaySet, isThaiHoliday]);
+    }, [rangeStart, datesInRange, dayAnalysis.emptyDays, exactDuplicateDaySet, nearDuplicateDaySet, isThaiHoliday]);
 
     const submitReport = useCallback(() => {
         const body = reportBody.trim();
@@ -636,7 +665,7 @@ const DataVerificationModule = ({
                         <div>
                             <h4 className="font-bold text-slate-800 dark:text-slate-100">ปฏิทินตรวจสอบ (คลิกวันที่เพื่อไป Daily Wizard)</h4>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                แดง = ไม่มีบันทึก, ส้ม = วันมีรายการซ้ำ, เขียว = ปกติ
+                                แดง = ไม่มีบันทึก, ส้ม = ซ้ำแบบตรงกัน, เหลือง = ซ้ำใกล้เคียง, เขียว = ปกติ
                             </p>
                         </div>
                     </div>
@@ -675,7 +704,14 @@ const DataVerificationModule = ({
                             }
                             if (cell.duplicate) {
                                 return (
-                                    <button type="button" onClick={openDailyWizard} key={cell.date} title={`พบความเสี่ยงข้อมูลซ้ำ: ${formatDateBE(cell.date)}`} className={`${base} text-orange-700 dark:text-orange-200 bg-orange-100 dark:bg-orange-500/20 ${sundayClass} ${holidayClass}${dim}`}>
+                                    <button type="button" onClick={openDailyWizard} key={cell.date} title={`พบข้อมูลซ้ำแบบตรงกัน: ${formatDateBE(cell.date)}`} className={`${base} text-orange-700 dark:text-orange-200 bg-orange-100 dark:bg-orange-500/20 ${sundayClass} ${holidayClass}${dim}`}>
+                                        {cell.day}
+                                    </button>
+                                );
+                            }
+                            if (cell.nearDuplicate) {
+                                return (
+                                    <button type="button" onClick={openDailyWizard} key={cell.date} title={`พบข้อมูลซ้ำใกล้เคียง: ${formatDateBE(cell.date)}`} className={`${base} text-amber-700 dark:text-amber-200 bg-amber-100 dark:bg-amber-500/20 ${sundayClass} ${holidayClass}${dim}`}>
                                         {cell.day}
                                     </button>
                                 );
@@ -688,7 +724,7 @@ const DataVerificationModule = ({
                         })}
                     </div>
                     <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                        รวมวันไม่มีบันทึก {dayAnalysis.emptyDays.length} วัน | วันที่มีรายการซ้ำ {duplicateDaySet.size} วัน
+                        รวมวันไม่มีบันทึก {dayAnalysis.emptyDays.length} วัน | ซ้ำแบบตรงกัน {exactDuplicateDaySet.size} วัน | ซ้ำใกล้เคียง {nearDuplicateDaySet.size} วัน
                     </p>
                 </Card>
             </div>
@@ -722,6 +758,7 @@ const DataVerificationModule = ({
                     <ul className="space-y-3 max-h-80 overflow-y-auto">
                         {exactDuplicateClusters.map(({ key, items }) => {
                             const sample = items[0];
+                            const fixGuide = buildExactDuplicateFixGuide(items);
                             return (
                                 <li key={key} className="rounded-xl border border-orange-200 dark:border-orange-500/30 bg-orange-50/50 dark:bg-orange-500/10 p-3 text-sm">
                                     <div className="font-semibold text-slate-800 dark:text-slate-100">
@@ -730,6 +767,11 @@ const DataVerificationModule = ({
                                     </div>
                                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">{sample.description || '(ไม่มีรายละเอียด)'}</p>
                                     <p className="text-xs font-bold text-orange-800 dark:text-orange-200 mt-2">ซ้ำแบบตรงกัน พบ {items.length} รายการ</p>
+                                    <div className="mt-2 rounded-lg border border-orange-200/80 bg-white/80 px-2.5 py-2 text-xs text-slate-700 dark:border-orange-500/30 dark:bg-slate-900/30 dark:text-slate-200">
+                                        <p><span className="font-semibold">สาเหตุ:</span> {fixGuide.why}</p>
+                                        <p className="mt-1"><span className="font-semibold">สิ่งที่ควรแก้:</span> {fixGuide.howToFix}</p>
+                                        <p className="mt-1 break-all text-[11px] text-slate-500 dark:text-slate-400"><span className="font-semibold">รหัสรายการ:</span> {fixGuide.ids}</p>
+                                    </div>
                                     <Button type="button" variant="outline" className="mt-2 px-2.5 py-1 text-xs" onClick={() => onGoToDailyWizard?.(normalizeDate(sample.date), getStepByCategory(sample.category, sample.subCategory))}>ไปแก้ใน Daily Wizard</Button>
                                 </li>
                             );
@@ -739,6 +781,10 @@ const DataVerificationModule = ({
                                 <div className="font-semibold text-slate-800 dark:text-slate-100">[{formatDateBE(f.date)}] {f.category}{f.subCategory ? ` / ${f.subCategory}` : ''}</div>
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{f.reason} · {Number(f.amountA).toLocaleString()} vs {Number(f.amountB).toLocaleString()} บาท</p>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">"{f.descA || '-'}" ↔ "{f.descB || '-'}"</p>
+                                <div className="mt-2 rounded-lg border border-amber-200/80 bg-white/80 px-2.5 py-2 text-xs text-slate-700 dark:border-amber-500/30 dark:bg-slate-900/30 dark:text-slate-200">
+                                    <p><span className="font-semibold">สาเหตุ:</span> ระบบมองว่าข้อมูล 2 รายการนี้ใกล้เคียงกันผิดปกติ ({f.reason})</p>
+                                    <p className="mt-1"><span className="font-semibold">สิ่งที่ควรแก้:</span> {buildNearDuplicateFixGuide(f.reason)}</p>
+                                </div>
                                 <Button type="button" variant="outline" className="mt-2 px-2.5 py-1 text-xs" onClick={() => onGoToDailyWizard?.(f.date, getStepByCategory(f.category, f.subCategory))}>ไปแก้ใน Daily Wizard</Button>
                             </li>
                         ))}
