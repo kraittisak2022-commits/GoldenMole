@@ -231,6 +231,11 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
                     triggerShake();
                     return;
                 }
+                if (latest.admins.length === 0) {
+                    setError('เชื่อมต่อ/สิทธิ์อ่านตาราง admin_users มีปัญหา (ระบบอ่านรายชื่อผู้ใช้ไม่ได้)');
+                    triggerShake();
+                    return;
+                }
                 admin = latest.admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
             }
 
