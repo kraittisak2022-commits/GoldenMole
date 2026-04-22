@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Trash2 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { normalizeDate } from '../../utils';
 import { Transaction } from '../../types';
+import { useSessionDialog } from '../../context/useSessionDialog';
 
 const CATEGORY_LABELS: Record<string, string> = {
     Labor: 'ค่าแรง/ลา',
@@ -17,6 +19,39 @@ const CATEGORY_LABELS: Record<string, string> = {
     Utilities: 'สาธารณูปโภค',
 };
 
+function useDebouncedValue<T>(value: T, delay = 200) {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const t = window.setTimeout(() => setDebounced(value), delay);
+        return () => window.clearTimeout(t);
+    }, [value, delay]);
+    return debounced;
+}
+
+function useMediaQuery(query: string) {
+    const [matches, setMatches] = useState(() => (typeof window !== 'undefined' ? window.matchMedia(query).matches : false));
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const mq = window.matchMedia(query);
+        const onChange = () => setMatches(mq.matches);
+        onChange();
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, [query]);
+    return matches;
+}
+
+type FlatRow = { kind: 'header'; day: string; count: number } | { kind: 'item'; day: string; t: Transaction };
+
+function buildFlatRows(byDay: [string, Transaction[]][]): FlatRow[] {
+    const out: FlatRow[] = [];
+    for (const [day, list] of byDay) {
+        out.push({ kind: 'header', day, count: list.length });
+        for (const t of list) out.push({ kind: 'item', day, t });
+    }
+    return out;
+}
+
 export interface RecordManagerProps {
     transactions: Transaction[];
     onDeleteTransaction?: (id: string) => void;
@@ -27,6 +62,8 @@ export interface RecordManagerProps {
 }
 
 const RecordManager = ({ transactions, onDeleteTransaction, compact = false, darkMode = false }: RecordManagerProps) => {
+    const { confirm: sessionConfirm } = useSessionDialog();
+    const isSmallViewport = useMediaQuery('(max-width: 767px)');
     const [filterMode, setFilterMode] = useState<'all' | 'month' | 'date'>('all');
     const [filterMonth, setFilterMonth] = useState(() => {
         const d = new Date();
@@ -34,6 +71,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
     });
     const [filterDate, setFilterDate] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebouncedValue(searchQuery, 220);
 
     const filtered = useMemo(() => {
         let list = [...transactions];
@@ -50,16 +88,17 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
             const d = normalizeDate(filterDate);
             list = list.filter(t => normalizeDate(t.date) === d);
         }
-        const q = searchQuery.trim().toLowerCase();
+        const q = debouncedSearch.trim().toLowerCase();
         if (q) {
-            list = list.filter(t =>
-                (t.description || '').toLowerCase().includes(q) ||
-                (t.category || '').toLowerCase().includes(q) ||
-                (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
+            list = list.filter(
+                t =>
+                    (t.description || '').toLowerCase().includes(q) ||
+                    (t.category || '').toLowerCase().includes(q) ||
+                    (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
             );
         }
         return list;
-    }, [transactions, filterMode, filterMonth, filterDate, searchQuery]);
+    }, [transactions, filterMode, filterMonth, filterDate, debouncedSearch]);
 
     const byDay = useMemo(() => {
         const map = new Map<string, Transaction[]>();
@@ -71,6 +110,8 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
         const entries = Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
         return entries;
     }, [filtered]);
+
+    const flatRows = useMemo(() => buildFlatRows(byDay), [byDay]);
 
     const formatDayHeader = (dateStr: string) => {
         const [y, m, d] = dateStr.split('-').map(Number);
@@ -92,6 +133,144 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                   ? 'border border-slate-600 bg-slate-800 text-slate-200'
                   : 'border border-slate-200 bg-white text-slate-700'
         }`;
+
+    const tryDelete = async (id: string) => {
+        if (!onDeleteTransaction) return;
+        const ok = await sessionConfirm('ลบรายการนี้?', { title: 'ยืนยันการลบ' });
+        if (ok) onDeleteTransaction(id);
+    };
+
+    const listParentRef = useRef<HTMLDivElement>(null);
+    const estimateSize = (index: number) => {
+        const row = flatRows[index];
+        if (!row) return compact ? 100 : 56;
+        if (row.kind === 'header') return compact ? 34 : 42;
+        return compact ? 118 : 54;
+    };
+
+    // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is required for long-list windowing
+    const virtualizer = useVirtualizer({
+        count: flatRows.length,
+        getScrollElement: () => listParentRef.current,
+        estimateSize,
+        overscan: compact || isSmallViewport ? 8 : 14,
+        initialRect: { width: 900, height: compact ? 560 : 620 },
+    });
+
+    const renderVirtualRows = () => {
+        if (flatRows.length === 0) return null;
+        return (
+            <div
+                className="relative w-full"
+                style={{ height: `${virtualizer.getTotalSize()}px` }}
+            >
+                {virtualizer.getVirtualItems().map(vi => {
+                    const row = flatRows[vi.index];
+                    if (!row) return null;
+                    return (
+                        <div
+                            key={vi.key}
+                            data-index={vi.index}
+                            ref={row.kind === 'item' ? virtualizer.measureElement : undefined}
+                            className="absolute left-0 top-0 w-full px-0"
+                            style={{ transform: `translateY(${vi.start}px)` }}
+                        >
+                            {row.kind === 'header' ? (
+                                compact ? (
+                                    <p
+                                        className={`mb-2 px-1 py-1 text-xs font-black ${
+                                            darkMode ? 'text-slate-400' : 'text-slate-500'
+                                        }`}
+                                    >
+                                        {formatDayShort(row.day)} · {row.count} รายการ
+                                    </p>
+                                ) : (
+                                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2.5 dark:border-white/10 dark:bg-slate-800/80 sm:px-4">
+                                        <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatDayHeader(row.day)}</span>
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">{row.count} รายการ</span>
+                                    </div>
+                                )
+                            ) : compact ? (
+                                <div
+                                    className={`mb-2 flex items-stretch gap-3 rounded-2xl border p-3 shadow-sm ${
+                                        darkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-100 bg-white'
+                                    }`}
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <span
+                                            className={`inline-block rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                                                darkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-700'
+                                            }`}
+                                        >
+                                            {CATEGORY_LABELS[row.t.category || ''] || row.t.category}
+                                        </span>
+                                        <p
+                                            className={`mt-1 line-clamp-2 text-sm font-semibold leading-snug ${
+                                                darkMode ? 'text-white' : 'text-slate-800'
+                                            }`}
+                                        >
+                                            {row.t.description || '—'}
+                                        </p>
+                                    </div>
+                                    <div className="flex shrink-0 flex-col items-end justify-between">
+                                        <span
+                                            className={`font-mono text-lg font-black tabular-nums ${
+                                                row.t.type === 'Income' ? 'text-emerald-500' : 'text-rose-500 dark:text-rose-400'
+                                            }`}
+                                        >
+                                            {row.t.type === 'Income' ? '+' : ''}
+                                            <FormatNumber value={row.t.amount} />
+                                        </span>
+                                        {onDeleteTransaction && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void tryDelete(row.t.id)}
+                                                className="mt-1 rounded-xl p-2 text-slate-400 hover:bg-red-500/15 hover:text-red-500 touch-manipulation"
+                                                aria-label="ลบ"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid min-h-[52px] grid-cols-[minmax(5.5rem,auto)_1fr_minmax(5rem,auto)_auto] items-center gap-2 border-b border-slate-50 px-3 py-2 hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/[0.04] sm:px-4">
+                                    <div className="whitespace-nowrap">
+                                        <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-600 dark:text-slate-200">
+                                            {CATEGORY_LABELS[row.t.category || ''] || row.t.category}
+                                        </span>
+                                    </div>
+                                    <div className="min-w-0 truncate text-sm text-slate-700 dark:text-slate-300" title={row.t.description}>
+                                        {row.t.description}
+                                    </div>
+                                    <div
+                                        className={`text-right text-sm font-bold tabular-nums ${
+                                            row.t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+                                        }`}
+                                    >
+                                        {row.t.type === 'Income' ? '+' : ''}
+                                        <FormatNumber value={row.t.amount} />
+                                    </div>
+                                    {onDeleteTransaction ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => void tryDelete(row.t.id)}
+                                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 touch-manipulation"
+                                            title="ลบ"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    ) : (
+                                        <span className="w-10" />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
 
     if (compact) {
         return (
@@ -155,66 +334,16 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                     />
                 </div>
 
-                <div className="max-h-[min(70dvh,560px)] min-h-[120px] space-y-4 overflow-y-auto overscroll-contain pb-2">
+                <div
+                    ref={listParentRef}
+                    className={`max-h-[min(70dvh,560px)] min-h-[120px] overflow-y-auto overscroll-contain pb-2 ${
+                        darkMode ? 'bg-slate-950/20' : 'bg-[#e8edf5]/40'
+                    } rounded-xl px-1.5 pt-1`}
+                >
                     {byDay.length === 0 ? (
                         <p className={`py-10 text-center text-sm ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>ไม่มีรายการ</p>
                     ) : (
-                        byDay.map(([day, list]) => (
-                            <div key={day}>
-                                <p
-                                    className={`sticky top-0 z-[1] mb-2 px-1 py-1 text-xs font-black ${
-                                        darkMode ? 'bg-slate-950/90 text-slate-400' : 'bg-[#e8edf5]/95 text-slate-500'
-                                    }`}
-                                >
-                                    {formatDayShort(day)} · {list.length} รายการ
-                                </p>
-                                <div className="space-y-2">
-                                    {list.map(t => (
-                                        <div
-                                            key={t.id}
-                                            className={`flex items-stretch gap-3 rounded-2xl border p-3 shadow-sm ${
-                                                darkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-100 bg-white'
-                                            }`}
-                                        >
-                                            <div className="min-w-0 flex-1">
-                                                <span
-                                                    className={`inline-block rounded-lg px-2 py-0.5 text-[11px] font-bold ${
-                                                        darkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-700'
-                                                    }`}
-                                                >
-                                                    {CATEGORY_LABELS[t.category || ''] || t.category}
-                                                </span>
-                                                <p className={`mt-1 line-clamp-2 text-sm font-semibold leading-snug ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                                                    {t.description || '—'}
-                                                </p>
-                                            </div>
-                                            <div className="flex shrink-0 flex-col items-end justify-between">
-                                                <span
-                                                    className={`font-mono text-lg font-black tabular-nums ${
-                                                        t.type === 'Income' ? 'text-emerald-500' : 'text-rose-500 dark:text-rose-400'
-                                                    }`}
-                                                >
-                                                    {t.type === 'Income' ? '+' : ''}
-                                                    <FormatNumber value={t.amount} />
-                                                </span>
-                                                {onDeleteTransaction && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (confirm('ลบรายการนี้?')) onDeleteTransaction(t.id);
-                                                        }}
-                                                        className="mt-1 rounded-xl p-2 text-slate-400 hover:bg-red-500/15 hover:text-red-500 touch-manipulation"
-                                                        aria-label="ลบ"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))
+                        renderVirtualRows()
                     )}
                 </div>
             </div>
@@ -241,7 +370,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                 <input
                                     type="month"
                                     value={filterMonth}
-                                    onChange={(e) => setFilterMonth(e.target.value)}
+                                    onChange={e => setFilterMonth(e.target.value)}
                                     className="border border-slate-300 dark:border-white/20 rounded-xl px-3 py-2.5 text-base bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 min-h-[44px]"
                                 />
                             )}
@@ -253,7 +382,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                 <input
                                     type="date"
                                     value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    onChange={e => setFilterDate(e.target.value)}
                                     className="border border-slate-300 dark:border-white/20 rounded-xl px-3 py-2.5 text-base bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 min-h-[44px]"
                                 />
                             )}
@@ -264,7 +393,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                 enterKeyHint="search"
                                 placeholder="ค้นหา (รายละเอียด, ประเภท)..."
                                 value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onChange={e => setSearchQuery(e.target.value)}
                                 className="w-full border border-slate-300 dark:border-white/20 rounded-xl px-3 py-3 text-base bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder-slate-400 min-h-[44px]"
                             />
                         </div>
@@ -275,54 +404,21 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                         </p>
                     )}
                 </div>
-                <div className="max-h-[calc(100dvh-280px)] min-h-[200px] overflow-y-auto overscroll-contain">
+                <div ref={listParentRef} className="max-h-[calc(100dvh-280px)] min-h-[200px] overflow-y-auto overflow-x-auto overscroll-contain">
                     {byDay.length === 0 ? (
                         <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">ไม่มีรายการที่ตรงกับเงื่อนไข</div>
                     ) : (
-                        <div className="divide-y divide-slate-200 dark:divide-white/10">
-                            {byDay.map(([day, list]) => (
-                                <div key={day} className="bg-white dark:bg-white/[0.02]">
-                                    <div className="sticky top-0 z-10 px-3 sm:px-4 py-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
-                                        <span className="font-bold text-slate-800 dark:text-slate-100 text-sm">{formatDayHeader(day)}</span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">{list.length} รายการ</span>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <div className="sm:hidden text-[11px] text-slate-400 dark:text-slate-500 px-3 pt-2 pb-1">
-                                            เลื่อนในแนวนอนเพื่อดูข้อมูลครบถ้วน
-                                        </div>
-                                        <table className="w-full text-sm text-left min-w-[480px]">
-                                            <thead>
-                                                <tr className="border-b border-slate-100 dark:border-white/5">
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">ประเภท</th>
-                                                    <th className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 font-medium max-sm:w-1/2">รายละเอียด</th>
-                                                    <th className="p-2 sm:p-3 text-right text-slate-500 dark:text-slate-400 font-medium">จำนวนเงิน</th>
-                                                    {onDeleteTransaction && <th className="p-2 sm:p-3 w-10"></th>}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {list.map(t => (
-                                                    <tr key={t.id} className="border-b border-slate-50 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
-                                                        <td className="p-2 sm:p-3 whitespace-nowrap">
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200">
-                                                                {CATEGORY_LABELS[t.category || ''] || t.category}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2 sm:p-3 text-slate-700 dark:text-slate-300 max-w-[160px] sm:max-w-none truncate sm:whitespace-normal" title={t.description}>{t.description}</td>
-                                                        <td className={`p-2 sm:p-3 text-right font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
-                                                            {t.type === 'Income' ? '+' : ''}<FormatNumber value={t.amount} />
-                                                        </td>
-                                                        {onDeleteTransaction && (
-                                                            <td className="p-2 sm:p-3 text-center">
-                                                                <button type="button" onClick={() => { if (confirm('ลบรายการนี้?')) onDeleteTransaction(t.id); }} className="p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 touch-manipulation" title="ลบ"><Trash2 size={16} /></button>
-                                                            </td>
-                                                        )}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="bg-white dark:bg-white/[0.02]">
+                            <div className="sticky top-0 z-[2] border-b border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-500 sm:hidden">
+                                เลื่อนในแนวนอนเพื่อดูข้อมูลครบถ้วน
+                            </div>
+                            <div className="sticky top-0 z-[1] hidden min-w-[480px] grid-cols-[minmax(5.5rem,auto)_1fr_minmax(5rem,auto)_auto] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-500 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:grid sm:px-4">
+                                <span>ประเภท</span>
+                                <span>รายละเอียด</span>
+                                <span className="text-right">จำนวนเงิน</span>
+                                <span className="w-10" />
+                            </div>
+                            <div className="min-w-[480px]">{renderVirtualRows()}</div>
                         </div>
                     )}
                 </div>

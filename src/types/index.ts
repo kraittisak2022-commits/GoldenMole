@@ -166,6 +166,38 @@ export interface AppDefaults {
         createdAt: string;
     }>;
     hiddenTransactionIds?: string[];
+    /** แจ้งเตือนจากหน้าระบบตรวจสอบข้อมูล (ซ้ำ/ผิดพลาด/วันลืมกรอก) */
+    dataQualityReports?: Array<{
+        id: string;
+        targetDate: string;
+        body: string;
+        status?: 'new' | 'investigating' | 'resolved' | 'closed';
+        createdAt: string;
+        updatedAt?: string;
+        adminId?: string;
+        adminName?: string;
+    }>;
+    dataQualityThresholds?: {
+        incomeZeroThreshold?: number;
+        laborHighAmountThreshold?: number;
+        fuelHighLitersThreshold?: number;
+    };
+    dataQualityAuditTrail?: Array<{
+        id: string;
+        reportId: string;
+        reportDate: string;
+        action: 'status_change';
+        fromStatus?: 'new' | 'investigating' | 'resolved' | 'closed';
+        toStatus: 'new' | 'investigating' | 'resolved' | 'closed';
+        note?: string;
+        changedByAdminId?: string;
+        changedByAdminName?: string;
+        changedAt: string;
+    }>;
+    dataQualityDailyAlert?: {
+        lastAlertDate?: string;
+        lastAlertCount?: number;
+    };
 }
 
 export interface AppSettings {

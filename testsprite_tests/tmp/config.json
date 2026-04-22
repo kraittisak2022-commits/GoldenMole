@@ -1,0 +1,20 @@
+{
+  "status": "init",
+  "scope": "codebase",
+  "type": "frontend",
+  "localEndpoint": "http://localhost:5173/",
+  "serverPort": 63605,
+  "executionArgs": {
+    "projectName": "construction-management-app",
+    "projectPath": "C:\\Users\\HP\\.gemini\\antigravity\\scratch\\construction-management-app",
+    "testIds": [
+      "TC012"
+    ],
+    "additionalInstruction": "Execute only TC012. Wait for app data load to finish before interacting. Use stable selectors for payroll module.",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-6oBXoZLtWOF4GQozgBWmpua4z-_kZ50-7d49x9kxWUjZ_dT7vbgbeGaKB19dEHgEYpEaCUqBmYq9mXm9MUb4DOf31_1dVzJ1XYQgUqs1DX2d2s6eTSoMZBpG65h6fNmBILo"
+    }
+  },
+  "proxy": "http://fd589913-4f53-4c45-aa4b-818358094137:yMdBj0R4ZiqYgYlaMbIbPJZJnx2BgHxQ@tun.testsprite.com:8080"
+}

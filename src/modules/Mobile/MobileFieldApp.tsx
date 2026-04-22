@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { lazy, Suspense, useState, useMemo, useCallback } from 'react';
 import {
     ClipboardList,
     Users,
@@ -24,9 +24,9 @@ import {
 } from '../../types';
 import DailyStepRecorder from '../Dashboard/DailyStepRecorder';
 import LaborModule from '../Labor/LaborModule';
-import RecordManager from '../DataList/RecordManager';
 import SettingsModule from '../Settings/SettingsModule';
-import AdminModule from '../Admin/AdminModule';
+const RecordManager = lazy(() => import('../DataList/RecordManager'));
+const AdminModule = lazy(() => import('../Admin/AdminModule'));
 
 type MobileTab = 'home' | 'labor' | 'records' | 'more';
 
@@ -115,6 +115,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     const [recordCatFilter, setRecordCatFilter] = useState<string | null>(null);
     const [recordTypeFilter, setRecordTypeFilter] = useState<'Income' | 'Expense' | null>(null);
     const [densityMode, setDensityMode] = useState<'comfortable' | 'compact'>('comfortable');
+    const lazyFallback = <div className={`rounded-3xl p-5 text-center text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>กำลังโหลด...</div>;
 
     const filteredTransactionsForRecords = useMemo(() => {
         let list = transactions;
@@ -320,12 +321,14 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                     })}
                                 </div>
                             </div>
-                            <RecordManager
-                                compact
-                                darkMode={darkMode}
-                                transactions={filteredTransactionsForRecords}
-                                onDeleteTransaction={onDeleteTransaction}
-                            />
+                            <Suspense fallback={lazyFallback}>
+                                <RecordManager
+                                    compact
+                                    darkMode={darkMode}
+                                    transactions={filteredTransactionsForRecords}
+                                    onDeleteTransaction={onDeleteTransaction}
+                                />
+                            </Suspense>
                         </div>
                     )}
 
@@ -430,13 +433,15 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
 
                     {tab === 'more' && morePanel === 'admin' && currentAdmin.role === 'SuperAdmin' && (
                         <div className={`rounded-3xl p-3 ${cardBg}`}>
-                            <AdminModule
-                                admins={admins}
-                                setAdmins={handleSetAdmins}
-                                currentAdmin={currentAdmin}
-                                logs={adminLogs}
-                                addLog={addLog}
-                            />
+                            <Suspense fallback={lazyFallback}>
+                                <AdminModule
+                                    admins={admins}
+                                    setAdmins={handleSetAdmins}
+                                    currentAdmin={currentAdmin}
+                                    logs={adminLogs}
+                                    addLog={addLog}
+                                />
+                            </Suspense>
                         </div>
                     )}
                 </main>

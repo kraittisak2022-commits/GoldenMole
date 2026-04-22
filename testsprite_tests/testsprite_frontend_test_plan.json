@@ -1,0 +1,1618 @@
+[
+  {
+    "id": "TC001",
+    "title": "Sign in and reach the protected workspace",
+    "description": "Verifies a user can sign in from the login page and land in the main authenticated workspace where modules are accessible.",
+    "category": "Authentication and Role Access",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands in the main authenticated workspace"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify module navigation is visible from the workspace"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Create a new expense and see it in the transaction list",
+    "description": "Verifies an admin can create a new expense transaction and it becomes visible in the transaction list.",
+    "category": "Finance and Transaction Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions module from the workspace navigation"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new transaction entry"
+      },
+      {
+        "type": "action",
+        "description": "Select Expense as the transaction type"
+      },
+      {
+        "type": "action",
+        "description": "Fill 123.45 into the amount field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Test expense into the description or notes field"
+      },
+      {
+        "type": "action",
+        "description": "Save the new transaction"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new transaction appears in the transaction list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Capture and save daily attendance for multiple employees",
+    "description": "Verifies a field supervisor can record attendance for multiple employees, save it, and see the attendance reflected in the daily attendance list.",
+    "category": "Workforce: Attendance and Daily Logs",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Workforce module"
+      },
+      {
+        "type": "action",
+        "description": "Open the daily attendance entry view"
+      },
+      {
+        "type": "action",
+        "description": "Add attendance entries for at least two employees with valid attendance values"
+      },
+      {
+        "type": "action",
+        "description": "Save the attendance entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the saved attendance entries are displayed in the daily attendance list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Admin can create, edit, and delete an expense transaction from the main workspace",
+    "description": "Verifies an Admin can reach Transactions from the dashboard, create an expense, edit it, and delete it with the list reflecting each change.",
+    "category": "Transactions",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Transactions module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new Expense transaction"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid amount into the amount field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a short memo into the description or notes field"
+      },
+      {
+        "type": "action",
+        "description": "Save the transaction"
+      },
+      {
+        "type": "action",
+        "description": "Open the newly created expense from the transactions list"
+      },
+      {
+        "type": "action",
+        "description": "Update the amount to a different valid value"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "action",
+        "description": "Delete the expense transaction"
+      },
+      {
+        "type": "action",
+        "description": "Confirm the delete action"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the deleted transaction no longer appears in the transactions list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Field supervisor can log daily attendance for multiple employees and see it in the daily list",
+    "description": "Verifies a Field supervisor can record and save attendance for multiple employees and the saved attendance appears in the daily attendance list.",
+    "category": "Workforce",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Workforce module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open daily attendance entry for today"
+      },
+      {
+        "type": "action",
+        "description": "Mark attendance for at least two employees"
+      },
+      {
+        "type": "action",
+        "description": "Save the attendance entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the saved attendance appears in the daily attendance list for today"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Record and save machine work, sand production, and event logs",
+    "description": "Verifies a field supervisor can record machine work, sand production, and event logs, save them, and see them appear in the daily activity list.",
+    "category": "Workforce: Attendance and Daily Logs",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Workforce module"
+      },
+      {
+        "type": "action",
+        "description": "Open the daily logs entry view"
+      },
+      {
+        "type": "action",
+        "description": "Add a machine work log with valid machine and work details"
+      },
+      {
+        "type": "action",
+        "description": "Add a sand production log with valid quantity details"
+      },
+      {
+        "type": "action",
+        "description": "Add an event log with a valid note"
+      },
+      {
+        "type": "action",
+        "description": "Save the daily logs"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the newly saved logs are displayed in the daily activity list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Dashboard shows operational overview and allows navigation to a module",
+    "description": "Verifies the dashboard displays summary information and a quick action can navigate into a core module from the workspace.",
+    "category": "Dashboard and Operational Overview",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the dashboard from the main app"
+      },
+      {
+        "type": "action",
+        "description": "Click a dashboard quick action to open a core module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify summary cards or key metrics are displayed on the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the selected module view opens from the dashboard action"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Field supervisor can add machine work, sand production, and event logs and see them in activity",
+    "description": "Verifies a Field supervisor can add and save machine work, sand production, and event logs and the entries appear in the activity list.",
+    "category": "Workforce",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Workforce module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open daily logs entry for today"
+      },
+      {
+        "type": "action",
+        "description": "Add a machine work log with valid required values"
+      },
+      {
+        "type": "action",
+        "description": "Add a sand production log with valid required values"
+      },
+      {
+        "type": "action",
+        "description": "Add an event log with a short note"
+      },
+      {
+        "type": "action",
+        "description": "Save the daily logs"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new daily log entries appear in the activity list for today"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC009",
+    "title": "Edit an existing transaction and see updated values in the list",
+    "description": "Verifies a user can edit a transaction and the list reflects the updated transaction values.",
+    "category": "Finance and Transaction Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions module from the workspace navigation"
+      },
+      {
+        "type": "action",
+        "description": "Create a new transaction entry for later editing"
+      },
+      {
+        "type": "action",
+        "description": "Select Expense as the transaction type"
+      },
+      {
+        "type": "action",
+        "description": "Fill 50.00 into the amount field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Editable expense into the description or notes field"
+      },
+      {
+        "type": "action",
+        "description": "Save the new transaction"
+      },
+      {
+        "type": "action",
+        "description": "Select the newly created transaction from the list to edit"
+      },
+      {
+        "type": "action",
+        "description": "Fill 75.00 into the amount field"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the transaction list shows the updated amount for the edited transaction"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC010",
+    "title": "Delete a transaction and confirm it is removed from the list",
+    "description": "Verifies a user can delete an existing transaction and it no longer appears in the transaction list after confirmation.",
+    "category": "Finance and Transaction Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions module from the workspace navigation"
+      },
+      {
+        "type": "action",
+        "description": "Create a new transaction entry for later deletion"
+      },
+      {
+        "type": "action",
+        "description": "Select Expense as the transaction type"
+      },
+      {
+        "type": "action",
+        "description": "Fill 10.00 into the amount field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Deletable expense into the description or notes field"
+      },
+      {
+        "type": "action",
+        "description": "Save the new transaction"
+      },
+      {
+        "type": "action",
+        "description": "Delete the newly created transaction"
+      },
+      {
+        "type": "action",
+        "description": "Confirm the deletion"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the deleted transaction no longer appears in the transaction list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC011",
+    "title": "Generate payroll for a selected period and review the snapshot",
+    "description": "Verifies a payroll admin can generate payroll for a selected period and view the resulting snapshot with computed components.",
+    "category": "Payroll Generation and Period Control",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Payroll module"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for the selected period"
+      },
+      {
+        "type": "action",
+        "description": "Open the generated payroll snapshot view"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify payroll snapshot rows are displayed for employees"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify computed pay components such as base pay, overtime, allowances, and deductions are displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC012",
+    "title": "Payroll/HR admin can generate payroll for a period and view the payroll snapshot",
+    "description": "Verifies a Payroll/HR admin can generate payroll for a selected period and the snapshot shows computed payroll components.",
+    "category": "Payroll",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Payroll module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for the selected period"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a payroll snapshot is displayed with computed components for employees"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC013",
+    "title": "Create a new employee with wage type and position",
+    "description": "Verifies a payroll/HR admin can create an employee profile with wage type and position and see the employee listed.",
+    "category": "Employee Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Employee Management module"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new employee"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the employee name with a unique value"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid wage type"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid position"
+      },
+      {
+        "type": "action",
+        "description": "Save the employee profile"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new employee appears in the employee list"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC014",
+    "title": "Payroll period lock blocks edits and unlock allows edits again",
+    "description": "Verifies locking a payroll period prevents edits with a visible restriction message and unlocking restores the ability to edit.",
+    "category": "Payroll",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Payroll module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for the selected period"
+      },
+      {
+        "type": "action",
+        "description": "Lock the payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to edit a payroll value within the locked snapshot"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an edit restriction message is displayed indicating the period is locked"
+      },
+      {
+        "type": "action",
+        "description": "Unlock the payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to edit a payroll value again"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify payroll values can be edited after the period is unlocked"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC015",
+    "title": "Lock a payroll period after generation",
+    "description": "Verifies a payroll admin can lock a generated payroll period and the period shows as locked in the UI.",
+    "category": "Payroll Generation and Period Control",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Payroll module"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for the selected period"
+      },
+      {
+        "type": "action",
+        "description": "Lock the payroll period"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the selected payroll period is shown as locked"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC016",
+    "title": "Dashboard period-based view navigates to a related detail area",
+    "description": "Verifies interacting with a period-based trend/summary on the dashboard can take the user to a related transactions or payroll area.",
+    "category": "Dashboard and Operational Overview",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the dashboard from the main app"
+      },
+      {
+        "type": "action",
+        "description": "Inspect a period-based trend or summary card"
+      },
+      {
+        "type": "action",
+        "description": "Use the dashboard action to navigate to the related detail area"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the related detail area for transactions or payroll is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard interaction resulted in navigation to the related area"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC017",
+    "title": "Block edits to payroll entries when the period is locked",
+    "description": "Verifies that after locking a payroll period, attempts to edit payroll entries are blocked and a lock restriction message is shown.",
+    "category": "Payroll Generation and Period Control",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Payroll module"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for the selected period"
+      },
+      {
+        "type": "action",
+        "description": "Lock the payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to edit a payroll entry within the locked period"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a lock restriction message is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the payroll entry edit is not applied"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC018",
+    "title": "Update an employee wage type or position",
+    "description": "Verifies a payroll/HR admin can update an existing employee’s wage type or position and the updated details are reflected in the UI.",
+    "category": "Employee Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Employee Management module"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new employee"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the employee name with a unique value"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid wage type"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid position"
+      },
+      {
+        "type": "action",
+        "description": "Save the employee profile"
+      },
+      {
+        "type": "action",
+        "description": "Open the created employee profile for editing"
+      },
+      {
+        "type": "action",
+        "description": "Change the wage type or position to a different valid value"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the employee list reflects the updated wage type or position for that employee"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC019",
+    "title": "Filter or review transactions list without breaking list visibility",
+    "description": "Verifies a user can use available filtering/review controls on the transactions list and the list remains usable and visible.",
+    "category": "Finance and Transaction Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions module from the workspace navigation"
+      },
+      {
+        "type": "action",
+        "description": "Use available filter controls to narrow the transaction list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the transaction list remains visible and displays results consistent with the selected filters"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC020",
+    "title": "Land project admin can create a land project and see it listed",
+    "description": "Verifies a Land project admin can create a land project with required seller and payment details and see it listed in the land projects view.",
+    "category": "Land Project Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the land project module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new land project"
+      },
+      {
+        "type": "action",
+        "description": "Fill seller details with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Fill deed details with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid area value"
+      },
+      {
+        "type": "action",
+        "description": "Fill valid payment values"
+      },
+      {
+        "type": "action",
+        "description": "Save the land project"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new land project appears in the land project list"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC021",
+    "title": "Land project admin can advance project status through Deposit to PaidFull to Transferred with notes retained",
+    "description": "Verifies a land project can be progressed through key lifecycle statuses with notes and the status history or notes remain visible.",
+    "category": "Land Project Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the land project module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new land project"
+      },
+      {
+        "type": "action",
+        "description": "Fill seller details with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Fill deed details with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid area value"
+      },
+      {
+        "type": "action",
+        "description": "Fill valid payment values"
+      },
+      {
+        "type": "action",
+        "description": "Save the land project"
+      },
+      {
+        "type": "action",
+        "description": "Open the newly created land project"
+      },
+      {
+        "type": "action",
+        "description": "Update the project status to Deposit"
+      },
+      {
+        "type": "action",
+        "description": "Add a status note about payment progress"
+      },
+      {
+        "type": "action",
+        "description": "Save the project update"
+      },
+      {
+        "type": "action",
+        "description": "Update the project status to PaidFull"
+      },
+      {
+        "type": "action",
+        "description": "Save the project update"
+      },
+      {
+        "type": "action",
+        "description": "Update the project status to Transferred"
+      },
+      {
+        "type": "action",
+        "description": "Save the project update"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the project shows the latest status and the earlier notes or status history remain visible"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC022",
+    "title": "Prevent saving attendance with missing required fields",
+    "description": "Verifies the attendance form blocks saving when required inputs are missing and shows a validation error.",
+    "category": "Workforce: Attendance and Daily Logs",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Workforce module"
+      },
+      {
+        "type": "action",
+        "description": "Open the daily attendance entry view"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to save the attendance entry without completing required fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a required-field validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the attendance entry is not saved to the daily attendance list"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC023",
+    "title": "Admin can add a master data list entry and it becomes available for selection in forms",
+    "description": "Verifies an Admin can add a new master data item and it appears as an option in a relevant form dropdown.",
+    "category": "Settings, Master Data and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open settings or administration from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open configurable lists or master data management"
+      },
+      {
+        "type": "action",
+        "description": "Add a new list entry with a unique name"
+      },
+      {
+        "type": "action",
+        "description": "Save the master data changes"
+      },
+      {
+        "type": "action",
+        "description": "Return to the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open the Transactions module from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new transaction"
+      },
+      {
+        "type": "action",
+        "description": "Open the relevant category or master-data dropdown"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the newly added master data entry is available as a selectable option"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC024",
+    "title": "Invalid credentials are blocked with an error",
+    "description": "Verifies that submitting the login form with incorrect credentials does not create a session and shows an invalid-credentials error.",
+    "category": "Authentication and Role Access",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill invalid_user into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill invalid_password into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an invalid-credentials error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user remains on the login page"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC025",
+    "title": "Prevent saving daily logs with missing required fields",
+    "description": "Verifies daily logs entry blocks saving when required fields are missing and displays a validation error.",
+    "category": "Workforce: Attendance and Daily Logs",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Workforce module"
+      },
+      {
+        "type": "action",
+        "description": "Open the daily logs entry view"
+      },
+      {
+        "type": "action",
+        "description": "Add a new log entry but leave a required field empty"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to save the daily logs"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a required-field validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the daily activity list does not show a newly created log entry"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC026",
+    "title": "Admin can update organization profile settings and see the changes persist",
+    "description": "Verifies an Admin can update organization profile or defaults in Settings and the updated settings are shown after saving.",
+    "category": "Settings, Master Data and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open settings or administration from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open organization profile or defaults"
+      },
+      {
+        "type": "action",
+        "description": "Update an organization profile field with a new valid value"
+      },
+      {
+        "type": "action",
+        "description": "Save the settings"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated organization setting is displayed as saved"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC027",
+    "title": "Prevent saving an employee profile with missing required fields",
+    "description": "Verifies the employee creation form blocks saving when required fields are missing and shows a validation error.",
+    "category": "Employee Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "From the main workspace, open the Employee Management module"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new employee"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to save the employee profile without completing required fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a required-field validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the employee is not added to the employee list"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC028",
+    "title": "Admin can create an admin user account and see it in the admin user list",
+    "description": "Verifies an Admin can create a new admin account and the new user appears in the user list.",
+    "category": "Settings, Master Data and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or email field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open settings or administration from the main workspace"
+      },
+      {
+        "type": "action",
+        "description": "Open admin user management"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new admin user account"
+      },
+      {
+        "type": "action",
+        "description": "Fill user identity fields with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid password for the new account if required by the form"
+      },
+      {
+        "type": "action",
+        "description": "Save the new admin user"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the newly created admin user appears in the admin user list"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC029",
+    "title": "Session persists after page refresh in authenticated workspace",
+    "description": "Verifies that after successful login, refreshing the browser keeps the user in an authenticated state and the workspace remains accessible.",
+    "category": "Authentication and Role Access",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Verify authenticated workspace is loaded"
+      },
+      {
+        "type": "action",
+        "description": "Refresh the browser page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user remains authenticated and still sees workspace modules after refresh"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC030",
+    "title": "Logout clears session and blocks access to protected workspace",
+    "description": "Verifies logging out ends the session and protected workspace routes are no longer accessible without re-login.",
+    "category": "Authentication and Role Access",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Use the logout control from the authenticated workspace"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app returns to login or unauthenticated state"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to open the protected workspace route directly"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access is blocked and user is redirected to login"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC031",
+    "title": "Recalculate payroll snapshot after changing attendance input",
+    "description": "Verifies payroll recalculation updates computed components after attendance data is changed before period lock.",
+    "category": "Payroll Generation and Period Control",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open Workforce and create or update attendance for a selected employee and period"
+      },
+      {
+        "type": "action",
+        "description": "Open Payroll and generate payroll for the same period"
+      },
+      {
+        "type": "action",
+        "description": "Capture a computed value such as overtime or net pay for the selected employee"
+      },
+      {
+        "type": "action",
+        "description": "Return to Workforce and change attendance inputs affecting payroll"
+      },
+      {
+        "type": "action",
+        "description": "Regenerate payroll for the same period"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the selected employee payroll components are updated to reflect changed attendance"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC032",
+    "title": "Create weekly plan and mark it done",
+    "description": "Verifies a user can create a weekly plan task, mark it done, and see status updated in planning view.",
+    "category": "Planning",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the username or credential field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the Planning module from the workspace"
+      },
+      {
+        "type": "action",
+        "description": "Create a new plan with Weekly scope and valid task details"
+      },
+      {
+        "type": "action",
+        "description": "Save the new plan"
+      },
+      {
+        "type": "action",
+        "description": "Mark the created plan status as Done"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the planning list shows the plan with Done status"
+      }
+    ],
+    "priority": "Low"
+  }
+]

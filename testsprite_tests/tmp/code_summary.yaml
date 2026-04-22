@@ -1,0 +1,72 @@
+version: "2"
+type: frontend
+tech_stack:
+  - TypeScript
+  - React
+  - Vite
+  - Tailwind CSS
+routes:
+  - path: /
+    file: src/App.tsx
+    auth_required: true
+    description: Main authenticated construction management workspace and module navigation.
+  - path: /login
+    file: src/App.tsx
+    auth_required: false
+    description: Admin login and session entry flow.
+features:
+  - name: Authentication and Role Access
+    description: Admin users sign in and access protected workflows based on role permissions.
+    files:
+      - src/App.tsx
+      - src/types/index.ts
+    entry_route: /login
+    user_interactions:
+      - Fill username or credential fields.
+      - Fill password field.
+      - Submit login form.
+      - Open protected modules after successful authentication.
+    api_calls:
+      - method: POST
+        endpoint: /auth/login
+    auth_required: false
+  - name: Dashboard and Operational Overview
+    description: Dashboard presents operational and financial insights with quick actions to core modules.
+    files:
+      - src/App.tsx
+      - src/modules/Dashboard/SpecificDashboard.tsx
+    entry_route: /
+    user_interactions:
+      - Open dashboard from main app.
+      - Review summary cards and key metrics.
+      - Navigate to target module from dashboard actions.
+    api_calls: []
+    auth_required: true
+  - name: Finance and Transaction Management
+    description: Manage income and expense records tied to operations.
+    files:
+      - src/App.tsx
+    entry_route: /
+    user_interactions:
+      - Create income and expense entries.
+      - Edit existing transaction details.
+      - Delete incorrect records.
+      - Filter or review transaction lists.
+    api_calls: []
+    auth_required: true
+  - name: Workforce, Payroll, and Daily Logs
+    description: Track labor attendance, payroll periods, and daily construction field activities.
+    files:
+      - src/App.tsx
+    entry_route: /
+    user_interactions:
+      - Log attendance and labor details.
+      - Generate payroll for selected period.
+      - Lock or unlock payroll period.
+      - Record machine work, sand production, and event logs.
+    api_calls: []
+    auth_required: true
+known_limitations:
+  - issue: Local dev server currently fails due to a parse error around export placement.
+    location: src/App.tsx
+    impact: Frontend rendering and end-to-end UI tests may fail before scenarios execute.

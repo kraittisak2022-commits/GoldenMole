@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -9,11 +9,23 @@ import Select from '../../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate } from '../../utils';
 import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
+import { useSessionDialog } from '../../context/useSessionDialog';
+import {
+    WizardDraftPayload,
+    clearWizardDraftForDate,
+    getDayTransactionFingerprint,
+    readWizardDraftEntry,
+    writeWizardDraftForDate,
+} from './wizardDraftUtils';
 
 interface DailyStepRecorderProps {
     employees: Employee[];
     settings: AppSettings;
     transactions: Transaction[];
+    /** วันที่ที่ต้องการให้เปิดหน้า Daily Wizard ทันที (จากเมนูตรวจสอบ) */
+    initialDate?: string;
+    /** step ที่ต้องการเปิดทันที (จากเมนูตรวจสอบ) */
+    initialStep?: number;
     dateFilter?: { start: string; end: string };
     onSaveTransaction: (t: Transaction) => void;
     onDeleteTransaction?: (id: string) => void;
@@ -27,6 +39,28 @@ interface DailyStepRecorderProps {
     densityMode?: 'comfortable' | 'compact';
 }
 
+const EmployeeSelectChip = memo(function EmployeeSelectChip({
+    label,
+    selected,
+    touchUI,
+    onClick,
+}: {
+    label: string;
+    selected: boolean;
+    touchUI: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`rounded-xl text-left font-medium transition-all border-2 touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${selected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}
+        >
+            {label}
+        </button>
+    );
+});
+
 function useMediaQuery(query: string) {
     const [matches, setMatches] = useState(() => (typeof window !== 'undefined' ? window.matchMedia(query).matches : false));
     useEffect(() => {
@@ -37,6 +71,15 @@ function useMediaQuery(query: string) {
         return () => mq.removeEventListener('change', onChange);
     }, [query]);
     return matches;
+}
+
+function useDebouncedValue<T>(value: T, delay = 180) {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebounced(value), delay);
+        return () => window.clearTimeout(timer);
+    }, [value, delay]);
+    return debounced;
 }
 
 const STEPS = [
@@ -166,7 +209,8 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
-const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
+const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
+    const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
     /** จอสัมผัส / มือถือ: ปุ่มและช่องกดใหญ่ขึ้น */
     const touchUI = mobileShell || touchLayout || isTouchLayout;
@@ -176,12 +220,22 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-auto flex justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90'
         : 'mt-auto flex justify-between gap-3 pt-3';
     const [step, setStep] = useState(0);
-    const [date, setDate] = useState(getToday());
+    const [date, setDate] = useState(() => normalizeDate(initialDate) || getToday());
     const [viewMode, setViewMode] = useState<'record' | 'report'>('record');
 
     useEffect(() => {
         if (mobileShell) setViewMode('record');
     }, [mobileShell]);
+    useEffect(() => {
+        const normalized = normalizeDate(initialDate);
+        if (!normalized) return;
+        setDate(prev => (normalizeDate(prev) === normalized ? prev : normalized));
+    }, [initialDate]);
+    useEffect(() => {
+        if (typeof initialStep !== 'number') return;
+        const bounded = Math.max(0, Math.min(initialStep, STEPS.length - 1));
+        setStep(prev => (prev === bounded ? prev : bounded));
+    }, [initialStep]);
     // ช่วงวันที่สำหรับรายงาน (ใช้ dateFilter เป็นค่าเริ่มต้นถ้ามี)
     const [reportStart, setReportStart] = useState<string>(dateFilter?.start || '');
     const [reportEnd, setReportEnd] = useState<string>(dateFilter?.end || '');
@@ -449,11 +503,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         });
         return { duplicateIds, groups, count: duplicateIds.size };
     }, [dayTransactions]);
-    const shouldContinueWithWarning = useCallback((messages: string[], title = 'พบข้อมูลที่อาจซ้ำหรือผิดปกติ') => {
-        if (messages.length === 0) return true;
-        const text = `${title}\n- ${messages.join('\n- ')}\n\nต้องการบันทึกต่อหรือไม่?`;
-        return window.confirm(text);
-    }, []);
+    const shouldContinueWithWarning = useCallback(
+        async (messages: string[], title = 'พบข้อมูลที่อาจซ้ำหรือผิดปกติ') => {
+            if (messages.length === 0) return true;
+            const text = `- ${messages.join('\n- ')}\n\nต้องการบันทึกต่อหรือไม่?`;
+            return sessionConfirm(text, { title });
+        },
+        [sessionConfirm]
+    );
 
     const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
     const driverEmployees = useMemo(() => employees.filter(e => getEmpPositions(e).includes('คนขับรถ')), [employees]);
@@ -472,6 +529,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     }, [transactions]);
     // Labor State
     const [laborSearch, setLaborSearch] = useState('');
+    const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
+    const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
+    const [poolVisibleEmployeeCount, setPoolVisibleEmployeeCount] = useState(60);
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
     /** รายคน: เฉพาะคนที่มาครึ่งวัน (ไม่มีในนี้ = เต็มวันปกติ) */
@@ -484,6 +544,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     // Canvas-style work category assignments: { categoryId: employeeId[] }
     const [workAssignments, setWorkAssignments] = useState<Record<string, string[]>>({});
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
+    const filteredLaborEmployees = useMemo(
+        () => employees.filter(e => isEmployeeMatchedBySearch(e, debouncedLaborSearch)),
+        [employees, debouncedLaborSearch]
+    );
+    const otVisibleEmployees = useMemo(
+        () => filteredLaborEmployees.slice(0, otVisibleEmployeeCount),
+        [filteredLaborEmployees, otVisibleEmployeeCount]
+    );
+    const poolVisibleEmployees = useMemo(
+        () => filteredLaborEmployees.slice(0, poolVisibleEmployeeCount),
+        [filteredLaborEmployees, poolVisibleEmployeeCount]
+    );
     const latestLaborDrumsWashedAtHome = useMemo(() => {
         if (!latestLaborAttendance) return 0;
         return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
@@ -628,7 +700,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         if (!label) return;
         const exists = (settings.incomeTypes || []).some(v => String(v).trim().toLowerCase() === label.toLowerCase());
         if (exists) {
-            alert('มีประเภทนี้อยู่แล้ว');
+            void sessionAlert('มีประเภทนี้อยู่แล้ว');
             return;
         }
         setSettings?.((prev: AppSettings) => ({
@@ -652,6 +724,207 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
     const [eventType, setEventType] = useState('info');
     const [eventPriority, setEventPriority] = useState('normal');
     const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
+    const [draftOffer, setDraftOffer] = useState<{ payload: WizardDraftPayload; savedAt: number; hasConflict: boolean } | null>(null);
+    const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [autosaveSavedAt, setAutosaveSavedAt] = useState<number | null>(null);
+
+    const applyWizardDraft = useCallback((p: WizardDraftPayload) => {
+        setStep(p.step);
+        setLaborSearch(p.laborSearch);
+        setSelectedEmps(p.selectedEmps);
+        setLaborStatus(p.laborStatus);
+        setHalfDayEmpIds(new Set(p.halfDayEmpIds));
+        setDrumsWashedAtHome(p.drumsWashedAtHome);
+        setOtHours(p.otHours);
+        setOtDesc(p.otDesc);
+        setOtRate(p.otRate);
+        setWorkAssignments(p.workAssignments);
+        setCustomCategories(p.customCategories);
+        setNewCategoryName(p.newCategoryName);
+        setVehCar(p.vehCar);
+        setVehDriver(p.vehDriver);
+        setVehWage(p.vehWage);
+        setVehMachineWage(p.vehMachineWage);
+        setVehDetails(p.vehDetails);
+        setVehWorkType(p.vehWorkType);
+        setEditingVehicleTxId(p.editingVehicleTxId);
+        setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
+        setTripMorning(p.tripMorning);
+        setTripAfternoon(p.tripAfternoon);
+        setSand1Morning(p.sand1Morning);
+        setSand1Afternoon(p.sand1Afternoon);
+        setSand2Morning(p.sand2Morning);
+        setSand2Afternoon(p.sand2Afternoon);
+        setSand1Operators(p.sand1Operators);
+        setSand2Operators(p.sand2Operators);
+        setSandDrumsObtained(p.sandDrumsObtained);
+        setSandMorningStart(p.sandMorningStart);
+        setSandAfternoonStart(p.sandAfternoonStart);
+        setSandEveningEnd(p.sandEveningEnd);
+        setFuelAmount(p.fuelAmount);
+        setFuelLiters(p.fuelLiters);
+        setFuelType(p.fuelType);
+        setFuelUnit(p.fuelUnit);
+        setFuelDetails(p.fuelDetails);
+        setFuelVehicle(p.fuelVehicle);
+        setFuelVehicleLiters(p.fuelVehicleLiters);
+        setFuelVehicleType(p.fuelVehicleType);
+        setFuelVehicleDetails(p.fuelVehicleDetails);
+        setIncomeType(p.incomeType);
+        setIncomeQty(p.incomeQty);
+        setIncomeUnitPrice(p.incomeUnitPrice);
+        setIncomeTotal(p.incomeTotal);
+        setNewIncomeType(p.newIncomeType);
+        setIncomeTypeAddOpen(p.incomeTypeAddOpen);
+        setEventDesc(p.eventDesc);
+        setEventType(p.eventType);
+        setEventPriority(p.eventPriority);
+    }, []);
+
+    const wizardDraftPayload: WizardDraftPayload = useMemo(
+        () => ({
+            step,
+            laborSearch,
+            selectedEmps,
+            laborStatus,
+            halfDayEmpIds: [...halfDayEmpIds],
+            drumsWashedAtHome,
+            otHours,
+            otDesc,
+            otRate,
+            workAssignments,
+            customCategories,
+            newCategoryName,
+            vehCar,
+            vehDriver,
+            vehWage,
+            vehMachineWage,
+            vehDetails,
+            vehWorkType,
+            editingVehicleTxId,
+            tripEntries,
+            tripMorning,
+            tripAfternoon,
+            sand1Morning,
+            sand1Afternoon,
+            sand2Morning,
+            sand2Afternoon,
+            sand1Operators,
+            sand2Operators,
+            sandDrumsObtained,
+            sandMorningStart,
+            sandAfternoonStart,
+            sandEveningEnd,
+            fuelAmount,
+            fuelLiters,
+            fuelType,
+            fuelUnit,
+            fuelDetails,
+            fuelVehicle,
+            fuelVehicleLiters,
+            fuelVehicleType,
+            fuelVehicleDetails,
+            incomeType,
+            incomeQty,
+            incomeUnitPrice,
+            incomeTotal,
+            newIncomeType,
+            incomeTypeAddOpen,
+            eventDesc,
+            eventType,
+            eventPriority,
+        }),
+        [
+            step,
+            laborSearch,
+            selectedEmps,
+            laborStatus,
+            halfDayEmpIds,
+            drumsWashedAtHome,
+            otHours,
+            otDesc,
+            otRate,
+            workAssignments,
+            customCategories,
+            newCategoryName,
+            vehCar,
+            vehDriver,
+            vehWage,
+            vehMachineWage,
+            vehDetails,
+            vehWorkType,
+            editingVehicleTxId,
+            tripEntries,
+            tripMorning,
+            tripAfternoon,
+            sand1Morning,
+            sand1Afternoon,
+            sand2Morning,
+            sand2Afternoon,
+            sand1Operators,
+            sand2Operators,
+            sandDrumsObtained,
+            sandMorningStart,
+            sandAfternoonStart,
+            sandEveningEnd,
+            fuelAmount,
+            fuelLiters,
+            fuelType,
+            fuelUnit,
+            fuelDetails,
+            fuelVehicle,
+            fuelVehicleLiters,
+            fuelVehicleType,
+            fuelVehicleDetails,
+            incomeType,
+            incomeQty,
+            incomeUnitPrice,
+            incomeTotal,
+            newIncomeType,
+            incomeTypeAddOpen,
+            eventDesc,
+            eventType,
+            eventPriority,
+        ]
+    );
+
+    const dayTxFingerprint = useMemo(() => getDayTransactionFingerprint(dayTransactions), [dayTransactions]);
+
+    useEffect(() => {
+        const norm = normalizeDate(date);
+        if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(`cm_draft_dismiss_${norm}`)) {
+            setDraftOffer(null);
+            return;
+        }
+        const entry = readWizardDraftEntry(norm);
+        if (entry?.payload && entry.payload.step >= 1) {
+            setDraftOffer({
+                payload: entry.payload,
+                savedAt: entry.savedAt,
+                hasConflict: !!entry.txFingerprint && entry.txFingerprint !== dayTxFingerprint,
+            });
+        } else {
+            setDraftOffer(null);
+        }
+    }, [date, dayTxFingerprint]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (viewMode !== 'record' || step < 1) return;
+        const norm = normalizeDate(date);
+        setAutosaveState('saving');
+        const tid = window.setTimeout(() => {
+            const ok = writeWizardDraftForDate(norm, wizardDraftPayload, dayTxFingerprint);
+            if (ok) {
+                setAutosaveState('saved');
+                setAutosaveSavedAt(Date.now());
+            } else {
+                setAutosaveState('error');
+            }
+        }, 750);
+        return () => window.clearTimeout(tid);
+    }, [wizardDraftPayload, date, viewMode, step, dayTxFingerprint]);
+
     const stepScrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollStepLeft, setCanScrollStepLeft] = useState(false);
     const [canScrollStepRight, setCanScrollStepRight] = useState(false);
@@ -848,7 +1121,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         }
     }, [date, dayTransactions, rememberedCustomCategories, editingVehicleTxId]);
 
-    const nextStep = () => {
+    const nextStep = async () => {
         // กันลืมกดบันทึก: ถ้ายังกด "ถัดไป" โดยไม่มีข้อมูลในแต่ละขั้น ให้เตือนก่อน
         const normDate = normalizeDate(date);
         const todaysTx = transactions.filter(t => normalizeDate(t.date) === normDate);
@@ -866,9 +1139,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
         if (stepNeedsData[step] === false) {
             const label = STEPS[step]?.label || '';
-            if (!window.confirm(`ยังไม่มีการกดบันทึกในขั้น \"${label}\" สำหรับวันที่นี้\n\nหากต้องการไปขั้นถัดไปโดยไม่บันทึก ให้กด \"ตกลง\"`)) {
-                return;
-            }
+            const ok = await sessionConfirm(
+                `ยังไม่มีการกดบันทึกในขั้น "${label}" สำหรับวันที่นี้\n\nหากต้องการไปขั้นถัดไปโดยไม่บันทึก ให้กด "ตกลง"`,
+                { title: 'ไปขั้นถัดไปโดยไม่บันทึก?' }
+            );
+            if (!ok) return;
         }
 
         setStep(s => Math.min(s + 1, STEPS.length - 1));
@@ -879,7 +1154,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
             setStep(resumeStep);
             return;
         }
-        nextStep();
+        void nextStep();
     };
     const handleOpenLaborStep = () => {
         setLaborStatus('Work');
@@ -911,6 +1186,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [touchUI]);
+    useEffect(() => {
+        setOtVisibleEmployeeCount(48);
+        setPoolVisibleEmployeeCount(60);
+    }, [debouncedLaborSearch, step, laborStatus]);
 
     const isWizardTx = (t: Transaction) =>
         t.category === 'Labor' ||
@@ -1283,6 +1562,85 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                 {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
                 <div className={`min-w-0 space-y-6 ${mobileShell ? '' : 'xl:col-span-8'}`}>
                     <Card className={`relative flex flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[500px] p-6'}`}>
+                        {viewMode === 'record' && (
+                            <div className="mb-3 flex items-center justify-end">
+                                <span
+                                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                        autosaveState === 'saving'
+                                            ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
+                                            : autosaveState === 'saved'
+                                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                              : autosaveState === 'error'
+                                                ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+                                                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'
+                                    }`}
+                                >
+                                    {autosaveState === 'saving'
+                                        ? 'กำลังบันทึกแบบร่าง...'
+                                        : autosaveState === 'saved'
+                                          ? `บันทึกล่าสุด ${autosaveSavedAt ? new Date(autosaveSavedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`
+                                          : autosaveState === 'error'
+                                            ? 'บันทึกแบบร่างไม่สำเร็จ'
+                                            : 'ยังไม่มีการแก้ไขล่าสุด'}
+                                </span>
+                            </div>
+                        )}
+                        {draftOffer && viewMode === 'record' && (
+                            <div
+                                className={`mb-4 rounded-2xl border p-3 text-sm shadow-sm ${
+                                    draftOffer.hasConflict
+                                        ? 'border-rose-200 bg-rose-50/90 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100'
+                                        : 'border-amber-200 bg-amber-50/90 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-50'
+                                } ${
+                                    mobileShell ? '' : 'mx-0'
+                                }`}
+                            >
+                                <p className="font-bold">พบแบบร่างที่ยังไม่เสร็จ (ขั้น {STEPS[draftOffer.payload.step]?.shortLabel || draftOffer.payload.step})</p>
+                                <p className="mt-1 text-xs opacity-90">
+                                    บันทึกล่าสุด {new Date(draftOffer.savedAt).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                                </p>
+                                {draftOffer.hasConflict && (
+                                    <p className="mt-1.5 text-xs font-semibold">
+                                        มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง อาจเกิดการชนกันของข้อมูล
+                                    </p>
+                                )}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <Button
+                                        type="button"
+                                        className="touch-manipulation"
+                                        onClick={async () => {
+                                            if (draftOffer.hasConflict) {
+                                                const ok = await sessionConfirm('พบความต่างระหว่างแบบร่างกับข้อมูลล่าสุดของวันนี้ ต้องการกู้คืนทับค่าในฟอร์มต่อหรือไม่?', { title: 'ยืนยันกู้คืนแบบร่างที่มี conflict' });
+                                                if (!ok) return;
+                                            }
+                                            applyWizardDraft(draftOffer.payload);
+                                            setDraftOffer(null);
+                                            if (typeof sessionStorage !== 'undefined') {
+                                                sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
+                                            }
+                                        }}
+                                    >
+                                        กู้คืนแบบร่าง
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="touch-manipulation"
+                                        onClick={() => {
+                                            clearWizardDraftForDate(normalizeDate(date));
+                                            setDraftOffer(null);
+                                            setAutosaveState('idle');
+                                            setAutosaveSavedAt(null);
+                                            if (typeof sessionStorage !== 'undefined') {
+                                                sessionStorage.setItem(`cm_draft_dismiss_${normalizeDate(date)}`, '1');
+                                            }
+                                        }}
+                                    >
+                                        ไม่ใช้แบบร่าง
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Step 0: Date */}
                         {step === 0 && (
@@ -1407,18 +1765,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                         className="text-sm border border-slate-200 dark:border-white/15 rounded-lg px-3 py-1.5 w-32 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder:text-slate-400" />
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                                                    {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).map(emp => {
+                                                    {otVisibleEmployees.map(emp => {
                                                         const isSelected = selectedEmps.includes(emp.id);
                                                         const displayName = getEmployeeDisplayName(emp);
                                                         return (
-                                                            <button key={emp.id} type="button"
+                                                            <EmployeeSelectChip
+                                                                key={emp.id}
+                                                                touchUI={touchUI}
+                                                                selected={isSelected}
                                                                 onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
-                                                                className={`rounded-xl text-left font-medium transition-all border-2 touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${isSelected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}>
-                                                                {displayName}{emp.name && displayName !== emp.name ? ` (${emp.name})` : ''}
-                                                            </button>
+                                                                label={`${displayName}${emp.name && displayName !== emp.name ? ` (${emp.name})` : ''}`}
+                                                            />
                                                         );
                                                     })}
                                                 </div>
+                                                {filteredLaborEmployees.length > otVisibleEmployees.length && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setOtVisibleEmployeeCount(prev => prev + 36)}
+                                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                                    >
+                                                        แสดงพนักงานเพิ่ม ({otVisibleEmployees.length}/{filteredLaborEmployees.length})
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* OT Rate */}
@@ -1484,16 +1853,25 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             )}
 
                                             {/* Save */}
-                                            <button onClick={() => {
-                                                if (selectedEmps.length === 0) return alert('กรุณาเลือกพนักงาน');
-                                                if (!otRate) return alert('กรุณาระบุค่า OT');
+                                            <button onClick={async () => {
+                                                if (selectedEmps.length === 0) {
+                                                    await sessionAlert('กรุณาเลือกพนักงาน');
+                                                    return;
+                                                }
+                                                if (!otRate) {
+                                                    await sessionAlert('กรุณาระบุค่า OT');
+                                                    return;
+                                                }
                                                 const existingLaborIds = dayTransactions
                                                     .filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
                                                     .flatMap(t => t.employeeIds || []);
                                                 const alreadyRecorded = selectedEmps.filter(id => existingLaborIds.includes(id));
                                                 if (alreadyRecorded.length > 0) {
                                                     const names = alreadyRecorded.map(id => getEmployeeDisplayName(employees.find(e => e.id === id)) || id).join(', ');
-                                                    return alert(`ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้มีรายการค่าแรง/OT วันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "ค่าแรง/ลา" หรือลบรายการเดิมก่อน`);
+                                                    await sessionAlert(
+                                                        `ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้มีรายการค่าแรง/OT วันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "ค่าแรง/ลา" หรือลบรายการเดิมก่อน`
+                                                    );
+                                                    return;
                                                 }
                                                 const rate = Number(otRate) || 0;
                                                 const hours = Number(otHours) || 0;
@@ -1512,7 +1890,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         </div>
                                         <div className={stepActionWrapClass}>
                                             <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                            <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                            <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                         </div>
                                     </div>
                                 )}
@@ -1526,13 +1904,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                 <span className="text-sm font-bold text-slate-600">👥 เลือกพนักงานเพื่อย้ายลงกล่องงาน</span>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                                                        {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).length}/{employees.length} คน
+                                                        {filteredLaborEmployees.length}/{employees.length} คน
                                                     </span>
                                                     <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-36 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300" />
                                                 </div>
                                             </div>
                                             <div className="grid max-h-[180px] grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-3 sm:p-3 md:max-h-[240px] md:grid-cols-4 lg:grid-cols-5">
-                                                {employees.filter(e => isEmployeeMatchedBySearch(e, laborSearch)).map(emp => {
+                                                {poolVisibleEmployees.map(emp => {
                                                     const isAssigned = Object.values(workAssignments).some(ids => ids.includes(emp.id));
                                                     const isSelected = selectedEmps.includes(emp.id);
                                                     const saved = dayTransactions.find(t => t.category === 'Labor' && t.employeeIds?.includes(emp.id));
@@ -1556,6 +1934,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     );
                                                 })}
                                             </div>
+                                            {filteredLaborEmployees.length > poolVisibleEmployees.length && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPoolVisibleEmployeeCount(prev => prev + 40)}
+                                                    className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                                >
+                                                    แสดงรายการเพิ่ม ({poolVisibleEmployees.length}/{filteredLaborEmployees.length})
+                                                </button>
+                                            )}
                                             {selectedEmps.length > 0 && <p className="text-xs text-indigo-600 mt-1.5 font-medium">เลือก {selectedEmps.length} คน — กดปุ่ม "ย้าย" ในกล่องงานด้านล่าง</p>}
                                         </div>
 
@@ -1746,14 +2133,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     .filter(t => t.category === 'Vehicle' && !!t.driverId)
                                                     .map(t => t.driverId as string);
                                                 const allEmps = [...new Set([...allAssigned, ...driverWorkedToday])];
-                                                if (allEmps.length === 0) return alert('กรุณาลากพนักงานใส่กล่องงานก่อน หรือมีรายการใช้รถที่ระบุคนขับในวันนี้');
+                                                if (allEmps.length === 0) {
+                                                    await sessionAlert('กรุณาลากพนักงานใส่กล่องงานก่อน หรือมีรายการใช้รถที่ระบุคนขับในวันนี้');
+                                                    return;
+                                                }
                                                 const existingLaborIds = dayTransactions
                                                     .filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
                                                     .flatMap(t => t.employeeIds || []);
                                                 const alreadyRecorded = allEmps.filter(id => existingLaborIds.includes(id));
                                                 if (alreadyRecorded.length > 0) {
                                                     const names = alreadyRecorded.map(id => getEmployeeDisplayName(employees.find(e => e.id === id)) || id).join(', ');
-                                                    return alert(`ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้บันทึกค่าแรงวันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "ค่าแรง/ลา" หรือลบรายการเดิมก่อน`);
+                                                    await sessionAlert(
+                                                        `ไม่สามารถบันทึกซ้ำได้ — พนักงานต่อไปนี้บันทึกค่าแรงวันที่นี้แล้ว: ${names}\nกรุณาตรวจสอบที่เมนู "ค่าแรง/ลา" หรือลบรายการเดิมก่อน`
+                                                    );
+                                                    return;
                                                 }
                                                 const base = { id: Date.now().toString(), date, employeeIds: allEmps };
                                                 const allCats = [...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, color: '', bgLight: '' }))];
@@ -1806,7 +2199,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </Button>
                                             <div className={stepActionWrapClass}>
                                                 <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                                <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                                <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                             </div>
                                         </div>
                                     </>
@@ -1837,8 +2230,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                                     <button
                                                         type="button"
                                                         title="ลบ"
-                                                        onClick={() => {
-                                                            if (!window.confirm('ลบรายการรถนี้?')) return;
+                                                        onClick={async () => {
+                                                            if (!(await sessionConfirm('ลบรายการรถนี้?', { title: 'ยืนยันการลบ' }))) return;
                                                             onDeleteTransaction(t.id);
                                                             if (editingVehicleTxId === t.id) {
                                                                 setEditingVehicleTxId(null);
@@ -1978,8 +2371,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             </div>
                                         )}
                                     </div>
-                                    <Button onClick={() => {
-                                        if (!vehCar || !vehDriver) return alert('ข้อมูลไม่ครบ');
+                                    <Button onClick={async () => {
+                                        if (!vehCar || !vehDriver) {
+                                            await sessionAlert('ข้อมูลไม่ครบ');
+                                            return;
+                                        }
                                         const vehicleWarnings: string[] = [];
                                         const duplicateVeh = dayTransactions.find(t =>
                                             t.category === 'Vehicle' &&
@@ -1991,7 +2387,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         if (duplicateVeh) vehicleWarnings.push(`มีรายการรถคันนี้กับคนขับนี้อยู่แล้วในวันนี้ (${vehCar})`);
                                         if ((Number(vehMachineWage) || 0) < 0 || (Number(vehWage) || 0) < 0) vehicleWarnings.push('ค่าจ้างรถหรือเบี้ยเลี้ยงเป็นค่าติดลบ');
                                         if ((Number(vehMachineWage) || 0) > 50000) vehicleWarnings.push('ค่าจ้างรถสูงกว่าปกติมาก');
-                                        if (!shouldContinueWithWarning(vehicleWarnings, 'ตรวจพบรายการรถที่อาจไม่ถูกต้อง')) return;
+                                        if (!(await shouldContinueWithWarning(vehicleWarnings, 'ตรวจพบรายการรถที่อาจไม่ถูกต้อง'))) return;
                                         const dayLabel = vehWorkType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
                                         const id = editingVehicleTxId || Date.now().toString();
                                         onSaveTransaction({
@@ -2006,7 +2402,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 </div>
                                 <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -2212,9 +2608,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                 {/* Save all + navigation */}
                                 <div className="pt-4 border-t space-y-3">
-                                    <Button onClick={() => {
+                                    <Button onClick={async () => {
                                         const valid = tripEntries.filter(e => e.vehicle);
-                                        if (valid.length === 0) return alert('กรุณาเลือกรถอย่างน้อย 1 คัน');
+                                        if (valid.length === 0) {
+                                            await sessionAlert('กรุณาเลือกรถอย่างน้อย 1 คัน');
+                                            return;
+                                        }
                                         const tripWarnings: string[] = [];
                                         const duplicatedVehicleInForm = valid.length !== new Set(valid.map(v => v.vehicle)).size;
                                         if (duplicatedVehicleInForm) tripWarnings.push('มีการเลือกรถคันเดิมซ้ำในฟอร์มเดียวกัน');
@@ -2222,7 +2621,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         if (totalTrips > 300) tripWarnings.push('จำนวนเที่ยวรวมสูงกว่าปกติมาก');
                                         const hasExistingTripToday = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                                         if (hasExistingTripToday) tripWarnings.push('วันนี้มีรายการเที่ยวรถอยู่แล้ว อาจเป็นการบันทึกซ้ำ');
-                                        if (!shouldContinueWithWarning(tripWarnings, 'ตรวจพบรายการเที่ยวรถที่อาจซ้ำ/ผิดปกติ')) return;
+                                        if (!(await shouldContinueWithWarning(tripWarnings, 'ตรวจพบรายการเที่ยวรถที่อาจซ้ำ/ผิดปกติ'))) return;
                                         const tripsPerCar = Math.floor(totalTrips / valid.length);
                                         const remainder = totalTrips % valid.length;
                                         valid.forEach((entry, idx) => {
@@ -2247,7 +2646,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </Button>
                                     <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                        <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -2515,10 +2914,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 </div>
 
                                 <div className={mobileShell ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-2 space-y-2 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90' : 'pt-3 border-t space-y-2'}>
-                                    <Button onClick={() => {
+                                    <Button onClick={async () => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
-                                        if (sandGrandTotal === 0 && drumsToday === 0) return alert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
+                                        if (sandGrandTotal === 0 && drumsToday === 0) {
+                                            await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
+                                            return;
+                                        }
                                         const opNames1 = sand1Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const opNames2 = sand2Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const timePayload = {
@@ -2562,7 +2964,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </Button>
                                     <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                        <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -2743,8 +3145,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </div>
 
                                     {/* Save button */}
-                                    <button onClick={() => {
-                                        if (!fuelAmount) return alert('กรุณาระบุราคาซื้อน้ำมัน');
+                                    <button onClick={async () => {
+                                        if (!fuelAmount) {
+                                            await sessionAlert('กรุณาระบุราคาซื้อน้ำมัน');
+                                            return;
+                                        }
                                         const fuelWarnings: string[] = [];
                                         const liters = Number(fuelLiters) || 0;
                                         const amount = Number(fuelAmount) || 0;
@@ -2758,7 +3163,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         if (duplicateFuelIn) fuelWarnings.push('พบรายการซื้อน้ำมันค่าเดียวกันอยู่แล้วในวันนี้');
                                         if (liters <= 0) fuelWarnings.push('ปริมาณน้ำมันที่ซื้อควรมากกว่า 0');
                                         if (amount > 200000) fuelWarnings.push('ยอดซื้อน้ำมันสูงกว่าปกติมาก');
-                                        if (!shouldContinueWithWarning(fuelWarnings, 'ตรวจพบรายการซื้อน้ำมันที่อาจซ้ำ/ผิดปกติ')) return;
+                                        if (!(await shouldContinueWithWarning(fuelWarnings, 'ตรวจพบรายการซื้อน้ำมันที่อาจซ้ำ/ผิดปกติ'))) return;
                                         const unitLabel = fuelUnit === 'แกลลอน' ? 'gallon' : 'L';
                                         onSaveTransaction({
                                             id: Date.now().toString(), date, type: 'Expense', category: 'Fuel',
@@ -2837,9 +3242,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                             className="w-full px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors"
                                         />
                                     </div>
-                                    <button onClick={() => {
-                                        if (!fuelVehicle) return alert('กรุณาเลือกรถ');
-                                        if (!fuelVehicleLiters || Number(fuelVehicleLiters) <= 0) return alert('กรุณาระบุปริมาณน้ำมันที่ใช้');
+                                    <button onClick={async () => {
+                                        if (!fuelVehicle) {
+                                            await sessionAlert('กรุณาเลือกรถ');
+                                            return;
+                                        }
+                                        if (!fuelVehicleLiters || Number(fuelVehicleLiters) <= 0) {
+                                            await sessionAlert('กรุณาระบุปริมาณน้ำมันที่ใช้');
+                                            return;
+                                        }
                                         const amount = 0;
                                         const liters = Number(fuelVehicleLiters) || 0;
                                         const fuelVehicleWarnings: string[] = [];
@@ -2853,7 +3264,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         );
                                         if (duplicateFuelOut) fuelVehicleWarnings.push(`มีรายการใช้น้ำมันของรถ ${fuelVehicle} ค่าเดียวกันอยู่แล้ว`);
                                         if (liters > 5000) fuelVehicleWarnings.push('ปริมาณน้ำมันที่ใช้สูงกว่าปกติมาก');
-                                        if (!shouldContinueWithWarning(fuelVehicleWarnings, 'ตรวจพบรายการใช้น้ำมันรายรถที่อาจซ้ำ/ผิดปกติ')) return;
+                                        if (!(await shouldContinueWithWarning(fuelVehicleWarnings, 'ตรวจพบรายการใช้น้ำมันรายรถที่อาจซ้ำ/ผิดปกติ'))) return;
                                         const timePart = fuelVehicleDetails.trim() ? ` เวลา ${fuelVehicleDetails}` : '';
                                         onSaveTransaction({
                                             id: `fuel_car_${Date.now()}`,
@@ -2879,7 +3290,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
 
                                 <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -3011,8 +3422,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                         <Input label="ราคา/หน่วย" type="number" value={incomeUnitPrice} onChange={(e: any) => handleIncomeCalc('price', e.target.value)} />
                                         <Input label="รวม (บาท)" type="number" value={incomeTotal} onChange={(e: any) => handleIncomeCalc('total', e.target.value)} />
                                     </div>
-                                    <Button onClick={() => {
-                                        if (!incomeType || !incomeTotal) return alert('กรุณากรอกประเภทรายรับและยอดรวม');
+                                    <Button onClick={async () => {
+                                        if (!incomeType || !incomeTotal) {
+                                            await sessionAlert('กรุณากรอกประเภทรายรับและยอดรวม');
+                                            return;
+                                        }
                                         onSaveTransaction({
                                             id: Date.now().toString(),
                                             date,
@@ -3030,7 +3444,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 </div>
                                 <div className={stepActionWrapClass}>
                                     <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                    <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                    <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                 </div>
                             </div>
                         )}
@@ -3127,8 +3541,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                 </div>
 
                                 <div className={mobileShell ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-2 space-y-2 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90' : 'pt-3 border-t space-y-2'}>
-                                    <Button onClick={() => {
-                                        if (!eventDesc.trim()) return alert('กรุณาระบุรายละเอียดเหตุการณ์');
+                                    <Button onClick={async () => {
+                                        if (!eventDesc.trim()) {
+                                            await sessionAlert('กรุณาระบุรายละเอียดเหตุการณ์');
+                                            return;
+                                        }
                                         onSaveTransaction({
                                             id: Date.now().toString(), date, type: 'Expense', category: 'DailyLog', subCategory: 'Event',
                                             description: eventDesc.trim(), amount: 0,
@@ -3140,7 +3557,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </Button>
                                     <div className={stepActionWrapClass}>
                                         <Button variant="secondary" onClick={prevStep} className={navBtnClass}>ย้อนกลับ</Button>
-                                        <Button onClick={nextStep} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
+                                        <Button onClick={() => void nextStep()} className={navBtnClass}>ถัดไป <ChevronRight size={18} /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -3313,7 +3730,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, dateFilter, onSa
                                     </p>
                                 )}
 
-                                <Button onClick={() => setStep(0)} className={`mx-auto mt-auto w-full px-8 sm:w-auto ${mobileShell ? 'min-h-[52px] text-base font-bold' : ''}`}>
+                                <Button
+                                    onClick={() => {
+                                        clearWizardDraftForDate(normalizeDate(date));
+                                        setDraftOffer(null);
+                                        setAutosaveState('idle');
+                                        setAutosaveSavedAt(null);
+                                        if (typeof sessionStorage !== 'undefined') {
+                                            sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
+                                        }
+                                        setStep(0);
+                                    }}
+                                    className={`mx-auto mt-auto w-full px-8 sm:w-auto ${mobileShell ? 'min-h-[52px] text-base font-bold' : ''}`}
+                                >
                                     {mobileShell ? 'เลือกวันใหม่' : 'เสร็จสิ้น / เริ่มบันทึกวันอื่น'}
                                 </Button>
                             </div>

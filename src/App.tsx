@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone } from 'lucide-react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
@@ -12,7 +12,6 @@ import VehicleEntry from './modules/Vehicle/VehicleEntry';
 import GeneralEntry from './modules/GeneralEntry';
 import LandModule from './modules/Land/LandModule';
 import IncomeEntry from './modules/IncomeEntry';
-import PayrollModule from './modules/Payroll/PayrollModule';
 import SettingsModule from './modules/Settings/SettingsModule';
 import MaintenanceModule from './modules/Maintenance/MaintenanceModule';
 import DailyStepRecorder from './modules/Dashboard/DailyStepRecorder';
@@ -20,13 +19,16 @@ import LoginPage from './modules/Auth/LoginPage';
 import FirstLoginPasswordChange from './modules/Auth/FirstLoginPasswordChange';
 import PostLoginModeSelect from './modules/Auth/PostLoginModeSelect';
 import MobileFieldApp from './modules/Mobile/MobileFieldApp';
-import RecordManager from './modules/DataList/RecordManager';
-import AdminModule from './modules/Admin/AdminModule';
 import WorkPlanner from './modules/Planning/WorkPlanner';
+import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
+const PayrollModule = lazy(() => import('./modules/Payroll/PayrollModule'));
+const RecordManager = lazy(() => import('./modules/DataList/RecordManager'));
+const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
+import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
 
 // Supabase Services
@@ -90,6 +92,7 @@ const MENU_ITEMS = [
     { id: 'Dashboard', icon: LayoutDashboard, l: 'ภาพรวม' },
     { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน (Daily Wizard)' },
     { id: 'WorkPlanner', icon: ClipboardList, l: 'วางแผนงาน (เดือน/สัปดาห์/วัน)' },
+    { id: 'MonthDataAudit', icon: CalendarDays, l: 'ตรวจสอบ' },
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
     { id: 'Labor', icon: Users, l: 'ค่าแรง/ลา' },
     { id: 'Vehicle', icon: Truck, l: 'การใช้รถ' },
@@ -121,6 +124,47 @@ const getPeriodLockState = (txs: Transaction[], period: { start: string; end: st
     const latest = items[items.length - 1];
     return (latest.payrollLockAction || 'unlock') === 'unlock';
 };
+const getPrevDayYmd = () => {
+    const d = new Date(`${getToday()}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+};
+const getDayTransactions = (txs: Transaction[], dateYmd: string) => txs.filter(t => normalizeDate(t.date) === normalizeDate(dateYmd));
+const detectDailyAuditAlertCount = (txs: Transaction[], dateYmd: string, thresholds: { incomeZeroThreshold?: number; laborHighAmountThreshold?: number; fuelHighLitersThreshold?: number } | undefined) => {
+    const dayTx = getDayTransactions(txs, dateYmd);
+    const empty = !dayTx.some(t =>
+        t.category === 'Labor' ||
+        t.category === 'Vehicle' ||
+        t.category === 'Fuel' ||
+        (t.category === 'Income' && t.type === 'Income') ||
+        (t.category === 'DailyLog' && (t.subCategory === 'VehicleTrip' || t.subCategory === 'Sand' || t.subCategory === 'Event'))
+    );
+    const exactDupCount = (() => {
+        const map = new Map<string, number>();
+        for (const t of dayTx) {
+            if (t.category === 'Payroll' || t.category === 'PayrollUnlock') continue;
+            const k = `${normalizeDate(t.date)}|${t.category}|${t.subCategory || ''}|${t.amount}|${(t.description || '').trim()}`;
+            map.set(k, (map.get(k) || 0) + 1);
+        }
+        let c = 0;
+        for (const [, n] of map) if (n >= 2) c += 1;
+        return c;
+    })();
+    const incomeZeroThreshold = Math.max(0, thresholds?.incomeZeroThreshold ?? 0);
+    const laborHighAmountThreshold = Math.max(0, thresholds?.laborHighAmountThreshold ?? 25000);
+    const fuelHighLitersThreshold = Math.max(0, thresholds?.fuelHighLitersThreshold ?? 400);
+    const incomeAmount = dayTx.filter(t => t.category === 'Income' && t.type === 'Income').reduce((s, t) => s + Number(t.amount || 0), 0);
+    const laborAmount = dayTx.filter(t => t.category === 'Labor').reduce((s, t) => s + Number(t.amount || 0), 0);
+    const fuelLiters = dayTx.filter(t => t.category === 'Fuel').reduce((s, t) => s + fuelTxToLiters(t), 0);
+    const tripCount = dayTx.filter(t => (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip') || t.category === 'Vehicle').length;
+    let count = 0;
+    if (empty) count += 1;
+    if (exactDupCount > 0) count += exactDupCount;
+    if (incomeAmount <= incomeZeroThreshold && dayTx.some(t => t.category === 'Income')) count += 1;
+    if (laborAmount >= laborHighAmountThreshold) count += 1;
+    if (fuelLiters >= fuelHighLitersThreshold && tripCount === 0) count += 1;
+    return count;
+};
 
 function App() {
     const appVersion = import.meta.env.VITE_APP_VERSION || 'dev';
@@ -144,6 +188,9 @@ function App() {
 
     // --- App State ---
     const [activeMenu, setActiveMenu] = useState('Dashboard');
+    const [dailyWizardJumpDate, setDailyWizardJumpDate] = useState<string | undefined>(undefined);
+    const [dailyWizardJumpStep, setDailyWizardJumpStep] = useState<number | undefined>(undefined);
+    const [auditBadgeCount, setAuditBadgeCount] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [isTouchLayout, setIsTouchLayout] = useState(false);
@@ -153,6 +200,11 @@ function App() {
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
     const [undoAction, setUndoAction] = useState<{ message: string; expiresAt: number; onUndo: () => void } | null>(null);
+    const lazyFallback = (
+        <div className="flex min-h-[240px] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+        </div>
+    );
     const latestVersionNote = (settings.versionNotes && settings.versionNotes.length > 0)
         ? settings.versionNotes[settings.versionNotes.length - 1]
         : (autoVersionNotes[0] || 'พร้อมใช้งาน');
@@ -167,6 +219,27 @@ function App() {
         if (hidden.size === 0) return transactions;
         return transactions.filter(t => !hidden.has(t.id));
     }, [transactions, settings.appDefaults?.hiddenTransactionIds]);
+    useEffect(() => {
+        if (isLoading) return;
+        const prevDay = getPrevDayYmd();
+        const thresholds = settings.appDefaults?.dataQualityThresholds;
+        const count = detectDailyAuditAlertCount(visibleTransactions, prevDay, thresholds);
+        setAuditBadgeCount(count);
+        const lastDate = settings.appDefaults?.dataQualityDailyAlert?.lastAlertDate;
+        if (count <= 0 || lastDate === getToday()) return;
+        setToast(`แจ้งเตือนตรวจสอบข้อมูล: เมื่อวานพบ ${count} รายการผิดปกติ`);
+        setTimeout(() => setToast(null), 5000);
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                dataQualityDailyAlert: {
+                    lastAlertDate: getToday(),
+                    lastAlertCount: count,
+                },
+            },
+        }));
+    }, [isLoading, visibleTransactions, settings.appDefaults?.dataQualityThresholds, settings.appDefaults?.dataQualityDailyAlert?.lastAlertDate]);
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
     const hasRestoredAuthSession = useRef(false);
@@ -187,6 +260,16 @@ function App() {
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
+        const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+            let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+            const timeoutPromise = new Promise<T>((resolve) => {
+                timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+            });
+            const result = await Promise.race([promise, timeoutPromise]);
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            return result;
+        };
+
         const loadData = async () => {
             try {
                 setIsLoading(true);
@@ -205,12 +288,12 @@ function App() {
                 setLoadProgress(55);
                 setLoadMessage('กำลังโหลดข้อมูลจากฐานข้อมูล...');
                 const [emps, txs, projs, sett, adms, logs] = await Promise.all([
-                    db.fetchEmployees(),
-                    db.fetchTransactions(),
-                    db.fetchProjects(),
-                    db.fetchSettings(),
-                    db.fetchAdmins(),
-                    db.fetchAdminLogs(),
+                    withTimeout(db.fetchEmployees(), 12000, MOCK_EMPLOYEES),
+                    withTimeout(db.fetchTransactions(), 12000, MOCK_TRANSACTIONS),
+                    withTimeout(db.fetchProjects(), 12000, MOCK_PROJECTS),
+                    withTimeout(db.fetchSettings(), 12000, MOCK_SETTINGS),
+                    withTimeout(db.fetchAdmins(), 12000, DEFAULT_ADMINS),
+                    withTimeout(db.fetchAdminLogs(), 12000, [] as AdminLog[]),
                 ]);
 
                 setLoadProgress(85);
@@ -218,7 +301,7 @@ function App() {
                 setEmployees(emps);
                 setTransactions(txs);
                 setProjects(projs);
-                if (sett) setSettings(sett);
+                setSettings(sett || MOCK_SETTINGS);
                 setAdmins(adms.length > 0 ? adms : DEFAULT_ADMINS);
                 setAdminLogs(logs);
                 setLoadProgress(100);
@@ -715,50 +798,73 @@ function App() {
             case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
             case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={visibleTransactions} />;
             case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
-            case 'Payroll': return <PayrollModule
-                employees={employees}
-                transactions={visibleTransactions}
-                onSaveTransaction={handleSave}
-                canUnlockPeriod={currentAdmin?.role === 'SuperAdmin'}
-                onUnlockPeriod={(period, reason) => {
-                    const unlockTx: Transaction = {
-                        id: Date.now().toString() + '_unlock',
-                        date: getToday(),
-                        type: 'Expense',
-                        category: 'PayrollUnlock',
-                        description: `ปลดล็อกงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
-                        amount: 0,
-                        payrollPeriod: period,
-                        payrollLockAction: 'unlock',
-                        unlockedByAdminId: currentAdmin?.id,
-                        unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
-                        unlockedAt: formatDateTimeTH(),
-                        note: reason,
-                    };
-                    handleSave(unlockTx);
-                    addLog('unlock_payroll_period', `ปลดล็อกงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
-                }}
-                onRelockPeriod={(period, reason) => {
-                    const relockTx: Transaction = {
-                        id: Date.now().toString() + '_relock',
-                        date: getToday(),
-                        type: 'Expense',
-                        category: 'PayrollUnlock',
-                        description: `ล็อกกลับงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
-                        amount: 0,
-                        payrollPeriod: period,
-                        payrollLockAction: 'relock',
-                        unlockedByAdminId: currentAdmin?.id,
-                        unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
-                        unlockedAt: formatDateTimeTH(),
-                        note: reason,
-                    };
-                    handleSave(relockTx);
-                    addLog('relock_payroll_period', `ล็อกกลับงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
-                }}
-            />;
-            case 'DataList': return <RecordManager transactions={visibleTransactions} onDeleteTransaction={handleDeleteTransaction} />;
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'Payroll': return (
+                <Suspense fallback={lazyFallback}>
+                    <PayrollModule
+                        employees={employees}
+                        transactions={visibleTransactions}
+                        onSaveTransaction={handleSave}
+                        canUnlockPeriod={currentAdmin?.role === 'SuperAdmin'}
+                        onUnlockPeriod={(period, reason) => {
+                            const unlockTx: Transaction = {
+                                id: Date.now().toString() + '_unlock',
+                                date: getToday(),
+                                type: 'Expense',
+                                category: 'PayrollUnlock',
+                                description: `ปลดล็อกงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
+                                amount: 0,
+                                payrollPeriod: period,
+                                payrollLockAction: 'unlock',
+                                unlockedByAdminId: currentAdmin?.id,
+                                unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
+                                unlockedAt: formatDateTimeTH(),
+                                note: reason,
+                            };
+                            handleSave(unlockTx);
+                            addLog('unlock_payroll_period', `ปลดล็อกงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
+                        }}
+                        onRelockPeriod={(period, reason) => {
+                            const relockTx: Transaction = {
+                                id: Date.now().toString() + '_relock',
+                                date: getToday(),
+                                type: 'Expense',
+                                category: 'PayrollUnlock',
+                                description: `ล็อกกลับงวดเงินเดือน ${formatDateBE(period.start)} - ${formatDateBE(period.end)}`,
+                                amount: 0,
+                                payrollPeriod: period,
+                                payrollLockAction: 'relock',
+                                unlockedByAdminId: currentAdmin?.id,
+                                unlockedByAdminName: currentAdmin?.displayName || currentAdmin?.username || 'Unknown',
+                                unlockedAt: formatDateTimeTH(),
+                                note: reason,
+                            };
+                            handleSave(relockTx);
+                            addLog('relock_payroll_period', `ล็อกกลับงวดเงินเดือน ${period.start} - ${period.end} | เหตุผล: ${reason}`);
+                        }}
+                    />
+                </Suspense>
+            );
+            case 'DataList': return (
+                <Suspense fallback={lazyFallback}>
+                    <RecordManager transactions={visibleTransactions} onDeleteTransaction={handleDeleteTransaction} />
+                </Suspense>
+            );
+            case 'MonthDataAudit': return (
+                <DataVerificationModule
+                    monthOverviewMode
+                    transactions={visibleTransactions}
+                    settings={settings}
+                    setSettings={handleSetSettings}
+                    currentAdmin={currentAdmin}
+                    addLog={addLog}
+                    onGoToDailyWizard={(date, step) => {
+                        if (date) setDailyWizardJumpDate(normalizeDate(date));
+                        if (typeof step === 'number') setDailyWizardJumpStep(step);
+                        handleMenuClick('DailyWizard');
+                    }}
+                />
+            );
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'WorkPlanner': return currentAdmin ? (
                 <WorkPlanner
                     adminId={currentAdmin.id}
@@ -769,7 +875,11 @@ function App() {
                     darkMode={darkMode}
                 />
             ) : null;
-            case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} /> : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
+            case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? (
+                <Suspense fallback={lazyFallback}>
+                    <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} />
+                </Suspense>
+            ) : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return (
                 <SettingsModule
                     settings={settings}
@@ -1003,7 +1113,16 @@ function App() {
                                 }`}
                         >
                             <m.icon size={20} className={`shrink-0 ${activeMenu === m.id ? (darkMode ? 'text-amber-400' : 'text-amber-600') : ''}`} />
-                            {(isSidebarOpen || isMobile) && <span className="text-sm truncate">{m.l}</span>}
+                            {(isSidebarOpen || isMobile) && (
+                                <span className="text-sm truncate flex items-center gap-2">
+                                    <span className="truncate">{m.l}</span>
+                                    {m.id === 'MonthDataAudit' && auditBadgeCount > 0 && (
+                                        <span className={`inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${darkMode ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-100 text-rose-700'}`}>
+                                            {auditBadgeCount}
+                                        </span>
+                                    )}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </nav>
