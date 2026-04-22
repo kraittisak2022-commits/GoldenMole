@@ -33,6 +33,20 @@ function QueueHarness() {
     );
 }
 
+function FocusHarness() {
+    const { confirm } = useSessionDialog();
+    return (
+        <button
+            type="button"
+            onClick={async () => {
+                await confirm('focus confirm');
+            }}
+        >
+            open-focus
+        </button>
+    );
+}
+
 describe('SessionDialogProvider queue', () => {
     it('queues overlapping confirm calls in order', async () => {
         const user = userEvent.setup();
@@ -51,5 +65,24 @@ describe('SessionDialogProvider queue', () => {
         await user.click(screen.getByRole('button', { name: 'ยกเลิก' }));
 
         expect(screen.getByTestId('log')).toHaveTextContent('first:true,second:false');
+    });
+
+    it('restores focus to trigger button after dialog closes', async () => {
+        const user = userEvent.setup();
+        render(
+            <SessionDialogProvider>
+                <FocusHarness />
+            </SessionDialogProvider>
+        );
+
+        const trigger = screen.getByRole('button', { name: 'open-focus' });
+        trigger.focus();
+        await user.click(trigger);
+
+        expect(screen.getByText('focus confirm')).toBeInTheDocument();
+        const okBtn = screen.getByRole('button', { name: 'ตกลง' });
+        expect(okBtn).toHaveFocus();
+        await user.click(okBtn);
+        expect(trigger).toHaveFocus();
     });
 });

@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SessionDialogContextValue } from './useSessionDialog';
 import { SessionDialogContext } from './SessionDialogStore';
 
@@ -15,6 +15,8 @@ type DialogQueueItem = {
 export function SessionDialogProvider({ children }: { children: ReactNode }) {
     const [queue, setQueue] = useState<DialogQueueItem[]>([]);
     const activeDialog = queue[0] || null;
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+    const previousFocusedRef = useRef<HTMLElement | null>(null);
 
     const dequeue = useCallback((ok: boolean) => {
         setQueue(prev => {
@@ -55,15 +57,54 @@ export function SessionDialogProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         if (!activeDialog) return;
+        if (!previousFocusedRef.current) {
+            previousFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 dequeue(false);
+                return;
+            }
+            if (e.key === 'Tab' && dialogRef.current) {
+                const focusables = Array.from(
+                    dialogRef.current.querySelectorAll<HTMLElement>(
+                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                    )
+                ).filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1);
+                if (focusables.length === 0) return;
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                const current = document.activeElement as HTMLElement | null;
+                if (e.shiftKey) {
+                    if (!current || current === first || !dialogRef.current.contains(current)) {
+                        e.preventDefault();
+                        last.focus();
+                    }
+                } else if (!current || current === last || !dialogRef.current.contains(current)) {
+                    e.preventDefault();
+                    first.focus();
+                }
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [activeDialog, dequeue]);
+
+    useEffect(() => {
+        if (!activeDialog) {
+            if (previousFocusedRef.current && document.contains(previousFocusedRef.current)) {
+                previousFocusedRef.current.focus();
+            }
+            previousFocusedRef.current = null;
+            return;
+        }
+        const t = window.setTimeout(() => {
+            const primary = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-primary="true"]');
+            primary?.focus();
+        }, 0);
+        return () => window.clearTimeout(t);
+    }, [activeDialog]);
 
     useEffect(() => {
         return () => {
@@ -89,6 +130,7 @@ export function SessionDialogProvider({ children }: { children: ReactNode }) {
                 >
                     <div
                         key={activeDialog.id}
+                        ref={dialogRef}
                         className="max-h-[min(78dvh,480px)] w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900"
                         onMouseDown={(e) => e.stopPropagation()}
                     >
@@ -104,6 +146,7 @@ export function SessionDialogProvider({ children }: { children: ReactNode }) {
                             {activeDialog.mode === 'confirm' && (
                                 <button
                                     type="button"
+                                    data-dialog-cancel="true"
                                     className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 touch-manipulation hover:bg-slate-50 dark:border-white/15 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                                     onClick={() => dequeue(false)}
                                 >
@@ -112,6 +155,7 @@ export function SessionDialogProvider({ children }: { children: ReactNode }) {
                             )}
                             <button
                                 type="button"
+                                data-dialog-primary="true"
                                 className="min-h-[44px] rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white touch-manipulation hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
                                 onClick={() => dequeue(true)}
                             >

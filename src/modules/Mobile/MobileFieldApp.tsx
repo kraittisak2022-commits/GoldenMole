@@ -22,6 +22,8 @@ import {
     AdminUiTheme,
     AdminLog,
 } from '../../types';
+import type { OfflineSyncSnapshot } from '../../services/offlineSync';
+import type { OfflineQueueItem } from '../../services/offlineSync';
 import DailyStepRecorder from '../Dashboard/DailyStepRecorder';
 import LaborModule from '../Labor/LaborModule';
 import SettingsModule from '../Settings/SettingsModule';
@@ -42,6 +44,7 @@ interface MobileFieldAppProps {
     autoVersionNotes: string[];
     appIcon: string;
     darkMode: boolean;
+    financialMaskEnabled?: boolean;
     touchLayout?: boolean;
     onToggleDarkMode: () => void;
     onLogout: () => void;
@@ -61,6 +64,18 @@ interface MobileFieldAppProps {
         newPassword?: string;
     }) => Promise<{ ok: boolean; message?: string }>;
     addLog: (action: string, details: string) => void;
+    offlineSync: OfflineSyncSnapshot;
+    offlineQueueItems: OfflineQueueItem[];
+    onRetrySync: () => void;
+    onDropQueueItem: (queueId: string) => void;
+    onRetryQueueItem: (queueId: string) => void;
+    onResolveConflictUseLocal: (queueId: string) => void;
+    onResolveConflictUseServer: (queueId: string) => void;
+    canInstallPwa: boolean;
+    onInstallPwa: () => void;
+    mobilePinEnabled: boolean;
+    onSetupMobilePin: () => void;
+    onDisableMobilePin: () => void;
 }
 
 const TAB_BAR: { id: MobileTab; label: string; icon: typeof ClipboardList }[] = [
@@ -96,6 +111,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         appIcon,
         darkMode,
         touchLayout = false,
+        financialMaskEnabled = false,
         onToggleDarkMode,
         onLogout,
         onSwitchToDesktop,
@@ -108,12 +124,27 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         handleSetAdmins,
         onUpdateAdminProfile,
         addLog,
+        offlineSync,
+        offlineQueueItems,
+        onRetrySync,
+        onDropQueueItem,
+        onRetryQueueItem,
+        onResolveConflictUseLocal,
+        onResolveConflictUseServer,
+        canInstallPwa,
+        onInstallPwa,
+        mobilePinEnabled,
+        onSetupMobilePin,
+        onDisableMobilePin,
     } = props;
 
     const [tab, setTab] = useState<MobileTab>('home');
-    const [morePanel, setMorePanel] = useState<'root' | 'settings' | 'admin'>('root');
+    const [morePanel, setMorePanel] = useState<'root' | 'settings' | 'admin' | 'sync'>('root');
     const [recordCatFilter, setRecordCatFilter] = useState<string | null>(null);
     const [recordTypeFilter, setRecordTypeFilter] = useState<'Income' | 'Expense' | null>(null);
+    const [recordSearch, setRecordSearch] = useState('');
+    const [recordsTodayOnly, setRecordsTodayOnly] = useState(false);
+    const [recordSort, setRecordSort] = useState<'dateDesc' | 'amountDesc' | 'amountAsc'>('dateDesc');
     const [densityMode, setDensityMode] = useState<'comfortable' | 'compact'>('comfortable');
     const lazyFallback = <div className={`rounded-3xl p-5 text-center text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>กำลังโหลด...</div>;
 
@@ -122,8 +153,22 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         if (recordCatFilter) list = list.filter(t => t.category === recordCatFilter);
         if (recordTypeFilter === 'Income') list = list.filter(t => t.type === 'Income');
         if (recordTypeFilter === 'Expense') list = list.filter(t => t.type === 'Expense');
+        if (recordsTodayOnly) {
+            const today = new Date().toISOString().slice(0, 10);
+            list = list.filter(t => String(t.date || '').slice(0, 10) === today);
+        }
+        const q = recordSearch.trim().toLowerCase();
+        if (q) {
+            list = list.filter(t =>
+                String(t.description || '').toLowerCase().includes(q) ||
+                String(CATEGORY_LABEL_TH[t.category] || t.category || '').toLowerCase().includes(q)
+            );
+        }
+        if (recordSort === 'amountDesc') list = [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+        if (recordSort === 'amountAsc') list = [...list].sort((a, b) => (a.amount || 0) - (b.amount || 0));
+        if (recordSort === 'dateDesc') list = [...list].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
         return list;
-    }, [transactions, recordCatFilter, recordTypeFilter]);
+    }, [transactions, recordCatFilter, recordTypeFilter, recordsTodayOnly, recordSearch, recordSort]);
 
     const recordFilterChips = useMemo(() => {
         const set = new Set<string>();
@@ -131,6 +176,25 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
             if (t.category) set.add(t.category);
         });
         return ['', ...Array.from(set).sort()];
+    }, [transactions]);
+    const recentTemplates = useMemo(() => {
+        const seen = new Set<string>();
+        const out: Array<{ label: string; category: string; type: 'Income' | 'Expense' | null }> = [];
+        [...transactions]
+            .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+            .forEach(t => {
+                const label = String(t.description || '').trim();
+                if (!label) return;
+                const key = `${t.category}|${label}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                out.push({
+                    label,
+                    category: t.category,
+                    type: t.type === 'Income' || t.type === 'Expense' ? t.type : null,
+                });
+            });
+        return out.slice(0, 5);
     }, [transactions]);
 
     const title =
@@ -144,6 +208,8 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                   ? 'ตั้งค่า'
                   : morePanel === 'admin'
                     ? 'จัดการแอดมิน'
+                    : morePanel === 'sync'
+                        ? 'ศูนย์ซิงก์'
                     : 'เมนู';
 
     const showBack = (tab === 'more' && morePanel !== 'root') || tab === 'labor' || tab === 'records';
@@ -211,7 +277,9 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     )}
                     <div className="min-w-0 flex-1">
                         <h1 className="truncate text-lg font-black leading-tight tracking-tight text-slate-900 md:text-xl [@media(orientation:landscape)_and_(max-height:560px)]:text-base dark:text-white">{title}</h1>
-                        <p className="truncate text-[10px] font-medium text-slate-500 md:text-xs dark:text-slate-400">{settings.appName}</p>
+                        <p className="truncate text-[10px] font-medium text-slate-500 md:text-xs dark:text-slate-400">
+                            {settings.appName} · {offlineSync.lastMessage}
+                        </p>
                     </div>
                     <button
                         type="button"
@@ -230,18 +298,51 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                     style={{ WebkitTapHighlightColor: 'transparent', overscrollBehaviorY: 'contain' }}
                 >
                     {tab === 'home' && (
-                        <DailyStepRecorder
-                            mobileShell
-                            touchLayout={touchLayout}
-                            densityMode={densityMode}
-                            employees={employees}
-                            settings={settings}
-                            transactions={transactions}
-                            onSaveTransaction={onSaveTransaction}
-                            onDeleteTransaction={onDeleteTransaction}
-                            ensureEmployeeWage={ensureEmployeeWage}
-                            setSettings={handleSetSettings}
-                        />
+                        <div className="space-y-3">
+                            <div className={`rounded-2xl border p-3 ${darkMode ? 'border-slate-700 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                                <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>บันทึกด่วน</p>
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <button type="button" onClick={() => setTab('labor')} className={`min-h-[44px] rounded-xl px-3 text-sm font-bold ${darkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-800'}`}>ค่าแรงวันนี้</button>
+                                    <button type="button" onClick={() => setTab('records')} className={`min-h-[44px] rounded-xl px-3 text-sm font-bold ${darkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-800'}`}>ดูรายการวันนี้</button>
+                                </div>
+                                {recentTemplates.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>เทมเพลตล่าสุด</p>
+                                        <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                            {recentTemplates.map(t => (
+                                                <button
+                                                    key={`${t.category}_${t.label}`}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setRecordSearch(t.label);
+                                                        setRecordCatFilter(t.category);
+                                                        setRecordTypeFilter(t.type);
+                                                        setTab('records');
+                                                    }}
+                                                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                                                        darkMode ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'
+                                                    }`}
+                                                >
+                                                    {t.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <DailyStepRecorder
+                                mobileShell
+                                touchLayout={touchLayout}
+                                densityMode={densityMode}
+                                employees={employees}
+                                settings={settings}
+                                transactions={transactions}
+                                onSaveTransaction={onSaveTransaction}
+                                onDeleteTransaction={onDeleteTransaction}
+                                ensureEmployeeWage={ensureEmployeeWage}
+                                setSettings={handleSetSettings}
+                            />
+                        </div>
                     )}
 
                     {tab === 'labor' && (
@@ -260,6 +361,35 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
 
                     {tab === 'records' && (
                         <div className="space-y-3">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <input
+                                    type="search"
+                                    value={recordSearch}
+                                    onChange={(e) => setRecordSearch(e.target.value)}
+                                    placeholder="ค้นหารายการ..."
+                                    className={`min-h-[44px] rounded-xl border px-3 text-sm ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}
+                                />
+                                <select
+                                    value={recordSort}
+                                    onChange={(e) => setRecordSort(e.target.value as 'dateDesc' | 'amountDesc' | 'amountAsc')}
+                                    className={`min-h-[44px] rounded-xl border px-3 text-sm ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}
+                                >
+                                    <option value="dateDesc">เรียงล่าสุด</option>
+                                    <option value="amountDesc">จำนวนเงินมากสุด</option>
+                                    <option value="amountAsc">จำนวนเงินน้อยสุด</option>
+                                </select>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setRecordsTodayOnly(prev => !prev)}
+                                className={`min-h-[40px] rounded-full border px-4 text-xs font-bold ${
+                                    recordsTodayOnly
+                                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                                        : darkMode ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-slate-200 bg-white text-slate-600'
+                                }`}
+                            >
+                                {recordsTodayOnly ? 'กำลังกรอง: วันนี้เท่านั้น' : 'แสดงเฉพาะวันนี้'}
+                            </button>
                             <div className="space-y-2">
                                 <p className={`text-[11px] font-bold uppercase tracking-wide ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>ประเภท</p>
                                 <div className="flex flex-wrap gap-2">
@@ -325,6 +455,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 <RecordManager
                                     compact
                                     darkMode={darkMode}
+                                    amountMode={financialMaskEnabled ? 'percent' : 'currency'}
                                     transactions={filteredTransactionsForRecords}
                                     onDeleteTransaction={onDeleteTransaction}
                                 />
@@ -371,6 +502,30 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                     onClick: () => setDensityMode(prev => prev === 'compact' ? 'comfortable' : 'compact'),
                                     tone: 'default' as const,
                                 },
+                                {
+                                    key: 'sync',
+                                    icon: List,
+                                    title: 'ศูนย์ซิงก์ข้อมูล',
+                                    sub: `${offlineSync.lastMessage} · ค้าง ${offlineSync.queueSize} รายการ`,
+                                    onClick: () => setMorePanel('sync'),
+                                    tone: offlineSync.queueSize > 0 ? 'blue' as const : 'default' as const,
+                                },
+                                {
+                                    key: 'pin-lock',
+                                    icon: Shield,
+                                    title: mobilePinEnabled ? 'PIN lock: เปิดอยู่' : 'PIN lock: ปิดอยู่',
+                                    sub: mobilePinEnabled ? 'แตะเพื่อปิด PIN lock' : 'แตะเพื่อตั้ง PIN 4-6 หลัก',
+                                    onClick: mobilePinEnabled ? onDisableMobilePin : onSetupMobilePin,
+                                    tone: 'default' as const,
+                                },
+                                ...(canInstallPwa ? [{
+                                    key: 'install-pwa',
+                                    icon: Monitor,
+                                    title: 'ติดตั้งเป็นแอป',
+                                    sub: 'เปิดเร็ว ใช้ออฟไลน์ได้ดีกว่าเบราว์เซอร์',
+                                    onClick: onInstallPwa,
+                                    tone: 'blue' as const,
+                                }] : []),
                                 {
                                     key: 'desktop',
                                     icon: Monitor,
@@ -431,6 +586,64 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                         </div>
                     )}
 
+                    {tab === 'more' && morePanel === 'sync' && (
+                        <div className={`space-y-3 rounded-3xl p-3 ${cardBg}`}>
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-bold">สถานะ: {offlineSync.lastMessage}</p>
+                                <button
+                                    type="button"
+                                    onClick={onRetrySync}
+                                    className="min-h-[40px] rounded-xl bg-blue-600 px-3 text-xs font-bold text-white"
+                                >
+                                    ซิงก์ใหม่
+                                </button>
+                            </div>
+                            <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                ค้าง {offlineSync.queueSize} รายการ · conflict {offlineSync.conflictCount} รายการ
+                            </p>
+                            <div className="space-y-2">
+                                {offlineQueueItems.length === 0 ? (
+                                    <p className={`rounded-xl border p-3 text-sm ${darkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+                                        ไม่มีรายการค้าง
+                                    </p>
+                                ) : offlineQueueItems.map(item => (
+                                    <div key={item.id} className={`rounded-xl border p-3 ${darkMode ? 'border-slate-700 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                                        <p className="text-xs font-semibold">{item.tx.category}/{item.tx.subCategory || '-'}</p>
+                                        <p className={`mt-1 line-clamp-2 text-xs ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{item.tx.description || '-'}</p>
+                                        <p className={`mt-1 text-[11px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                            พยายามซิงก์ {item.attempts} ครั้ง {item.lastError ? `· ${item.lastError}` : ''}
+                                            {item.nextRetryAt ? ` · retry ได้อีก ${Math.max(0, Math.ceil((item.nextRetryAt - Date.now()) / 1000))} วิ` : ''}
+                                        </p>
+                                        {item.conflictRemoteTx && (
+                                            <div className={`mt-2 grid grid-cols-1 gap-2 rounded-lg border p-2 text-[11px] ${darkMode ? 'border-slate-700 bg-slate-950/50' : 'border-slate-200 bg-slate-50'}`}>
+                                                <div>
+                                                    <p className="font-semibold text-emerald-500">ข้อมูลในเครื่อง</p>
+                                                    <p>{item.tx.category}/{item.tx.subCategory || '-'} · {item.tx.description || '-'}</p>
+                                                    <p>฿{Number(item.tx.amount || 0).toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-amber-500">ข้อมูลบนเซิร์ฟเวอร์</p>
+                                                    <p>{item.conflictRemoteTx.category}/{item.conflictRemoteTx.subCategory || '-'} · {item.conflictRemoteTx.description || '-'}</p>
+                                                    <p>฿{Number(item.conflictRemoteTx.amount || 0).toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            <button type="button" onClick={() => onRetryQueueItem(item.id)} className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-bold text-white">retry รายการนี้</button>
+                                            {!!item.conflictWithId && (
+                                                <>
+                                                    <button type="button" onClick={() => onResolveConflictUseLocal(item.id)} className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white">ใช้ข้อมูลเครื่องนี้</button>
+                                                    <button type="button" onClick={() => onResolveConflictUseServer(item.id)} className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white">ใช้ข้อมูลเซิร์ฟเวอร์</button>
+                                                </>
+                                            )}
+                                            <button type="button" onClick={() => onDropQueueItem(item.id)} className="rounded-lg bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white">ลบออกจากคิว</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {tab === 'more' && morePanel === 'admin' && currentAdmin.role === 'SuperAdmin' && (
                         <div className={`rounded-3xl p-3 ${cardBg}`}>
                             <Suspense fallback={lazyFallback}>
@@ -488,6 +701,9 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                             if (id === 'records') {
                                                 setRecordCatFilter(null);
                                                 setRecordTypeFilter(null);
+                                                setRecordSearch('');
+                                                setRecordsTodayOnly(false);
+                                                setRecordSort('dateDesc');
                                             }
                                         }}
                                         className={`relative flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 touch-manipulation transition-all duration-300 motion-reduce:transition-none motion-reduce:active:scale-100 active:scale-[0.98] md:min-h-[64px] md:gap-1 md:py-2 [@media(orientation:landscape)_and_(max-height:560px)]:min-h-[52px] [@media(orientation:landscape)_and_(max-height:560px)]:py-1 ${

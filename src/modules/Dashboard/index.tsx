@@ -12,10 +12,14 @@ import { Transaction, AppSettings, Employee } from '../../types';
 
 const DASHBOARD_MAIN_TABS = [
     { id: 'Overview', label: 'ภาพรวม (V.1)' },
+    { id: 'V5', label: 'ภาพรวม (V.5)' },
+    { id: 'Wizard', label: 'บันทึกงาน' },
+] as const;
+
+const DASHBOARD_ADVANCED_MAIN_TABS = [
     { id: 'Analytics', label: 'วิเคราะห์ (V.2)' },
     { id: 'Calendar', label: 'ปฏิทิน (V.3)' },
     { id: 'V4', label: 'Real-time (V.4)' },
-    { id: 'V5', label: 'ภาพรวม (V.5)' },
 ] as const;
 
 const DASHBOARD_DETAIL_TABS = [
@@ -25,7 +29,6 @@ const DASHBOARD_DETAIL_TABS = [
     { id: 'Fuel', label: 'น้ำมัน' },
     { id: 'Land', label: 'ที่ดิน' },
     { id: 'Income', label: 'รายรับ' },
-    { id: 'Wizard', label: 'บันทึกงาน' },
 ] as const;
 
 function useViewportNarrow(breakpointPx = 1024) {
@@ -60,6 +63,7 @@ const Dashboard = ({
     const viewportNarrow = useViewportNarrow(1024);
     const wizardMobileShell = isMobile || viewportNarrow;
     const [subTab, setSubTab] = useState('Overview');
+    const [showAdvancedViews, setShowAdvancedViews] = useState(false);
     const [filterType, setFilterType] = useState<'7' | '14' | '30' | 'custom'>('7');
     const [customRange, setCustomRange] = useState({ start: '', end: '' });
 
@@ -87,27 +91,49 @@ const Dashboard = ({
                         id="dashboard-tab-select"
                         value={subTab}
                         onChange={(e) => setSubTab(e.target.value)}
+                        aria-label="เลือกมุมมองแดชบอร์ด"
                         className="w-full sm:max-w-md rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-sm py-2.5 px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50"
                     >
-                        <optgroup label="ภาพรวมและเครื่องมือ">
+                        <optgroup label="มุมมองแนะนำ">
                             {DASHBOARD_MAIN_TABS.map((t) => (
                                 <option key={t.id} value={t.id}>
                                     {t.label}
                                 </option>
                             ))}
                         </optgroup>
-                        <optgroup label="รายงานตามหมวด">
-                            {DASHBOARD_DETAIL_TABS.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                    {t.label}
-                                </option>
-                            ))}
-                        </optgroup>
+                        {showAdvancedViews ? (
+                            <>
+                                <optgroup label="มุมมองขั้นสูง">
+                                    {DASHBOARD_ADVANCED_MAIN_TABS.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.label}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="รายงานตามหมวด">
+                                    {DASHBOARD_DETAIL_TABS.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.label}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            </>
+                        ) : null}
                     </select>
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                        <input
+                            type="checkbox"
+                            checked={showAdvancedViews}
+                            onChange={(e) => setShowAdvancedViews(e.target.checked)}
+                            aria-label="แสดงหรือซ่อนมุมมองขั้นสูง"
+                            className="rounded border-slate-300 dark:border-white/20"
+                        />
+                        แสดงมุมมองขั้นสูง
+                    </label>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-white/[0.06] p-2 sm:p-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm shrink-0">
                     <CalendarDays size={18} className="text-slate-400 dark:text-slate-500 ml-0 sm:ml-2 shrink-0" />
-                    <select value={filterType} onChange={(e: any) => setFilterType(e.target.value)} className="bg-transparent text-sm p-1 focus:outline-none text-slate-700 dark:text-slate-300 min-w-0">
+                    <select value={filterType} onChange={(e: any) => setFilterType(e.target.value)} aria-label="เลือกช่วงวันที่ของแดชบอร์ด" className="bg-transparent text-sm p-1 focus:outline-none text-slate-700 dark:text-slate-300 min-w-0">
                         <option value="7">7 วันล่าสุด</option>
                         <option value="14">14 วันล่าสุด</option>
                         <option value="30">30 วันล่าสุด</option>
@@ -115,9 +141,9 @@ const Dashboard = ({
                     </select>
                     {filterType === 'custom' && (
                         <div className="flex gap-2 items-center px-2">
-                            <input type="date" value={customRange.start} onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })} className="text-xs border border-slate-200 dark:border-white/20 rounded p-1 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200" />
+                            <input type="date" value={customRange.start} aria-label="วันที่เริ่มต้นแบบกำหนดเอง" onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })} className="text-xs border border-slate-200 dark:border-white/20 rounded p-1 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200" />
                             <span className="text-xs text-slate-500 dark:text-slate-400">-</span>
-                            <input type="date" value={customRange.end} onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })} className="text-xs border border-slate-200 dark:border-white/20 rounded p-1 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200" />
+                            <input type="date" value={customRange.end} aria-label="วันที่สิ้นสุดแบบกำหนดเอง" onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })} className="text-xs border border-slate-200 dark:border-white/20 rounded p-1 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200" />
                         </div>
                     )}
                 </div>

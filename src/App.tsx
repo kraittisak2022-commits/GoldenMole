@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone } from 'lucide-react';
-import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme } from './types';
+import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme, AdminDataAccess } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
 
@@ -30,6 +30,21 @@ const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
+import { usePwaInstall } from './hooks/usePwaInstall';
+import {
+    dropOfflineQueueItem,
+    enqueueTransaction,
+    getOfflineQueue,
+    getOfflineSyncSnapshot,
+    initOfflineSync,
+    retryOfflineQueueItemNow,
+    resolveConflictUseLocal,
+    resolveConflictUseServer,
+    subscribeOfflineSync,
+    syncOfflineQueue,
+    type OfflineQueueItem,
+    type OfflineSyncSnapshot,
+} from './services/offlineSync';
 
 // Supabase Services
 import * as db from './services/dataService';
@@ -49,6 +64,15 @@ const DEFAULT_ADMINS: AdminUser[] = [
 ];
 
 type ClientSurface = 'select' | 'desktop' | 'mobile';
+const MOBILE_PIN_KEY = 'cm_mobile_pin_v1';
+const MOBILE_PIN_LOCK_MS = 90 * 1000;
+const MOBILE_PIN_MAX_FAIL = 5;
+
+type MobilePinState = {
+    hash: string;
+    failedAttempts: number;
+    lockUntil?: number;
+};
 
 const resolveDarkFromUiTheme = (ui: AdminUiTheme | undefined): boolean => {
     const t = ui ?? 'system';
@@ -105,6 +129,10 @@ const MENU_ITEMS = [
     { id: 'DataList', icon: List, l: 'รายการบันทึก' },
     { id: 'AdminManagement', icon: Shield, l: 'จัดการแอดมิน' },
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
+];
+
+const DEFAULT_VISIBLE_TX_CATEGORIES = [
+    'Labor', 'Vehicle', 'Fuel', 'Maintenance', 'Land', 'Utilities', 'Income', 'Payroll', 'PayrollUnlock', 'DailyLog',
 ];
 
 const isDateInRange = (date: string, start: string, end: string) => {
@@ -210,15 +238,70 @@ function App() {
         : (autoVersionNotes[0] || 'พร้อมใช้งาน');
     const [toast, setToast] = useState<string | null>(null);
     const [accountModalOpen, setAccountModalOpen] = useState(false);
+    const [offlineSync, setOfflineSync] = useState<OfflineSyncSnapshot>(getOfflineSyncSnapshot());
+    const [offlineQueueItems, setOfflineQueueItems] = useState<OfflineQueueItem[]>(getOfflineQueue());
+    const [showIdleWarning, setShowIdleWarning] = useState(false);
+    const [idleDeadline, setIdleDeadline] = useState<number | null>(null);
+    const [idleTick, setIdleTick] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [loadProgress, setLoadProgress] = useState(0);
     const [loadMessage, setLoadMessage] = useState('กำลังเตรียมระบบ...');
     const [pendingForcedPasswordAdmin, setPendingForcedPasswordAdmin] = useState<AdminUser | null>(null);
+    const [mobilePinEnabled, setMobilePinEnabled] = useState(false);
+    const [pinInput, setPinInput] = useState('');
+    const [showPinLock, setShowPinLock] = useState(false);
+    const [pinLockedUntil, setPinLockedUntil] = useState<number | null>(null);
+    const currentAdminAccess: AdminDataAccess | null = useMemo(() => {
+        if (!currentAdmin) return null;
+        return settings.appDefaults?.adminDataAccessByAdminId?.[currentAdmin.id] || null;
+    }, [currentAdmin, settings.appDefaults?.adminDataAccessByAdminId]);
+    const canViewMenu = useCallback((menuId: string) => {
+        if (!currentAdmin) return false;
+        if (currentAdmin.role === 'SuperAdmin') return true;
+        if (menuId === 'AdminManagement') return false;
+        const allowed = currentAdminAccess?.visibleMenus;
+        if (!allowed || allowed.length === 0) return true;
+        return allowed.includes(menuId);
+    }, [currentAdmin, currentAdminAccess?.visibleMenus]);
+    const canViewTransactions = currentAdmin?.role === 'SuperAdmin'
+        ? true
+        : (currentAdminAccess?.transactionPermissions?.view ?? true);
+    const canCreateTransactions = currentAdmin?.role === 'SuperAdmin'
+        ? true
+        : (currentAdminAccess?.transactionPermissions?.create ?? true);
+    const canEditTransactions = currentAdmin?.role === 'SuperAdmin'
+        ? true
+        : (currentAdminAccess?.transactionPermissions?.edit ?? true);
+    const canDeleteTransactions = currentAdmin?.role === 'SuperAdmin'
+        ? true
+        : (currentAdminAccess?.transactionPermissions?.delete ?? true);
+    const isFinancialMaskEnabled = !!currentAdminAccess?.maskFinancialAmountsAsPercent;
+    const isDataEntryDailyWizardOnly = !!currentAdminAccess?.dataEntryDailyWizardOnly;
+    const canMutateTransactionsInCurrentMenu = useCallback(() => {
+        if (!currentAdmin) return false;
+        if (currentAdmin.role === 'SuperAdmin') return true;
+        if (!isDataEntryDailyWizardOnly) return true;
+        return activeMenu === 'DailyWizard';
+    }, [activeMenu, currentAdmin, isDataEntryDailyWizardOnly]);
     const visibleTransactions = useMemo(() => {
+        if (!canViewTransactions) return [];
         const hidden = new Set(settings.appDefaults?.hiddenTransactionIds || []);
-        if (hidden.size === 0) return transactions;
-        return transactions.filter(t => !hidden.has(t.id));
-    }, [transactions, settings.appDefaults?.hiddenTransactionIds]);
+        const allowedCategories = currentAdminAccess?.visibleTransactionCategories;
+        return transactions.filter(t => {
+            if (hidden.has(t.id)) return false;
+            if (!allowedCategories || allowedCategories.length === 0) return true;
+            return allowedCategories.includes(t.category);
+        });
+    }, [transactions, settings.appDefaults?.hiddenTransactionIds, currentAdminAccess?.visibleTransactionCategories, canViewTransactions]);
+    const maskedTransactions = useMemo(() => {
+        if (!isFinancialMaskEnabled) return visibleTransactions;
+        const totalAbsAmount = visibleTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0);
+        return visibleTransactions.map(tx => {
+            const raw = Math.abs(Number(tx.amount || 0));
+            const pct = totalAbsAmount > 0 ? (raw / totalAbsAmount) * 100 : 0;
+            return { ...tx, amount: Number(pct.toFixed(2)), unit: '%' };
+        });
+    }, [isFinancialMaskEnabled, visibleTransactions]);
     useEffect(() => {
         if (isLoading) return;
         const prevDay = getPrevDayYmd();
@@ -244,9 +327,63 @@ function App() {
     const hasAutoVersionSynced = useRef(false);
     const hasRestoredAuthSession = useRef(false);
     const currentAdminRef = useRef<AdminUser | null>(null);
+    const { canInstall, promptInstall } = usePwaInstall();
     useEffect(() => {
         currentAdminRef.current = currentAdmin;
     }, [currentAdmin]);
+
+    useEffect(() => {
+        initOfflineSync();
+        const unsub = subscribeOfflineSync((snap) => {
+            setOfflineSync(snap);
+            setOfflineQueueItems(getOfflineQueue());
+        });
+        if (navigator.onLine) {
+            void syncOfflineQueue();
+        }
+        const onOnline = () => { void syncOfflineQueue(); };
+        window.addEventListener('online', onOnline);
+        return () => {
+            unsub();
+            window.removeEventListener('online', onOnline);
+        };
+    }, []);
+
+    const readMobilePinState = useCallback((): MobilePinState | null => {
+        try {
+            const raw = window.localStorage.getItem(MOBILE_PIN_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as MobilePinState;
+            if (!parsed || typeof parsed.hash !== 'string' || parsed.hash.length < 16) return null;
+            return {
+                hash: parsed.hash,
+                failedAttempts: Number(parsed.failedAttempts) || 0,
+                lockUntil: Number(parsed.lockUntil) || undefined,
+            };
+        } catch {
+            return null;
+        }
+    }, []);
+
+    const saveMobilePinState = useCallback((state: MobilePinState | null) => {
+        if (!state) {
+            window.localStorage.removeItem(MOBILE_PIN_KEY);
+            return;
+        }
+        window.localStorage.setItem(MOBILE_PIN_KEY, JSON.stringify(state));
+    }, []);
+
+    const hashPin = useCallback(async (plain: string) => {
+        const encoder = new TextEncoder();
+        const buff = await crypto.subtle.digest('SHA-256', encoder.encode(plain));
+        return Array.from(new Uint8Array(buff)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }, []);
+
+    useEffect(() => {
+        const pinState = readMobilePinState();
+        setMobilePinEnabled(!!pinState);
+        setPinLockedUntil(pinState?.lockUntil || null);
+    }, [readMobilePinState]);
 
     useEffect(() => {
         if (isLoading || hasAutoVersionSynced.current) return;
@@ -505,16 +642,28 @@ function App() {
 
     /** ออกจากระบบอัตโนมัติเมื่อไม่มีการใช้งาน (คลิก/พิมพ์/เลื่อน) เกินกำหนด */
     const SESSION_IDLE_MS = 45 * 60 * 1000;
+    const SESSION_WARN_MS = 60 * 1000;
     useEffect(() => {
         if (!isLoggedIn) return;
         const idleLastRef = { current: Date.now() };
+        let warned = false;
         const bump = () => {
             idleLastRef.current = Date.now();
+            warned = false;
+            setShowIdleWarning(false);
+            setIdleDeadline(null);
         };
         const events: (keyof WindowEventMap)[] = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
         events.forEach(ev => window.addEventListener(ev, bump as EventListener, { passive: true }));
         const tick = window.setInterval(() => {
-            if (Date.now() - idleLastRef.current < SESSION_IDLE_MS) return;
+            const idleFor = Date.now() - idleLastRef.current;
+            const remaining = SESSION_IDLE_MS - idleFor;
+            if (!warned && remaining <= SESSION_WARN_MS && remaining > 0) {
+                warned = true;
+                setShowIdleWarning(true);
+                setIdleDeadline(Date.now() + remaining);
+            }
+            if (idleFor < SESSION_IDLE_MS) return;
             const admin = currentAdminRef.current;
             if (admin) {
                 const log: AdminLog = {
@@ -534,6 +683,8 @@ function App() {
             currentAdminRef.current = null;
             setClientSurface('select');
             setActiveMenu('Dashboard');
+            setShowIdleWarning(false);
+            setIdleDeadline(null);
             setToast('ออกจากระบบอัตโนมัติ — ไม่มีการใช้งานเกิน 45 นาที กรุณาเข้าสู่ระบบใหม่');
             setTimeout(() => setToast(null), 6000);
         }, 30_000);
@@ -544,11 +695,155 @@ function App() {
     }, [isLoggedIn, persistAdminSession]);
 
     const handleMenuClick = useCallback((menuId: string) => {
+        if (!canViewMenu(menuId)) {
+            setToast('ไม่มีสิทธิ์เข้าถึงเมนูนี้');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
         setActiveMenu(menuId);
         if (isMobile) setIsSidebarOpen(false);
-    }, [isMobile]);
+    }, [canViewMenu, isMobile]);
+
+    const extendSession = useCallback(() => {
+        window.dispatchEvent(new Event('click'));
+        setShowIdleWarning(false);
+        setIdleDeadline(null);
+        setToast('ต่อเวลาเซสชันแล้ว');
+        setTimeout(() => setToast(null), 2200);
+    }, []);
+
+    useEffect(() => {
+        if (!showIdleWarning) return;
+        const t = window.setInterval(() => setIdleTick(prev => prev + 1), 1000);
+        return () => window.clearInterval(t);
+    }, [showIdleWarning]);
+
+    useEffect(() => {
+        if (!isLoggedIn || !mobilePinEnabled) return;
+        const onHidden = () => {
+            if (document.hidden && clientSurface === 'mobile') {
+                setShowPinLock(true);
+                setPinInput('');
+            }
+        };
+        document.addEventListener('visibilitychange', onHidden);
+        return () => document.removeEventListener('visibilitychange', onHidden);
+    }, [isLoggedIn, mobilePinEnabled, clientSurface]);
+
+    const idleCountdownLabel = useMemo(() => {
+        void idleTick;
+        if (!idleDeadline) return '';
+        const remainSec = Math.max(0, Math.ceil((idleDeadline - Date.now()) / 1000));
+        const min = Math.floor(remainSec / 60);
+        const sec = remainSec % 60;
+        return `${min}:${String(sec).padStart(2, '0')}`;
+    }, [idleDeadline, showIdleWarning]);
+
+    const pinLockRemain = useMemo(() => {
+        if (!pinLockedUntil) return 0;
+        return Math.max(0, Math.ceil((pinLockedUntil - Date.now()) / 1000));
+    }, [pinLockedUntil, idleTick]);
+
+    const idleWarningModal = showIdleWarning ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
+            <Card className="w-full max-w-sm p-5">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">เซสชันกำลังจะหมดเวลา</h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    ระบบจะออกจากระบบอัตโนมัติในอีก {idleCountdownLabel} นาที
+                </p>
+                <div className="mt-4 flex gap-2">
+                    <Button className="flex-1" onClick={extendSession}>ต่อเวลา</Button>
+                    <Button variant="outline" className="flex-1" onClick={handleLogout}>ออกจากระบบ</Button>
+                </div>
+            </Card>
+        </div>
+    ) : null;
+
+    const setupMobilePin = useCallback(async () => {
+        const next = window.prompt('ตั้งรหัส PIN มือถือ 4-6 หลัก');
+        if (!next) return;
+        const cleaned = next.trim();
+        if (!/^\d{4,6}$/.test(cleaned)) {
+            setToast('PIN ต้องเป็นตัวเลข 4-6 หลัก');
+            setTimeout(() => setToast(null), 2200);
+            return;
+        }
+        const confirm = window.prompt('ยืนยัน PIN อีกครั้ง');
+        if ((confirm || '').trim() !== cleaned) {
+            setToast('PIN ไม่ตรงกัน');
+            setTimeout(() => setToast(null), 2200);
+            return;
+        }
+        const hash = await hashPin(cleaned);
+        saveMobilePinState({ hash, failedAttempts: 0 });
+        setMobilePinEnabled(true);
+        setPinLockedUntil(null);
+        setToast('ตั้งค่า PIN แล้ว');
+        setTimeout(() => setToast(null), 2200);
+    }, [hashPin, saveMobilePinState]);
+
+    const disableMobilePin = useCallback(() => {
+        saveMobilePinState(null);
+        setMobilePinEnabled(false);
+        setShowPinLock(false);
+        setPinInput('');
+        setPinLockedUntil(null);
+        setToast('ปิด PIN lock แล้ว');
+        setTimeout(() => setToast(null), 2200);
+    }, [saveMobilePinState]);
+
+    const unlockWithPin = useCallback(async () => {
+        const state = readMobilePinState();
+        if (!state) {
+            setShowPinLock(false);
+            return;
+        }
+        const now = Date.now();
+        if (state.lockUntil && now < state.lockUntil) {
+            setPinLockedUntil(state.lockUntil);
+            setToast('PIN ถูกล็อกชั่วคราว');
+            setTimeout(() => setToast(null), 2000);
+            return;
+        }
+        const inputHash = await hashPin(pinInput);
+        if (inputHash === state.hash) {
+            saveMobilePinState({ hash: state.hash, failedAttempts: 0 });
+            setShowPinLock(false);
+            setPinInput('');
+            setPinLockedUntil(null);
+            return;
+        }
+        const failed = (state.failedAttempts || 0) + 1;
+        const nextState: MobilePinState = {
+            hash: state.hash,
+            failedAttempts: failed,
+        };
+        if (failed >= MOBILE_PIN_MAX_FAIL) {
+            nextState.lockUntil = Date.now() + MOBILE_PIN_LOCK_MS;
+            setPinLockedUntil(nextState.lockUntil);
+        }
+        saveMobilePinState(nextState);
+        setToast(nextState.lockUntil ? 'PIN ผิดเกินกำหนด ล็อกชั่วคราว 90 วินาที' : 'PIN ไม่ถูกต้อง');
+        setTimeout(() => setToast(null), 2300);
+    }, [hashPin, pinInput, readMobilePinState, saveMobilePinState]);
 
     const handleSave = async (t: Transaction) => {
+        if (!canMutateTransactionsInCurrentMenu()) {
+            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะเมนู บันทึกงานประจำวัน (Daily Wizard)');
+            setTimeout(() => setToast(null), 3500);
+            return;
+        }
+        const wasUpdate = transactions.some(x => x.id === t.id);
+        if (!wasUpdate && !canCreateTransactions) {
+            setToast('ไม่มีสิทธิ์สร้างรายการ (Create)');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        if (wasUpdate && !canEditTransactions) {
+            setToast('ไม่มีสิทธิ์แก้ไขรายการ (Edit)');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
         if (t.category !== 'Payroll' && t.category !== 'PayrollUnlock') {
             const lockRef = transactions.find(x =>
                 x.category === 'Payroll' &&
@@ -561,7 +856,6 @@ function App() {
                 return;
             }
         }
-        const wasUpdate = transactions.some(x => x.id === t.id);
         setTransactions(p => {
             const i = p.findIndex(x => x.id === t.id);
             if (i >= 0) {
@@ -571,7 +865,23 @@ function App() {
             }
             return [...p, t];
         });
-        const ok = await db.saveTransaction(t);
+        let ok = false;
+        if (!navigator.onLine) {
+            enqueueTransaction(t);
+            setToast('บันทึกในเครื่องแล้ว (ออฟไลน์) จะซิงก์อัตโนมัติเมื่อออนไลน์');
+            setTimeout(() => setToast(null), 3500);
+            return;
+        }
+        ok = await db.saveTransaction(t);
+        if (!ok) {
+            enqueueTransaction(t);
+            setToast('ซิงก์ไม่สำเร็จ บันทึกไว้ในเครื่องแล้ว จะลองซิงก์อีกครั้งอัตโนมัติ');
+            setTimeout(() => setToast(null), 3500);
+            return;
+        }
+        if (offlineSync.queueSize > 0) {
+            void syncOfflineQueue();
+        }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
         if (ok && currentAdmin) {
@@ -588,7 +898,7 @@ function App() {
             addLog(wasUpdate ? 'update_transaction' : 'create_transaction', `${verb}: ${t.category}/${t.subCategory || '-'} วันที่ ${normalizeDate(t.date)} จำนวนเงิน ${t.amount || 0} รายละเอียด: ${t.description || '-'} | snapshot=${JSON.stringify(summary)}`);
         }
 
-        setToast(ok ? 'บันทึกสำเร็จ' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+        setToast(ok ? 'ซิงก์แล้ว' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -646,6 +956,16 @@ function App() {
     }, []);
 
     const handleDeleteTransaction = useCallback((id: string) => {
+        if (!canMutateTransactionsInCurrentMenu()) {
+            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะเมนู บันทึกงานประจำวัน (Daily Wizard)');
+            setTimeout(() => setToast(null), 3500);
+            return;
+        }
+        if (!canDeleteTransactions) {
+            setToast('ไม่มีสิทธิ์ลบรายการ (Delete)');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
         const target = transactions.find(t => t.id === id);
         if (!target) return;
         if (target.category !== 'Payroll') {
@@ -699,7 +1019,7 @@ function App() {
         });
         // keep a no-op read to bind previous hidden list for stale closures
         void prevHidden;
-    }, [addLog, currentAdmin, settings.appDefaults?.hiddenTransactionIds, transactions]);
+    }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
     useEffect(() => {
         if (!undoAction) return;
@@ -788,21 +1108,24 @@ function App() {
     }, [applyUiThemeToApp]);
 
     const renderContent = () => {
+        if (!canViewMenu(activeMenu)) {
+            return <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึงเมนูนี้</div>;
+        }
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
-            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={visibleTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} transactions={visibleTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={visibleTransactions} onSave={handleSave} onDelete={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
-            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={visibleTransactions} onSave={handleSave} onDelete={handleDeleteTransaction} />;
-            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
-            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={visibleTransactions} />;
-            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={handleDeleteTransaction} transactions={visibleTransactions} />;
+            case 'Dashboard': return <Dashboard transactions={maskedTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
+            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={maskedTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={maskedTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
+            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={maskedTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} />;
+            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
+            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={maskedTransactions} />;
+            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
             case 'Payroll': return (
                 <Suspense fallback={lazyFallback}>
                     <PayrollModule
                         employees={employees}
-                        transactions={visibleTransactions}
+                        transactions={maskedTransactions}
                         onSaveTransaction={handleSave}
                         canUnlockPeriod={currentAdmin?.role === 'SuperAdmin'}
                         onUnlockPeriod={(period, reason) => {
@@ -846,13 +1169,17 @@ function App() {
             );
             case 'DataList': return (
                 <Suspense fallback={lazyFallback}>
-                    <RecordManager transactions={visibleTransactions} onDeleteTransaction={handleDeleteTransaction} />
+                    <RecordManager
+                        transactions={maskedTransactions}
+                        onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined}
+                        amountMode={isFinancialMaskEnabled ? 'percent' : 'currency'}
+                    />
                 </Suspense>
             );
             case 'MonthDataAudit': return (
                 <DataVerificationModule
                     monthOverviewMode
-                    transactions={visibleTransactions}
+                    transactions={maskedTransactions}
                     settings={settings}
                     setSettings={handleSetSettings}
                     currentAdmin={currentAdmin}
@@ -864,7 +1191,7 @@ function App() {
                     }}
                 />
             );
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={maskedTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'WorkPlanner': return currentAdmin ? (
                 <WorkPlanner
                     adminId={currentAdmin.id}
@@ -877,7 +1204,15 @@ function App() {
             ) : null;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? (
                 <Suspense fallback={lazyFallback}>
-                    <AdminModule admins={admins} setAdmins={handleSetAdmins} currentAdmin={currentAdmin} logs={adminLogs} addLog={addLog} />
+                    <AdminModule
+                        admins={admins}
+                        setAdmins={handleSetAdmins}
+                        currentAdmin={currentAdmin}
+                        logs={adminLogs}
+                        addLog={addLog}
+                        settings={settings}
+                        setSettings={handleSetSettings}
+                    />
                 </Suspense>
             ) : <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึง — เฉพาะ SuperAdmin เท่านั้น</div>;
             case 'Settings': return (
@@ -932,6 +1267,7 @@ function App() {
         return (
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {idleWarningModal}
                 {undoAction && (
                     <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
                         <span>{undoAction.message}</span>
@@ -959,6 +1295,7 @@ function App() {
         return (
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {idleWarningModal}
                 {undoAction && (
                     <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
                         <span>{undoAction.message}</span>
@@ -985,10 +1322,34 @@ function App() {
                         </Card>
                     </div>
                 )}
+                {showPinLock && (
+                    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4">
+                        <Card className="w-full max-w-xs p-5">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">ปลดล็อกด้วย PIN</h3>
+                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">กรอก PIN เพื่อใช้งานต่อ</p>
+                            {pinLockRemain > 0 && (
+                                <p className="mt-1 text-xs font-semibold text-rose-500">ล็อกอยู่ {pinLockRemain} วินาที</p>
+                            )}
+                            <input
+                                type="password"
+                                inputMode="numeric"
+                                maxLength={6}
+                                value={pinInput}
+                                onChange={(e) => setPinInput(e.target.value.replace(/\D+/g, ''))}
+                                className="mt-3 min-h-[44px] w-full rounded-xl border border-slate-300 px-3 text-center text-lg tracking-[0.35em] dark:border-white/20 dark:bg-white/5"
+                                placeholder="••••"
+                            />
+                            <div className="mt-3 flex gap-2">
+                                <Button className="flex-1" onClick={() => void unlockWithPin()} disabled={pinLockRemain > 0}>ปลดล็อก</Button>
+                                <Button variant="outline" className="flex-1" onClick={handleLogout}>ออกจากระบบ</Button>
+                            </div>
+                        </Card>
+                    </div>
+                )}
                 <MobileFieldApp
                     settings={settings}
                     employees={employees}
-                    transactions={transactions}
+                    transactions={isFinancialMaskEnabled ? maskedTransactions : visibleTransactions}
                     admins={admins}
                     adminLogs={adminLogs}
                     currentAdmin={currentAdmin}
@@ -1010,6 +1371,43 @@ function App() {
                     handleSetAdmins={handleSetAdmins}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
                     addLog={addLog}
+                    offlineSync={offlineSync}
+                    offlineQueueItems={offlineQueueItems}
+                    onRetrySync={() => {
+                        void syncOfflineQueue();
+                    }}
+                    onDropQueueItem={(id) => {
+                        dropOfflineQueueItem(id);
+                        setOfflineQueueItems(getOfflineQueue());
+                        addLog('sync_queue_drop', `ลบรายการค้างออกจากคิว #${id}`);
+                    }}
+                    onRetryQueueItem={(id) => {
+                        retryOfflineQueueItemNow(id);
+                        setOfflineQueueItems(getOfflineQueue());
+                        addLog('sync_queue_retry_item', `สั่ง retry รายการค้าง #${id}`);
+                    }}
+                    onResolveConflictUseLocal={async (id) => {
+                        const ok = await resolveConflictUseLocal(id);
+                        setOfflineQueueItems(getOfflineQueue());
+                        setToast(ok ? 'บังคับใช้ข้อมูลในเครื่องแล้ว' : 'ยังแก้ conflict ไม่สำเร็จ');
+                        setTimeout(() => setToast(null), 2200);
+                        addLog('sync_conflict_resolve_local', `เลือกใช้ข้อมูลในเครื่องสำหรับคิว #${id}`);
+                    }}
+                    onResolveConflictUseServer={(id) => {
+                        resolveConflictUseServer(id);
+                        setOfflineQueueItems(getOfflineQueue());
+                        addLog('sync_conflict_resolve_server', `เลือกใช้ข้อมูลบนเซิร์ฟเวอร์สำหรับคิว #${id}`);
+                    }}
+                    canInstallPwa={canInstall}
+                    onInstallPwa={async () => {
+                        const ok = await promptInstall();
+                        setToast(ok ? 'ติดตั้งแอปสำเร็จ' : 'ยกเลิกการติดตั้งแอป');
+                        setTimeout(() => setToast(null), 2500);
+                    }}
+                    mobilePinEnabled={mobilePinEnabled}
+                    onSetupMobilePin={setupMobilePin}
+                    onDisableMobilePin={disableMobilePin}
+                    financialMaskEnabled={isFinancialMaskEnabled}
                 />
             </>
         );
@@ -1031,6 +1429,7 @@ function App() {
             )}
 
             {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+            {idleWarningModal}
             {undoAction && (
                 <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
                     <span>{undoAction.message}</span>
@@ -1103,7 +1502,7 @@ function App() {
                     )}
                 </div>
                 <nav className="flex-1 py-4 sm:py-6 px-2 sm:px-3 space-y-1 overflow-y-auto hide-scrollbar">
-                    {MENU_ITEMS.filter(m => m.id !== 'AdminManagement' || currentAdmin?.role === 'SuperAdmin').map(m => (
+                    {MENU_ITEMS.filter(m => canViewMenu(m.id)).map(m => (
                         <button
                             key={m.id}
                             onClick={() => handleMenuClick(m.id)}
@@ -1238,7 +1637,9 @@ function App() {
                                         className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                                             currentAdmin.role === 'SuperAdmin'
                                                 ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
-                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
+                                                : currentAdmin.role === 'Assistant'
+                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                                         }`}
                                     >
                                         {currentAdmin.role}

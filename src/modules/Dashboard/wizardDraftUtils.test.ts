@@ -1,6 +1,8 @@
 import {
+    clearAllWizardDrafts,
     clearWizardDraftForDate,
     getDayTransactionFingerprint,
+    parseTxFingerprintCount,
     readWizardDraftEntry,
     writeWizardDraftForDate,
     WizardDraftPayload,
@@ -66,8 +68,8 @@ describe('wizardDraftUtils', () => {
     });
 
     it('restores a valid draft after write (refresh scenario)', () => {
-        const ok = writeWizardDraftForDate('2026-04-22', basePayload, 'fp-1');
-        expect(ok).toBe(true);
+        const result = writeWizardDraftForDate('2026-04-22', basePayload, 'fp-1');
+        expect(result.ok).toBe(true);
 
         const restored = readWizardDraftEntry('2026-04-22');
         expect(restored).not.toBeNull();
@@ -116,5 +118,44 @@ describe('wizardDraftUtils', () => {
             { id: '1', date: '2026-04-22', type: 'Expense', category: 'Fuel', description: 'A', amount: 101 },
         ]);
         expect(a).not.toEqual(b);
+    });
+
+    it('parses transaction count from fingerprint safely', () => {
+        expect(parseTxFingerprintCount('10:abc')).toBe(10);
+        expect(parseTxFingerprintCount('x:abc')).toBe(0);
+    });
+
+    it('removes expired drafts by TTL and supports clear-all', () => {
+        const now = Date.now();
+        localStorage.setItem(
+            WIZARD_DRAFT_STORAGE_KEY,
+            JSON.stringify({
+                v: 2,
+                byDate: {
+                    '2026-04-20': {
+                        schemaVersion: 2,
+                        savedAt: now - 8 * 24 * 60 * 60 * 1000,
+                        txFingerprint: 'fp-old',
+                        payload: basePayload,
+                    },
+                    '2026-04-21': {
+                        schemaVersion: 2,
+                        savedAt: now,
+                        txFingerprint: 'fp-new',
+                        payload: basePayload,
+                    },
+                },
+            })
+        );
+
+        expect(readWizardDraftEntry('2026-04-20')).toBeNull();
+        expect(readWizardDraftEntry('2026-04-21')).not.toBeNull();
+        expect(clearAllWizardDrafts()).toBe(true);
+        expect(readWizardDraftEntry('2026-04-21')).toBeNull();
+    });
+
+    it('handles malformed JSON payload without throwing', () => {
+        localStorage.setItem(WIZARD_DRAFT_STORAGE_KEY, '{broken_json');
+        expect(readWizardDraftEntry('2026-04-22')).toBeNull();
     });
 });

@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('SuperAdmin', 'Admin')),
+    role TEXT NOT NULL CHECK (role IN ('SuperAdmin', 'Admin', 'Assistant')),
     created_at TEXT NOT NULL,
     last_login TEXT,
     avatar TEXT,
@@ -228,6 +228,23 @@ ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NO
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS ui_theme TEXT DEFAULT 'system';
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS session_active BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_client_surface TEXT DEFAULT 'select';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_name = 'admin_users'
+          AND constraint_type = 'CHECK'
+          AND constraint_name = 'admin_users_role_check'
+    ) THEN
+        ALTER TABLE admin_users DROP CONSTRAINT admin_users_role_check;
+    END IF;
+    ALTER TABLE admin_users
+        ADD CONSTRAINT admin_users_role_check
+        CHECK (role IN ('SuperAdmin', 'Admin', 'Assistant'));
+EXCEPTION WHEN duplicate_object THEN
+    NULL;
+END $$;
 
 -- 6. Admin Logs
 CREATE TABLE IF NOT EXISTS admin_logs (

@@ -198,6 +198,8 @@ export interface AppDefaults {
         lastAlertDate?: string;
         lastAlertCount?: number;
     };
+    /** สิทธิ์การมองเห็นข้อมูลแยกรายแอดมิน */
+    adminDataAccessByAdminId?: Record<string, AdminDataAccess>;
 }
 
 export interface AppSettings {
@@ -211,13 +213,14 @@ export interface AppSettings {
 }
 
 export type AdminUiTheme = 'light' | 'dark' | 'system';
+export type AdminRole = 'SuperAdmin' | 'Admin' | 'Assistant';
 
 export interface AdminUser {
     id: string;
     username: string;
     password: string;
     displayName: string;
-    role: 'SuperAdmin' | 'Admin';
+    role: AdminRole;
     createdAt: string;
     lastLogin?: string;
     avatar?: string;
@@ -227,6 +230,24 @@ export interface AdminUser {
     sessionActive?: boolean;
     /** โหมดหน้าจอล่าสุดที่เลือกไว้ */
     lastClientSurface?: 'select' | 'desktop' | 'mobile';
+}
+
+export interface AdminDataAccess {
+    /** เมนูที่อนุญาตให้เห็น */
+    visibleMenus?: string[];
+    /** หมวดหมู่รายการบันทึกที่อนุญาตให้เห็น */
+    visibleTransactionCategories?: string[];
+    /** ซ่อนตัวเลขยอดเงิน และแสดงเป็นสัดส่วนเปอร์เซ็นต์แทน */
+    maskFinancialAmountsAsPercent?: boolean;
+    /** อนุญาตคีย์ข้อมูลได้เฉพาะหน้า Daily Wizard */
+    dataEntryDailyWizardOnly?: boolean;
+    /** สิทธิ์การจัดการรายการข้อมูลแบบแยก action */
+    transactionPermissions?: {
+        view?: boolean;
+        create?: boolean;
+        edit?: boolean;
+        delete?: boolean;
+    };
 }
 
 export interface AdminLog {

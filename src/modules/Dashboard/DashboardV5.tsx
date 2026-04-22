@@ -51,22 +51,6 @@ function aggregateFinancial(transactions: Transaction[]) {
     return { income, expense, profit: income - expense };
 }
 
-/** ทรายล้าง/ขน ต่อ logic เดียวกับ DashboardOverview */
-function sandPerDay(transactions: Transaction[], dateStr: string) {
-    const daySand = transactions.filter(
-        (t) => t.date?.slice(0, 10) === dateStr && t.category === 'DailyLog' && t.subCategory === 'Sand'
-    );
-    const washed = daySand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-    const dayTrips = transactions.filter(
-        (t) =>
-            t.date?.slice(0, 10) === dateStr &&
-            ((t.category === 'DailyLog' && t.subCategory === 'VehicleTrip') || t.category === 'Vehicle')
-    );
-    const cubicPerTrip = 3;
-    const transported = dayTrips.length * cubicPerTrip;
-    return { washed, transported };
-}
-
 function buildDailyPoints(transactions: Transaction[], filter: DateFilter) {
     const n = countInclusiveDays(filter.start, filter.end);
     const points: { date: string; label: string; income: number; expense: number; profit: number }[] = [];
@@ -81,6 +65,27 @@ function buildDailyPoints(transactions: Transaction[], filter: DateFilter) {
         points.push({ date: dateStr, label, income, expense, profit: income - expense });
     }
     return points;
+}
+
+function buildDailyAggregateIndex(transactions: Transaction[]) {
+    const byDate: Record<string, { income: number; expense: number; washed: number; transported: number; entries: number }> = {};
+    transactions.forEach((t) => {
+        const dateStr = t.date.slice(0, 10);
+        if (!byDate[dateStr]) {
+            byDate[dateStr] = { income: 0, expense: 0, washed: 0, transported: 0, entries: 0 };
+        }
+        const day = byDate[dateStr];
+        day.entries += 1;
+        if (t.type === 'Income') day.income += t.amount;
+        if (t.type === 'Expense') day.expense += t.amount;
+        if (t.category === 'DailyLog' && t.subCategory === 'Sand') {
+            day.washed += (t.sandMorning || 0) + (t.sandAfternoon || 0);
+        }
+        if ((t.category === 'DailyLog' && t.subCategory === 'VehicleTrip') || t.category === 'Vehicle') {
+            day.transported += 3;
+        }
+    });
+    return byDate;
 }
 
 function marginPercent(fin: { income: number; profit: number }): number {
@@ -456,9 +461,11 @@ const BreakEvenScatter = ({ points }: ScatterProfitProps) => {
 };
 
 const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]; dateFilter: DateFilter }) => {
+    const [showScoreFormula, setShowScoreFormula] = useState(false);
     const filtered = useMemo(() => filterByRange(transactions, dateFilter), [transactions, dateFilter]);
     const prevFilter = useMemo(() => getPreviousPeriodFilter(dateFilter), [dateFilter]);
     const prevFiltered = useMemo(() => filterByRange(transactions, prevFilter), [transactions, prevFilter]);
+    const dailyIndex = useMemo(() => buildDailyAggregateIndex(transactions), [transactions]);
 
     const curFin = useMemo(() => aggregateFinancial(filtered), [filtered]);
     const prevFin = useMemo(() => aggregateFinancial(prevFiltered), [prevFiltered]);
@@ -471,12 +478,13 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
         for (let i = 0; i < numDays; i++) {
             const dateStr = shiftDateStr(dateFilter.start, i);
             if (dateStr > dateFilter.end) break;
-            const s = sandPerDay(filtered, dateStr);
-            washed += s.washed;
-            transported += s.transported;
+            const day = dailyIndex[dateStr];
+            if (!day) continue;
+            washed += day.washed;
+            transported += day.transported;
         }
         return { washed, transported };
-    }, [filtered, dateFilter, numDays]);
+    }, [dailyIndex, dateFilter, numDays]);
 
     const prevSandTotals = useMemo(() => {
         const prevN = countInclusiveDays(prevFilter.start, prevFilter.end);
@@ -485,14 +493,36 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
         for (let i = 0; i < prevN; i++) {
             const dateStr = shiftDateStr(prevFilter.start, i);
             if (dateStr > prevFilter.end) break;
-            const s = sandPerDay(prevFiltered, dateStr);
-            washed += s.washed;
-            transported += s.transported;
+            const day = dailyIndex[dateStr];
+            if (!day) continue;
+            washed += day.washed;
+            transported += day.transported;
         }
         return { washed, transported };
-    }, [prevFiltered, prevFilter]);
+    }, [dailyIndex, prevFilter]);
 
     const dailyPoints = useMemo(() => buildDailyPoints(transactions, dateFilter), [transactions, dateFilter]);
+
+    const dataQuality = useMemo(() => {
+        const n = countInclusiveDays(dateFilter.start, dateFilter.end);
+        let daysWithRecords = 0;
+        let daysWithSandRecords = 0;
+        for (let i = 0; i < n; i++) {
+            const dateStr = shiftDateStr(dateFilter.start, i);
+            if (dateStr > dateFilter.end) break;
+            const day = dailyIndex[dateStr];
+            if (day && day.entries > 0) {
+                daysWithRecords += 1;
+                if (day.washed > 0 || day.transported > 0) daysWithSandRecords += 1;
+            }
+        }
+        const coveragePct = n > 0 ? Math.round((daysWithRecords / n) * 100) : 0;
+        const sandCoveragePct = n > 0 ? Math.round((daysWithSandRecords / n) * 100) : 0;
+        let qualityLabel = 'ต้องระวัง';
+        if (coveragePct >= 80) qualityLabel = 'ดี';
+        else if (coveragePct >= 50) qualityLabel = 'ปานกลาง';
+        return { totalDays: n, daysWithRecords, daysWithSandRecords, coveragePct, sandCoveragePct, qualityLabel };
+    }, [dailyIndex, dateFilter]);
 
     const composite = useMemo(
         () =>
@@ -528,6 +558,85 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
         return `${r >= 0 ? '+' : ''}${r}%`;
     };
 
+    const keyInsights = useMemo(() => {
+        const insights: string[] = [];
+        if (deltaExpensePct !== null && deltaExpensePct >= 12) {
+            insights.push(`รายจ่ายเพิ่มขึ้น ${Math.round(deltaExpensePct)}% เทียบช่วงก่อน ควรเช็กหมวดต้นทุนที่เร่งตัว`);
+        }
+        if (deltaIncomePct !== null && deltaIncomePct <= -10) {
+            insights.push(`รายรับลดลง ${Math.abs(Math.round(deltaIncomePct))}% เทียบช่วงก่อน ควรติดตามรายการรายรับหลัก`);
+        }
+        if (sandTotals.washed > sandTotals.transported) {
+            const diff = sandTotals.washed - sandTotals.transported;
+            insights.push(`ทรายล้างมากกว่าทรายขน ${diff.toLocaleString()} คิว อาจเกิดคงค้างสะสม`);
+        } else if (sandTotals.transported > sandTotals.washed) {
+            const diff = sandTotals.transported - sandTotals.washed;
+            insights.push(`ทรายขนเร็วกว่าอัตราล้าง ${diff.toLocaleString()} คิว ควรเช็กสต็อกเพื่อไม่ให้ขาดช่วง`);
+        }
+        if (dataQuality.coveragePct < 60) {
+            insights.push(`ข้อมูลบันทึกครอบคลุมเพียง ${dataQuality.coveragePct}% ของช่วงเวลา ผลวิเคราะห์อาจคลาดเคลื่อน`);
+        }
+        if (insights.length === 0) insights.push('แนวโน้มโดยรวมค่อนข้างเสถียรเมื่อเทียบช่วงก่อน');
+        return insights.slice(0, 5);
+    }, [deltaExpensePct, deltaIncomePct, sandTotals, dataQuality.coveragePct]);
+
+    const alertItems = useMemo(
+        () => [
+            {
+                id: 'expense-spike',
+                label: 'รายจ่ายพุ่ง',
+                status: deltaExpensePct !== null && deltaExpensePct >= 15 ? 'high' : 'normal',
+                detail: deltaExpensePct === null ? 'ไม่มีฐานเทียบ' : `${fmtTableDelta(deltaExpensePct)} เทียบช่วงก่อน`,
+            },
+            {
+                id: 'income-drop',
+                label: 'รายรับลด',
+                status: deltaIncomePct !== null && deltaIncomePct <= -12 ? 'high' : 'normal',
+                detail: deltaIncomePct === null ? 'ไม่มีฐานเทียบ' : `${fmtTableDelta(deltaIncomePct)} เทียบช่วงก่อน`,
+            },
+            {
+                id: 'coverage',
+                label: 'ความครบถ้วนข้อมูล',
+                status: dataQuality.coveragePct < 60 ? 'high' : dataQuality.coveragePct < 80 ? 'warn' : 'normal',
+                detail: `${dataQuality.coveragePct}% ของวันในช่วงที่เลือก`,
+            },
+        ],
+        [deltaExpensePct, deltaIncomePct, dataQuality.coveragePct]
+    );
+
+    const exportCsv = useCallback(() => {
+        const rows = [
+            ['metric', 'current', 'previous', 'delta_pct'],
+            ['income', String(curFin.income), String(prevFin.income), fmtTableDelta(deltaIncomePct)],
+            ['expense', String(curFin.expense), String(prevFin.expense), fmtTableDelta(deltaExpensePct)],
+            ['profit', String(curFin.profit), String(prevFin.profit), prevFin.profit === 0 ? '—' : `${profitChangePct}%`],
+            ['sand_washed', String(sandTotals.washed), String(prevSandTotals.washed), fmtTableDelta(deltaWashedPct)],
+            ['sand_transported', String(sandTotals.transported), String(prevSandTotals.transported), fmtTableDelta(deltaTransportPct)],
+        ];
+        const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `dashboard-v5-${dateFilter.start}-to-${dateFilter.end}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [
+        curFin,
+        prevFin,
+        deltaIncomePct,
+        deltaExpensePct,
+        profitChangePct,
+        sandTotals,
+        prevSandTotals,
+        deltaWashedPct,
+        deltaTransportPct,
+        dateFilter.start,
+        dateFilter.end,
+    ]);
+
     return (
         <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -548,6 +657,50 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
                     </span>
                 </div>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                    {alertItems.map((alert) => {
+                        const colorClass =
+                            alert.status === 'high'
+                                ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
+                                : alert.status === 'warn'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30';
+                        return (
+                            <span key={alert.id} className={`text-xs px-2.5 py-1 rounded-full border ${colorClass}`}>
+                                {alert.label}: {alert.detail}
+                            </span>
+                        );
+                    })}
+                </div>
+                <button
+                    type="button"
+                    onClick={exportCsv}
+                    aria-label="ส่งออกข้อมูลสรุปแดชบอร์ดเป็น CSV"
+                    className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-slate-200"
+                >
+                    Export CSV
+                </button>
+            </div>
+
+            <Card className="p-5 sm:p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100">สัญญาณที่ควรติดตาม (Actionable Insights)</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">สรุปจากแนวโน้มช่วงที่เลือกเทียบช่วงก่อนหน้า</p>
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-white/[0.05] rounded-lg px-3 py-2 border border-slate-200 dark:border-white/10">
+                        อัปเดตล่าสุดจากข้อมูลวันที่ {dateFilter.end} · ใช้ข้อมูล {filtered.length.toLocaleString()} รายการ
+                    </div>
+                </div>
+                <ul className="mt-4 space-y-2.5">
+                    {keyInsights.map((insight, i) => (
+                        <li key={i} className="text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] rounded-lg px-3 py-2.5">
+                            {insight}
+                        </li>
+                    ))}
+                </ul>
+            </Card>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <div
@@ -696,7 +849,12 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
                                         ? 'text-red-500 dark:text-red-400'
                                         : 'text-slate-500';
                             return (
-                                <li key={b.label} className="group relative rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50/80 dark:bg-white/[0.03] px-3 py-2.5">
+                                <li
+                                    key={b.label}
+                                    className="group relative rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50/80 dark:bg-white/[0.03] px-3 py-2.5 focus-within:ring-2 focus-within:ring-amber-500/20"
+                                    tabIndex={0}
+                                    aria-label={`รายละเอียดคะแนน: ${b.label}`}
+                                >
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                         <div className="min-w-0 flex-1">
                                             <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{b.label}</div>
@@ -724,6 +882,64 @@ const DashboardV5 = ({ transactions, dateFilter }: { transactions: Transaction[]
                     </p>
                 </Card>
             </div>
+
+            <Card className="p-5 sm:p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100">ความน่าเชื่อถือของข้อมูล (Data Quality)</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ช่วยตีความผลวิเคราะห์ตามความครบถ้วนของข้อมูลจริง</p>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10">
+                        สถานะคุณภาพข้อมูล: {dataQuality.qualityLabel}
+                    </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-3 py-3">
+                        <div className="text-xs text-slate-500">วันในช่วงที่เลือก</div>
+                        <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{dataQuality.totalDays}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-3 py-3">
+                        <div className="text-xs text-slate-500">วันมีข้อมูลธุรกรรม</div>
+                        <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                            {dataQuality.daysWithRecords} ({dataQuality.coveragePct}%)
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-3 py-3">
+                        <div className="text-xs text-slate-500">วันมีข้อมูลทราย</div>
+                        <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                            {dataQuality.daysWithSandRecords} ({dataQuality.sandCoveragePct}%)
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            <Card className="p-5 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100">วิธีคิดคะแนนรวม (โปร่งใส)</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            แสดงสูตรโดยย่อของคะแนนรวมเพื่อให้ตรวจสอบได้
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowScoreFormula((s) => !s)}
+                        aria-expanded={showScoreFormula}
+                        aria-controls="score-formula-detail"
+                        className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-slate-200"
+                    >
+                        {showScoreFormula ? 'ซ่อนสูตรคะแนน' : 'ดูวิธีคิดคะแนน'}
+                    </button>
+                </div>
+                {showScoreFormula ? (
+                    <div id="score-formula-detail" className="mt-4 space-y-2 text-sm text-slate-700 dark:text-slate-200">
+                        <p>คะแนนรวม = (ความคุ้มทุน x 35%) + (เทียบกำไรช่วงก่อน x 25%) + (ควบคุมต้นทุน x 25%) + (สมดุลทราย x 15%)</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                            ความคุ้มทุนใช้อัตรากำไรต่อรายรับ, การเติบโตเทียบกำไรช่วงก่อนหน้า, ควบคุมต้นทุนใช้สัดส่วนรายจ่ายต่อรายรับ, สมดุลทรายใช้สัดส่วนทรายล้างเทียบทรายขน
+                        </p>
+                    </div>
+                ) : null}
+            </Card>
 
             <Card className="p-0 overflow-hidden">
                 <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-2">

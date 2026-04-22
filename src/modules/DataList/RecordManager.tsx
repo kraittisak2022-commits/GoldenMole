@@ -59,9 +59,10 @@ export interface RecordManagerProps {
     compact?: boolean;
     /** ธีมมืด (ส่งจาก MobileFieldApp) */
     darkMode?: boolean;
+    amountMode?: 'currency' | 'percent';
 }
 
-const RecordManager = ({ transactions, onDeleteTransaction, compact = false, darkMode = false }: RecordManagerProps) => {
+const RecordManager = ({ transactions, onDeleteTransaction, compact = false, darkMode = false, amountMode = 'currency' }: RecordManagerProps) => {
     const { confirm: sessionConfirm } = useSessionDialog();
     const isSmallViewport = useMediaQuery('(max-width: 767px)');
     const [filterMode, setFilterMode] = useState<'all' | 'month' | 'date'>('all');
@@ -71,6 +72,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
     });
     const [filterDate, setFilterDate] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortMode, setSortMode] = useState<'dateDesc' | 'amountDesc' | 'amountAsc'>('dateDesc');
     const debouncedSearch = useDebouncedValue(searchQuery, 220);
 
     const filtered = useMemo(() => {
@@ -97,8 +99,10 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                     (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
             );
         }
-        return list;
-    }, [transactions, filterMode, filterMonth, filterDate, debouncedSearch]);
+        if (sortMode === 'amountDesc') return [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+        if (sortMode === 'amountAsc') return [...list].sort((a, b) => (a.amount || 0) - (b.amount || 0));
+        return [...list].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    }, [transactions, filterMode, filterMonth, filterDate, debouncedSearch, sortMode]);
 
     const byDay = useMemo(() => {
         const map = new Map<string, Transaction[]>();
@@ -219,7 +223,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                             }`}
                                         >
                                             {row.t.type === 'Income' ? '+' : ''}
-                                            <FormatNumber value={row.t.amount} />
+                                            <FormatNumber value={row.t.amount} suffix={amountMode === 'percent' ? '%' : undefined} />
                                         </span>
                                         {onDeleteTransaction && (
                                             <button
@@ -249,7 +253,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                         }`}
                                     >
                                         {row.t.type === 'Income' ? '+' : ''}
-                                        <FormatNumber value={row.t.amount} />
+                                        <FormatNumber value={row.t.amount} suffix={amountMode === 'percent' ? '%' : undefined} />
                                     </div>
                                     {onDeleteTransaction ? (
                                         <button
@@ -332,6 +336,17 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                             darkMode ? 'border-slate-600 bg-slate-800 text-white placeholder:text-slate-500' : 'border-slate-200 bg-white placeholder:text-slate-400'
                         }`}
                     />
+                    <select
+                        value={sortMode}
+                        onChange={e => setSortMode(e.target.value as 'dateDesc' | 'amountDesc' | 'amountAsc')}
+                        className={`min-h-[48px] w-full rounded-2xl border px-4 text-base ${
+                            darkMode ? 'border-slate-600 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-800'
+                        }`}
+                    >
+                        <option value="dateDesc">เรียงล่าสุด</option>
+                        <option value="amountDesc">{amountMode === 'percent' ? 'สัดส่วนมากสุด' : 'จำนวนเงินมากสุด'}</option>
+                        <option value="amountAsc">{amountMode === 'percent' ? 'สัดส่วนน้อยสุด' : 'จำนวนเงินน้อยสุด'}</option>
+                    </select>
                 </div>
 
                 <div
@@ -396,6 +411,15 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                 onChange={e => setSearchQuery(e.target.value)}
                                 className="w-full border border-slate-300 dark:border-white/20 rounded-xl px-3 py-3 text-base bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder-slate-400 min-h-[44px]"
                             />
+                            <select
+                                value={sortMode}
+                                onChange={e => setSortMode(e.target.value as 'dateDesc' | 'amountDesc' | 'amountAsc')}
+                                className="w-full border border-slate-300 dark:border-white/20 rounded-xl px-3 py-3 text-base bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 min-h-[44px] sm:max-w-[220px]"
+                            >
+                                <option value="dateDesc">เรียงล่าสุด</option>
+                                <option value="amountDesc">จำนวนเงินมากสุด</option>
+                                <option value="amountAsc">จำนวนเงินน้อยสุด</option>
+                            </select>
                         </div>
                     </div>
                     {filtered.length > 0 && (
@@ -415,7 +439,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                             <div className="sticky top-0 z-[1] hidden min-w-[480px] grid-cols-[minmax(5.5rem,auto)_1fr_minmax(5rem,auto)_auto] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-500 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:grid sm:px-4">
                                 <span>ประเภท</span>
                                 <span>รายละเอียด</span>
-                                <span className="text-right">จำนวนเงิน</span>
+                                <span className="text-right">{amountMode === 'percent' ? 'สัดส่วน (%)' : 'จำนวนเงิน'}</span>
                                 <span className="w-10" />
                             </div>
                             <div className="min-w-[480px]">{renderVirtualRows()}</div>

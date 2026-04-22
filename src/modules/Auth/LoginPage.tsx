@@ -205,9 +205,16 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
         setError('');
         const u = username.trim();
         if (!u || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); triggerShake(); return; }
+        if (!admins || admins.length === 0) {
+            setError('ยังโหลดข้อมูลบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+            triggerShake();
+            return;
+        }
         setIsLoading(true);
         try {
-            const admin = admins.find(a => a.username.toLowerCase() === u.toLowerCase());
+            const normalizedInput = u.toLowerCase();
+            // รองรับข้อมูลเก่าที่อาจมีช่องว่างหน้า/ท้ายใน username
+            const admin = admins.find(a => (a.username || '').trim().toLowerCase() === normalizedInput);
             if (!admin) {
                 setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
                 triggerShake();

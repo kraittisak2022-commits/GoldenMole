@@ -41,7 +41,9 @@ export async function verifyStoredPassword(stored: string, inputPlain: string): 
         const actualHex = await sha256Hex(inputPlain);
         return timingSafeEqualString(expectedHex.toLowerCase(), actualHex.toLowerCase());
     }
-    return timingSafeEqualString(stored, inputPlain);
+    // Legacy/plain passwords: รองรับข้อมูลเก่าที่อาจมีช่องว่างหัวท้ายโดยไม่ได้ตั้งใจ
+    if (timingSafeEqualString(stored, inputPlain)) return true;
+    return timingSafeEqualString(stored.trim(), inputPlain.trim());
 }
 
 export const NEW_PASSWORD_MIN_LENGTH = 8;

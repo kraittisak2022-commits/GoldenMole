@@ -51,7 +51,14 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
     const chartH = H - pad.top - pad.bottom;
     const maxY = Math.ceil(maxV * 1.15) || 1;
 
-    const getX = useCallback((i: number) => pad.left + (i / (days - 1)) * chartW, [days, chartW, pad.left]);
+    const effectiveDays = Math.max(days, 1);
+    const getX = useCallback(
+        (i: number) => {
+            if (effectiveDays <= 1) return pad.left + chartW / 2;
+            return pad.left + (i / (effectiveDays - 1)) * chartW;
+        },
+        [effectiveDays, chartW, pad.left]
+    );
     const getY = useCallback((v: number) => pad.top + ((maxY - v) / maxY) * chartH, [maxY, chartH, pad.top]);
 
     const getDateStr = useCallback((dayIdx: number) => {
@@ -81,17 +88,18 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
         // Find nearest data point index
         let nearestIdx = 0;
         let nearestDist = Infinity;
-        for (let i = 0; i < days; i++) {
+        for (let i = 0; i < effectiveDays; i++) {
             const dist = Math.abs(svgX - getX(i));
             if (dist < nearestDist) { nearestDist = dist; nearestIdx = i; }
         }
-        if (nearestDist < chartW / (days - 1) * 0.6) {
+        const nearestThreshold = effectiveDays <= 1 ? chartW : (chartW / (effectiveDays - 1)) * 0.6;
+        if (nearestDist < nearestThreshold) {
             setHoverIdx(nearestIdx);
             setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
         } else {
             setHoverIdx(null);
         }
-    }, [days, getX, chartW, W]);
+    }, [effectiveDays, getX, chartW, W]);
 
     const handleClick = useCallback(() => {
         if (hoverIdx !== null) {
@@ -102,8 +110,8 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
     // Build paths
     const wPoints = wData.map((v, i) => `${getX(i)},${getY(v)}`).join(' ');
     const tPoints = tData.map((v, i) => `${getX(i)},${getY(v)}`).join(' ');
-    const wAreaPath = `M${getX(0)},${getY(wData[0])} ${wData.map((v, i) => `L${getX(i)},${getY(v)}`).join(' ')} L${getX(days - 1)},${pad.top + chartH} L${getX(0)},${pad.top + chartH} Z`;
-    const tAreaPath = `M${getX(0)},${getY(tData[0])} ${tData.map((v, i) => `L${getX(i)},${getY(v)}`).join(' ')} L${getX(days - 1)},${pad.top + chartH} L${getX(0)},${pad.top + chartH} Z`;
+    const wAreaPath = `M${getX(0)},${getY(wData[0] ?? 0)} ${wData.map((v, i) => `L${getX(i)},${getY(v)}`).join(' ')} L${getX(effectiveDays - 1)},${pad.top + chartH} L${getX(0)},${pad.top + chartH} Z`;
+    const tAreaPath = `M${getX(0)},${getY(tData[0] ?? 0)} ${tData.map((v, i) => `L${getX(i)},${getY(v)}`).join(' ')} L${getX(effectiveDays - 1)},${pad.top + chartH} L${getX(0)},${pad.top + chartH} Z`;
 
     // Y-axis labels
     const ySteps = 4;
@@ -186,8 +194,8 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
                             <line x1={getX(hoverIdx)} y1={pad.top} x2={getX(hoverIdx)} y2={pad.top + chartH}
                                 stroke="#6366f1" strokeWidth="1.2" opacity="0.4" strokeDasharray="5,3" />
                             {/* Highlight background column */}
-                            <rect x={getX(hoverIdx) - chartW / days / 2} y={pad.top}
-                                width={chartW / days} height={chartH}
+                            <rect x={getX(hoverIdx) - chartW / effectiveDays / 2} y={pad.top}
+                                width={chartW / effectiveDays} height={chartH}
                                 fill="#6366f1" opacity="0.04" rx="4" />
                         </g>
                     )}
@@ -354,12 +362,30 @@ const InteractiveChart = ({ wData, tData, labels, maxV, days, filtered, dateStri
 const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transaction[], dateFilter: any }) => {
     const start = new Date(dateFilter.start);
     const end = new Date(dateFilter.end);
-    const filtered = transactions.filter(t => {
-        const d = t.date.slice(0, 10);
-        return d >= dateFilter.start && d <= dateFilter.end;
-    });
-    const income = filtered.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-    const expense = filtered.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+    const filtered = useMemo(
+        () =>
+            transactions.filter((t) => {
+                const d = t.date.slice(0, 10);
+                return d >= dateFilter.start && d <= dateFilter.end;
+            }),
+        [transactions, dateFilter.start, dateFilter.end]
+    );
+    const income = useMemo(() => filtered.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0), [filtered]);
+    const expense = useMemo(() => filtered.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0), [filtered]);
+
+    const dailyIndex = useMemo(() => {
+        const byDate: Record<string, Transaction[]> = {};
+        const expenseByCategory: Record<string, number> = {};
+        filtered.forEach((t) => {
+            const dateStr = t.date.slice(0, 10);
+            if (!byDate[dateStr]) byDate[dateStr] = [];
+            byDate[dateStr].push(t);
+            if (t.type === 'Expense') {
+                expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + t.amount;
+            }
+        });
+        return { byDate, expenseByCategory };
+    }, [filtered]);
 
     // จำนวนวันในช่วงที่เลือก
     const numDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -375,8 +401,8 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
     ];
     const catData = categories.map(({ key, label, color }) => {
         const value = key === 'DailyLog'
-            ? filtered.filter(t => t.category === 'DailyLog' && t.type === 'Expense').reduce((s, t) => s + t.amount, 0)
-            : filtered.filter(t => t.category === key && t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+            ? dailyIndex.expenseByCategory.DailyLog || 0
+            : dailyIndex.expenseByCategory[key] || 0;
         return { label, value, color };
     }).filter(d => d.value > 0);
 
@@ -390,10 +416,11 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             const dateStr = d.toISOString().split('T')[0];
             if (dateStr > dateFilter.end) break;
             labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
-            out.push(filtered.filter(t => t.date.slice(0, 10) === dateStr && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
+            const dayTransactions = dailyIndex.byDate[dateStr] || [];
+            out.push(dayTransactions.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
         }
         return { data: out, labels };
-    }, [filtered, dateFilter, numDays, start]);
+    }, [dailyIndex.byDate, dateFilter, numDays, start]);
 
     // ==============================================
     // SAND ANALYTICS (ทรายล้าง / ทรายขน / ทรายคงเหลือ) — จากข้อมูล DailyLog จริง
@@ -417,7 +444,8 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             dayLabels.push(`${d.getDate()}/${d.getMonth() + 1}`);
 
             // ล้างทราย: จาก DailyLog subCategory Sand (sandMorning + sandAfternoon)
-            const daySand = filtered.filter(t => t.date?.slice(0, 10) === dateStr && t.category === 'DailyLog' && t.subCategory === 'Sand');
+            const dayTransactions = dailyIndex.byDate[dateStr] || [];
+            const daySand = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
             const washed = daySand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
             sandWashedPerDay.push(washed);
             const drumsObtained = daySand.length > 0 ? Math.max(0, ...daySand.map(t => Number((t as any).drumsObtained || 0))) : 0;
@@ -426,7 +454,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             drumsHomePerDay.push(drumsHome);
 
             // ขนทราย: จาก DailyLog VehicleTrip (จำนวนเที่ยว * ประมาณคิวต่อเที่ยว) หรือ Vehicle
-            const dayTrips = filtered.filter(t => t.date?.slice(0, 10) === dateStr && (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip' || t.category === 'Vehicle'));
+            const dayTrips = dayTransactions.filter(t => (t.category === 'DailyLog' && t.subCategory === 'VehicleTrip') || t.category === 'Vehicle');
             const cubicPerTrip = 3;
             const transported = dayTrips.length * cubicPerTrip;
             sandTransportedPerDay.push(transported);
@@ -456,7 +484,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             totalWashed, totalTransported, avgWashedPerDay, avgTransportedPerDay,
             sandRemaining, daysRemaining, netPerDay, totalDrumsObtained, totalDrumsHome, drumsRemaining
         };
-    }, [filtered, dateFilter, numDays, start]);
+    }, [dailyIndex.byDate, dateFilter, numDays, start]);
 
     return (
         <div className="space-y-6 animate-fade-in">

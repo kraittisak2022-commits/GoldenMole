@@ -11,12 +11,19 @@ import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
 import {
+    DraftSaveError,
     WizardDraftPayload,
+    WIZARD_DRAFT_STORAGE_KEY,
+    clearAllWizardDrafts,
     clearWizardDraftForDate,
     getDayTransactionFingerprint,
+    parseTxFingerprintCount,
     readWizardDraftEntry,
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
+
+type DraftMergeSection = 'labor' | 'vehicle' | 'trip' | 'sand' | 'fuel' | 'income' | 'event';
+const ALL_DRAFT_MERGE_SECTIONS: DraftMergeSection[] = ['labor', 'vehicle', 'trip', 'sand', 'fuel', 'income', 'event'];
 
 interface DailyStepRecorderProps {
     employees: Employee[];
@@ -724,61 +731,92 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [eventType, setEventType] = useState('info');
     const [eventPriority, setEventPriority] = useState('normal');
     const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
-    const [draftOffer, setDraftOffer] = useState<{ payload: WizardDraftPayload; savedAt: number; hasConflict: boolean } | null>(null);
+    const [draftOffer, setDraftOffer] = useState<{
+        payload: WizardDraftPayload;
+        savedAt: number;
+        hasConflict: boolean;
+        conflictDraftTxCount: number;
+        conflictCurrentTxCount: number;
+    } | null>(null);
     const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [autosaveSavedAt, setAutosaveSavedAt] = useState<number | null>(null);
+    const [autosaveErrorReason, setAutosaveErrorReason] = useState<DraftSaveError>('none');
+    const [draftMergeSections, setDraftMergeSections] = useState<Record<DraftMergeSection, boolean>>({
+        labor: true,
+        vehicle: true,
+        trip: true,
+        sand: true,
+        fuel: true,
+        income: true,
+        event: true,
+    });
 
-    const applyWizardDraft = useCallback((p: WizardDraftPayload) => {
+    const applyWizardDraft = useCallback((p: WizardDraftPayload, sections: DraftMergeSection[] = ALL_DRAFT_MERGE_SECTIONS) => {
+        const pick = (section: DraftMergeSection) => sections.includes(section);
         setStep(p.step);
-        setLaborSearch(p.laborSearch);
-        setSelectedEmps(p.selectedEmps);
-        setLaborStatus(p.laborStatus);
-        setHalfDayEmpIds(new Set(p.halfDayEmpIds));
-        setDrumsWashedAtHome(p.drumsWashedAtHome);
-        setOtHours(p.otHours);
-        setOtDesc(p.otDesc);
-        setOtRate(p.otRate);
-        setWorkAssignments(p.workAssignments);
-        setCustomCategories(p.customCategories);
-        setNewCategoryName(p.newCategoryName);
-        setVehCar(p.vehCar);
-        setVehDriver(p.vehDriver);
-        setVehWage(p.vehWage);
-        setVehMachineWage(p.vehMachineWage);
-        setVehDetails(p.vehDetails);
-        setVehWorkType(p.vehWorkType);
-        setEditingVehicleTxId(p.editingVehicleTxId);
-        setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
-        setTripMorning(p.tripMorning);
-        setTripAfternoon(p.tripAfternoon);
-        setSand1Morning(p.sand1Morning);
-        setSand1Afternoon(p.sand1Afternoon);
-        setSand2Morning(p.sand2Morning);
-        setSand2Afternoon(p.sand2Afternoon);
-        setSand1Operators(p.sand1Operators);
-        setSand2Operators(p.sand2Operators);
-        setSandDrumsObtained(p.sandDrumsObtained);
-        setSandMorningStart(p.sandMorningStart);
-        setSandAfternoonStart(p.sandAfternoonStart);
-        setSandEveningEnd(p.sandEveningEnd);
-        setFuelAmount(p.fuelAmount);
-        setFuelLiters(p.fuelLiters);
-        setFuelType(p.fuelType);
-        setFuelUnit(p.fuelUnit);
-        setFuelDetails(p.fuelDetails);
-        setFuelVehicle(p.fuelVehicle);
-        setFuelVehicleLiters(p.fuelVehicleLiters);
-        setFuelVehicleType(p.fuelVehicleType);
-        setFuelVehicleDetails(p.fuelVehicleDetails);
-        setIncomeType(p.incomeType);
-        setIncomeQty(p.incomeQty);
-        setIncomeUnitPrice(p.incomeUnitPrice);
-        setIncomeTotal(p.incomeTotal);
-        setNewIncomeType(p.newIncomeType);
-        setIncomeTypeAddOpen(p.incomeTypeAddOpen);
-        setEventDesc(p.eventDesc);
-        setEventType(p.eventType);
-        setEventPriority(p.eventPriority);
+        if (pick('labor')) {
+            setLaborSearch(p.laborSearch);
+            setSelectedEmps(p.selectedEmps);
+            setLaborStatus(p.laborStatus);
+            setHalfDayEmpIds(new Set(p.halfDayEmpIds));
+            setDrumsWashedAtHome(p.drumsWashedAtHome);
+            setOtHours(p.otHours);
+            setOtDesc(p.otDesc);
+            setOtRate(p.otRate);
+            setWorkAssignments(p.workAssignments);
+            setCustomCategories(p.customCategories);
+            setNewCategoryName(p.newCategoryName);
+        }
+        if (pick('vehicle')) {
+            setVehCar(p.vehCar);
+            setVehDriver(p.vehDriver);
+            setVehWage(p.vehWage);
+            setVehMachineWage(p.vehMachineWage);
+            setVehDetails(p.vehDetails);
+            setVehWorkType(p.vehWorkType);
+            setEditingVehicleTxId(p.editingVehicleTxId);
+        }
+        if (pick('trip')) {
+            setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
+            setTripMorning(p.tripMorning);
+            setTripAfternoon(p.tripAfternoon);
+        }
+        if (pick('sand')) {
+            setSand1Morning(p.sand1Morning);
+            setSand1Afternoon(p.sand1Afternoon);
+            setSand2Morning(p.sand2Morning);
+            setSand2Afternoon(p.sand2Afternoon);
+            setSand1Operators(p.sand1Operators);
+            setSand2Operators(p.sand2Operators);
+            setSandDrumsObtained(p.sandDrumsObtained);
+            setSandMorningStart(p.sandMorningStart);
+            setSandAfternoonStart(p.sandAfternoonStart);
+            setSandEveningEnd(p.sandEveningEnd);
+        }
+        if (pick('fuel')) {
+            setFuelAmount(p.fuelAmount);
+            setFuelLiters(p.fuelLiters);
+            setFuelType(p.fuelType);
+            setFuelUnit(p.fuelUnit);
+            setFuelDetails(p.fuelDetails);
+            setFuelVehicle(p.fuelVehicle);
+            setFuelVehicleLiters(p.fuelVehicleLiters);
+            setFuelVehicleType(p.fuelVehicleType);
+            setFuelVehicleDetails(p.fuelVehicleDetails);
+        }
+        if (pick('income')) {
+            setIncomeType(p.incomeType);
+            setIncomeQty(p.incomeQty);
+            setIncomeUnitPrice(p.incomeUnitPrice);
+            setIncomeTotal(p.incomeTotal);
+            setNewIncomeType(p.newIncomeType);
+            setIncomeTypeAddOpen(p.incomeTypeAddOpen);
+        }
+        if (pick('event')) {
+            setEventDesc(p.eventDesc);
+            setEventType(p.eventType);
+            setEventPriority(p.eventPriority);
+        }
     }, []);
 
     const wizardDraftPayload: WizardDraftPayload = useMemo(
@@ -890,36 +928,74 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
     const dayTxFingerprint = useMemo(() => getDayTransactionFingerprint(dayTransactions), [dayTransactions]);
 
-    useEffect(() => {
+    const refreshDraftOffer = useCallback(() => {
         const norm = normalizeDate(date);
         if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(`cm_draft_dismiss_${norm}`)) {
             setDraftOffer(null);
-            return;
+            return false;
         }
         const entry = readWizardDraftEntry(norm);
         if (entry?.payload && entry.payload.step >= 1) {
+            const draftCount = parseTxFingerprintCount(entry.txFingerprint);
+            const currentCount = dayTransactions.length;
             setDraftOffer({
                 payload: entry.payload,
                 savedAt: entry.savedAt,
                 hasConflict: !!entry.txFingerprint && entry.txFingerprint !== dayTxFingerprint,
+                conflictDraftTxCount: draftCount,
+                conflictCurrentTxCount: currentCount,
             });
+            setDraftMergeSections({
+                labor: true,
+                vehicle: true,
+                trip: true,
+                sand: true,
+                fuel: true,
+                income: true,
+                event: true,
+            });
+            return true;
         } else {
             setDraftOffer(null);
+            return false;
         }
-    }, [date, dayTxFingerprint]);
+    }, [date, dayTxFingerprint, dayTransactions.length]);
+
+    useEffect(() => {
+        refreshDraftOffer();
+    }, [refreshDraftOffer]);
+
+    useEffect(() => {
+        const onStorage = (event: StorageEvent) => {
+            if (event.key !== WIZARD_DRAFT_STORAGE_KEY) return;
+            const hasDraft = refreshDraftOffer();
+            if (hasDraft) {
+                const entry = readWizardDraftEntry(normalizeDate(date));
+                if (entry?.savedAt) {
+                    setAutosaveState('saved');
+                    setAutosaveSavedAt(entry.savedAt);
+                    setAutosaveErrorReason('none');
+                }
+            }
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, [date, refreshDraftOffer]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
         if (viewMode !== 'record' || step < 1) return;
         const norm = normalizeDate(date);
         setAutosaveState('saving');
+        setAutosaveErrorReason('none');
         const tid = window.setTimeout(() => {
-            const ok = writeWizardDraftForDate(norm, wizardDraftPayload, dayTxFingerprint);
-            if (ok) {
+            const result = writeWizardDraftForDate(norm, wizardDraftPayload, dayTxFingerprint);
+            if (result.ok) {
                 setAutosaveState('saved');
                 setAutosaveSavedAt(Date.now());
             } else {
                 setAutosaveState('error');
+                setAutosaveErrorReason(result.reason);
             }
         }, 750);
         return () => window.clearTimeout(tid);
@@ -1159,6 +1235,27 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const handleOpenLaborStep = () => {
         setLaborStatus('Work');
         setStep(1);
+    };
+    const handleCopyFromYesterday = async () => {
+        const todayNorm = normalizeDate(date);
+        const yesterday = new Date(`${todayNorm}T00:00:00`);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const ymd = yesterday.toISOString().slice(0, 10);
+        const fromYesterday = transactions.filter(t => normalizeDate(t.date) === ymd && t.category !== 'Payroll' && t.category !== 'PayrollUnlock');
+        if (fromYesterday.length === 0) {
+            await sessionAlert('ไม่พบข้อมูลเมื่อวานสำหรับคัดลอก');
+            return;
+        }
+        const ok = await sessionConfirm(`พบข้อมูลเมื่อวาน ${fromYesterday.length} รายการ ต้องการคัดลอกมาวันนี้หรือไม่?`, { title: 'คัดลอกจากเมื่อวาน' });
+        if (!ok) return;
+        fromYesterday.slice(0, 50).forEach((tx, idx) => {
+            onSaveTransaction({
+                ...tx,
+                id: `${Date.now()}_cpy_${idx}`,
+                date: todayNorm,
+            });
+        });
+        await sessionAlert(`คัดลอกสำเร็จ ${Math.min(fromYesterday.length, 50)} รายการ`);
     };
     useEffect(() => {
         if (!touchUI) return;
@@ -1565,6 +1662,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                         {viewMode === 'record' && (
                             <div className="mb-3 flex items-center justify-end">
                                 <span
+                                    role="status"
+                                    aria-live="polite"
+                                    aria-atomic="true"
                                     className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                                         autosaveState === 'saving'
                                             ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
@@ -1580,7 +1680,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         : autosaveState === 'saved'
                                           ? `บันทึกล่าสุด ${autosaveSavedAt ? new Date(autosaveSavedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`
                                           : autosaveState === 'error'
-                                            ? 'บันทึกแบบร่างไม่สำเร็จ'
+                                            ? `บันทึกแบบร่างไม่สำเร็จ (${autosaveErrorReason === 'quota_exceeded' ? 'พื้นที่เต็ม' : autosaveErrorReason === 'storage_unavailable' ? 'storage ใช้ไม่ได้' : 'ข้อผิดพลาดข้อมูล'})`
                                             : 'ยังไม่มีการแก้ไขล่าสุด'}
                                 </span>
                             </div>
@@ -1601,8 +1701,35 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 </p>
                                 {draftOffer.hasConflict && (
                                     <p className="mt-1.5 text-xs font-semibold">
-                                        มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง อาจเกิดการชนกันของข้อมูล
+                                        มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง (เดิม {draftOffer.conflictDraftTxCount} รายการ, ปัจจุบัน {draftOffer.conflictCurrentTxCount} รายการ) อาจเกิดการชนกันของข้อมูล
                                     </p>
+                                )}
+                                {draftOffer.hasConflict && (
+                                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
+                                        {[
+                                            ['labor', 'ค่าแรง'],
+                                            ['vehicle', 'ใช้รถ'],
+                                            ['trip', 'เที่ยวรถ'],
+                                            ['sand', 'ล้างทราย'],
+                                            ['fuel', 'น้ำมัน'],
+                                            ['income', 'รายรับ'],
+                                            ['event', 'เหตุการณ์'],
+                                        ].map(([key, label]) => {
+                                            const sectionKey = key as DraftMergeSection;
+                                            return (
+                                                <label key={key} className="flex items-center gap-1 rounded border border-rose-200/60 bg-white/60 px-2 py-1 dark:border-rose-500/25 dark:bg-rose-500/5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={draftMergeSections[sectionKey]}
+                                                        onChange={(e) =>
+                                                            setDraftMergeSections(prev => ({ ...prev, [sectionKey]: e.target.checked }))
+                                                        }
+                                                    />
+                                                    <span>{label}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
                                 )}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <Button
@@ -1613,7 +1740,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 const ok = await sessionConfirm('พบความต่างระหว่างแบบร่างกับข้อมูลล่าสุดของวันนี้ ต้องการกู้คืนทับค่าในฟอร์มต่อหรือไม่?', { title: 'ยืนยันกู้คืนแบบร่างที่มี conflict' });
                                                 if (!ok) return;
                                             }
-                                            applyWizardDraft(draftOffer.payload);
+                                            const picked = ALL_DRAFT_MERGE_SECTIONS.filter(section => draftMergeSections[section]);
+                                            if (picked.length === 0) {
+                                                await sessionAlert('กรุณาเลือกอย่างน้อย 1 หมวดที่ต้องการกู้คืน');
+                                                return;
+                                            }
+                                            applyWizardDraft(draftOffer.payload, picked);
                                             setDraftOffer(null);
                                             if (typeof sessionStorage !== 'undefined') {
                                                 sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
@@ -1631,12 +1763,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             setDraftOffer(null);
                                             setAutosaveState('idle');
                                             setAutosaveSavedAt(null);
+                                            setAutosaveErrorReason('none');
                                             if (typeof sessionStorage !== 'undefined') {
                                                 sessionStorage.setItem(`cm_draft_dismiss_${normalizeDate(date)}`, '1');
                                             }
                                         }}
                                     >
                                         ไม่ใช้แบบร่าง
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="touch-manipulation"
+                                        onClick={async () => {
+                                            const ok = await sessionConfirm('ล้างแบบร่างทั้งหมดทุกวันที่เคยบันทึกไว้?', { title: 'ล้างแบบร่างทั้งหมด' });
+                                            if (!ok) return;
+                                            clearAllWizardDrafts();
+                                            setDraftOffer(null);
+                                            setAutosaveState('idle');
+                                            setAutosaveSavedAt(null);
+                                            setAutosaveErrorReason('none');
+                                        }}
+                                    >
+                                        ล้างแบบร่างทั้งหมด
                                     </Button>
                                 </div>
                             </div>
@@ -1652,6 +1801,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <div className={mobileShell ? 'w-full' : 'w-full max-w-sm'}>
                                     <DatePicker label={mobileShell ? '' : 'วันที่'} value={date} onChange={setDate} touchFriendly={touchUI} />
                                 </div>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => void handleCopyFromYesterday()}
+                                    className={mobileShell ? 'w-full min-h-[46px]' : ''}
+                                >
+                                    คัดลอกจากเมื่อวาน
+                                </Button>
                                 {!mobileShell && (
                                     <div className="max-w-md rounded-xl border border-orange-100 bg-orange-50 p-4 text-center text-sm text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-200">
                                         💡 ระบบจะดึงข้อมูลเก่าของวันนี้มาแสดงให้ตรวจสอบด้วยครับ
@@ -3736,6 +3893,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         setDraftOffer(null);
                                         setAutosaveState('idle');
                                         setAutosaveSavedAt(null);
+                                        setAutosaveErrorReason('none');
                                         if (typeof sessionStorage !== 'undefined') {
                                             sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
                                         }

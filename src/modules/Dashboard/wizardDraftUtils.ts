@@ -3,6 +3,9 @@ import { Transaction, WorkType } from '../../types';
 export const WIZARD_DRAFT_STORAGE_KEY = 'cm_daily_wizard_draft_v2';
 export const WIZARD_DRAFT_SCHEMA_VERSION = 2;
 const MAX_DRAFT_DAYS = 12;
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type DraftSaveError = 'none' | 'quota_exceeded' | 'serialize_failed' | 'storage_unavailable';
 
 export type WizardDraftPayload = {
     step: number;
@@ -177,19 +180,38 @@ function readDraftStore(): WizardDraftStore {
                 payload,
             };
         });
+        const now = Date.now();
+        Object.keys(byDate).forEach(date => {
+            if (now - byDate[date].savedAt > DRAFT_TTL_MS) delete byDate[date];
+        });
         return { v: 2, byDate };
     } catch {
         return { v: 2, byDate: {} };
     }
 }
 
-function saveDraftStore(store: WizardDraftStore): boolean {
-    if (typeof localStorage === 'undefined') return false;
+function saveDraftStore(store: WizardDraftStore): { ok: boolean; reason: DraftSaveError } {
+    if (typeof localStorage === 'undefined') return { ok: false, reason: 'storage_unavailable' };
     try {
         localStorage.setItem(WIZARD_DRAFT_STORAGE_KEY, JSON.stringify(store));
-        return true;
-    } catch {
-        return false;
+        return { ok: true, reason: 'none' };
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            return { ok: false, reason: 'quota_exceeded' };
+        }
+        return { ok: false, reason: 'serialize_failed' };
+    }
+}
+
+function pruneOldestDrafts(store: WizardDraftStore, keepDate?: string) {
+    const sorted = Object.entries(store.byDate).sort((a, b) => a[1].savedAt - b[1].savedAt);
+    const removable = sorted
+        .map(([date]) => date)
+        .filter(date => date !== keepDate);
+    const removeCount = Math.max(1, Math.ceil(removable.length / 2));
+    for (let i = 0; i < removeCount; i += 1) {
+        const date = removable[i];
+        if (date) delete store.byDate[date];
     }
 }
 
@@ -206,7 +228,17 @@ export function readWizardDraftEntry(dateStr: string): WizardDraftEntry | null {
     return store.byDate[dateStr] || null;
 }
 
-export function writeWizardDraftForDate(dateStr: string, payload: WizardDraftPayload, txFingerprint: string): boolean {
+export function parseTxFingerprintCount(txFingerprint: string): number {
+    const raw = String(txFingerprint || '').split(':')[0];
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+}
+
+export function writeWizardDraftForDate(
+    dateStr: string,
+    payload: WizardDraftPayload,
+    txFingerprint: string
+): { ok: boolean; reason: DraftSaveError } {
     const store = readDraftStore();
     store.byDate[dateStr] = {
         schemaVersion: WIZARD_DRAFT_SCHEMA_VERSION,
@@ -216,11 +248,20 @@ export function writeWizardDraftForDate(dateStr: string, payload: WizardDraftPay
     };
     const keys = Object.keys(store.byDate).sort((a, b) => store.byDate[b].savedAt - store.byDate[a].savedAt);
     for (let i = MAX_DRAFT_DAYS; i < keys.length; i += 1) delete store.byDate[keys[i]];
+    const firstAttempt = saveDraftStore(store);
+    if (firstAttempt.ok || firstAttempt.reason !== 'quota_exceeded') return firstAttempt;
+
+    // Fallback: prune oldest drafts and retry once automatically.
+    pruneOldestDrafts(store, dateStr);
     return saveDraftStore(store);
 }
 
 export function clearWizardDraftForDate(dateStr: string): boolean {
     const store = readDraftStore();
     delete store.byDate[dateStr];
-    return saveDraftStore(store);
+    return saveDraftStore(store).ok;
+}
+
+export function clearAllWizardDrafts(): boolean {
+    return saveDraftStore({ v: 2, byDate: {} }).ok;
 }
