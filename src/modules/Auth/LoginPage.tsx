@@ -200,6 +200,13 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
     const inputFillPct = (value: string, maxChars = 28) =>
         Math.min(100, (value.length / maxChars) * 100);
 
+    const normalizeUsername = (raw: string) =>
+        raw
+            .normalize('NFKC')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -212,9 +219,9 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
         }
         setIsLoading(true);
         try {
-            const normalizedInput = u.toLowerCase();
+            const normalizedInput = normalizeUsername(u);
             // รองรับข้อมูลเก่าที่อาจมีช่องว่างหน้า/ท้ายใน username
-            const admin = admins.find(a => (a.username || '').trim().toLowerCase() === normalizedInput);
+            const admin = admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
             if (!admin) {
                 setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
                 triggerShake();

@@ -10,6 +10,13 @@ function looksLikeSha256Hex(raw: string): boolean {
     return /^[a-f0-9]{64}$/i.test(raw.trim());
 }
 
+function extractSha256Hex(raw: string): string | null {
+    const s = raw.trim();
+    if (looksLikeSha256Hex(s)) return s;
+    const m = s.match(/([a-f0-9]{64})/i);
+    return m ? m[1] : null;
+}
+
 async function sha256Hex(plain: string): Promise<string> {
     const data = new TextEncoder().encode(plain);
     const hash = await crypto.subtle.digest('SHA-256', data);
@@ -30,8 +37,8 @@ export function isPasswordHashedFormat(stored: string | undefined | null): boole
     const s = stored.trim();
     if (s.startsWith(HASH_PREFIX) && s.length > HASH_PREFIX.length + 32) return true;
     if (s.startsWith(HASH_PREFIX_ALT) && s.length > HASH_PREFIX_ALT.length + 32) return true;
-    // Legacy format: SHA-256 hex without prefix
-    if (looksLikeSha256Hex(s)) return true;
+    // Legacy format: SHA-256 hex without prefix or embedded in wrapper string
+    if (extractSha256Hex(s)) return true;
     return false;
 }
 
@@ -49,13 +56,21 @@ export async function verifyStoredPassword(stored: string, inputPlain: string): 
     if (!stored) return false;
     const s = stored.trim();
     if (isPasswordHashedFormat(s)) {
-        const expectedHex = s.startsWith(HASH_PREFIX)
+        const expectedHexRaw = s.startsWith(HASH_PREFIX)
             ? s.slice(HASH_PREFIX.length)
             : s.startsWith(HASH_PREFIX_ALT)
                 ? s.slice(HASH_PREFIX_ALT.length)
-                : s;
+                : (extractSha256Hex(s) || s);
+        const expectedHex = (extractSha256Hex(expectedHexRaw) || expectedHexRaw).toLowerCase();
         const actualHex = await sha256Hex(inputPlain);
-        return timingSafeEqualString(expectedHex.toLowerCase(), actualHex.toLowerCase());
+        if (timingSafeEqualString(expectedHex, actualHex.toLowerCase())) return true;
+        // รองรับกรอกช่องว่างหัวท้ายโดยไม่ตั้งใจจากมือถือ/คีย์บอร์ด
+        const trimmed = inputPlain.trim();
+        if (trimmed !== inputPlain) {
+            const actualTrimmed = await sha256Hex(trimmed);
+            if (timingSafeEqualString(expectedHex, actualTrimmed.toLowerCase())) return true;
+        }
+        return false;
     }
     // Legacy/plain passwords: รองรับข้อมูลเก่าที่อาจมีช่องว่างหัวท้ายโดยไม่ได้ตั้งใจ
     if (timingSafeEqualString(s, inputPlain)) return true;
