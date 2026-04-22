@@ -4,6 +4,11 @@
  */
 
 const HASH_PREFIX = 'sha256$';
+const HASH_PREFIX_ALT = 'sha256:';
+
+function looksLikeSha256Hex(raw: string): boolean {
+    return /^[a-f0-9]{64}$/i.test(raw.trim());
+}
 
 async function sha256Hex(plain: string): Promise<string> {
     const data = new TextEncoder().encode(plain);
@@ -21,7 +26,13 @@ function timingSafeEqualString(a: string, b: string): boolean {
 }
 
 export function isPasswordHashedFormat(stored: string | undefined | null): boolean {
-    return !!stored?.startsWith(HASH_PREFIX) && stored.length > HASH_PREFIX.length + 32;
+    if (!stored) return false;
+    const s = stored.trim();
+    if (s.startsWith(HASH_PREFIX) && s.length > HASH_PREFIX.length + 32) return true;
+    if (s.startsWith(HASH_PREFIX_ALT) && s.length > HASH_PREFIX_ALT.length + 32) return true;
+    // Legacy format: SHA-256 hex without prefix
+    if (looksLikeSha256Hex(s)) return true;
+    return false;
 }
 
 export function needsPasswordRehash(stored: string | undefined | null): boolean {
@@ -36,14 +47,19 @@ export async function hashPasswordForStorage(plain: string): Promise<string> {
 
 export async function verifyStoredPassword(stored: string, inputPlain: string): Promise<boolean> {
     if (!stored) return false;
-    if (isPasswordHashedFormat(stored)) {
-        const expectedHex = stored.slice(HASH_PREFIX.length);
+    const s = stored.trim();
+    if (isPasswordHashedFormat(s)) {
+        const expectedHex = s.startsWith(HASH_PREFIX)
+            ? s.slice(HASH_PREFIX.length)
+            : s.startsWith(HASH_PREFIX_ALT)
+                ? s.slice(HASH_PREFIX_ALT.length)
+                : s;
         const actualHex = await sha256Hex(inputPlain);
         return timingSafeEqualString(expectedHex.toLowerCase(), actualHex.toLowerCase());
     }
     // Legacy/plain passwords: รองรับข้อมูลเก่าที่อาจมีช่องว่างหัวท้ายโดยไม่ได้ตั้งใจ
-    if (timingSafeEqualString(stored, inputPlain)) return true;
-    return timingSafeEqualString(stored.trim(), inputPlain.trim());
+    if (timingSafeEqualString(s, inputPlain)) return true;
+    return timingSafeEqualString(s, inputPlain.trim());
 }
 
 export const NEW_PASSWORD_MIN_LENGTH = 8;
