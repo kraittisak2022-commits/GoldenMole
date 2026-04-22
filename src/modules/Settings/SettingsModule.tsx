@@ -1,14 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { AppSettings, AdminUser, AdminUiTheme } from '../../types';
+import { AppSettings, AdminUser, AdminUiTheme, Employee, Transaction, LandProject, AdminLog } from '../../types';
 import { supabase } from '../../lib/supabase';
+import { runBackup } from '../../services/backupService';
 
 interface SettingsModuleProps {
     settings: AppSettings;
     setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
+    backupPayload: {
+        employees: Employee[];
+        transactions: Transaction[];
+        projects: LandProject[];
+        admins: AdminUser[];
+        adminLogs: AdminLog[];
+    };
     autoVersionNotes?: string[];
     currentAdmin?: AdminUser | null;
     onUpdateAdminProfile?: (updates: {
@@ -40,7 +48,8 @@ type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 type TableDiagnostic = { table: string; read: StatusState; write: StatusState; note?: string };
 const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings', 'work_plans', 'admin_users', 'admin_logs'] as const;
 
-const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
+const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
+    const defaultDriveClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -114,6 +123,19 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
     });
     const [accountSaving, setAccountSaving] = useState(false);
     const [accountMsg, setAccountMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+    const [backupSaving, setBackupSaving] = useState(false);
+    const [backupMsg, setBackupMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+    const [backupForm, setBackupForm] = useState({
+        enabled: !!settings.appDefaults?.backupConfig?.enabled,
+        frequency: (settings.appDefaults?.backupConfig?.frequency || 'daily') as 'daily' | 'monthly',
+        backupName: settings.appDefaults?.backupConfig?.backupName || 'construction_backup',
+        includeSettings: settings.appDefaults?.backupConfig?.includeSettings ?? true,
+        includeDatabase: settings.appDefaults?.backupConfig?.includeDatabase ?? true,
+        autoUpload: !!settings.appDefaults?.backupConfig?.googleDrive?.autoUpload,
+        clientId: settings.appDefaults?.backupConfig?.googleDrive?.clientId || defaultDriveClientId,
+        folderId: settings.appDefaults?.backupConfig?.googleDrive?.folderId || '',
+        accessToken: settings.appDefaults?.backupConfig?.googleDrive?.accessToken || '',
+    });
 
     useEffect(() => {
         if (!currentAdmin) return;
@@ -150,6 +172,48 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
             vehicleDefaultMachineWage: String(settings.appDefaults?.vehicleDefaultMachineWage ?? 4500),
         });
     }, [settings.appDefaults]);
+    useEffect(() => {
+        setBackupForm({
+            enabled: !!settings.appDefaults?.backupConfig?.enabled,
+            frequency: (settings.appDefaults?.backupConfig?.frequency || 'daily') as 'daily' | 'monthly',
+            backupName: settings.appDefaults?.backupConfig?.backupName || 'construction_backup',
+            includeSettings: settings.appDefaults?.backupConfig?.includeSettings ?? true,
+            includeDatabase: settings.appDefaults?.backupConfig?.includeDatabase ?? true,
+            autoUpload: !!settings.appDefaults?.backupConfig?.googleDrive?.autoUpload,
+            clientId: settings.appDefaults?.backupConfig?.googleDrive?.clientId || defaultDriveClientId,
+            folderId: settings.appDefaults?.backupConfig?.googleDrive?.folderId || '',
+            accessToken: settings.appDefaults?.backupConfig?.googleDrive?.accessToken || '',
+        });
+    }, [settings.appDefaults?.backupConfig, defaultDriveClientId]);
+
+    useEffect(() => {
+        const rawHash = window.location.hash || '';
+        if (!rawHash.includes('access_token=') || !rawHash.includes('backup_gdrive_oauth')) return;
+        const hashParams = new URLSearchParams(rawHash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+        if (!accessToken) return;
+        setBackupForm(prev => ({ ...prev, accessToken }));
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                backupConfig: {
+                    ...(prev.appDefaults?.backupConfig || {}),
+                    googleDrive: {
+                        ...(prev.appDefaults?.backupConfig?.googleDrive || {}),
+                        autoUpload: true,
+                        clientId: prev.appDefaults?.backupConfig?.googleDrive?.clientId || defaultDriveClientId,
+                        folderId: prev.appDefaults?.backupConfig?.googleDrive?.folderId || '',
+                        accessToken,
+                    },
+                },
+            },
+        }));
+        setBackupMsg({ type: 'ok', text: 'เชื่อม Google Drive สำเร็จแล้ว' });
+        if (window.history?.replaceState) {
+            window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
+        }
+    }, []);
 
     const DEFAULT_POSITIONS = ['คนขับรถ', 'รับจ้างรายวัน'];
     const positions = (settings.employeePositions && settings.employeePositions.length > 0)
@@ -236,6 +300,120 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
             },
         });
         alert('บันทึกค่าเริ่มต้นระบบแล้ว');
+    };
+    const saveBackupConfig = () => {
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                backupConfig: {
+                    ...(prev.appDefaults?.backupConfig || {}),
+                    enabled: backupForm.enabled,
+                    frequency: backupForm.frequency,
+                    backupName: backupForm.backupName.trim() || 'construction_backup',
+                    includeSettings: backupForm.includeSettings,
+                    includeDatabase: backupForm.includeDatabase,
+                    googleDrive: {
+                        ...(prev.appDefaults?.backupConfig?.googleDrive || {}),
+                        autoUpload: backupForm.autoUpload,
+                        clientId: backupForm.clientId.trim(),
+                        folderId: backupForm.folderId.trim(),
+                        accessToken: backupForm.accessToken.trim(),
+                    },
+                },
+            },
+        }));
+        setBackupMsg({ type: 'ok', text: 'บันทึกการตั้งค่าสำรองข้อมูลแล้ว' });
+    };
+    const runBackupNow = async () => {
+        setBackupSaving(true);
+        setBackupMsg(null);
+        const result = await runBackup({
+            mode: 'manual',
+            backupName: backupForm.backupName,
+            includeSettings: backupForm.includeSettings,
+            includeDatabase: backupForm.includeDatabase,
+            googleDrive: {
+                autoUpload: backupForm.autoUpload,
+                folderId: backupForm.folderId,
+                accessToken: backupForm.accessToken,
+            },
+            payload: {
+                employees: backupPayload.employees,
+                transactions: backupPayload.transactions,
+                projects: backupPayload.projects,
+                settings,
+                admins: backupPayload.admins,
+                adminLogs: backupPayload.adminLogs,
+            },
+        });
+        setBackupSaving(false);
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                backupConfig: {
+                    ...(prev.appDefaults?.backupConfig || {}),
+                    enabled: backupForm.enabled,
+                    frequency: backupForm.frequency,
+                    backupName: backupForm.backupName.trim() || 'construction_backup',
+                    includeSettings: backupForm.includeSettings,
+                    includeDatabase: backupForm.includeDatabase,
+                    googleDrive: {
+                        ...(prev.appDefaults?.backupConfig?.googleDrive || {}),
+                        autoUpload: backupForm.autoUpload,
+                        clientId: backupForm.clientId.trim(),
+                        folderId: backupForm.folderId.trim(),
+                        accessToken: backupForm.accessToken.trim(),
+                    },
+                    lastBackupAt: new Date().toISOString(),
+                    lastBackupFileName: result.fileName,
+                    lastBackupStatus: result.ok ? 'success' : 'error',
+                    lastBackupError: result.error,
+                },
+            },
+        }));
+        if (result.ok) {
+            setBackupMsg({ type: 'ok', text: result.driveFileId ? 'สำรองข้อมูลและอัปโหลดไป Google Drive แล้ว' : 'สำรองข้อมูลสำเร็จ (ดาวน์โหลดไฟล์ลงเครื่องแล้ว)' });
+        } else {
+            setBackupMsg({ type: 'err', text: result.error || 'สำรองข้อมูลไม่สำเร็จ' });
+        }
+    };
+    const connectGoogleDriveSimple = () => {
+        const clientId = (backupForm.clientId || defaultDriveClientId).trim();
+        if (!clientId) {
+            setBackupMsg({ type: 'err', text: 'ยังไม่พบ Google Client ID (ให้ตั้งค่า VITE_GOOGLE_CLIENT_ID หรือกรอกในโหมดขั้นสูง)' });
+            return;
+        }
+        const state = `backup_gdrive_oauth_${Date.now()}`;
+        const params = new URLSearchParams({
+            client_id: clientId,
+            redirect_uri: window.location.origin + window.location.pathname,
+            response_type: 'token',
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            include_granted_scopes: 'true',
+            prompt: 'consent',
+            state,
+        });
+        window.location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+    };
+    const disconnectGoogleDrive = () => {
+        setBackupForm(prev => ({ ...prev, accessToken: '', autoUpload: false }));
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                backupConfig: {
+                    ...(prev.appDefaults?.backupConfig || {}),
+                    googleDrive: {
+                        ...(prev.appDefaults?.backupConfig?.googleDrive || {}),
+                        autoUpload: false,
+                        accessToken: '',
+                    },
+                },
+            },
+        }));
+        setBackupMsg({ type: 'ok', text: 'ยกเลิกการเชื่อม Google Drive แล้ว' });
     };
     const laborWorkCategories = settings.appDefaults?.laborWorkCategories || [];
 
@@ -550,6 +728,7 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
         { key: 'landGroups', l: 'กลุ่มที่ดิน' },
         { key: 'fuelStock', l: 'น้ำมัน & สต็อกยกมา' },
         { key: 'defaults', l: 'ค่าเริ่มต้นระบบ' },
+        { key: 'backupSystem', l: 'ระบบสำรองข้อมูล' },
         { key: 'aiLogs', l: 'AI Logs' },
         { key: 'laborWorkCategories', l: 'ประเภทงานค่าแรง' },
         { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
@@ -756,6 +935,91 @@ const SettingsModule = ({ settings, setSettings, autoVersionNotes = [], currentA
                             />
                             <p className="text-xs text-slate-400">ถ้าไม่แน่ใจ ใช้ 3 คิวต่อเที่ยวเป็นค่ามาตรฐาน</p>
                             <Button onClick={saveAppDefaults}>บันทึกค่าเริ่มต้น</Button>
+                        </div>
+                    ) : activeTab === 'backupSystem' ? (
+                        <div className="space-y-6 max-w-2xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Upload className="text-indigo-600" size={22} />
+                                <h3 className="font-bold text-lg">ระบบสำรองข้อมูล</h3>
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                ตั้งค่าสำรองข้อมูลทั้งหมด (ค่าตั้งค่า + ฐานข้อมูล) รายวันหรือรายเดือน และอัปโหลดขึ้น Google Drive อัตโนมัติสำหรับการกู้คืนในอนาคต
+                            </p>
+                            {backupMsg && (
+                                <div className={`rounded-xl px-4 py-3 text-sm border ${backupMsg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                    {backupMsg.text}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="checkbox" checked={backupForm.enabled} onChange={e => setBackupForm(prev => ({ ...prev, enabled: e.target.checked }))} />
+                                    เปิดระบบสำรองอัตโนมัติ
+                                </label>
+                                <div className="flex items-center gap-2 text-sm text-slate-700">
+                                    <CalendarClock size={16} />
+                                    <span>รอบเวลา:</span>
+                                    <select
+                                        value={backupForm.frequency}
+                                        onChange={e => setBackupForm(prev => ({ ...prev, frequency: e.target.value as 'daily' | 'monthly' }))}
+                                        className="border border-slate-200 rounded-lg px-2 py-1 bg-white"
+                                    >
+                                        <option value="daily">รายวัน</option>
+                                        <option value="monthly">รายเดือน</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <Input label="ชื่อแบ็กอัป" value={backupForm.backupName} onChange={(e: any) => setBackupForm(prev => ({ ...prev, backupName: e.target.value }))} placeholder="เช่น backup_goldenmole" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="checkbox" checked={backupForm.includeSettings} onChange={e => setBackupForm(prev => ({ ...prev, includeSettings: e.target.checked }))} />
+                                    รวมค่าตั้งค่าทั้งหมด
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="checkbox" checked={backupForm.includeDatabase} onChange={e => setBackupForm(prev => ({ ...prev, includeDatabase: e.target.checked }))} />
+                                    รวมข้อมูลฐานข้อมูลทั้งหมด
+                                </label>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50">
+                                <p className="font-medium text-slate-800">Google Drive Auto Upload</p>
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="checkbox" checked={backupForm.autoUpload} onChange={e => setBackupForm(prev => ({ ...prev, autoUpload: e.target.checked }))} />
+                                    อัปโหลดขึ้น Google Drive อัตโนมัติ
+                                </label>
+                                <Input label="Google Drive Folder ID (ไม่บังคับ)" value={backupForm.folderId} onChange={(e: any) => setBackupForm(prev => ({ ...prev, folderId: e.target.value }))} placeholder="ใส่โฟลเดอร์ปลายทางบน Google Drive" />
+                                <div className="flex flex-wrap gap-2">
+                                    <Button type="button" onClick={connectGoogleDriveSimple}>
+                                        เชื่อม Google Drive 1 คลิก
+                                    </Button>
+                                    <Button type="button" variant="outline" onClick={disconnectGoogleDrive}>
+                                        ยกเลิกการเชื่อมต่อ
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    สถานะเชื่อมต่อ: {backupForm.accessToken ? 'เชื่อมแล้ว' : 'ยังไม่เชื่อม'} {backupForm.accessToken ? '✅' : '•'}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                    หมายเหตุ: ให้เพิ่ม Redirect URI ใน Google Cloud เป็น <code>{window.location.origin + window.location.pathname}</code>
+                                </p>
+                                <details className="rounded-lg border border-slate-200 bg-white p-3">
+                                    <summary className="cursor-pointer text-xs font-medium text-slate-600">ตั้งค่าขั้นสูง (กรณีไม่มี Client ID ในระบบ)</summary>
+                                    <div className="mt-3 space-y-2">
+                                        <Input label="Google OAuth Client ID" value={backupForm.clientId} onChange={(e: any) => setBackupForm(prev => ({ ...prev, clientId: e.target.value }))} placeholder="ใส่ OAuth Client ID จาก Google Cloud Console" />
+                                        <Input label="Google Drive Access Token" type="password" value={backupForm.accessToken} onChange={(e: any) => setBackupForm(prev => ({ ...prev, accessToken: e.target.value }))} placeholder="Bearer token สำหรับอัปโหลดไฟล์อัตโนมัติ" />
+                                    </div>
+                                </details>
+                            </div>
+                            <Card className="p-4 bg-slate-50 border-slate-200">
+                                <p className="text-sm text-slate-600">สำรองล่าสุด: {settings.appDefaults?.backupConfig?.lastBackupAt ? new Date(settings.appDefaults.backupConfig.lastBackupAt).toLocaleString('th-TH') : '-'}</p>
+                                <p className="text-sm text-slate-600">ไฟล์ล่าสุด: {settings.appDefaults?.backupConfig?.lastBackupFileName || '-'}</p>
+                                <p className="text-sm text-slate-600">สถานะล่าสุด: {settings.appDefaults?.backupConfig?.lastBackupStatus || '-'}</p>
+                                {settings.appDefaults?.backupConfig?.lastBackupError ? <p className="text-xs text-red-600 mt-1">Error: {settings.appDefaults.backupConfig.lastBackupError}</p> : null}
+                            </Card>
+                            <div className="flex flex-wrap gap-3">
+                                <Button onClick={saveBackupConfig}>บันทึกการตั้งค่าสำรองข้อมูล</Button>
+                                <Button variant="outline" onClick={runBackupNow} disabled={backupSaving}>
+                                    {backupSaving ? 'กำลังสำรองข้อมูล...' : 'สำรองข้อมูลตอนนี้'}
+                                </Button>
+                            </div>
                         </div>
                     ) : activeTab === 'aiLogs' ? (
                         <div className="space-y-4">

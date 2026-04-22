@@ -201,6 +201,23 @@ export interface AppDefaults {
     };
     /** สิทธิ์การมองเห็นข้อมูลแยกรายแอดมิน */
     adminDataAccessByAdminId?: Record<string, AdminDataAccess>;
+    backupConfig?: {
+        enabled?: boolean;
+        frequency?: 'daily' | 'monthly';
+        backupName?: string;
+        includeSettings?: boolean;
+        includeDatabase?: boolean;
+        googleDrive?: {
+            autoUpload?: boolean;
+            folderId?: string;
+            accessToken?: string;
+            clientId?: string;
+        };
+        lastBackupAt?: string;
+        lastBackupFileName?: string;
+        lastBackupStatus?: 'success' | 'error';
+        lastBackupError?: string;
+    };
 }
 
 export interface AppSettings {

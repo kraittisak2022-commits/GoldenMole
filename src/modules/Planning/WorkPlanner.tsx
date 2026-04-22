@@ -563,7 +563,7 @@ const WorkPlanner = ({ adminId, adminName, settings, setSettings, addLog, darkMo
   <style>
     @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
-    body { font-family: "Sarabun", "TH Sarabun New", "Tahoma", Arial, sans-serif; color: #111827; margin: 0; font-size: 12px; }
+    body { font-family: "Kanit", "Prompt", "Tahoma", Arial, sans-serif; color: #111827; margin: 0; font-size: 12px; }
     .sheet { width: 100%; }
     .title { border: 1.5px solid #0f172a; padding: 10px 12px; margin-bottom: 8px; }
     .title h1 { margin: 0; font-size: 18px; line-height: 1.2; }

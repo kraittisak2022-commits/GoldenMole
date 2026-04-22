@@ -46,6 +46,7 @@ import {
     type OfflineQueueItem,
     type OfflineSyncSnapshot,
 } from './services/offlineSync';
+import { isBackupDue, runBackup } from './services/backupService';
 
 // Supabase Services
 import * as db from './services/dataService';
@@ -370,6 +371,7 @@ function App() {
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
     const hasRestoredAuthSession = useRef(false);
+    const autoBackupRunningRef = useRef(false);
     const currentAdminRef = useRef<AdminUser | null>(null);
     const { canInstall, promptInstall } = usePwaInstall();
     useEffect(() => {
@@ -446,6 +448,56 @@ function App() {
         setSettings(next);
         db.saveSettings(next);
     }, [isLoading, autoVersionNotes, settings]);
+
+    useEffect(() => {
+        if (isLoading || autoBackupRunningRef.current) return;
+        const cfg = settings.appDefaults?.backupConfig;
+        if (!cfg?.enabled || !cfg.googleDrive?.autoUpload) return;
+        if (!isBackupDue(cfg.frequency || 'daily', cfg.lastBackupAt)) return;
+
+        autoBackupRunningRef.current = true;
+        void (async () => {
+            const result = await runBackup({
+                mode: 'auto',
+                backupName: cfg.backupName || 'construction_backup',
+                includeSettings: cfg.includeSettings ?? true,
+                includeDatabase: cfg.includeDatabase ?? true,
+                googleDrive: {
+                    autoUpload: true,
+                    folderId: cfg.googleDrive?.folderId,
+                    accessToken: cfg.googleDrive?.accessToken,
+                },
+                payload: {
+                    employees,
+                    transactions,
+                    projects,
+                    settings,
+                    admins,
+                    adminLogs,
+                },
+            });
+
+            setSettings(prev => ({
+                ...prev,
+                appDefaults: {
+                    ...(prev.appDefaults || {}),
+                    backupConfig: {
+                        ...(prev.appDefaults?.backupConfig || {}),
+                        lastBackupAt: new Date().toISOString(),
+                        lastBackupFileName: result.fileName,
+                        lastBackupStatus: result.ok ? 'success' : 'error',
+                        lastBackupError: result.error,
+                    },
+                },
+            }));
+
+            if (!result.ok) {
+                setToast(`สำรองข้อมูลอัตโนมัติไม่สำเร็จ: ${result.error || 'unknown error'}`);
+                setTimeout(() => setToast(null), 6000);
+            }
+            autoBackupRunningRef.current = false;
+        })();
+    }, [isLoading, settings, employees, transactions, projects, admins, adminLogs]);
 
     // --- Load all data from Supabase on mount ---
     useEffect(() => {
@@ -1307,6 +1359,13 @@ function App() {
                 <SettingsModule
                     settings={settings}
                     setSettings={handleSetSettings}
+                    backupPayload={{
+                        employees,
+                        transactions,
+                        projects,
+                        admins,
+                        adminLogs,
+                    }}
                     autoVersionNotes={autoVersionNotes}
                     currentAdmin={currentAdmin}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
@@ -1505,6 +1564,7 @@ function App() {
                     settings={settings}
                     employees={employees}
                     transactions={isFinancialMaskEnabled ? maskedTransactions : visibleTransactions}
+                    projects={projects}
                     admins={admins}
                     adminLogs={adminLogs}
                     currentAdmin={currentAdmin}

@@ -16,7 +16,7 @@ export default {
         },
         extend: {
             fontFamily: {
-                sans: ['Sarabun', 'Prompt', 'Noto Sans Thai', 'Tahoma', 'sans-serif'],
+                sans: ['Kanit', 'Prompt', 'Noto Sans Thai', 'Tahoma', 'sans-serif'],
             },
             spacing: {
                 'safe-top': 'env(safe-area-inset-top)',

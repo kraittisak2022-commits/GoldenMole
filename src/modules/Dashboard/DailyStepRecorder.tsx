@@ -112,7 +112,10 @@ const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, '
 const HIDDEN_WORK_CATEGORY_IDS = new Set(['other']);
 const HIDDEN_WORK_CATEGORY_LABELS = new Set(['ทำอื่นๆ'].map(normalizeCategoryLabel));
 const isGeneratedCategoryId = (value: string) => /^c_\d+$/.test((value || '').trim());
+const isCfgLikeCategoryId = (value: string) => /^cfg[_-]/i.test((value || '').trim());
 const isGeneratedCategoryLabel = (value: string) => isGeneratedCategoryId(value);
+const isSystemCategoryLabel = (value: string) =>
+    isGeneratedCategoryLabel(value) || isCfgLikeCategoryId(value);
 const CUSTOM_CATEGORY_STYLES = [
     { color: 'bg-purple-500', bgLight: 'bg-purple-50 border-purple-200' },
     { color: 'bg-fuchsia-500', bgLight: 'bg-fuchsia-50 border-fuchsia-200' },
@@ -315,7 +318,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const addCategory = (id: string, label: string) => {
             if (!id || !label || DEFAULT_WORK_CATEGORY_IDS.has(id)) return;
             if (HIDDEN_WORK_CATEGORY_IDS.has(id)) return;
-            if (isGeneratedCategoryLabel(label)) return;
+            if (isCfgLikeCategoryId(id)) return;
+            if (isSystemCategoryLabel(label)) return;
             const norm = normalizeCategoryLabel(label);
             if (HIDDEN_WORK_CATEGORY_LABELS.has(norm)) return;
             if (!norm || seenLabels.has(norm)) return;
@@ -354,7 +358,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             return;
                         }
                         // orphan id แบบ c_เวลา ไม่ควรแสดงเป็นชื่อกล่อง
-                        if (isGeneratedCategoryId(catId)) return;
+                        if (isGeneratedCategoryId(catId) || isCfgLikeCategoryId(catId)) return;
                         addCategory(catId, catId);
                     });
             }
@@ -996,7 +1000,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 setCustomCategories(latest.customWorkCategories
                     .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
                     .filter((c: any) => {
-                        if (isGeneratedCategoryLabel(c.label)) return false;
+                        if (isSystemCategoryLabel(c.label)) return false;
+                        if (isCfgLikeCategoryId(c.id)) return false;
                         const norm = normalizeCategoryLabel(c.label);
                         if (!norm || seenLabels.has(norm)) return false;
                         seenLabels.add(norm);
@@ -1009,7 +1014,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     .map((catId) => {
                         const remembered = rememberedCustomCategories.find(c => c.id === catId);
                         if (remembered) return remembered;
-                        if (isGeneratedCategoryId(catId)) return null;
+                        if (isGeneratedCategoryId(catId) || isCfgLikeCategoryId(catId)) return null;
                         return { id: catId, label: catId };
                     })
                     .filter((c): c is { id: string; label: string } => !!c);

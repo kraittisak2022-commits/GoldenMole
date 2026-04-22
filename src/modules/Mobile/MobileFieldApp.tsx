@@ -18,6 +18,7 @@ import {
     AppSettings,
     Employee,
     Transaction,
+    LandProject,
     AdminUser,
     AdminUiTheme,
     AdminLog,
@@ -37,6 +38,7 @@ interface MobileFieldAppProps {
     settings: AppSettings;
     employees: Employee[];
     transactions: Transaction[];
+    projects: LandProject[];
     admins: AdminUser[];
     adminLogs: AdminLog[];
     currentAdmin: AdminUser;
@@ -105,6 +107,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
         settings,
         employees,
         transactions,
+        projects,
         admins,
         adminLogs,
         currentAdmin,
@@ -602,6 +605,13 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                             <SettingsModule
                                 settings={settings}
                                 setSettings={handleSetSettings}
+                                backupPayload={{
+                                    employees,
+                                    transactions,
+                                    projects,
+                                    admins,
+                                    adminLogs,
+                                }}
                                 autoVersionNotes={autoVersionNotes}
                                 currentAdmin={currentAdmin}
                                 onUpdateAdminProfile={onUpdateAdminProfile}
