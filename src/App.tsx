@@ -67,6 +67,7 @@ type ClientSurface = 'select' | 'desktop' | 'mobile';
 const MOBILE_PIN_KEY = 'cm_mobile_pin_v1';
 const MOBILE_PIN_LOCK_MS = 90 * 1000;
 const MOBILE_PIN_MAX_FAIL = 5;
+const MOBILE_PIN_MIN_LENGTH = 4;
 
 type MobilePinState = {
     hash: string;
@@ -80,6 +81,7 @@ const resolveDarkFromUiTheme = (ui: AdminUiTheme | undefined): boolean => {
     if (t === 'light') return false;
     return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 };
+
 
 // --- Mock Data (Note: Name now primarily uses nickname per requirement) ---
 const MOCK_EMPLOYEES: Employee[] = [
@@ -477,7 +479,8 @@ function App() {
         if (!matchedAdmin) return;
         setCurrentAdmin(matchedAdmin);
         setIsLoggedIn(true);
-        setClientSurface((matchedAdmin.lastClientSurface as ClientSurface) || 'select');
+        // หลังล็อกอินให้ผู้ใช้เลือกโหมดก่อนทุกครั้ง
+        setClientSurface('select');
         applyUiThemeToApp(matchedAdmin.uiTheme);
     }, [isLoading, admins, applyUiThemeToApp]);
 
@@ -826,6 +829,21 @@ function App() {
         setToast(nextState.lockUntil ? 'PIN ผิดเกินกำหนด ล็อกชั่วคราว 90 วินาที' : 'PIN ไม่ถูกต้อง');
         setTimeout(() => setToast(null), 2300);
     }, [hashPin, pinInput, readMobilePinState, saveMobilePinState]);
+    const appendPinDigit = useCallback((digit: string) => {
+        if (!/^\d$/.test(digit)) return;
+        setPinInput(prev => (prev.length >= 6 ? prev : `${prev}${digit}`));
+    }, []);
+    const backspacePinDigit = useCallback(() => {
+        setPinInput(prev => prev.slice(0, -1));
+    }, []);
+    const clearPinInput = useCallback(() => {
+        setPinInput('');
+    }, []);
+    const touchFeedback = useCallback(() => {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            navigator.vibrate(12);
+        }
+    }, []);
 
     const handleSave = async (t: Transaction) => {
         if (!canMutateTransactionsInCurrentMenu()) {
@@ -1323,25 +1341,88 @@ function App() {
                     </div>
                 )}
                 {showPinLock && (
-                    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4">
-                        <Card className="w-full max-w-xs p-5">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">ปลดล็อกด้วย PIN</h3>
-                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">กรอก PIN เพื่อใช้งานต่อ</p>
+                    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+                        <Card className="w-full max-w-sm overflow-hidden border border-white/15 bg-white/95 p-0 shadow-2xl dark:bg-[#121725]/95">
+                            <div className="bg-gradient-to-r from-amber-500/90 via-yellow-500/80 to-amber-600/90 px-6 py-5 text-white">
+                                <h3 className="text-xl font-extrabold tracking-tight">PIN Lock</h3>
+                                <p className="mt-1 text-sm text-amber-50/95">ปลดล็อกเพื่อกลับเข้าใช้งานระบบ</p>
+                            </div>
+                            <div className="p-5">
+                                <div className="mb-4 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 p-3 shadow-inner dark:border-white/10 dark:from-white/[0.06] dark:to-white/[0.03]">
+                                    <div className="mb-1 flex items-center justify-between px-1">
+                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">PIN</span>
+                                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{pinInput.length}/6</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2">
+                                    {Array.from({ length: 6 }).map((_, idx) => {
+                                        const filled = idx < pinInput.length;
+                                        const active = idx === pinInput.length && pinInput.length < 6;
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className={`flex h-11 w-10 items-center justify-center rounded-xl border text-lg font-black transition-all ${filled
+                                                    ? 'border-amber-400/80 bg-amber-50 text-amber-600 shadow-[0_0_0_3px_rgba(245,158,11,0.18)] dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300'
+                                                    : active
+                                                        ? 'border-indigo-300 bg-indigo-50 text-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.18)] dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                                        : 'border-slate-200 bg-white text-transparent dark:border-white/10 dark:bg-white/[0.03]'
+                                                    }`}
+                                            >
+                                                {filled ? '•' : ' '}
+                                            </div>
+                                        );
+                                    })}
+                                    </div>
+                                </div>
+                                <p className="mb-3 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    อุปกรณ์ไม่มีคีย์บอร์ดก็ใช้งานได้: แตะตัวเลขบนหน้าจอ
+                                </p>
                             {pinLockRemain > 0 && (
-                                <p className="mt-1 text-xs font-semibold text-rose-500">ล็อกอยู่ {pinLockRemain} วินาที</p>
+                                <p className="mb-3 rounded-lg border border-rose-300/60 bg-rose-50 px-3 py-2 text-center text-xs font-semibold text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300">
+                                    ล็อกอยู่ {pinLockRemain} วินาที
+                                </p>
                             )}
-                            <input
-                                type="password"
-                                inputMode="numeric"
-                                maxLength={6}
-                                value={pinInput}
-                                onChange={(e) => setPinInput(e.target.value.replace(/\D+/g, ''))}
-                                className="mt-3 min-h-[44px] w-full rounded-xl border border-slate-300 px-3 text-center text-lg tracking-[0.35em] dark:border-white/20 dark:bg-white/5"
-                                placeholder="••••"
-                            />
-                            <div className="mt-3 flex gap-2">
-                                <Button className="flex-1" onClick={() => void unlockWithPin()} disabled={pinLockRemain > 0}>ปลดล็อก</Button>
-                                <Button variant="outline" className="flex-1" onClick={handleLogout}>ออกจากระบบ</Button>
+                                <div className="grid touch-manipulation select-none grid-cols-3 gap-2">
+                                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ล้าง', '0', 'OK'].map((key) => {
+                                        const isAction = key === 'ล้าง' || key === 'OK';
+                                        return (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                disabled={pinLockRemain > 0 || (key === 'OK' && pinInput.length < MOBILE_PIN_MIN_LENGTH)}
+                                                onClick={() => {
+                                                    touchFeedback();
+                                                    if (key === 'ล้าง') {
+                                                        clearPinInput();
+                                                        return;
+                                                    }
+                                                    if (key === 'OK') {
+                                                        void unlockWithPin();
+                                                        return;
+                                                    }
+                                                    appendPinDigit(key);
+                                                }}
+                                                className={`min-h-[56px] rounded-xl border text-base font-bold transition-all active:scale-[0.98] ${isAction
+                                                    ? 'border-amber-400/70 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20'
+                                                    : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10'
+                                                    } disabled:cursor-not-allowed disabled:opacity-45`}
+                                            >
+                                                {key}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={backspacePinDigit}
+                                        disabled={pinLockRemain > 0 || pinInput.length === 0}
+                                        className="min-h-[44px] flex-1 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                                    >
+                                        ลบทีละตัว
+                                    </button>
+                                    <Button className="flex-1 min-h-[44px]" onClick={() => void unlockWithPin()} disabled={pinLockRemain > 0 || pinInput.length < MOBILE_PIN_MIN_LENGTH}>ปลดล็อก</Button>
+                                    <Button variant="outline" className="flex-1" onClick={handleLogout}>ออกจากระบบ</Button>
+                                </div>
                             </div>
                         </Card>
                     </div>
