@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Lock, User, Eye, EyeOff, Shield, Loader2, Sun, Moon } from 'lucide-react';
 import { AdminUser } from '../../types';
 import { verifyStoredPassword } from '../../utils/passwordAuth';
-import { fetchAdmins } from '../../services/dataService';
+import { fetchAdminsWithStatus } from '../../services/dataService';
+import { hasSupabaseConfig } from '../../lib/supabase';
 
 interface LoginPageProps {
     admins: AdminUser[];
@@ -213,33 +214,35 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
         setError('');
         const u = username.trim();
         if (!u || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); triggerShake(); return; }
-        if (!admins || admins.length === 0) {
-            setError('ยังโหลดข้อมูลบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        if (!hasSupabaseConfig) {
+            setError('เชื่อมต่อ/สิทธิ์อ่านตาราง admin_users มีปัญหา (ยังไม่ได้ตั้งค่า Supabase environment)');
             triggerShake();
             return;
         }
         setIsLoading(true);
         try {
             const normalizedInput = normalizeUsername(u);
-            // รองรับข้อมูลเก่าที่อาจมีช่องว่างหน้า/ท้ายใน username
-            let admin = admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
-            // Fallback: ถ้า admins ใน state ยังไม่ทันอัปเดต ให้ดึงจากฐานอีกครั้งก่อนตัดสินว่าไม่พบผู้ใช้
+            let admin = (admins || []).find(a => normalizeUsername(a.username || '') === normalizedInput);
+
             if (!admin) {
-                try {
-                    const latestAdmins = await fetchAdmins();
-                    admin = latestAdmins.find(a => normalizeUsername(a.username || '') === normalizedInput);
-                } catch {
-                    // ignore fallback fetch error; handled by generic error below
+                const latest = await fetchAdminsWithStatus();
+                if (!latest.ok) {
+                    setError(`เชื่อมต่อ/สิทธิ์อ่านตาราง admin_users มีปัญหา (${latest.errorMessage || 'unknown error'})`);
+                    triggerShake();
+                    return;
                 }
+                admin = latest.admins.find(a => normalizeUsername(a.username || '') === normalizedInput);
             }
+
             if (!admin) {
-                setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                setError('ไม่พบ user จริง');
                 triggerShake();
                 return;
             }
+
             const ok = await verifyStoredPassword(admin.password, password);
             if (!ok) {
-                setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                setError('รหัสไม่ตรง');
                 triggerShake();
                 return;
             }

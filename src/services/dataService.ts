@@ -193,23 +193,44 @@ export const saveSettings = async (s: AppSettings): Promise<boolean> => {
 // ============================================
 // ADMIN USERS
 // ============================================
+const mapAdminUserRow = (row: any): AdminUser => ({
+    id: row.id,
+    username: row.username,
+    password: row.password,
+    displayName: row.display_name,
+    role: row.role,
+    createdAt: row.created_at,
+    lastLogin: row.last_login,
+    avatar: row.avatar,
+    mustChangePassword: !!row.must_change_password,
+    uiTheme: (row.ui_theme as AdminUiTheme | undefined) || 'system',
+    sessionActive: !!row.session_active,
+    lastClientSurface: (row.last_client_surface as 'select' | 'desktop' | 'mobile' | null) || 'select',
+});
+
+export interface AdminFetchResult {
+    ok: boolean;
+    admins: AdminUser[];
+    errorMessage?: string;
+}
+
+export const fetchAdminsWithStatus = async (): Promise<AdminFetchResult> => {
+    const { data, error } = await supabase.from('admin_users').select('*').order('created_at');
+    if (error) {
+        console.error('fetchAdminsWithStatus error:', error);
+        return {
+            ok: false,
+            admins: [],
+            errorMessage: error.message || 'read admin_users failed',
+        };
+    }
+    return { ok: true, admins: (data || []).map(mapAdminUserRow) };
+};
+
 export const fetchAdmins = async (): Promise<AdminUser[]> => {
     const { data, error } = await supabase.from('admin_users').select('*').order('created_at');
     if (error) { console.error('fetchAdmins error:', error); return []; }
-    return (data || []).map((row: any) => ({
-        id: row.id,
-        username: row.username,
-        password: row.password,
-        displayName: row.display_name,
-        role: row.role,
-        createdAt: row.created_at,
-        lastLogin: row.last_login,
-        avatar: row.avatar,
-        mustChangePassword: !!row.must_change_password,
-        uiTheme: (row.ui_theme as AdminUiTheme | undefined) || 'system',
-        sessionActive: !!row.session_active,
-        lastClientSurface: (row.last_client_surface as 'select' | 'desktop' | 'mobile' | null) || 'select',
-    }));
+    return (data || []).map(mapAdminUserRow);
 };
 
 export const saveAdmin = async (admin: AdminUser): Promise<boolean> => {
