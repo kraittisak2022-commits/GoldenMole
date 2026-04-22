@@ -31,12 +31,19 @@ DROP POLICY IF EXISTS "Allow all on admin_logs" ON admin_logs;
 -- --------------------------
 -- Admin users / Admin logs
 -- --------------------------
-CREATE POLICY admin_users_read_all
+-- IMPORTANT:
+-- Current login flow validates admin_users password hash on the client
+-- before a Supabase auth session exists, so anon must be able to SELECT.
+DROP POLICY IF EXISTS admin_users_read_for_login ON admin_users;
+CREATE POLICY admin_users_read_for_login
 ON admin_users FOR SELECT
-USING ((auth.jwt() ->> 'role') IN ('SuperAdmin', 'Admin'));
+TO anon, authenticated
+USING (true);
 
+DROP POLICY IF EXISTS admin_users_write_superadmin_only ON admin_users;
 CREATE POLICY admin_users_write_superadmin_only
 ON admin_users FOR ALL
+TO authenticated
 USING ((auth.jwt() ->> 'role') = 'SuperAdmin')
 WITH CHECK ((auth.jwt() ->> 'role') = 'SuperAdmin');
 
