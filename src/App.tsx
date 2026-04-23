@@ -273,6 +273,7 @@ function App() {
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
     const [locale, setLocale] = useState<AppLocale>(() => readSavedLocale());
     const [undoAction, setUndoAction] = useState<{ message: string; expiresAt: number; onUndo: () => void } | null>(null);
+    const [undoRemainingSec, setUndoRemainingSec] = useState(0);
     const lazyFallback = (
         <div className="flex min-h-[240px] items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -328,16 +329,18 @@ function App() {
         if (!isDataEntryDailyWizardOnly) return true;
         return activeMenu === 'DailyWizard';
     }, [activeMenu, currentAdmin, isDataEntryDailyWizardOnly]);
+    const nonHiddenTransactions = useMemo(() => {
+        const hidden = new Set(settings.appDefaults?.hiddenTransactionIds || []);
+        return transactions.filter(t => !hidden.has(t.id));
+    }, [transactions, settings.appDefaults?.hiddenTransactionIds]);
     const visibleTransactions = useMemo(() => {
         if (!canViewTransactions) return [];
-        const hidden = new Set(settings.appDefaults?.hiddenTransactionIds || []);
         const allowedCategories = currentAdminAccess?.visibleTransactionCategories;
-        return transactions.filter(t => {
-            if (hidden.has(t.id)) return false;
+        return nonHiddenTransactions.filter(t => {
             if (!allowedCategories || allowedCategories.length === 0) return true;
             return allowedCategories.includes(t.category);
         });
-    }, [transactions, settings.appDefaults?.hiddenTransactionIds, currentAdminAccess?.visibleTransactionCategories, canViewTransactions]);
+    }, [nonHiddenTransactions, currentAdminAccess?.visibleTransactionCategories, canViewTransactions]);
     const maskedTransactions = useMemo(() => {
         if (!isFinancialMaskEnabled) return visibleTransactions;
         const totalAbsAmount = visibleTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0);
@@ -985,12 +988,12 @@ function App() {
             return;
         }
         if (t.category !== 'Payroll' && t.category !== 'PayrollUnlock') {
-            const lockRef = transactions.find(x =>
+            const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
                 x.payrollPeriod &&
                 isDateInRange(t.date, x.payrollPeriod.start, x.payrollPeriod.end)
             );
-            if (lockRef && !getPeriodLockState(transactions, lockRef.payrollPeriod!)) {
+            if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
                 setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้แก้ข้อมูลย้อนหลัง`);
                 setTimeout(() => setToast(null), 4500);
                 return;
@@ -1109,12 +1112,12 @@ function App() {
         const target = transactions.find(t => t.id === id);
         if (!target) return;
         if (target.category !== 'Payroll') {
-            const lockRef = transactions.find(x =>
+            const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
                 x.payrollPeriod &&
                 isDateInRange(target.date, x.payrollPeriod.start, x.payrollPeriod.end)
             );
-            if (lockRef && !getPeriodLockState(transactions, lockRef.payrollPeriod!)) {
+            if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
                 setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้ลบรายการย้อนหลัง`);
                 setTimeout(() => setToast(null), 4500);
                 return;
@@ -1142,7 +1145,7 @@ function App() {
         }));
         const expiresAt = Date.now() + 20000;
         setUndoAction({
-            message: 'ซ่อนรายการแล้ว (Undo ได้ใน 20 วินาที)',
+            message: 'ซ่อนรายการแล้ว',
             expiresAt,
             onUndo: () => {
                 setSettings(prev => ({
@@ -1159,13 +1162,26 @@ function App() {
         });
         // keep a no-op read to bind previous hidden list for stale closures
         void prevHidden;
-    }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, settings.appDefaults?.hiddenTransactionIds, transactions]);
+    }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
     useEffect(() => {
         if (!undoAction) return;
         const ms = Math.max(0, undoAction.expiresAt - Date.now());
         const timer = window.setTimeout(() => setUndoAction(null), ms);
         return () => window.clearTimeout(timer);
+    }, [undoAction]);
+    useEffect(() => {
+        if (!undoAction) {
+            setUndoRemainingSec(0);
+            return;
+        }
+        const updateRemaining = () => {
+            const leftMs = Math.max(0, undoAction.expiresAt - Date.now());
+            setUndoRemainingSec(Math.ceil(leftMs / 1000));
+        };
+        updateRemaining();
+        const ticker = window.setInterval(updateRemaining, 200);
+        return () => window.clearInterval(ticker);
     }, [undoAction]);
 
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
@@ -1417,11 +1433,11 @@ function App() {
     if (currentAdmin && clientSurface === 'select') {
         return (
             <>
-                {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
                 {idleWarningModal}
                 {undoAction && (
                     <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                        <span>{undoAction.message}</span>
+                        <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
                         <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
                     </div>
                 )}
@@ -1445,11 +1461,11 @@ function App() {
     if (currentAdmin && clientSurface === 'mobile') {
         return (
             <>
-                {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+                {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
                 {idleWarningModal}
                 {undoAction && (
                     <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                        <span>{undoAction.message}</span>
+                        <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
                         <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
                     </div>
                 )}
@@ -1645,11 +1661,11 @@ function App() {
                 </div>
             )}
 
-            {toast && <div className="relative z-50"><Toast message={toast} onClose={() => setToast(null)} /></div>}
+            {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
             {idleWarningModal}
             {undoAction && (
                 <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                    <span>{undoAction.message}</span>
+                    <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
                     <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
                 </div>
             )}

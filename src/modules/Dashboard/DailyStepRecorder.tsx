@@ -452,6 +452,65 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         });
         return { duplicateIds, groups, count: duplicateIds.size };
     }, [dayTransactions]);
+    const duplicateLaborAttendanceMeta = useMemo(() => {
+        const byDate = new Map<string, Transaction[]>();
+        transactions
+            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work')
+            .forEach((t) => {
+                const key = normalizeDate(t.date);
+                const prev = byDate.get(key) || [];
+                prev.push(t);
+                byDate.set(key, prev);
+            });
+        const duplicateGroups: Array<{ date: string; items: Transaction[] }> = [];
+        let duplicateRecordCount = 0;
+        byDate.forEach((items, date) => {
+            if (items.length > 1) {
+                duplicateGroups.push({ date, items });
+                duplicateRecordCount += items.length;
+            }
+        });
+        return {
+            duplicateGroups,
+            duplicateDateCount: duplicateGroups.length,
+            duplicateRecordCount,
+        };
+    }, [transactions]);
+    const handleMergeDuplicateLaborAttendance = useCallback(async () => {
+        if (!setSettings) {
+            await sessionAlert('ไม่สามารถรวมรายการได้ในโหมดนี้');
+            return;
+        }
+        if (duplicateLaborAttendanceMeta.duplicateDateCount === 0) {
+            await sessionAlert('ไม่พบรายการ LABOR ที่ซ้ำในวันเดียวกัน');
+            return;
+        }
+        const hideIds = duplicateLaborAttendanceMeta.duplicateGroups.flatMap(({ items }) => {
+            const sorted = [...items].sort((a, b) => {
+                const d = normalizeDate(a.date).localeCompare(normalizeDate(b.date));
+                if (d !== 0) return d;
+                return String(a.id).localeCompare(String(b.id));
+            });
+            return sorted.slice(0, -1).map(t => t.id);
+        });
+        if (hideIds.length === 0) {
+            await sessionAlert('ไม่พบรายการที่ต้องรวมเพิ่มเติม');
+            return;
+        }
+        const shouldProceed = await sessionConfirm(
+            `พบ LABOR ซ้ำ ${duplicateLaborAttendanceMeta.duplicateDateCount} วัน (${duplicateLaborAttendanceMeta.duplicateRecordCount} รายการ)\nระบบจะเก็บเฉพาะรายการล่าสุดของแต่ละวัน และซ่อนรายการเก่า ${hideIds.length} รายการ\n\nต้องการดำเนินการต่อหรือไม่?`,
+            { title: 'รวมรายการ LABOR ซ้ำย้อนหลัง' }
+        );
+        if (!shouldProceed) return;
+        setSettings(prev => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                hiddenTransactionIds: Array.from(new Set([...(prev.appDefaults?.hiddenTransactionIds || []), ...hideIds])),
+            },
+        }));
+        await sessionAlert(`รวมรายการ LABOR ซ้ำเรียบร้อยแล้ว\nซ่อนรายการเก่า ${hideIds.length} รายการ`);
+    }, [duplicateLaborAttendanceMeta.duplicateDateCount, duplicateLaborAttendanceMeta.duplicateGroups, duplicateLaborAttendanceMeta.duplicateRecordCount, sessionAlert, sessionConfirm, setSettings]);
     const shouldContinueWithWarning = useCallback(
         async (messages: string[], title = 'พบข้อมูลที่อาจซ้ำหรือผิดปกติ') => {
             if (messages.length === 0) return true;
@@ -1977,8 +2036,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     await sessionAlert('กรุณาระบุค่า OT');
                                                     return;
                                                 }
+                                                const existingDailyLaborTx = dayTransactions.find(tx =>
+                                                    tx.category === 'Labor' &&
+                                                    tx.subCategory === 'Attendance' &&
+                                                    tx.laborStatus === 'Work'
+                                                );
                                                 const existingLaborIds = dayTransactions
-                                                    .filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
+                                                    .filter(t =>
+                                                        t.category === 'Labor' &&
+                                                        (t.laborStatus === 'Work' || t.laborStatus === 'OT') &&
+                                                        t.id !== existingDailyLaborTx?.id
+                                                    )
                                                     .flatMap(t => t.employeeIds || []);
                                                 const alreadyRecorded = selectedEmps.filter(id => existingLaborIds.includes(id));
                                                 if (alreadyRecorded.length > 0) {
@@ -2257,8 +2325,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     await sessionAlert('กรุณาลากพนักงานใส่กล่องงานก่อน หรือมีรายการใช้รถที่ระบุคนขับในวันนี้');
                                                     return;
                                                 }
+                                                const existingDailyLaborTx = dayTransactions.find(tx =>
+                                                    tx.category === 'Labor' &&
+                                                    tx.subCategory === 'Attendance' &&
+                                                    tx.laborStatus === 'Work'
+                                                );
                                                 const existingLaborIds = dayTransactions
-                                                    .filter(t => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT'))
+                                                    .filter(t =>
+                                                        t.category === 'Labor' &&
+                                                        (t.laborStatus === 'Work' || t.laborStatus === 'OT') &&
+                                                        t.id !== existingDailyLaborTx?.id
+                                                    )
                                                     .flatMap(t => t.employeeIds || []);
                                                 const alreadyRecorded = allEmps.filter(id => existingLaborIds.includes(id));
                                                 if (alreadyRecorded.length > 0) {
@@ -2268,7 +2345,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                     return;
                                                 }
-                                                const base = { id: Date.now().toString(), date, employeeIds: allEmps };
+                                                // Upsert daily labor record: update existing attendance card instead of creating duplicates.
+                                                const base = { id: existingDailyLaborTx?.id || Date.now().toString(), date, employeeIds: allEmps };
                                                 const allCats = [...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, color: '', bgLight: '' }))];
                                                 const desc = Object.entries(workAssignments).filter(([, ids]) => ids.length > 0).map(([catId, ids]) => {
                                                     const cat = allCats.find(c => c.id === catId); const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
@@ -2312,7 +2390,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 };
                                                 onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
-                                                <CheckCircle2 size={18} className="mr-2" /> บันทึกค่าแรง ({[...new Set([
+                                                <CheckCircle2 size={18} className="mr-2" /> {(dayTransactions.some(tx => tx.category === 'Labor' && tx.subCategory === 'Attendance' && tx.laborStatus === 'Work') ? 'อัปเดตค่าแรง' : 'บันทึกค่าแรง')} ({[...new Set([
                                                     ...Object.values(workAssignments).flat(),
                                                     ...dayTransactions.filter(t => t.category === 'Vehicle' && !!t.driverId).map(t => t.driverId as string),
                                                 ])].length} คน)
@@ -3920,6 +3998,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <span className="text-xs font-bold bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center">
                                     ซ้ำ {duplicateTxMeta.count} รายการ
                                 </span>
+                            )}
+                            {setSettings && duplicateLaborAttendanceMeta.duplicateDateCount > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleMergeDuplicateLaborAttendance()}
+                                    className="text-xs font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center hover:bg-amber-200 dark:hover:bg-amber-500/30 transition-colors"
+                                    title="รวมรายการ LABOR ซ้ำของวันเดียวกัน และซ่อนรายการเก่า"
+                                >
+                                    รวม LABOR ซ้ำ ({duplicateLaborAttendanceMeta.duplicateDateCount} วัน)
+                                </button>
                             )}
                         </div>
 
