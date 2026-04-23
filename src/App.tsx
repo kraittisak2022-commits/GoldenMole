@@ -1268,20 +1268,20 @@ function App() {
             return <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึงเมนูนี้</div>;
         }
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={maskedTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
-            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={maskedTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
-            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={maskedTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} />;
-            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
-            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={maskedTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} />;
-            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
-            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={maskedTransactions} />;
-            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={maskedTransactions} />;
+            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
+            case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={visibleTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
+            case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={visibleTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} />;
+            case 'Fuel': return <GeneralEntry type="Fuel" settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} />;
+            case 'Maintenance': return <MaintenanceModule settings={settings} transactions={visibleTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} />;
+            case 'Utilities': return <GeneralEntry type="Utilities" settings={settings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} />;
+            case 'Land': return <LandModule projects={projects} setProjects={handleSetProjects} onSave={handleSave} transactions={visibleTransactions} />;
+            case 'Income': return <IncomeEntry settings={settings} setSettings={handleSetSettings} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} />;
             case 'Payroll': return (
                 <Suspense fallback={lazyFallback}>
                     <PayrollModule
                         employees={employees}
-                        transactions={maskedTransactions}
+                        transactions={visibleTransactions}
                         onSaveTransaction={handleSave}
                         canUnlockPeriod={currentAdmin?.role === 'SuperAdmin'}
                         onUnlockPeriod={(period, reason) => {
@@ -1326,7 +1326,7 @@ function App() {
             case 'DataList': return (
                 <Suspense fallback={lazyFallback}>
                     <RecordManager
-                        transactions={maskedTransactions}
+                        transactions={visibleTransactions}
                         onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined}
                         amountMode={isFinancialMaskEnabled ? 'percent' : 'currency'}
                     />
@@ -1335,7 +1335,7 @@ function App() {
             case 'MonthDataAudit': return (
                 <DataVerificationModule
                     monthOverviewMode
-                    transactions={maskedTransactions}
+                    transactions={visibleTransactions}
                     settings={settings}
                     setSettings={handleSetSettings}
                     currentAdmin={currentAdmin}
@@ -1347,7 +1347,7 @@ function App() {
                     }}
                 />
             );
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={maskedTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'WorkPlanner': return currentAdmin ? (
                 <WorkPlanner
                     adminId={currentAdmin.id}

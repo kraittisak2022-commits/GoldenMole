@@ -113,9 +113,10 @@ const HIDDEN_WORK_CATEGORY_IDS = new Set(['other']);
 const HIDDEN_WORK_CATEGORY_LABELS = new Set(['ทำอื่นๆ'].map(normalizeCategoryLabel));
 const isGeneratedCategoryId = (value: string) => /^c_\d+$/.test((value || '').trim());
 const isCfgLikeCategoryId = (value: string) => /^cfg[_-]/i.test((value || '').trim());
+const isCfgLikeToken = (value: string) => /^cfg(?:[_-]|[a-z0-9]{4,})/i.test((value || '').trim());
 const isGeneratedCategoryLabel = (value: string) => isGeneratedCategoryId(value);
 const isSystemCategoryLabel = (value: string) =>
-    isGeneratedCategoryLabel(value) || isCfgLikeCategoryId(value);
+    isGeneratedCategoryLabel(value) || isCfgLikeToken(value);
 const CUSTOM_CATEGORY_STYLES = [
     { color: 'bg-purple-500', bgLight: 'bg-purple-50 border-purple-200' },
     { color: 'bg-fuchsia-500', bgLight: 'bg-fuchsia-50 border-fuchsia-200' },
@@ -318,7 +319,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const addCategory = (id: string, label: string) => {
             if (!id || !label || DEFAULT_WORK_CATEGORY_IDS.has(id)) return;
             if (HIDDEN_WORK_CATEGORY_IDS.has(id)) return;
-            if (isCfgLikeCategoryId(id)) return;
+            if (isCfgLikeToken(id)) return;
             if (isSystemCategoryLabel(label)) return;
             const norm = normalizeCategoryLabel(label);
             if (HIDDEN_WORK_CATEGORY_LABELS.has(norm)) return;
@@ -358,7 +359,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             return;
                         }
                         // orphan id แบบ c_เวลา ไม่ควรแสดงเป็นชื่อกล่อง
-                        if (isGeneratedCategoryId(catId) || isCfgLikeCategoryId(catId)) return;
+                        if (isGeneratedCategoryId(catId) || isCfgLikeToken(catId)) return;
                         addCategory(catId, catId);
                     });
             }
@@ -388,6 +389,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const addOrSelectCustomCategory = useCallback((rawLabel: string) => {
         const label = rawLabel.trim();
         if (!label) return;
+        if (isCfgLikeToken(label)) return;
         const target = normalizeCategoryLabel(label);
         setCustomCategories(prev => {
             const exists = prev.some(c => normalizeCategoryLabel(c.label) === target);
@@ -404,6 +406,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         return (settings.jobDescriptions || [])
             .map(v => String(v || '').trim())
             .filter(Boolean)
+            .filter(v => !isCfgLikeToken(v))
             .filter(v => !defaultLabels.has(normalizeCategoryLabel(v)))
             .filter(v => !existingLabels.has(normalizeCategoryLabel(v)));
     }, [settings.jobDescriptions, customCategories]);
@@ -765,7 +768,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setOtDesc(p.otDesc);
             setOtRate(p.otRate);
             setWorkAssignments(p.workAssignments);
-            setCustomCategories(p.customCategories);
+            setCustomCategories(
+                (p.customCategories || []).filter((c) =>
+                    c &&
+                    typeof c.id === 'string' &&
+                    typeof c.label === 'string' &&
+                    !isCfgLikeToken(c.id) &&
+                    !isCfgLikeToken(c.label)
+                )
+            );
             setNewCategoryName(p.newCategoryName);
         }
         if (pick('vehicle')) {
@@ -1060,7 +1071,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
                     .filter((c: any) => {
                         if (isSystemCategoryLabel(c.label)) return false;
-                        if (isCfgLikeCategoryId(c.id)) return false;
+                        if (isCfgLikeToken(c.id)) return false;
                         const norm = normalizeCategoryLabel(c.label);
                         if (!norm || seenLabels.has(norm)) return false;
                         seenLabels.add(norm);
@@ -1073,7 +1084,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     .map((catId) => {
                         const remembered = rememberedCustomCategories.find(c => c.id === catId);
                         if (remembered) return remembered;
-                        if (isGeneratedCategoryId(catId) || isCfgLikeCategoryId(catId)) return null;
+                        if (isGeneratedCategoryId(catId) || isCfgLikeToken(catId)) return null;
                         return { id: catId, label: catId };
                     })
                     .filter((c): c is { id: string; label: string } => !!c);
@@ -2236,6 +2247,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 <button onClick={() => {
                                                     const label = newCategoryName.trim();
                                                     if (!label) return;
+                                                    if (isCfgLikeToken(label)) return;
                                                     const target = normalizeCategoryLabel(label);
                                                     addOrSelectCustomCategory(label);
 
