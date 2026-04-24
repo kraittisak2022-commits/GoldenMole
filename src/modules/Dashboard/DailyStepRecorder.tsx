@@ -220,6 +220,36 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
+const toTimeOrNull = (value: string | undefined): number | null => {
+    if (!value) return null;
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? null : t;
+};
+
+const getTransactionRecencyScore = (tx: Transaction, dayItems: Transaction[], idxFallback = -1): number => {
+    const createdAtMs = toTimeOrNull(tx.createdAt);
+    if (createdAtMs != null) return createdAtMs;
+    const dayMs = toTimeOrNull(`${normalizeDate(tx.date)}T00:00:00.000Z`);
+    if (dayMs != null) return dayMs + Math.max(0, idxFallback);
+    return idxFallback;
+};
+
+export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems: Transaction[]): T | null => {
+    if (items.length === 0) return null;
+    const lastIndexById = new Map<string, number>();
+    dayItems.forEach((tx, idx) => {
+        lastIndexById.set(tx.id, idx);
+    });
+    return items.reduce((latest, current) => {
+        const latestIdx = lastIndexById.get(latest.id) ?? -1;
+        const currentIdx = lastIndexById.get(current.id) ?? -1;
+        const latestScore = getTransactionRecencyScore(latest, dayItems, latestIdx);
+        const currentScore = getTransactionRecencyScore(current, dayItems, currentIdx);
+        if (currentScore === latestScore) return currentIdx >= latestIdx ? current : latest;
+        return currentScore > latestScore ? current : latest;
+    });
+};
+
 const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
@@ -296,10 +326,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
     const latestLaborAttendance = useMemo(() => {
         const laborAttendance = dayTransactions
-            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance')
-            .sort((a, b) => a.id.localeCompare(b.id)) as any[];
-        if (laborAttendance.length === 0) return null;
-        return laborAttendance[laborAttendance.length - 1];
+            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance') as any[];
+        return pickLatestByDayOrder(laborAttendance, dayTransactions);
     }, [dayTransactions]);
     const resumeStep = useMemo(() => {
         if (dayStepStats.eventCount > 0) return 7;
@@ -522,6 +550,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         },
         [sessionConfirm]
     );
+    const hasSemanticNearDuplicate = useCallback((candidate: Transaction, options?: { ignoreId?: string }) => {
+        const candidateDesc = String(candidate.description || '').trim().toLowerCase();
+        const candidateEmp = new Set(candidate.employeeIds || []);
+        return dayTransactions.some((existing) => {
+            if (options?.ignoreId && existing.id === options.ignoreId) return false;
+            if (existing.id === candidate.id) return false;
+            if (existing.category !== candidate.category) return false;
+            if ((existing.subCategory || '') !== (candidate.subCategory || '')) return false;
+            const sameDate = normalizeDate(existing.date) === normalizeDate(candidate.date);
+            if (!sameDate) return false;
+            const existingDesc = String(existing.description || '').trim().toLowerCase();
+            const sameAmount = Math.abs(Number(existing.amount || 0) - Number(candidate.amount || 0)) <= 1;
+            const descLooksClose = candidateDesc === existingDesc || (candidateDesc.length > 8 && existingDesc.includes(candidateDesc.slice(0, 8)));
+            const existingEmp = new Set(existing.employeeIds || []);
+            const overlap = Array.from(candidateEmp).filter(id => existingEmp.has(id)).length;
+            return (sameAmount && descLooksClose) || overlap >= Math.max(1, Math.floor(candidateEmp.size * 0.7));
+        });
+    }, [dayTransactions]);
 
     const getEmpPositions = (e: Employee) => e.positions ?? (e.position ? [e.position] : []);
     const driverEmployees = useMemo(() => employees.filter(e => getEmpPositions(e).includes('คนขับรถ')), [employees]);
@@ -563,6 +609,121 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         if (!latestLaborAttendance) return 0;
         return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
     }, [latestLaborAttendance]);
+    const totalAssignedWorkers = useMemo(
+        () => Object.values(workAssignments).reduce((sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0), 0),
+        [workAssignments]
+    );
+    const validationChecklist = useMemo(() => {
+        const items: Array<{ level: 'warning' | 'info'; message: string; fix: string }> = [];
+        if (step === 1 && laborStatus === 'Work') {
+            if (totalAssignedWorkers === 0) {
+                items.push({ level: 'warning', message: 'ยังไม่ได้จัดคนลงกล่องงาน', fix: 'เลือกพนักงานแล้วกดย้ายลงประเภทงานอย่างน้อย 1 กล่อง' });
+            }
+            if ((workAssignments.washHome?.length ?? 0) > 0 && (Number(drumsWashedAtHome) || 0) <= 0) {
+                items.push({ level: 'warning', message: 'มีคนล้างทรายที่บ้าน แต่ยังไม่ระบุจำนวนถัง', fix: 'กรอกจำนวนถังล้างที่บ้านเพื่อให้สรุปถังสุทธิถูกต้อง' });
+            }
+        }
+        if (step === 1 && laborStatus === 'OT') {
+            if (selectedEmps.length === 0) items.push({ level: 'warning', message: 'ยังไม่ได้เลือกคนทำ OT', fix: 'เลือกพนักงานอย่างน้อย 1 คน' });
+            if (selectedEmps.length > 0 && !otDesc.trim()) items.push({ level: 'warning', message: 'OT ยังไม่ระบุเหตุผลงาน', fix: 'กรอกรายละเอียดงาน OT สั้นๆ เช่น ล้างทรายรอบเย็น' });
+            if ((Number(otHours) || 0) <= 0) items.push({ level: 'info', message: 'OT ชั่วโมงยังว่าง', fix: 'ใส่จำนวนชั่วโมงเพื่อคำนวณยอดถูกต้อง' });
+        }
+        return items;
+    }, [step, laborStatus, totalAssignedWorkers, workAssignments.washHome, drumsWashedAtHome, selectedEmps.length, otDesc, otHours]);
+    const sortedDayTransactions = useMemo(() => {
+        return [...dayTransactions].sort((a, b) => {
+            const scoreA = getTransactionRecencyScore(a, dayTransactions, dayTransactions.findIndex(x => x.id === a.id));
+            const scoreB = getTransactionRecencyScore(b, dayTransactions, dayTransactions.findIndex(x => x.id === b.id));
+            if (scoreA !== scoreB) return scoreB - scoreA;
+            return String(b.id).localeCompare(String(a.id));
+        });
+    }, [dayTransactions]);
+    const timelineStatusById = useMemo(() => {
+        const latestByGroup = new Map<string, string>();
+        for (const tx of sortedDayTransactions) {
+            const key = `${tx.category}|${tx.subCategory || '-'}|${String(tx.description || '').trim().slice(0, 40)}`;
+            if (!latestByGroup.has(key)) latestByGroup.set(key, tx.id);
+        }
+        const out = new Map<string, 'latest' | 'edited' | 'final'>();
+        for (const tx of sortedDayTransactions) {
+            const key = `${tx.category}|${tx.subCategory || '-'}|${String(tx.description || '').trim().slice(0, 40)}`;
+            if (latestByGroup.get(key) === tx.id) {
+                out.set(tx.id, 'latest');
+            } else {
+                out.set(tx.id, 'edited');
+            }
+        }
+        return out;
+    }, [sortedDayTransactions]);
+    const smartWorkTemplates = useMemo(() => {
+        const selectedWeekday = new Date(`${normalizeDate(date)}T12:00:00`).getDay();
+        const pool = transactions.filter(
+            t => t.category === 'Labor' &&
+                t.subCategory === 'Attendance' &&
+                t.laborStatus === 'Work' &&
+                t.workAssignments &&
+                new Date(`${normalizeDate(t.date)}T12:00:00`).getDay() === selectedWeekday
+        ) as any[];
+        const freq = new Map<string, { count: number; workAssignments: Record<string, string[]>; label: string }>();
+        for (const tx of pool) {
+            const wa = sanitizeWorkAssignments(tx.workAssignments);
+            const key = JSON.stringify(Object.entries(wa).sort(([a], [b]) => a.localeCompare(b)));
+            const current = freq.get(key) || {
+                count: 0,
+                workAssignments: wa,
+                label: Object.entries(wa).filter(([, ids]) => ids.length > 0).map(([k, ids]) => `${k}:${ids.length}`).join(' • '),
+            };
+            current.count += 1;
+            freq.set(key, current);
+        }
+        return Array.from(freq.values())
+            .filter(x => x.count >= 2 && Object.values(x.workAssignments).some(ids => ids.length > 0))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
+    }, [transactions, date]);
+    const [laborStepHistory, setLaborStepHistory] = useState<Array<{
+        selectedEmps: string[];
+        workAssignments: Record<string, string[]>;
+        halfDayEmpIds: string[];
+        laborStatus: 'Work' | 'OT' | 'Leave';
+        otHours: string;
+        otDesc: string;
+        otRate: string;
+        drumsWashedAtHome: string;
+    }>>([]);
+    const laborHistoryFingerprintRef = useRef('');
+    useEffect(() => {
+        if (step !== 1) return;
+        const snapshot = {
+            selectedEmps: [...selectedEmps],
+            workAssignments: { ...workAssignments },
+            halfDayEmpIds: Array.from(halfDayEmpIds),
+            laborStatus,
+            otHours,
+            otDesc,
+            otRate,
+            drumsWashedAtHome,
+        };
+        const fingerprint = JSON.stringify(snapshot);
+        if (laborHistoryFingerprintRef.current === fingerprint) return;
+        laborHistoryFingerprintRef.current = fingerprint;
+        setLaborStepHistory(prev => [...prev.slice(-11), snapshot]);
+    }, [step, selectedEmps, workAssignments, halfDayEmpIds, laborStatus, otHours, otDesc, otRate, drumsWashedAtHome]);
+    const restoreLaborStepHistory = () => {
+        if (laborStepHistory.length < 2) return;
+        const nextHistory = laborStepHistory.slice(0, -1);
+        const previous = nextHistory[nextHistory.length - 1];
+        laborHistoryFingerprintRef.current = JSON.stringify(previous);
+        setLaborStepHistory(nextHistory);
+        setSelectedEmps(previous.selectedEmps);
+        setWorkAssignments(previous.workAssignments);
+        setHalfDayEmpIds(new Set(previous.halfDayEmpIds));
+        setLaborStatus(previous.laborStatus);
+        setOtHours(previous.otHours);
+        setOtDesc(previous.otDesc);
+        setOtRate(previous.otRate);
+        setDrumsWashedAtHome(previous.drumsWashedAtHome);
+    };
 
     // Vehicle State
     const [vehCar, setVehCar] = useState('');
@@ -630,6 +791,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [sand1Operators, setSand1Operators] = useState<string[]>([]);
     const [sand2Operators, setSand2Operators] = useState<string[]>([]);
     const [sandDrumsObtained, setSandDrumsObtained] = useState('');
+    const [sandBatchId, setSandBatchId] = useState('');
+    const [homeBatchUsages, setHomeBatchUsages] = useState<Array<{ batchId: string; sourceDate: string; drums: number }>>([]);
     const [sandMorningStart, setSandMorningStart] = useState('');
     const [sandAfternoonStart, setSandAfternoonStart] = useState('');
     const [sandEveningEnd, setSandEveningEnd] = useState('');
@@ -646,22 +809,73 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 perDay.set(d, { obtained, home });
             });
 
-        const cumulativeBeforeToday = Array.from(perDay.entries())
+        const sortedBeforeToday = Array.from(perDay.entries())
             .filter(([d]) => d < selectedDate)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .reduce((sum, [, v]) => sum + Math.max(0, v.obtained - v.home), 0);
+            .sort(([a], [b]) => a.localeCompare(b));
+        let cumulativeBeforeToday = 0;
+        sortedBeforeToday.forEach(([, v]) => {
+            cumulativeBeforeToday = Math.max(0, cumulativeBeforeToday + v.obtained - v.home);
+        });
 
         const savedToday = perDay.get(selectedDate) || { obtained: 0, home: 0 };
         const todayObtained = String(sandDrumsObtained).trim() === '' ? savedToday.obtained : (Number(sandDrumsObtained) || 0);
         const todayHome = String(drumsWashedAtHome).trim() === '' ? savedToday.home : (Number(drumsWashedAtHome) || 0);
-        const todayNet = Math.max(0, todayObtained - todayHome);
-        const cumulativeRemaining = cumulativeBeforeToday + todayNet;
+        const todayNet = todayObtained - todayHome;
+        const cumulativeRemaining = Math.max(0, cumulativeBeforeToday + todayNet);
 
         return { cumulativeBeforeToday, todayObtained, todayHome, todayNet, cumulativeRemaining };
     }, [transactions, date, sandDrumsObtained, drumsWashedAtHome]);
     const sand1Total = (Number(sand1Morning) || 0) + (Number(sand1Afternoon) || 0);
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
+    const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
+    const batchStockSummary = useMemo(() => {
+        const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
+        allSandTx.forEach((t: any) => {
+            const batchId = String(t.sandBatchId || '').trim();
+            if (!batchId) return;
+            const sourceDate = normalizeDate(t.date);
+            const rec = summary.get(batchId) || { sourceDate, obtained: 0, used: 0 };
+            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
+            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
+            rec.used += usages.reduce((s: number, u: any) => s + Math.max(0, Number(u?.drums || 0)), 0);
+            summary.set(batchId, rec);
+        });
+        return Array.from(summary.entries())
+            .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
+            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
+    }, [allSandTx]);
+    const sourceBatchesForHome = useMemo(() => {
+        const selectedDate = normalizeDate(date);
+        return batchStockSummary
+            .filter(b => b.sourceDate <= selectedDate && b.available > 0)
+            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
+    }, [batchStockSummary, date]);
+    const autoUnallocatedHomeDrums = useMemo(() => {
+        const total = Number(drumsWashedAtHome) || 0;
+        const allocated = homeBatchUsages.reduce((s, u) => s + (Number(u.drums) || 0), 0);
+        return Math.max(0, total - allocated);
+    }, [drumsWashedAtHome, homeBatchUsages]);
+    useEffect(() => {
+        const desired = Math.max(0, Number(drumsWashedAtHome) || 0);
+        if (desired <= 0) {
+            if (homeBatchUsages.length > 0) setHomeBatchUsages([]);
+            return;
+        }
+        let remain = desired;
+        const next: Array<{ batchId: string; sourceDate: string; drums: number }> = [];
+        sourceBatchesForHome.forEach(b => {
+            if (remain <= 0) return;
+            const used = Math.min(remain, b.available);
+            if (used > 0) {
+                next.push({ batchId: b.batchId, sourceDate: b.sourceDate, drums: used });
+                remain -= used;
+            }
+        });
+        const currentKey = JSON.stringify(homeBatchUsages);
+        const nextKey = JSON.stringify(next);
+        if (currentKey !== nextKey) setHomeBatchUsages(next);
+    }, [drumsWashedAtHome, sourceBatchesForHome, homeBatchUsages]); // auto-assign FIFO
 
     // Fuel State
     const [fuelAmount, setFuelAmount] = useState('');
@@ -1056,10 +1270,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     useEffect(() => {
         // Labor Attendance (canvas)
         const laborAttendance = dayTransactions
-            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance')
-            .sort((a, b) => a.id.localeCompare(b.id));
+            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance');
         if (laborAttendance.length > 0) {
-            const latest = laborAttendance[laborAttendance.length - 1] as any;
+            const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
+            if (!latest) return;
             if (latest.workAssignments) {
                 setWorkAssignments(sanitizeWorkAssignments(latest.workAssignments));
             } else {
@@ -1145,11 +1359,28 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSandMorningStart(first.sandMorningStart || '');
             setSandAfternoonStart(first.sandAfternoonStart || '');
             setSandEveningEnd(first.sandEveningEnd || '');
+            setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
+            const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
+            sandTx.forEach((t: any) => {
+                const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
+                usages.forEach((u: any) => {
+                    const batchId = String(u?.batchId || '');
+                    const sourceDate = String(u?.sourceDate || '');
+                    if (!batchId || !sourceDate) return;
+                    const key = `${batchId}_${sourceDate}`;
+                    const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
+                    prev.drums += Math.max(0, Number(u?.drums || 0));
+                    usageMap.set(key, prev);
+                });
+            });
+            setHomeBatchUsages(Array.from(usageMap.values()).filter(u => u.drums > 0));
         } else {
             setSandDrumsObtained('');
             setSandMorningStart('');
             setSandAfternoonStart('');
             setSandEveningEnd('');
+            setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
+            setHomeBatchUsages([]);
         }
 
         // Fuel (prefill แยก: ซื้อเข้า / ใช้รายรถ)
@@ -1509,7 +1740,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 ? Math.max(0, ...sand.map(t => Number((t as any).drumsWashedAtHome || 0)))
                                 : 0;
                             const laborAttendance = labor.filter(t => t.subCategory === 'Attendance') as any[];
-                            const latestAttendance = laborAttendance.length > 0 ? laborAttendance[laborAttendance.length - 1] : null;
+                            const latestAttendance = pickLatestByDayOrder(laborAttendance, txs);
                             const homeDrums = Math.max(0, sandHomeDrums || Number(latestAttendance?.drumsWashedAtHome || 0));
                             const sandDrums = Math.max(0, sandDrumsTotal - homeDrums);
                             const fuelSum = fuel.reduce((s, t) => s + t.amount, 0);
@@ -1527,25 +1758,27 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             const attendance = laborAttendance;
                             let workGroups: { label: string; count: number }[] = [];
                             if (attendance.length > 0) {
-                                const latest = attendance[attendance.length - 1] as any;
-                                const wa: Record<string, string[]> | undefined = latest.workAssignments;
-                                const customCategoryMap = new Map<string, string>(
-                                    Array.isArray(latest.customWorkCategories)
-                                        ? latest.customWorkCategories
-                                            .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
-                                            .map((c: any) => [c.id, c.label])
-                                        : []
-                                );
-                                if (wa) {
-                                    workGroups = Object.entries(wa)
-                                        .map(([catId, empIds]) => {
-                                            const def = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
-                                            return {
-                                                label: def?.label || customCategoryMap.get(catId) || catId,
-                                                count: (empIds || []).length,
-                                            };
-                                        })
-                                        .filter(g => g.count > 0);
+                                const latest = pickLatestByDayOrder(attendance as any[], txs) as any;
+                                if (latest) {
+                                    const wa: Record<string, string[]> | undefined = latest.workAssignments;
+                                    const customCategoryMap = new Map<string, string>(
+                                        Array.isArray(latest.customWorkCategories)
+                                            ? latest.customWorkCategories
+                                                .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
+                                                .map((c: any) => [c.id, c.label])
+                                            : []
+                                    );
+                                    if (wa) {
+                                        workGroups = Object.entries(wa)
+                                            .map(([catId, empIds]) => {
+                                                const def = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
+                                                return {
+                                                    label: def?.label || customCategoryMap.get(catId) || catId,
+                                                    count: (empIds || []).length,
+                                                };
+                                            })
+                                            .filter(g => g.count > 0);
+                                    }
                                 }
                             }
 
@@ -1695,6 +1928,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             ? `บันทึกแบบร่างไม่สำเร็จ (${autosaveErrorReason === 'quota_exceeded' ? 'พื้นที่เต็ม' : autosaveErrorReason === 'storage_unavailable' ? 'storage ใช้ไม่ได้' : 'ข้อผิดพลาดข้อมูล'})`
                                             : 'ยังไม่มีการแก้ไขล่าสุด'}
                                 </span>
+                            </div>
+                        )}
+                        {viewMode === 'record' && validationChecklist.length > 0 && (
+                            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+                                <p className="mb-2 text-xs font-bold text-amber-800 dark:text-amber-200">Checklist ก่อนบันทึก</p>
+                                <ul className="space-y-1.5 text-xs">
+                                    {validationChecklist.map((item, idx) => (
+                                        <li key={`${item.message}_${idx}`} className="rounded-lg border border-amber-200/70 bg-white/70 px-2 py-1.5 text-amber-900 dark:border-amber-500/20 dark:bg-white/5 dark:text-amber-100">
+                                            <span className="font-semibold">{item.level === 'warning' ? 'เตือน' : 'แนะนำ'}:</span> {item.message}
+                                            <span className="block text-[11px] opacity-90">วิธีแก้: {item.fix}</span>
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
                         )}
                         {draftOffer && viewMode === 'record' && (
@@ -2047,10 +2293,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     await sessionAlert('กรุณาระบุค่า OT');
                                                     return;
                                                 }
-                                                const existingDailyLaborTx = dayTransactions.find(tx =>
-                                                    tx.category === 'Labor' &&
-                                                    tx.subCategory === 'Attendance' &&
-                                                    tx.laborStatus === 'Work'
+                                                const existingDailyLaborTx = pickLatestByDayOrder(
+                                                    dayTransactions.filter(tx =>
+                                                        tx.category === 'Labor' &&
+                                                        tx.subCategory === 'Attendance' &&
+                                                        tx.laborStatus === 'Work'
+                                                    ),
+                                                    dayTransactions
                                                 );
                                                 const existingLaborIds = dayTransactions
                                                     .filter(t =>
@@ -2071,11 +2320,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 const hours = Number(otHours) || 0;
                                                 const totalAmount = rate * hours * selectedEmps.length;
                                                 const empNames = selectedEmps.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
+                                                const candidateOtTx = {
+                                                    id: Date.now().toString(),
+                                                    date,
+                                                    employeeIds: selectedEmps,
+                                                    type: 'Expense',
+                                                    category: 'Labor',
+                                                    subCategory: 'OT',
+                                                    laborStatus: 'OT',
+                                                    amount: totalAmount,
+                                                    otAmount: rate,
+                                                    otHours: hours,
+                                                    otDescription: otDesc,
+                                                    description: `OT ${otDesc} (${otHours}ชม.) ${selectedEmps.length}คน [${empNames}]`,
+                                                } as Transaction;
+                                                if (hasSemanticNearDuplicate(candidateOtTx)) {
+                                                    const proceed = await shouldContinueWithWarning(
+                                                        ['พบรายการ OT ที่ข้อมูลใกล้เคียงในวันเดียวกัน'],
+                                                        'ตรวจพบรายการ OT ใกล้เคียง'
+                                                    );
+                                                    if (!proceed) return;
+                                                }
                                                 onSaveTransaction({
-                                                    id: Date.now().toString(), date, employeeIds: selectedEmps,
-                                                    type: 'Expense', category: 'Labor', subCategory: 'OT', laborStatus: 'OT',
-                                                    amount: totalAmount, otAmount: rate, otHours: hours, otDescription: otDesc,
-                                                    description: `OT ${otDesc} (${otHours}ชม.) ${selectedEmps.length}คน [${empNames}]`
+                                                    ...candidateOtTx,
                                                 } as Transaction);
                                                 setSelectedEmps([]); setOtRate(''); setOtHours(''); setOtDesc(''); setLaborStatus('Work');
                                             }} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-base font-bold rounded-xl transition-colors">
@@ -2092,6 +2359,30 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {/* === WORK MODE: Canvas layout === */}
                                 {laborStatus === 'Work' && (
                                     <>
+                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {smartWorkTemplates.map((tpl, idx) => (
+                                                    <button
+                                                        key={`${tpl.label}_${idx}`}
+                                                        type="button"
+                                                        onClick={() => setWorkAssignments(tpl.workAssignments)}
+                                                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+                                                        title="ใช้ template การจัดงานเดิมทั้งชุด"
+                                                    >
+                                                        ใช้เทมเพลต #{idx + 1} ({tpl.count} ครั้ง)
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={restoreLaborStepHistory}
+                                                disabled={laborStepHistory.length < 2}
+                                                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-white/[0.06] dark:text-slate-200"
+                                                title="ย้อนกลับเฉพาะขั้นค่าแรง/จัดคน โดยไม่กระทบขั้นอื่น"
+                                            >
+                                                ย้อนกลับขั้นนี้ ({Math.max(0, laborStepHistory.length - 1)})
+                                            </button>
+                                        </div>
                                         {/* Employee Pool - Draggable chips */}
                                         <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                                             <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
@@ -2358,7 +2649,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     return;
                                                 }
                                                 // Upsert daily labor record: update existing attendance card instead of creating duplicates.
-                                                const base = { id: existingDailyLaborTx?.id || Date.now().toString(), date, employeeIds: allEmps };
+                                                const base = {
+                                                    id: existingDailyLaborTx?.id || Date.now().toString(),
+                                                    date,
+                                                    employeeIds: allEmps,
+                                                    createdAt: existingDailyLaborTx?.createdAt || new Date().toISOString(),
+                                                };
                                                 const allCats = [...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, color: '', bgLight: '' }))];
                                                 const desc = Object.entries(workAssignments).filter(([, ids]) => ids.length > 0).map(([catId, ids]) => {
                                                     const cat = allCats.find(c => c.id === catId); const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
@@ -2387,6 +2683,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
                                                 const drumsHome = (workAssignments['washHome']?.length ?? 0) > 0 ? (Number(drumsWashedAtHome) || 0) : undefined;
+                                                const hasWashHomeAssigned = (workAssignments['washHome']?.length ?? 0) > 0;
+                                                const rawHomeDrums = Number(drumsWashedAtHome) || 0;
+                                                if (rawHomeDrums > 0 && !hasWashHomeAssigned) {
+                                                    await sessionAlert('พบจำนวนถังล้างที่บ้าน แต่ยังไม่ได้ assign พนักงานในงาน "ล้างทรายที่บ้าน"');
+                                                    return;
+                                                }
                                                 const t = {
                                                     ...base,
                                                     type: 'Expense',
@@ -2400,6 +2702,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     customWorkCategories: [...customCategories],
                                                     drumsWashedAtHome: drumsHome
                                                 };
+                                                if (hasSemanticNearDuplicate(t as Transaction, { ignoreId: existingDailyLaborTx?.id })) {
+                                                    const proceed = await shouldContinueWithWarning(
+                                                        ['พบรายการค่าแรง Attendance ที่ข้อมูลใกล้เคียงในวันเดียวกัน'],
+                                                        'ตรวจพบรายการค่าแรงใกล้เคียง'
+                                                    );
+                                                    if (!proceed) return;
+                                                }
                                                 onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
                                                 <CheckCircle2 size={18} className="mr-2" /> {(dayTransactions.some(tx => tx.category === 'Labor' && tx.subCategory === 'Attendance' && tx.laborStatus === 'Work') ? 'อัปเดตค่าแรง' : 'บันทึกค่าแรง')} ({[...new Set([
@@ -3107,6 +3416,43 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{drumStockSummary.cumulativeRemaining}</p>
                                             </div>
                                         </div>
+                                        <div className="mt-3 rounded-xl border border-cyan-200/70 dark:border-cyan-500/30 bg-cyan-50/60 dark:bg-cyan-500/10 p-3">
+                                            <p className="text-xs font-bold text-cyan-800 dark:text-cyan-200 mb-2">Lot/Batch ต้นทาง</p>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                                                <label className="text-[11px] text-cyan-700 dark:text-cyan-300">
+                                                    รหัสล็อตทรายวันนี้
+                                                    <input
+                                                        type="text"
+                                                        value={sandBatchId}
+                                                        onChange={e => setSandBatchId(e.target.value)}
+                                                        className="mt-1 w-full rounded-lg border border-cyan-200 dark:border-cyan-500/35 bg-white dark:bg-white/5 px-2 py-1.5 text-[11px]"
+                                                    />
+                                                </label>
+                                                <label className="text-[11px] text-cyan-700 dark:text-cyan-300">
+                                                    ระบบตัดล็อตล้างที่บ้าน (Auto FIFO)
+                                                    <div className="mt-1 rounded-lg border border-cyan-200 dark:border-cyan-500/35 bg-white/90 dark:bg-white/5 px-2 py-1.5 text-[11px] text-cyan-800 dark:text-cyan-200">
+                                                        ตัดจากล็อตเก่าสุดก่อนแบบอัตโนมัติ ตามจำนวน “ล้างที่บ้านวันนี้”
+                                                    </div>
+                                                </label>
+                                            </div>
+                                            <div className="space-y-1">
+                                                {homeBatchUsages.length === 0 ? (
+                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">ยังไม่ได้เลือกล็อตสำหรับล้างที่บ้าน</p>
+                                                ) : (
+                                                    homeBatchUsages.map((u, idx) => (
+                                                        <div key={`${u.batchId}_${u.sourceDate}_${idx}`} className="flex items-center justify-between rounded-lg border border-cyan-100 dark:border-cyan-500/25 bg-white/80 dark:bg-white/[0.03] px-2 py-1 text-[11px]">
+                                                            <span>{u.batchId} ({formatDateBE(u.sourceDate)})</span>
+                                                            <span className="font-semibold text-cyan-700 dark:text-cyan-300">{u.drums} ถัง</span>
+                                                        </div>
+                                                    ))
+                                                )}
+                                                {autoUnallocatedHomeDrums > 0 && (
+                                                    <p className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                                                        สต็อกล็อตไม่พอสำหรับล้างที่บ้าน ขาดอีก {autoUnallocatedHomeDrums.toLocaleString()} ถัง
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -3114,8 +3460,48 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     <Button onClick={async () => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
+                                        const totalAllocatedHome = homeBatchUsages.reduce((s, u) => s + Math.max(0, Number(u.drums || 0)), 0);
+                                        const hasWashHomeAssigned = (workAssignments['washHome']?.length ?? 0) > 0;
                                         if (sandGrandTotal === 0 && drumsToday === 0) {
                                             await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
+                                            return;
+                                        }
+                                        const batchIdFinal = (sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`).trim();
+                                        if (drumsToday > 0 && !batchIdFinal) {
+                                            await sessionAlert('กรุณาระบุรหัสล็อตทรายก่อนบันทึก');
+                                            return;
+                                        }
+                                        if (drumsHomeToday > 0) {
+                                            if (!hasWashHomeAssigned) {
+                                                await sessionAlert('มีการล้างที่บ้าน แต่ยังไม่ได้ assign งาน washHome ในขั้นค่าแรง');
+                                                return;
+                                            }
+                                            if (homeBatchUsages.length === 0) {
+                                                await sessionAlert('ต้องเลือกล็อตที่นำไปล้างที่บ้านก่อนบันทึก');
+                                                return;
+                                            }
+                                            if (totalAllocatedHome !== drumsHomeToday) {
+                                                await sessionAlert(`จำนวนถังล้างที่บ้าน (${drumsHomeToday}) ต้องเท่ากับผลรวมถังจากล็อตที่เลือก (${totalAllocatedHome})`);
+                                                return;
+                                            }
+                                            const availableMap = new Map(sourceBatchesForHome.map(b => [b.batchId, b.available]));
+                                            const invalid = homeBatchUsages.find(u => (Number(u.drums) || 0) > (availableMap.get(u.batchId) || 0));
+                                            if (invalid) {
+                                                await sessionAlert(`ล็อต ${invalid.batchId} มีคงเหลือไม่พอสำหรับตัด ${invalid.drums} ถัง`);
+                                                return;
+                                            }
+                                        }
+                                        if (hasWashHomeAssigned) {
+                                            if (drumsHomeToday <= 0) {
+                                                await sessionAlert('assign งาน washHome แล้ว ต้องระบุจำนวนถังล้างที่บ้านมากกว่า 0');
+                                                return;
+                                            }
+                                            if (homeBatchUsages.length === 0) {
+                                                await sessionAlert('assign งาน washHome แล้ว ต้องระบุรายการตัดล็อตให้ครบ');
+                                                return;
+                                            }
+                                        } else if (homeBatchUsages.length > 0) {
+                                            await sessionAlert('ยังไม่ได้ assign งาน washHome แต่มีรายการตัดล็อตล้างที่บ้าน');
                                             return;
                                         }
                                         const opNames1 = sand1Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
@@ -3132,6 +3518,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 sandMorning: Number(sand1Morning) || 0, sandAfternoon: Number(sand1Afternoon) || 0,
                                                 sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
                                                 drumsWashedAtHome: drumsHomeToday,
+                                                sandBatchId: batchIdFinal || undefined,
+                                                sandHomeBatchUsages: homeBatchUsages,
                                                 ...timePayload
                                             } as Transaction);
                                         }
@@ -3142,6 +3530,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 sandMorning: Number(sand2Morning) || 0, sandAfternoon: Number(sand2Afternoon) || 0,
                                                 sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
                                                 drumsWashedAtHome: drumsHomeToday,
+                                                sandBatchId: batchIdFinal || undefined,
+                                                sandHomeBatchUsages: homeBatchUsages,
                                                 ...timePayload
                                             } as Transaction);
                                         }
@@ -3149,11 +3539,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             onSaveTransaction({
                                                 id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                 description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
+                                                sandBatchId: batchIdFinal || undefined,
+                                                sandHomeBatchUsages: homeBatchUsages,
                                                 ...timePayload
                                             } as Transaction);
                                         }
                                         setSand1Morning(''); setSand1Afternoon(''); setSand2Morning(''); setSand2Afternoon('');
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
+                                        setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
+                                        setHomeBatchUsages([]);
                                         setDrumsWashedAtHome('');
                                         setSandMorningStart(''); setSandAfternoonStart(''); setSandEveningEnd('');
                                     }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 focus-ring-strong" data-hotkey-primary="true">
@@ -3800,7 +4194,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         {dayTransactions.length === 0 ? (
                                             <p className="text-center text-slate-400 dark:text-slate-500 py-4 text-sm">ไม่มีรายการบันทึกในวันนี้</p>
                                         ) : (
-                                            dayTransactions.map(t => {
+                                            sortedDayTransactions.map(t => {
                                                 const driverName = t.driverId ? (employees.find(e => e.id === t.driverId)?.nickname || employees.find(e => e.id === t.driverId)?.name || '') : '';
                                                 const vehDay = (t as any).workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
                                                 const vehicleDesc = t.category === 'Vehicle'
@@ -4024,14 +4418,43 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+                            {sortedDayTransactions.length > 0 && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+                                    <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">Timeline วันนี้ (ตามเวลา createdAt)</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {sortedDayTransactions.slice(0, 8).map((t) => {
+                                            const timeLabel = t.createdAt
+                                                ? new Date(t.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+                                                : '--:--';
+                                            const status = timelineStatusById.get(t.id) || 'final';
+                                            return (
+                                                <span
+                                                    key={`tl_${t.id}`}
+                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                                        status === 'latest'
+                                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                                            : status === 'edited'
+                                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+                                                                : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'
+                                                    }`}
+                                                    title={`${t.category} • ${t.description}`}
+                                                >
+                                                    {timeLabel} · {status === 'latest' ? 'ล่าสุด' : status === 'edited' ? 'แก้ไขก่อนหน้า' : 'บันทึกแล้ว'}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                             {dayTransactions.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-slate-500 dark:text-slate-300">
                                     <FileText size={48} className="mb-3 text-slate-300 dark:text-slate-500" />
                                     <p className="font-medium">ยังไม่มีรายการบันทึก</p>
                                 </div>
                             ) : (
-                                dayTransactions.map(t => {
+                                sortedDayTransactions.map(t => {
                                     const isDuplicate = duplicateTxMeta.duplicateIds.has(t.id);
+                                    const timelineStatus = timelineStatusById.get(t.id) || 'final';
                                     return (
                                     <div key={t.id} className={`p-3 bg-white dark:bg-white/[0.03] rounded-xl border hover:shadow-md transition-all group relative ${isDuplicate ? 'border-rose-200 dark:border-rose-500/30 bg-rose-50/40 dark:bg-rose-500/10' : 'border-slate-100 dark:border-white/5 hover:border-indigo-300 dark:hover:border-indigo-500/50'}`}>
                                         <div className="flex justify-between items-start mb-1.5">
@@ -4043,6 +4466,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400'
                                                 }`}>{t.category}</span>
                                             <div className="flex items-center gap-2">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                    timelineStatus === 'latest'
+                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                                        : timelineStatus === 'edited'
+                                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+                                                            : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'
+                                                }`}>
+                                                    {timelineStatus === 'latest' ? 'ล่าสุด' : timelineStatus === 'edited' ? 'แก้ไขก่อนหน้า' : 'บันทึกแล้ว'}
+                                                </span>
                                                 {isDuplicate && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300">อาจซ้ำ</span>}
                                                 {t.amount > 0 && <span className="font-bold text-sm text-slate-800 dark:text-white text-right">฿{t.amount.toLocaleString()}</span>}
                                             </div>
@@ -4050,6 +4482,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 leading-snug">{t.description}</p>
 
                                         <div className="flex flex-wrap gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-2 bg-slate-50 dark:bg-white/[0.02] p-1.5 rounded-lg border border-slate-100 dark:border-white/5">
+                                            {t.createdAt && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>เวลา: {new Date(t.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>}
                                             {t.otHours && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>OT: {t.otHours} ชม.</span>}
                                             {t.workDetails && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>งานรถ: {t.workDetails}</span>}
                                             {t.machineHours && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>ชม.: {t.machineHours}</span>}

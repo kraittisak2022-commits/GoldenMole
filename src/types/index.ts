@@ -49,6 +49,8 @@ export interface LandProject {
 
 export interface Transaction {
     id: string; date: string; type: TransactionType; category: string; subCategory?: string; description: string; amount: number;
+    /** เวลา record ถูกสร้างครั้งแรก (ISO string) ใช้เป็น source-of-truth ในการหา "รายการล่าสุด" */
+    createdAt?: string;
     employeeId?: string; employeeIds?: string[]; driverId?: string; driverWage?: number; vehicleWage?: number; vehicleId?: string;
     quantity?: number; unit?: string; unitPrice?: number; projectId?: string; mileage?: number; imageUrl?: string; location?: string;
     laborStatus?: 'Work' | 'Leave' | 'Sick' | 'Personal' | 'OT' | 'Advance';
@@ -93,6 +95,14 @@ export interface Transaction {
     drumsObtained?: number;
     /** จำนวนถังที่ล้างที่บ้านวันนี้ (จากขั้นค่าแรง เมื่อมีงานล้างทรายที่บ้าน) */
     drumsWashedAtHome?: number;
+    /** รหัสล็อต/แบตช์ของทรายที่ได้ในวันล้าง */
+    sandBatchId?: string;
+    /** การตัดล็อตสำหรับล้างที่บ้านในวันนั้น */
+    sandHomeBatchUsages?: Array<{
+        batchId: string;
+        sourceDate: string;
+        drums: number;
+    }>;
     /** บันทึกการล้างทราย: วันเวลาเริ่มงาน (HH:mm) */
     sandWorkStart?: string;
     /** บันทึกการล้างทราย: ช่วงเช้าเริ่มงาน น. (HH:mm) */
@@ -199,6 +209,44 @@ export interface AppDefaults {
         lastAlertDate?: string;
         lastAlertCount?: number;
     };
+    /** ผูกถังล้างที่บ้านกับล็อตทรายจริง (Lot/Batch) */
+    sandHomeBatchAllocations?: Array<{
+        id: string;
+        roundId: string;
+        homeDate: string;
+        sourceDate: string;
+        drums: number;
+        batchId: string;
+        linkedTransportDate?: string;
+        createdAt: string;
+        createdByAdminId?: string;
+        createdByAdminName?: string;
+        updatedAt?: string;
+        updatedByAdminId?: string;
+        updatedByAdminName?: string;
+    }>;
+    /** บันทึกการกระทำสำคัญในระบบรอบล้างทราย */
+    sandRoundAuditTrail?: Array<{
+        id: string;
+        roundId: string;
+        action: 'manual_close_round' | 'edit_batch_allocation' | 'create_batch_allocation' | 'delete_batch_allocation';
+        note?: string;
+        adminId?: string;
+        adminName?: string;
+        createdAt: string;
+    }>;
+    sandRoundWorkflowById?: Record<string, {
+        status: 'Open' | 'Reviewing' | 'Closed' | 'Reopened';
+        reason?: string;
+        approvedByAdminId?: string;
+        approvedByAdminName?: string;
+        updatedAt: string;
+    }>;
+    sandOpsNotificationRules?: {
+        agingDays?: number;
+        enabledRoles?: Array<'SuperAdmin' | 'Admin' | 'Assistant'>;
+    };
+    sandOpsNotificationAckIds?: string[];
     /** สิทธิ์การมองเห็นข้อมูลแยกรายแอดมิน */
     adminDataAccessByAdminId?: Record<string, AdminDataAccess>;
     backupConfig?: {
