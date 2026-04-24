@@ -347,10 +347,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const addCategory = (id: string, label: string) => {
             if (!id || !label || DEFAULT_WORK_CATEGORY_IDS.has(id)) return;
             if (HIDDEN_WORK_CATEGORY_IDS.has(id)) return;
-            if (isCfgLikeToken(id)) return;
             if (isSystemCategoryLabel(label)) return;
             const norm = normalizeCategoryLabel(label);
             if (HIDDEN_WORK_CATEGORY_LABELS.has(norm)) return;
+            if (isCfgLikeToken(norm)) return;
             if (!norm || seenLabels.has(norm)) return;
             customById.set(id, { id, label });
             knownLabelById.set(id, label);
@@ -1285,7 +1285,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
                     .filter((c: any) => {
                         if (isSystemCategoryLabel(c.label)) return false;
-                        if (isCfgLikeToken(c.id)) return false;
+                        if (isCfgLikeToken(c.label)) return false;
                         const norm = normalizeCategoryLabel(c.label);
                         if (!norm || seenLabels.has(norm)) return false;
                         seenLabels.add(norm);

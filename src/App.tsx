@@ -202,6 +202,13 @@ const getPrevDayYmd = () => {
     return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 };
 const getDayTransactions = (txs: Transaction[], dateYmd: string) => txs.filter(t => normalizeDate(t.date) === normalizeDate(dateYmd));
+const normalizeTransactionCreatedAt = (tx: Transaction): Transaction => {
+    if (tx.createdAt && !Number.isNaN(Date.parse(tx.createdAt))) return tx;
+    const baseDate = normalizeDate(tx.date);
+    const fallback = Number.isNaN(Date.parse(baseDate)) ? new Date().toISOString() : new Date(`${baseDate}T00:00:00.000Z`).toISOString();
+    return { ...tx, createdAt: fallback };
+};
+const normalizeTransactionsCreatedAt = (txs: Transaction[]): Transaction[] => txs.map(normalizeTransactionCreatedAt);
 const detectDailyAuditAlertCount = (txs: Transaction[], dateYmd: string, thresholds: { incomeZeroThreshold?: number; laborHighAmountThreshold?: number; fuelHighLitersThreshold?: number } | undefined) => {
     const dayTx = getDayTransactions(txs, dateYmd);
     const empty = !dayTx.some(t =>
@@ -522,7 +529,7 @@ function App() {
                 setLoadMessage(t(locale, 'loadingPreparing'));
                 if (cached) {
                     setEmployees(cached.employees);
-                    setTransactions(cached.transactions);
+                    setTransactions(normalizeTransactionsCreatedAt(cached.transactions));
                     setProjects(cached.projects);
                     setSettings(cached.settings);
                     setAdmins(cached.admins.length > 0 ? cached.admins : DEFAULT_ADMINS);
@@ -553,7 +560,7 @@ function App() {
                 setLoadProgress(85);
                 setLoadMessage(t(locale, 'loadingProcess'));
                 setEmployees(emps);
-                setTransactions(txs);
+                setTransactions(normalizeTransactionsCreatedAt(txs));
                 setProjects(projs);
                 const nextSettings = sett || MOCK_SETTINGS;
                 const nextAdmins = adms.length > 0 ? adms : DEFAULT_ADMINS;
@@ -562,7 +569,7 @@ function App() {
                 setAdminLogs(logs);
                 saveBootstrapCache({
                     employees: emps,
-                    transactions: txs,
+                    transactions: normalizeTransactionsCreatedAt(txs),
                     projects: projs,
                     settings: nextSettings,
                     admins: nextAdmins,
@@ -576,7 +583,7 @@ function App() {
                 setLoadMessage(t(locale, 'loadingFallback'));
                 // Fallback to mock data
                 setEmployees(MOCK_EMPLOYEES);
-                setTransactions(MOCK_TRANSACTIONS);
+                setTransactions(normalizeTransactionsCreatedAt(MOCK_TRANSACTIONS));
                 setProjects(MOCK_PROJECTS);
                 setSettings(MOCK_SETTINGS);
                 setAdmins(DEFAULT_ADMINS);
@@ -976,7 +983,11 @@ function App() {
             setTimeout(() => setToast(null), 3500);
             return;
         }
-        const wasUpdate = transactions.some(x => x.id === t.id);
+        const existingTx = transactions.find(x => x.id === t.id);
+        const wasUpdate = !!existingTx;
+        const txToSave: Transaction = wasUpdate
+            ? { ...t, createdAt: existingTx?.createdAt || t.createdAt || new Date().toISOString() }
+            : { ...t, createdAt: t.createdAt || new Date().toISOString() };
         if (!wasUpdate && !canCreateTransactions) {
             setToast('ไม่มีสิทธิ์สร้างรายการ (Create)');
             setTimeout(() => setToast(null), 3000);
@@ -987,11 +998,11 @@ function App() {
             setTimeout(() => setToast(null), 3000);
             return;
         }
-        if (t.category !== 'Payroll' && t.category !== 'PayrollUnlock') {
+        if (txToSave.category !== 'Payroll' && txToSave.category !== 'PayrollUnlock') {
             const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
                 x.payrollPeriod &&
-                isDateInRange(t.date, x.payrollPeriod.start, x.payrollPeriod.end)
+                isDateInRange(txToSave.date, x.payrollPeriod.start, x.payrollPeriod.end)
             );
             if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
                 setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้แก้ข้อมูลย้อนหลัง`);
@@ -1000,24 +1011,24 @@ function App() {
             }
         }
         setTransactions(p => {
-            const i = p.findIndex(x => x.id === t.id);
+            const i = p.findIndex(x => x.id === txToSave.id);
             if (i >= 0) {
                 const next = [...p];
-                next[i] = t;
+                next[i] = txToSave;
                 return next;
             }
-            return [...p, t];
+            return [...p, txToSave];
         });
         let ok = false;
         if (!navigator.onLine) {
-            enqueueTransaction(t);
+            enqueueTransaction(txToSave);
             setToast('บันทึกในเครื่องแล้ว (ออฟไลน์) จะซิงก์อัตโนมัติเมื่อออนไลน์');
             setTimeout(() => setToast(null), 3500);
             return;
         }
-        ok = await db.saveTransaction(t);
+        ok = await db.saveTransaction(txToSave);
         if (!ok) {
-            enqueueTransaction(t);
+            enqueueTransaction(txToSave);
             setToast('ซิงก์ไม่สำเร็จ บันทึกไว้ในเครื่องแล้ว จะลองซิงก์อีกครั้งอัตโนมัติ');
             setTimeout(() => setToast(null), 3500);
             return;
@@ -1029,16 +1040,16 @@ function App() {
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
         if (ok && currentAdmin) {
             const summary = {
-                id: t.id,
-                date: normalizeDate(t.date),
-                type: t.type,
-                category: t.category,
-                subCategory: t.subCategory,
-                amount: t.amount,
-                description: t.description,
+                id: txToSave.id,
+                date: normalizeDate(txToSave.date),
+                type: txToSave.type,
+                category: txToSave.category,
+                subCategory: txToSave.subCategory,
+                amount: txToSave.amount,
+                description: txToSave.description,
             };
             const verb = wasUpdate ? 'อัปเดตรายการ' : 'สร้างรายการ';
-            addLog(wasUpdate ? 'update_transaction' : 'create_transaction', `${verb}: ${t.category}/${t.subCategory || '-'} วันที่ ${normalizeDate(t.date)} จำนวนเงิน ${t.amount || 0} รายละเอียด: ${t.description || '-'} | snapshot=${JSON.stringify(summary)}`);
+            addLog(wasUpdate ? 'update_transaction' : 'create_transaction', `${verb}: ${txToSave.category}/${txToSave.subCategory || '-'} วันที่ ${normalizeDate(txToSave.date)} จำนวนเงิน ${txToSave.amount || 0} รายละเอียด: ${txToSave.description || '-'} | snapshot=${JSON.stringify(summary)}`);
         }
 
         setToast(ok ? 'ซิงก์แล้ว' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
@@ -1089,7 +1100,8 @@ function App() {
 
     const handleSetTransactions = useCallback((updater: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
         setTransactions(prev => {
-            const next = typeof updater === 'function' ? updater(prev) : updater;
+            const rawNext = typeof updater === 'function' ? updater(prev) : updater;
+            const next = normalizeTransactionsCreatedAt(rawNext);
             next.forEach(t => db.saveTransaction(t));
             // Delete removed transactions
             const nextIds = new Set(next.map(t => t.id));

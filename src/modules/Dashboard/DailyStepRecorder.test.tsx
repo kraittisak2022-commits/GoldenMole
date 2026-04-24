@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder from './DailyStepRecorder';
-import { AppSettings } from '../../types';
+import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
 const baseSettings: AppSettings = {
@@ -141,5 +141,47 @@ describe('DailyStepRecorder integration', () => {
             />
         );
         expect(screen.getByDisplayValue('4700')).toBeInTheDocument();
+    });
+
+    it('picks latest attendance by createdAt when day has duplicates', () => {
+        const dayTransactions: Transaction[] = [
+            {
+                id: 'att-old',
+                date: '2026-04-24',
+                createdAt: '2026-04-24T08:00:00.000Z',
+                type: 'Expense',
+                category: 'Labor',
+                subCategory: 'Attendance',
+                laborStatus: 'Work',
+                description: 'ค่าแรงเก่า',
+                amount: 1000,
+                workAssignments: { wash1: ['e1'] },
+            },
+            {
+                id: 'att-new',
+                date: '2026-04-24',
+                createdAt: '2026-04-24T10:00:00.000Z',
+                type: 'Expense',
+                category: 'Labor',
+                subCategory: 'Attendance',
+                laborStatus: 'Work',
+                description: 'ค่าแรงใหม่',
+                amount: 1500,
+                workAssignments: { wash2: ['e2', 'e3'] },
+            },
+            {
+                id: 'other',
+                date: '2026-04-24',
+                createdAt: '2026-04-24T09:30:00.000Z',
+                type: 'Expense',
+                category: 'Fuel',
+                description: 'เติมน้ำมัน',
+                amount: 500,
+            },
+        ];
+        const attendanceOnly = dayTransactions.filter(t => t.category === 'Labor' && t.subCategory === 'Attendance');
+        const latest = pickLatestByDayOrder(attendanceOnly, dayTransactions);
+        expect(latest?.id).toBe('att-new');
+        expect(latest?.description).toBe('ค่าแรงใหม่');
     });
 });
