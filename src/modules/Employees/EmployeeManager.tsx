@@ -11,7 +11,14 @@ interface EmployeeManagerProps {
     employees: Employee[];
     setEmployees: (emps: Employee[]) => void;
     transactions: Transaction[];
-    setTransactions: (txs: Transaction[]) => void;
+    /**
+     * Accepts both replacement arrays and functional updaters.
+     * IMPORTANT: callers must use the functional form for bulk operations
+     * because the `transactions` prop may be a filtered/masked subset of
+     * the real transaction store. Replacing with a subset would cause the
+     * parent to delete every transaction outside the subset.
+     */
+    setTransactions: (txs: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
     settings: AppSettings;
     setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
 }
@@ -194,7 +201,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
         if (!confirm(`ยืนยันรวมข้อมูลจาก "${src.nickname || src.name || src.id}" -> "${dst.nickname || dst.name || dst.id}" ?`)) return;
         const mapId = (id?: string) => (id === mergeFromId ? mergeToId : id);
         const mapIds = (ids?: string[]) => ids ? Array.from(new Set(ids.map(i => i === mergeFromId ? mergeToId : i))) : ids;
-        const nextTx = transactions.map((t) => {
+        const remapTransaction = (t: Transaction): Transaction => {
             const nextWorkTypeByEmployee = t.workTypeByEmployee ? Object.fromEntries(Object.entries(t.workTypeByEmployee).map(([k, v]) => [k === mergeFromId ? mergeToId : k, v])) : undefined;
             const nextWorkAssignments = t.workAssignments ? Object.fromEntries(Object.entries(t.workAssignments).map(([k, arr]) => [k, Array.from(new Set((arr || []).map(i => i === mergeFromId ? mergeToId : i)))])) : undefined;
             return {
@@ -206,10 +213,19 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
                 workTypeByEmployee: nextWorkTypeByEmployee as any,
                 workAssignments: nextWorkAssignments as any,
             };
-        });
+        };
         const prevEmployees = employees;
-        const prevTransactions = transactions;
-        setTransactions(nextTx);
+        // Snapshot the FULL transaction list captured atomically inside the
+        // updater. The `transactions` prop may be a filtered/masked subset
+        // (e.g. hidden ids removed via hiddenTransactionIds, or restricted
+        // categories), so we must never replace the parent state with that
+        // subset — doing so would silently delete every excluded row from
+        // the database.
+        let prevAllTransactions: Transaction[] = [];
+        setTransactions(prev => {
+            prevAllTransactions = prev;
+            return prev.map(remapTransaction);
+        });
         const mergedTarget: Employee = {
             ...dst,
             phone: dst.phone || src.phone,
@@ -225,7 +241,10 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
         setActionMsg('รวมพนักงานซ้ำและย้ายข้อมูลธุรกรรมแล้ว');
         pushUndo('รวมพนักงานแล้ว (Undo ได้ 20 วินาที)', () => {
             setEmployees(prevEmployees);
-            setTransactions(prevTransactions);
+            // Restore using the full snapshot we captured inside the updater
+            // above so we don't accidentally delete rows that were filtered
+            // out of the visible subset.
+            setTransactions(() => prevAllTransactions);
         });
         setIsMergeOpen(false);
         setMergeFromId('');
