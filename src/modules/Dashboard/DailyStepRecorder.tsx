@@ -21,6 +21,11 @@ import {
     readWizardDraftEntry,
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
+import {
+    computeBatchStockSummary,
+    getTransactionRecencyScore,
+    pickLatestByDayOrder,
+} from './dailyStepRecorderUtils';
 
 type DraftMergeSection = 'labor' | 'vehicle' | 'trip' | 'sand' | 'fuel' | 'income' | 'event';
 const ALL_DRAFT_MERGE_SECTIONS: DraftMergeSection[] = ['labor', 'vehicle', 'trip', 'sand', 'fuel', 'income', 'event'];
@@ -219,36 +224,6 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     }
     return null;
 }
-
-const toTimeOrNull = (value: string | undefined): number | null => {
-    if (!value) return null;
-    const t = Date.parse(value);
-    return Number.isNaN(t) ? null : t;
-};
-
-const getTransactionRecencyScore = (tx: Transaction, dayItems: Transaction[], idxFallback = -1): number => {
-    const createdAtMs = toTimeOrNull(tx.createdAt);
-    if (createdAtMs != null) return createdAtMs;
-    const dayMs = toTimeOrNull(`${normalizeDate(tx.date)}T00:00:00.000Z`);
-    if (dayMs != null) return dayMs + Math.max(0, idxFallback);
-    return idxFallback;
-};
-
-export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems: Transaction[]): T | null => {
-    if (items.length === 0) return null;
-    const lastIndexById = new Map<string, number>();
-    dayItems.forEach((tx, idx) => {
-        lastIndexById.set(tx.id, idx);
-    });
-    return items.reduce((latest, current) => {
-        const latestIdx = lastIndexById.get(latest.id) ?? -1;
-        const currentIdx = lastIndexById.get(current.id) ?? -1;
-        const latestScore = getTransactionRecencyScore(latest, dayItems, latestIdx);
-        const currentScore = getTransactionRecencyScore(current, dayItems, currentIdx);
-        if (currentScore === latestScore) return currentIdx >= latestIdx ? current : latest;
-        return currentScore > latestScore ? current : latest;
-    });
-};
 
 const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
@@ -829,22 +804,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
     const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
-    const batchStockSummary = useMemo(() => {
-        const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
-        allSandTx.forEach((t: any) => {
-            const batchId = String(t.sandBatchId || '').trim();
-            if (!batchId) return;
-            const sourceDate = normalizeDate(t.date);
-            const rec = summary.get(batchId) || { sourceDate, obtained: 0, used: 0 };
-            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
-            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-            rec.used += usages.reduce((s: number, u: any) => s + Math.max(0, Number(u?.drums || 0)), 0);
-            summary.set(batchId, rec);
-        });
-        return Array.from(summary.entries())
-            .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
-            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
-    }, [allSandTx]);
+    const batchStockSummary = useMemo(() => computeBatchStockSummary(allSandTx as Parameters<typeof computeBatchStockSummary>[0]), [allSandTx]);
     const sourceBatchesForHome = useMemo(() => {
         const selectedDate = normalizeDate(date);
         return batchStockSummary
@@ -1360,6 +1320,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSandAfternoonStart(first.sandAfternoonStart || '');
             setSandEveningEnd(first.sandEveningEnd || '');
             setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
+            // Collapse sandHomeBatchUsages by (batchId, sourceDate) using max() rather
+            // than sum() — multiple sand records on the same day historically carried the
+            // identical usages array, so summing would inflate the prefilled allocation
+            // beyond drumsWashedAtHome and block re-saving the same day.
             const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
             sandTx.forEach((t: any) => {
                 const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
@@ -1368,8 +1332,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     const sourceDate = String(u?.sourceDate || '');
                     if (!batchId || !sourceDate) return;
                     const key = `${batchId}_${sourceDate}`;
+                    const drums = Math.max(0, Number(u?.drums || 0));
                     const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
-                    prev.drums += Math.max(0, Number(u?.drums || 0));
+                    prev.drums = Math.max(prev.drums, drums);
                     usageMap.set(key, prev);
                 });
             });
@@ -3511,6 +3476,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             sandAfternoonStart: sandAfternoonStart || undefined,
                                             sandEveningEnd: sandEveningEnd || undefined
                                         };
+                                        // Attach the daily home-batch lot allocation to a SINGLE transaction only.
+                                        // batchStockSummary sums sandHomeBatchUsages across all sand records; saving
+                                        // the same allocation onto multiple records would double-count drum usage and
+                                        // cause valid future home washes to be incorrectly rejected.
+                                        let homeUsagesAttached = false;
+                                        const consumeHomeUsages = () => {
+                                            if (homeUsagesAttached) return [] as typeof homeBatchUsages;
+                                            homeUsagesAttached = true;
+                                            return homeBatchUsages;
+                                        };
                                         if (sand1Total > 0) {
                                             onSaveTransaction({
                                                 id: Date.now().toString() + '_s1', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
@@ -3519,7 +3494,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
                                                 drumsWashedAtHome: drumsHomeToday,
                                                 sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
+                                                sandHomeBatchUsages: consumeHomeUsages(),
                                                 ...timePayload
                                             } as Transaction);
                                         }
@@ -3531,7 +3506,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
                                                 drumsWashedAtHome: drumsHomeToday,
                                                 sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
+                                                sandHomeBatchUsages: consumeHomeUsages(),
                                                 ...timePayload
                                             } as Transaction);
                                         }
@@ -3540,7 +3515,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                 description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
                                                 sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
+                                                sandHomeBatchUsages: consumeHomeUsages(),
                                                 ...timePayload
                                             } as Transaction);
                                         }
