@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import DailyStepRecorder from './DailyStepRecorder';
+import { computeBatchStockSummary, pickLatestByDayOrder } from './dailyStepRecorderUtils';
 import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
@@ -183,5 +184,97 @@ describe('DailyStepRecorder integration', () => {
         const latest = pickLatestByDayOrder(attendanceOnly, dayTransactions);
         expect(latest?.id).toBe('att-new');
         expect(latest?.description).toBe('ค่าแรงใหม่');
+    });
+
+    it('does not double-count sandHomeBatchUsages when both sand machines persist the same usage on one day', () => {
+        // Day 1: a 10-drum batch is obtained.
+        // Day 2: the user runs both Sand machine #1 and #2 and washes 5 drums at home;
+        // historically the wizard could attach the same allocation to BOTH records.
+        const usagesDay2 = [
+            { batchId: 'BATCH-20260420', sourceDate: '2026-04-20', drums: 5 },
+        ];
+        const sandTxs = [
+            {
+                id: 'sand-day1',
+                date: '2026-04-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 1',
+                amount: 0,
+                drumsObtained: 10,
+                sandBatchId: 'BATCH-20260420',
+            },
+            {
+                id: 'sand-day2-s1',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 2 s1',
+                amount: 0,
+                drumsObtained: 0,
+                sandHomeBatchUsages: usagesDay2,
+            },
+            {
+                id: 'sand-day2-s2',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 2 s2',
+                amount: 0,
+                drumsObtained: 0,
+                sandHomeBatchUsages: usagesDay2,
+            },
+        ] as Transaction[];
+
+        const summary = computeBatchStockSummary(sandTxs as any);
+        expect(summary).toHaveLength(1);
+        const batch = summary[0];
+        expect(batch.batchId).toBe('BATCH-20260420');
+        expect(batch.obtained).toBe(10);
+        expect(batch.used).toBe(5);
+        expect(batch.available).toBe(5);
+    });
+
+    it('treats different home dates with same batch as independent usage events', () => {
+        const sandTxs = [
+            {
+                id: 'sand-day1',
+                date: '2026-04-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 1',
+                amount: 0,
+                drumsObtained: 10,
+                sandBatchId: 'BATCH-20260420',
+            },
+            {
+                id: 'sand-day2',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 2',
+                amount: 0,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-20260420', sourceDate: '2026-04-20', drums: 3 }],
+            },
+            {
+                id: 'sand-day3',
+                date: '2026-04-22',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'sand day 3',
+                amount: 0,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-20260420', sourceDate: '2026-04-20', drums: 4 }],
+            },
+        ] as Transaction[];
+
+        const summary = computeBatchStockSummary(sandTxs as any);
+        expect(summary[0].used).toBe(7);
+        expect(summary[0].available).toBe(3);
     });
 });
