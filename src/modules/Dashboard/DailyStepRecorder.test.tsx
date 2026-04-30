@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import DailyStepRecorder, { computeBatchStockSummary, pickLatestByDayOrder } from './DailyStepRecorder';
 import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
@@ -183,5 +183,43 @@ describe('DailyStepRecorder integration', () => {
         const latest = pickLatestByDayOrder(attendanceOnly, dayTransactions);
         expect(latest?.id).toBe('att-new');
         expect(latest?.description).toBe('ค่าแรงใหม่');
+    });
+
+    it('does not double-count batch usage when multiple sibling sand transactions duplicate the same homeBatchUsages array', () => {
+        // Regression: the wizard saves a single home-batch usage on each of
+        // _s1/_s2/_drums sibling transactions for the same day. Naively summing
+        // the usages across siblings would silently consume 2x or 3x the actual
+        // drums and corrupt batch inventory.
+        const sourceDate = '2026-04-20';
+        const todayTx = {
+            date: '2026-04-21',
+            sandBatchId: 'BATCH-TODAY',
+            drumsObtained: 100,
+            sandHomeBatchUsages: [
+                { batchId: 'BATCH-A', sourceDate, drums: 30 },
+            ],
+        };
+        const sandTransactions = [
+            { date: sourceDate, sandBatchId: 'BATCH-A', drumsObtained: 80, sandHomeBatchUsages: [] },
+            { ...todayTx },
+            { ...todayTx },
+            { ...todayTx },
+        ];
+        const summary = computeBatchStockSummary(sandTransactions as any);
+        const batchA = summary.find(b => b.batchId === 'BATCH-A');
+        expect(batchA?.obtained).toBe(80);
+        expect(batchA?.used).toBe(30);
+        expect(batchA?.available).toBe(50);
+    });
+
+    it('still sums batch usage across different days', () => {
+        const summary = computeBatchStockSummary([
+            { date: '2026-04-20', sandBatchId: 'BATCH-A', drumsObtained: 100, sandHomeBatchUsages: [] },
+            { date: '2026-04-21', sandHomeBatchUsages: [{ batchId: 'BATCH-A', sourceDate: '2026-04-20', drums: 20 }] },
+            { date: '2026-04-22', sandHomeBatchUsages: [{ batchId: 'BATCH-A', sourceDate: '2026-04-20', drums: 15 }] },
+        ] as any);
+        const batchA = summary.find(b => b.batchId === 'BATCH-A');
+        expect(batchA?.used).toBe(35);
+        expect(batchA?.available).toBe(65);
     });
 });
