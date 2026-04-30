@@ -234,6 +234,69 @@ const getTransactionRecencyScore = (tx: Transaction, dayItems: Transaction[], id
     return idxFallback;
 };
 
+export interface BatchStockRow {
+    batchId: string;
+    sourceDate: string;
+    obtained: number;
+    used: number;
+    available: number;
+}
+
+/**
+ * Aggregate sand batch stock from raw sand transactions safely.
+ *
+ * The Daily Wizard saves the SAME `sandHomeBatchUsages` array on each per-day
+ * sand transaction (e.g., one for each washing machine plus a totals record).
+ * Naively summing those entries would double/triple-count the same physical
+ * drums and silently drain inventory. This helper deduplicates per
+ * (txDay, batchId, sourceDate) by taking the maximum value within a single
+ * day, then summing across days.
+ */
+export const computeBatchStockSummary = (
+    sandTransactions: Array<Pick<Transaction, 'date' | 'sandBatchId' | 'sandHomeBatchUsages' | 'drumsObtained'>>
+): BatchStockRow[] => {
+    const obtainedByBatch = new Map<string, { sourceDate: string; obtained: number }>();
+    const perDayMaxUsage = new Map<string, number>();
+    const usageByBatch = new Map<string, number>();
+    sandTransactions.forEach((t) => {
+        const txDay = normalizeDate(t.date);
+        const batchId = String(t.sandBatchId || '').trim();
+        if (batchId) {
+            const rec = obtainedByBatch.get(batchId) || { sourceDate: txDay, obtained: 0 };
+            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
+            if (txDay < rec.sourceDate) rec.sourceDate = txDay;
+            obtainedByBatch.set(batchId, rec);
+        }
+        const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
+        usages.forEach((u: any) => {
+            const usageBatch = String(u?.batchId || '').trim();
+            const usageSource = String(u?.sourceDate || '').trim();
+            const drums = Math.max(0, Number(u?.drums || 0));
+            if (!usageBatch || !usageSource || drums <= 0) return;
+            const key = `${txDay}|${usageBatch}|${usageSource}`;
+            const prevMax = perDayMaxUsage.get(key) || 0;
+            if (drums > prevMax) perDayMaxUsage.set(key, drums);
+        });
+    });
+    perDayMaxUsage.forEach((drums, key) => {
+        const usageBatch = key.split('|')[1];
+        usageByBatch.set(usageBatch, (usageByBatch.get(usageBatch) || 0) + drums);
+    });
+    const allBatchIds = new Set<string>([
+        ...Array.from(obtainedByBatch.keys()),
+        ...Array.from(usageByBatch.keys()),
+    ]);
+    return Array.from(allBatchIds)
+        .map((batchId) => {
+            const obt = obtainedByBatch.get(batchId);
+            const obtained = obt?.obtained || 0;
+            const sourceDate = obt?.sourceDate || '';
+            const used = usageByBatch.get(batchId) || 0;
+            return { batchId, sourceDate, obtained, used, available: Math.max(0, obtained - used) };
+        })
+        .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
+};
+
 export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems: Transaction[]): T | null => {
     if (items.length === 0) return null;
     const lastIndexById = new Map<string, number>();
@@ -829,22 +892,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
     const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
-    const batchStockSummary = useMemo(() => {
-        const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
-        allSandTx.forEach((t: any) => {
-            const batchId = String(t.sandBatchId || '').trim();
-            if (!batchId) return;
-            const sourceDate = normalizeDate(t.date);
-            const rec = summary.get(batchId) || { sourceDate, obtained: 0, used: 0 };
-            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
-            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-            rec.used += usages.reduce((s: number, u: any) => s + Math.max(0, Number(u?.drums || 0)), 0);
-            summary.set(batchId, rec);
-        });
-        return Array.from(summary.entries())
-            .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
-            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
-    }, [allSandTx]);
+    const batchStockSummary = useMemo(() => computeBatchStockSummary(allSandTx as any), [allSandTx]);
     const sourceBatchesForHome = useMemo(() => {
         const selectedDate = normalizeDate(date);
         return batchStockSummary
@@ -1360,6 +1408,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSandAfternoonStart(first.sandAfternoonStart || '');
             setSandEveningEnd(first.sandEveningEnd || '');
             setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
+            // The same homeBatchUsages array is duplicated across sibling sand
+            // transactions for the same day (e.g., _s1, _s2, _drums). Take the max
+            // per (batchId, sourceDate) to avoid double-counting on prefill.
             const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
             sandTx.forEach((t: any) => {
                 const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
@@ -1367,10 +1418,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     const batchId = String(u?.batchId || '');
                     const sourceDate = String(u?.sourceDate || '');
                     if (!batchId || !sourceDate) return;
+                    const drums = Math.max(0, Number(u?.drums || 0));
                     const key = `${batchId}_${sourceDate}`;
-                    const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
-                    prev.drums += Math.max(0, Number(u?.drums || 0));
-                    usageMap.set(key, prev);
+                    const prev = usageMap.get(key);
+                    if (!prev || drums > prev.drums) {
+                        usageMap.set(key, { batchId, sourceDate, drums });
+                    }
                 });
             });
             setHomeBatchUsages(Array.from(usageMap.values()).filter(u => u.drums > 0));
