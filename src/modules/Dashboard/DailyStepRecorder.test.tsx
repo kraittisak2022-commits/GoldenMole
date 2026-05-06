@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import DailyStepRecorder, { computeSandBatchStockSummary, pickLatestByDayOrder } from './DailyStepRecorder';
 import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
@@ -141,6 +141,100 @@ describe('DailyStepRecorder integration', () => {
             />
         );
         expect(screen.getByDisplayValue('4700')).toBeInTheDocument();
+    });
+
+    it('does not double-count sand home batch usages mirrored across same-day Sand transactions', () => {
+        // Repro: a typical day with both sand machines (Old + New) writes _s1 and _s2
+        // transactions, each carrying an IDENTICAL sandHomeBatchUsages array describing
+        // the same physical drum allocation. Naively summing usages would double-count
+        // and shrink the lot's available stock below the true value, blocking subsequent
+        // legitimate wash-at-home entries with a "stock not enough" error.
+        const sandTxs: Transaction[] = [
+            // Day 1 — receive 10 drums into BATCH-001.
+            {
+                id: 'd1-receive',
+                date: '2026-04-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'จำนวนถังที่ได้วันนี้',
+                amount: 0,
+                drumsObtained: 10,
+                sandBatchId: 'BATCH-001',
+            } as Transaction,
+            // Day 2 — both machines used; 4 drums washed at home, allocated to BATCH-001.
+            // The same usage array is written onto BOTH transactions.
+            {
+                id: 'd2-s1',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
+                amount: 0,
+                drumsWashedAtHome: 4,
+                sandBatchId: 'BATCH-002',
+                sandHomeBatchUsages: [{ batchId: 'BATCH-001', sourceDate: '2026-04-20', drums: 4 }],
+            } as Transaction,
+            {
+                id: 'd2-s2',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
+                amount: 0,
+                drumsWashedAtHome: 4,
+                sandBatchId: 'BATCH-002',
+                sandHomeBatchUsages: [{ batchId: 'BATCH-001', sourceDate: '2026-04-20', drums: 4 }],
+            } as Transaction,
+        ];
+
+        const summary = computeSandBatchStockSummary(sandTxs);
+        const batch001 = summary.find(b => b.batchId === 'BATCH-001');
+        expect(batch001).toBeDefined();
+        expect(batch001!.obtained).toBe(10);
+        expect(batch001!.used).toBe(4); // not 8
+        expect(batch001!.available).toBe(6); // not 2
+    });
+
+    it('still sums distinct allocations across different days', () => {
+        const sandTxs: Transaction[] = [
+            {
+                id: 'r',
+                date: '2026-04-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'recv',
+                amount: 0,
+                drumsObtained: 10,
+                sandBatchId: 'BATCH-001',
+            } as Transaction,
+            {
+                id: 'd2',
+                date: '2026-04-21',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'use day 2',
+                amount: 0,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-001', sourceDate: '2026-04-20', drums: 3 }],
+            } as Transaction,
+            {
+                id: 'd3',
+                date: '2026-04-22',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                description: 'use day 3',
+                amount: 0,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-001', sourceDate: '2026-04-20', drums: 2 }],
+            } as Transaction,
+        ];
+        const batch001 = computeSandBatchStockSummary(sandTxs).find(b => b.batchId === 'BATCH-001')!;
+        expect(batch001.used).toBe(5);
+        expect(batch001.available).toBe(5);
     });
 
     it('picks latest attendance by createdAt when day has duplicates', () => {
