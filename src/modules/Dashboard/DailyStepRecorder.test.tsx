@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import DailyStepRecorder, { computeSandBatchStock, pickLatestByDayOrder } from './DailyStepRecorder';
 import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
@@ -183,5 +183,100 @@ describe('DailyStepRecorder integration', () => {
         const latest = pickLatestByDayOrder(attendanceOnly, dayTransactions);
         expect(latest?.id).toBe('att-new');
         expect(latest?.description).toBe('ค่าแรงใหม่');
+    });
+});
+
+describe('computeSandBatchStock', () => {
+    const baseSandTx = (over: Partial<Transaction> & Record<string, unknown>): Transaction => ({
+        id: String(over.id || `s_${Math.random()}`),
+        date: String(over.date || '2026-04-24'),
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: '',
+        amount: 0,
+        ...over,
+    } as Transaction);
+
+    it('does not double count obtained or used when sand1 + sand2 share the same lot on a single day', () => {
+        // Real-world layout: bookkeeper runs both machines on 2026-04-24, obtains 10 drums total
+        // for lot BATCH-A, washes 5 at home from the same lot. Save handler persists TWO rows
+        // (s1 + s2) with identical drumsObtained=10 and identical sandHomeBatchUsages.
+        const txs: Transaction[] = [
+            baseSandTx({
+                id: 's1',
+                date: '2026-04-24',
+                sandBatchId: 'BATCH-A',
+                drumsObtained: 10,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-A', sourceDate: '2026-04-24', drums: 5 }],
+            }),
+            baseSandTx({
+                id: 's2',
+                date: '2026-04-24',
+                sandBatchId: 'BATCH-A',
+                drumsObtained: 10,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-A', sourceDate: '2026-04-24', drums: 5 }],
+            }),
+        ];
+        const stock = computeSandBatchStock(txs);
+        expect(stock).toHaveLength(1);
+        expect(stock[0]).toMatchObject({ batchId: 'BATCH-A', obtained: 10, used: 5, available: 5 });
+    });
+
+    it('attributes used drums to the consumed lot, not the carrier row lot', () => {
+        // Yesterday produced BATCH-A (10 drums, none washed). Today produces BATCH-B,
+        // and home-washes 4 drums from the older BATCH-A (FIFO).
+        const txs: Transaction[] = [
+            baseSandTx({
+                id: 'yesterday',
+                date: '2026-04-23',
+                sandBatchId: 'BATCH-A',
+                drumsObtained: 10,
+                sandHomeBatchUsages: [],
+            }),
+            baseSandTx({
+                id: 'today',
+                date: '2026-04-24',
+                sandBatchId: 'BATCH-B',
+                drumsObtained: 6,
+                sandHomeBatchUsages: [{ batchId: 'BATCH-A', sourceDate: '2026-04-23', drums: 4 }],
+            }),
+        ];
+        const stock = computeSandBatchStock(txs);
+        const a = stock.find(s => s.batchId === 'BATCH-A');
+        const b = stock.find(s => s.batchId === 'BATCH-B');
+        // BATCH-A was consumed by 4 — must reduce A's available, not B's.
+        expect(a).toMatchObject({ obtained: 10, used: 4, available: 6 });
+        expect(b).toMatchObject({ obtained: 6, used: 0, available: 6 });
+    });
+
+    it('keeps the earliest sourceDate when multiple rows describe the same lot', () => {
+        const txs: Transaction[] = [
+            baseSandTx({ id: 's_apr24', date: '2026-04-24', sandBatchId: 'BATCH-X', drumsObtained: 0 }),
+            baseSandTx({ id: 's_apr20', date: '2026-04-20', sandBatchId: 'BATCH-X', drumsObtained: 8 }),
+        ];
+        const stock = computeSandBatchStock(txs);
+        expect(stock).toHaveLength(1);
+        expect(stock[0]).toMatchObject({ batchId: 'BATCH-X', sourceDate: '2026-04-20' });
+    });
+
+    it('ignores rows without a batch id and zero/invalid usages', () => {
+        const txs: Transaction[] = [
+            baseSandTx({ id: 'noBatch', date: '2026-04-24', drumsObtained: 99 }),
+            baseSandTx({
+                id: 'zero',
+                date: '2026-04-24',
+                sandBatchId: 'BATCH-Z',
+                drumsObtained: 5,
+                sandHomeBatchUsages: [
+                    { batchId: '', sourceDate: '2026-04-24', drums: 2 },
+                    { batchId: 'BATCH-Z', sourceDate: '2026-04-24', drums: 0 },
+                    { batchId: 'BATCH-Z', sourceDate: '2026-04-24', drums: -3 },
+                ],
+            }),
+        ];
+        const stock = computeSandBatchStock(txs);
+        expect(stock).toHaveLength(1);
+        expect(stock[0]).toMatchObject({ batchId: 'BATCH-Z', obtained: 5, used: 0, available: 5 });
     });
 });

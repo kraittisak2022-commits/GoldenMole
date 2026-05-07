@@ -250,6 +250,78 @@ export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems
     });
 };
 
+export interface SandBatchStockEntry {
+    batchId: string;
+    sourceDate: string;
+    obtained: number;
+    used: number;
+    available: number;
+}
+
+/**
+ * Build per-lot inventory for sand batches.
+ *
+ * Two correctness requirements (regressions historically):
+ *  - A single calendar day can persist multiple `DailyLog/Sand` rows that all
+ *    duplicate the same `sandHomeBatchUsages` array (sand1 + sand2 + drums-only
+ *    fallback). Iterating each row would double/triple-count `used`, so usages
+ *    are deduplicated by a stable signature before accumulating.
+ *  - Each usage targets `u.batchId` (the lot being consumed), which is not
+ *    necessarily the row's own `sandBatchId` (the lot produced that day).
+ *    `used` must therefore be attributed to `u.batchId`, not to the carrier
+ *    row's lot.
+ */
+export const computeSandBatchStock = (sandTxs: Transaction[]): SandBatchStockEntry[] => {
+    const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
+    const ensureEntry = (batchId: string, sourceDate: string) => {
+        const existing = summary.get(batchId);
+        if (existing) {
+            if (sourceDate && (!existing.sourceDate || sourceDate < existing.sourceDate)) {
+                existing.sourceDate = sourceDate;
+            }
+            return existing;
+        }
+        const fresh = { sourceDate, obtained: 0, used: 0 };
+        summary.set(batchId, fresh);
+        return fresh;
+    };
+
+    const seenObtained = new Set<string>();
+    const seenUsage = new Set<string>();
+    sandTxs.forEach((tx: any) => {
+        const rowDate = normalizeDate(tx.date);
+        const rowBatchId = String(tx.sandBatchId || '').trim();
+        if (rowBatchId) {
+            // Multiple rows on the same day share the same drumsObtained value;
+            // count it once per (date, batch) regardless of which sand1/sand2 row carries it.
+            const obtainedKey = `${rowDate}__${rowBatchId}`;
+            if (!seenObtained.has(obtainedKey)) {
+                seenObtained.add(obtainedKey);
+                const rec = ensureEntry(rowBatchId, rowDate);
+                rec.obtained += Math.max(0, Number(tx.drumsObtained || 0));
+            }
+        }
+        const usages = Array.isArray(tx.sandHomeBatchUsages) ? tx.sandHomeBatchUsages : [];
+        usages.forEach((u: any) => {
+            const usageBatchId = String(u?.batchId || '').trim();
+            const usageSourceDate = String(u?.sourceDate || '').trim();
+            const usageDrums = Math.max(0, Number(u?.drums || 0));
+            if (!usageBatchId || usageDrums <= 0) return;
+            // Sand1 + sand2 rows persist the SAME usage list. Dedup by (homeDate, batchId, sourceDate)
+            // so usage from a single home-wash event is counted once across all carrier rows.
+            const usageKey = `${rowDate}__${usageBatchId}__${usageSourceDate}`;
+            if (seenUsage.has(usageKey)) return;
+            seenUsage.add(usageKey);
+            const rec = ensureEntry(usageBatchId, usageSourceDate || rowDate);
+            rec.used += usageDrums;
+        });
+    });
+
+    return Array.from(summary.entries())
+        .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
+        .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
+};
+
 const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
@@ -829,22 +901,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
     const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
-    const batchStockSummary = useMemo(() => {
-        const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
-        allSandTx.forEach((t: any) => {
-            const batchId = String(t.sandBatchId || '').trim();
-            if (!batchId) return;
-            const sourceDate = normalizeDate(t.date);
-            const rec = summary.get(batchId) || { sourceDate, obtained: 0, used: 0 };
-            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
-            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-            rec.used += usages.reduce((s: number, u: any) => s + Math.max(0, Number(u?.drums || 0)), 0);
-            summary.set(batchId, rec);
-        });
-        return Array.from(summary.entries())
-            .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
-            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
-    }, [allSandTx]);
+    const batchStockSummary = useMemo(() => computeSandBatchStock(allSandTx), [allSandTx]);
     const sourceBatchesForHome = useMemo(() => {
         const selectedDate = normalizeDate(date);
         return batchStockSummary
