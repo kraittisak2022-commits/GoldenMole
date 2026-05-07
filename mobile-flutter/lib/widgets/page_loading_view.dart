@@ -1,8 +1,4 @@
-import 'dart:async';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class PageLoadingView extends StatefulWidget {
   const PageLoadingView({
@@ -16,86 +12,102 @@ class PageLoadingView extends StatefulWidget {
   State<PageLoadingView> createState() => _PageLoadingViewState();
 }
 
-class _PageLoadingViewState extends State<PageLoadingView> {
-  Timer? _timer;
-  int _progress = 0;
+class _PageLoadingViewState extends State<PageLoadingView>
+    with SingleTickerProviderStateMixin {
+  /// ความคืบหน้าแสดงผู้ใช้ (สูงสุด ~90%); ควบด้วย animation เดียว ไม่ใช้ timer เรียง setState
+  late AnimationController _progressCtrl;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(milliseconds: 70), (_) {
-      if (!mounted) return;
-      setState(() {
-        if (_progress < 90) {
-          _progress += 1 + math.Random().nextInt(3);
-          if (_progress > 90) _progress = 90;
-        }
-      });
-    });
+    _progressCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    );
+    _progressCtrl.forward();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _progressCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 240,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ShaderMask(
-              shaderCallback: (rect) => const LinearGradient(
-                colors: [Color(0xFF42A5F5), Color(0xFF1565C0)],
-              ).createShader(rect),
-              child: Text(
-                '${_progress.toString().padLeft(2, '0')}%',
-                style: GoogleFonts.kanit(
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final labelStyle =
+        theme.textTheme.bodyMedium?.copyWith(color: Colors.black54);
+
+    return AnimatedBuilder(
+      animation: _progressCtrl,
+      builder: (context, _) {
+        final t = Curves.easeOutCubic.transform(_progressCtrl.value);
+        final pct = ((t * 90).clamp(0.0, 90.0)).round();
+        final barValue = (t * 0.9).clamp(0.0, 0.9);
+        final headStyle =
+            theme.textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 30,
+                ) ??
+                const TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                );
+
+        return Center(
+          child: Container(
+            width: 240,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: _progress / 100,
-                minHeight: 10,
-                backgroundColor: const Color(0xFFE8EEF5),
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFF1E88E5),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ShaderMask(
+                  shaderCallback: (rect) =>
+                      LinearGradient(
+                        colors: [scheme.primary, scheme.tertiary],
+                      ).createShader(rect),
+                  blendMode: BlendMode.srcIn,
+                  child: Text(
+                    '${pct.toString().padLeft(2, '0')}%',
+                    style: headStyle,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: barValue,
+                    minHeight: 10,
+                    backgroundColor: const Color(0xFFE8EEF5),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(scheme.primary),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  widget.label,
+                  style: labelStyle,
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              widget.label,
-              style: GoogleFonts.kanit(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

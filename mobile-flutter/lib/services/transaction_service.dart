@@ -21,8 +21,23 @@ class TransactionService {
     return rows.map(AppTransaction.fromMap).toList();
   }
 
-  Future<void> upsertTransaction(AppTransaction item) async {
-    await _client.from('transactions').upsert(item.toInsertMap(), onConflict: 'id');
+  Future<List<AppTransaction>> fetchTransactionsForDate(String ymd) async {
+    final rows = await _client
+        .from('transactions')
+        .select()
+        .eq('date', ymd)
+        .order('created_at', ascending: false);
+    return rows.map(AppTransaction.fromMap).toList();
+  }
+
+  Future<void> upsertTransaction(
+    AppTransaction item, {
+    bool omitCreatedAt = false,
+  }) async {
+    await _client.from('transactions').upsert(
+          item.toInsertMap(omitCreatedAt: omitCreatedAt),
+          onConflict: 'id',
+        );
   }
 
   Future<void> deleteTransaction(String id) async {

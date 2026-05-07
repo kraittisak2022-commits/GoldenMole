@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// ไอคอน outline บนพื้นขาว: คงโทนเมนูจาก [accent] แต่ผสมกับสีหมึกเข้มตามความสว่างเพื่อคอนทราสต์
 Color _readableMenuIconColor(Color accent) {
@@ -47,11 +46,15 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final titleColor = const Color(0xFF1A2A3C);
-    final statusColor = widget.recordedForSelectedDay
-        ? const Color(0xFF1B8E4B)
-        : const Color(0xFFD64545);
+    final recorded = widget.recordedForSelectedDay;
+    final statusColor =
+        recorded ? const Color(0xFF168A45) : const Color(0xFFC73E3E);
     final accent = widget.tileColor;
+    final isSandWashTitle = widget.title.contains('บันทึกการร่อนทราย');
+    final cardTint = Color.lerp(Colors.white, accent, 0.44)!;
+    final borderColor = Color.lerp(const Color(0xFFDCE6F0), accent, 0.7)!;
     final iconBg = Color.lerp(accent, Colors.white, 0.92)!;
     final iconColor = _readableMenuIconColor(accent);
 
@@ -59,8 +62,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedScale(
-        scale: _pressed ? 0.975 : (_hovered ? 1.018 : 1),
-        duration: const Duration(milliseconds: 140),
+        scale: _pressed ? 0.96 : (_hovered ? 1.02 : 1),
+        duration: const Duration(milliseconds: 150),
         curve: Curves.easeOutCubic,
         child: Material(
           color: Colors.transparent,
@@ -69,180 +72,143 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
             onTapDown: (_) => setState(() => _pressed = true),
             onTapUp: (_) => setState(() => _pressed = false),
             onTapCancel: () => setState(() => _pressed = false),
-            borderRadius: BorderRadius.circular(22),
-            child: Ink(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFE4ECF4)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: _hovered ? 0.055 : 0.03),
-                    blurRadius: _hovered ? 14 : 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Stack(
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+              child: Column(
                 children: [
-                  Positioned(
-                    top: 10,
-                    left: 12,
-                    child: Container(
-                      width: 28,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD4DFEA),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: -18,
-                    right: -14,
-                    child: IgnorePointer(
-                      child: Container(
-                        width: 88,
-                        height: 88,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFFF6F9FC),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE3EBF3),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(22),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                    child: Column(
+                  Expanded(
+                    child: Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Color.lerp(cardTint, Colors.white, 0.18)!,
+                                cardTint,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(color: borderColor, width: 1.4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: _hovered ? 0.28 : 0.2),
+                                blurRadius: _hovered ? 20 : 14,
+                                offset: const Offset(0, 8),
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
                             children: [
-                              TweenAnimationBuilder<double>(
-                                tween:
-                                    Tween(begin: 0.98, end: _hovered ? 1.08 : 1),
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                                builder: (context, scale, child) {
-                                  return Transform.scale(
-                                    scale: scale,
-                                    child: child,
-                                  );
-                                },
-                                child: Container(
-                                  width: 92,
-                                  height: 92,
-                                  decoration: BoxDecoration(
-                                    color: iconBg,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: accent.withValues(alpha: 0.28),
-                                      width: 1.2,
+                              Positioned(
+                                top: -24,
+                                right: -20,
+                                child: IgnorePointer(
+                                  child: Container(
+                                    width: 96,
+                                    height: 96,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: accent.withValues(alpha: 0.22),
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.03),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
                                   ),
-                                  child: AnimatedRotation(
-                                    turns: _pressed ? -0.02 : 0,
-                                    duration: const Duration(milliseconds: 160),
+                                ),
+                              ),
+                              Center(
+                                child: AnimatedRotation(
+                                  turns: _pressed ? -0.014 : 0,
+                                  duration: const Duration(milliseconds: 150),
+                                  child: Container(
+                                    width: 94,
+                                    height: 94,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          iconBg,
+                                          Color.lerp(iconBg, Colors.white, 0.28)!,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(28),
+                                      border: Border.all(
+                                        color: accent.withValues(alpha: 0.32),
+                                        width: 1.2,
+                                      ),
+                                    ),
                                     child: Icon(
                                       widget.icon,
-                                      size: 56,
+                                      size: 52,
                                       color: iconColor,
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 14),
-                              Text(
-                                widget.title,
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.kanit(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: titleColor,
-                                  height: 1.2,
-                                ),
-                              ),
                             ],
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.bottomCenter,
+                        Positioned(
+                          top: -8,
+                          right: -6,
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOutCubic,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
+                            duration: const Duration(milliseconds: 180),
+                            width: 30,
+                            height: 30,
                             decoration: BoxDecoration(
-                              color: (widget.recordedForSelectedDay
-                                      ? const Color(0xFFE0F3E8)
-                                      : const Color(0xFFFFE7E7))
-                                  .withValues(alpha: 1),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: widget.recordedForSelectedDay
-                                    ? const Color(0xFF9FD8B5)
-                                    : const Color(0xFFF2B6B6),
-                                width: 1.2,
-                              ),
+                              color: recorded ? const Color(0xFF18A352) : const Color(0xFFFFB020),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.4),
                               boxShadow: [
                                 BoxShadow(
-                                  color:
-                                      statusColor.withValues(alpha: 0.24),
-                                  blurRadius: 12,
+                                  color: (recorded
+                                          ? const Color(0xFF18A352)
+                                          : const Color(0xFFFFB020))
+                                      .withValues(alpha: 0.38),
+                                  blurRadius: 10,
                                   offset: const Offset(0, 3),
                                 ),
                               ],
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.circle,
-                                  size: 7,
-                                  color: statusColor,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  widget.recordedForSelectedDay
-                                      ? 'บันทึกแล้ว'
-                                      : 'ยังไม่บันทึก',
-                                  style: GoogleFonts.kanit(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: statusColor,
-                                  ),
-                                ),
-                              ],
+                            child: Icon(
+                              recorded ? Icons.check_rounded : Icons.more_horiz_rounded,
+                              size: 18,
+                              color: Colors.white,
                             ),
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    widget.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontSize: isSandWashTitle ? 21 : 19,
+                      fontWeight: FontWeight.w800,
+                      color: titleColor,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    recorded ? 'บันทึกแล้ว' : 'แตะเพื่อบันทึก',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
                     ),
                   ),
                 ],

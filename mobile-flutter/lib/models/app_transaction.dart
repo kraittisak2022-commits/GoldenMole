@@ -40,6 +40,7 @@ class AppTransaction {
     this.otAmount,
     this.otHours,
     this.otDescription,
+    this.createdAt,
   });
 
   final String id;
@@ -82,6 +83,8 @@ class AppTransaction {
   final double? otAmount;
   final double? otHours;
   final String? otDescription;
+  /// จากคอลัมน์ created_at ของฐานข้อมูล (แสดงประวัติ / upsert ให้คงเวลาสร้าง)
+  final DateTime? createdAt;
 
   factory AppTransaction.fromMap(Map<String, dynamic> row) {
     final amountRaw = row['amount'];
@@ -137,10 +140,17 @@ class AppTransaction {
       otAmount: _toDouble(row['ot_amount']),
       otHours: _toDouble(row['ot_hours']),
       otDescription: row['ot_description']?.toString(),
+      createdAt: _parseDateTime(row['created_at']),
     );
   }
 
-  Map<String, dynamic> toInsertMap() {
+  static DateTime? _parseDateTime(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
+  }
+
+  Map<String, dynamic> toInsertMap({bool omitCreatedAt = false}) {
     return {
       'id': id,
       'date': date,
@@ -190,7 +200,8 @@ class AppTransaction {
       if (otHours != null) 'ot_hours': otHours,
       if (otDescription != null && otDescription!.isNotEmpty)
         'ot_description': otDescription,
-      'created_at': DateTime.now().toUtc().toIso8601String(),
+      if (!omitCreatedAt)
+        'created_at': DateTime.now().toUtc().toIso8601String(),
     };
   }
 

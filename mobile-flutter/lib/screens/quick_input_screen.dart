@@ -8,6 +8,7 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
+import '../utils/daily_module_transactions.dart';
 
 class QuickInputScreen extends StatefulWidget {
   const QuickInputScreen({
@@ -16,6 +17,8 @@ class QuickInputScreen extends StatefulWidget {
     required this.employeeService,
     this.initialCategory,
     this.appBarTitle,
+    /// วันที่ตามที่เลือกบนแดชบอร์ด (ให้โหลดธุรกรรมเดิมของวันนั้นได้)
+    this.selectedDateForModule,
   });
 
   final TransactionService service;
@@ -24,6 +27,7 @@ class QuickInputScreen extends StatefulWidget {
   /// ตั้งหมวดหมู่เริ่มต้นเมื่อเปิดจากการ์ดหน้าแรก
   final String? initialCategory;
   final String? appBarTitle;
+  final DateTime? selectedDateForModule;
 
   @override
   State<QuickInputScreen> createState() => _QuickInputScreenState();
@@ -73,9 +77,27 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   Map<String, int> _employeeUsage = const {};
   String? _selectedEmployeeId;
 
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   bool _saving = false;
   List<String> _otDescSuggestions = const [];
+  List<AppTransaction> _moduleDayTransactions = const [];
+  bool _moduleDayLoading = false;
+  /// แสดงรายการประวัติเฉพาะเมื่อผู้ใช้กด (ค่าเริ่มต้นซ่อน)
+  bool _moduleHistoryVisible = false;
+
+  /// แถวที่โหลดจากระบบ (คงค่า created_at เดิมเมื่ออัปเดตซ้ำ)
+  final Set<String> _persistOmitCreatedForIds = {};
+  /// แถวที่บันทึกในวงจรนี้แล้ว — อย่ายิง created_at ซ้ำ
+  final Set<String> _persistOmitCreatedSessionIds = {};
+  Map<String, String> _sandRowIdsByKey = {};
+  String? _vehicleMainTxId;
+  String? _vehicleTripTxId;
+  String? _fuelStockInTxId;
+  String? _fuelVehicleUseTxId;
+  String? _laborTxId;
+  String? _otTxId;
+  String? _homeSandTxId;
+  String? _genericTxId;
   bool get _isSandWashMode =>
       (widget.initialCategory ?? '').contains('ร่อนทราย');
   bool get _isVehicleTripMode =>
@@ -88,12 +110,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   String _fuelVehicleType = 'Diesel';
   String _laborWorkType = 'FullDay';
   final Set<String> _selectedLaborEmpIds = {};
-  bool get _isLaborMode => (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
+  bool get _isLaborMode =>
+      widget.initialCategory == 'ค่าแรง' ||
+      (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
   bool get _isOtMode => (widget.initialCategory ?? '').contains('OT');
 
   @override
   void initState() {
     super.initState();
+    final d = widget.selectedDateForModule ?? DateTime.now();
+    _selectedDate = DateTime(d.year, d.month, d.day);
     _categoryController = TextEditingController(
       text: widget.initialCategory?.trim().isNotEmpty == true
           ? widget.initialCategory!.trim()
@@ -102,6 +128,281 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     _loadEmployees();
     _loadAppCars();
     _loadOtSuggestions();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadModuleTransactions());
+  }
+
+  String _quickYmd(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  Future<void> _persist(AppTransaction t) async {
+    final omitCreated = _persistOmitCreatedForIds.contains(t.id) ||
+        _persistOmitCreatedSessionIds.contains(t.id);
+    await widget.service.upsertTransaction(t, omitCreatedAt: omitCreated);
+    _persistOmitCreatedSessionIds.add(t.id);
+  }
+
+  void _clearHydrationSlots() {
+    _persistOmitCreatedForIds.clear();
+    _persistOmitCreatedSessionIds.clear();
+    _sandRowIdsByKey.clear();
+    _vehicleMainTxId = null;
+    _vehicleTripTxId = null;
+    _fuelStockInTxId = null;
+    _fuelVehicleUseTxId = null;
+    _laborTxId = null;
+    _otTxId = null;
+    _homeSandTxId = null;
+    _genericTxId = null;
+  }
+
+  /// ล้างฟอร์มก่อนโหลดวันใหม่ เพื่อไม่ให้เหลือค่าจากวันก่อนหน้า
+  void _clearModuleFormFields() {
+    if (_isSandWashMode) {
+      _sand1MorningController.clear();
+      _sand1AfternoonController.clear();
+      _sand2MorningController.clear();
+      _sand2AfternoonController.clear();
+      _sandDrumsObtainedController.clear();
+      _sandMorningStartController.clear();
+      _sandAfternoonStartController.clear();
+      _sandEveningEndController.clear();
+    } else if (_isHomeSandMode) {
+      _sandDrumsObtainedController.clear();
+      _drumsWashedAtHomeController.clear();
+    } else if (_isVehicleTripMode) {
+      _vehicleIdController.clear();
+      _driverIdController.clear();
+      _vehicleWageController.clear();
+      _driverWageController.clear();
+      _vehicleWorkDetailsController.clear();
+      _tripMorningController.clear();
+      _tripAfternoonController.clear();
+      _cubicPerTripController.clear();
+    } else if (_isFuelMode) {
+      _fuelLitersController.clear();
+      _fuelAmountController.clear();
+      _fuelDetailsController.clear();
+      _fuelVehicleController.clear();
+      _fuelVehicleLitersController.clear();
+      _fuelVehicleTimeController.clear();
+    } else if (_isLaborMode) {
+      _selectedLaborEmpIds.clear();
+      _laborDailyWageController.clear();
+      _laborWorkDetailsController.clear();
+    } else if (_isOtMode) {
+      _selectedLaborEmpIds.clear();
+      _otRateController.clear();
+      _otHoursController.clear();
+      _otDescController.clear();
+    } else {
+      _amountController.clear();
+      _descriptionController.clear();
+    }
+  }
+
+  Future<void> _loadModuleTransactions() async {
+    final cat = widget.initialCategory?.trim();
+    if (!mounted || cat == null || cat.isEmpty) return;
+    setState(() {
+      _moduleDayLoading = true;
+      _moduleHistoryVisible = false;
+    });
+    _clearHydrationSlots();
+    _clearModuleFormFields();
+    try {
+      final ymd = _quickYmd(_selectedDate);
+      final rows = await widget.service.fetchTransactionsForDate(ymd);
+      final matched = rows
+          .where((t) => transactionMatchesDailyModule(t, ymd, cat))
+          .toList();
+      matched.sort((a, b) {
+        final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return tb.compareTo(ta);
+      });
+      if (!mounted) return;
+      for (final t in matched) {
+        _persistOmitCreatedForIds.add(t.id);
+      }
+      setState(() {
+        _moduleDayTransactions = matched;
+        _moduleDayLoading = false;
+        _moduleHistoryVisible = false;
+      });
+      _hydrateFormsFromTransactions(matched);
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _moduleDayTransactions = const [];
+        _moduleDayLoading = false;
+        _moduleHistoryVisible = false;
+      });
+    }
+  }
+
+  static String _strNum(double? v) {
+    if (v == null) return '';
+    if (v == v.roundToDouble()) return '${v.round()}';
+    final s = v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+    return s;
+  }
+
+  String _stripRecorderSuffix(String raw) =>
+      raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
+
+  void _hydrateFormsFromTransactions(List<AppTransaction> txs) {
+    if (txs.isEmpty) return;
+    void setIfEmpty(TextEditingController c, String val) {
+      if (val.isEmpty) return;
+      if (c.text.trim().isEmpty) c.text = val;
+    }
+
+    if (_isSandWashMode) {
+      for (final t in txs) {
+        final mt = (t.sandMachineType ?? '').toLowerCase();
+        if (mt == 'old' ||
+            (t.description).contains('เครื่องร่อน 1')) {
+          _sandRowIdsByKey.putIfAbsent('Old', () => t.id);
+          _sand1MorningController.text =
+              _strNum(t.sandMorning);
+          _sand1AfternoonController.text =
+              _strNum(t.sandAfternoon);
+        } else if (mt == 'new' ||
+            (t.description).contains('เครื่องร่อน 2')) {
+          _sandRowIdsByKey.putIfAbsent('New', () => t.id);
+          _sand2MorningController.text =
+              _strNum(t.sandMorning);
+          _sand2AfternoonController.text =
+              _strNum(t.sandAfternoon);
+        } else if (t.description.contains('จำนวนถัง')) {
+          _sandRowIdsByKey.putIfAbsent('drums', () => t.id);
+          _sandDrumsObtainedController.text = _strNum(t.drumsObtained);
+        }
+        if (t.sandMorningStart?.isNotEmpty == true) {
+          _sandMorningStartController.text = t.sandMorningStart!;
+        }
+        if (t.sandAfternoonStart?.isNotEmpty == true) {
+          _sandAfternoonStartController.text = t.sandAfternoonStart!;
+        }
+        if (t.sandEveningEnd?.isNotEmpty == true) {
+          _sandEveningEndController.text = t.sandEveningEnd!;
+        }
+      }
+      return;
+    }
+
+    if (_isHomeSandMode) {
+      final t = txs.first;
+      _homeSandTxId = t.id;
+      _sandDrumsObtainedController.text =
+          _strNum(t.drumsObtained);
+      _drumsWashedAtHomeController.text =
+          _strNum(t.drumsWashedAtHome);
+      return;
+    }
+
+    if (_isVehicleTripMode) {
+      for (final t in txs) {
+        if (t.category == 'Vehicle') {
+          _vehicleMainTxId = t.id;
+          _vehicleIdController.text = t.vehicleId ?? '';
+          _driverIdController.text = t.driverId ?? '';
+          _vehicleWageController.text = _strNum(t.vehicleWage);
+          _driverWageController.text = _strNum(t.driverWage);
+          _vehicleWorkDetailsController.text =
+              _stripRecorderSuffix(t.workDetails ?? '');
+          _vehicleWorkType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
+        } else if (t.subCategory == 'VehicleTrip' ||
+            (t.category == 'DailyLog' && (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
+          _vehicleTripTxId = t.id;
+          _tripMorningController.text =
+              _strNum(t.tripMorning);
+          _tripAfternoonController.text =
+              _strNum(t.tripAfternoon);
+          _cubicPerTripController.text =
+              _strNum(t.cubicPerTrip);
+        }
+      }
+      return;
+    }
+
+    if (_isFuelMode) {
+      for (final t in txs) {
+        if (t.fuelMovement == 'stock_out') {
+          _fuelVehicleUseTxId = t.id;
+          _fuelVehicleController.text = t.vehicleId ?? '';
+          _fuelVehicleLitersController.text = _strNum(t.quantity);
+          _fuelVehicleTimeController.text =
+              _stripRecorderSuffix(t.workDetails ?? '');
+          if ((t.fuelType ?? '').isNotEmpty) {
+            _fuelVehicleType =
+                t.fuelType == 'Gasoline' ? 'Gasoline' : 'Diesel';
+          }
+        } else if (t.fuelMovement == 'stock_in') {
+          _fuelStockInTxId = t.id;
+          _fuelLitersController.text = _strNum(t.quantity);
+          _fuelAmountController.text =
+              _strNum((t.amount).abs() > 0 ? t.amount : null);
+          _fuelDetailsController.text =
+              _stripRecorderSuffix(t.workDetails ?? '');
+          final u = (t.unit ?? '').toLowerCase();
+          if (u == 'gallon') _fuelUnitController.text = 'แกลลอน';
+          if ((t.fuelType ?? '').isNotEmpty) {
+            _fuelType = t.fuelType == 'Gasoline' ? 'Gasoline' : 'Diesel';
+          }
+        }
+      }
+      return;
+    }
+
+    if (_isLaborMode) {
+      final t =
+          txs.firstWhere((x) => (x.amount) > 0, orElse: () => txs.first);
+      _laborTxId = t.id;
+      _selectedLaborEmpIds
+        ..clear()
+        ..addAll(t.employeeIds);
+      final mult = ((t.workType ?? '') == 'HalfDay') ? 0.5 : 1.0;
+      if (mult > 0 && (t.amount) > 0 && t.employeeIds.isNotEmpty) {
+        _laborDailyWageController.text = _strNum(
+          (t.amount) / (t.employeeIds.length * mult),
+        );
+      }
+      _laborWorkDetailsController.text =
+          _stripRecorderSuffix(t.workDetails ?? '');
+      _laborWorkType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
+      return;
+    }
+
+    if (_isOtMode) {
+      final t = txs.first;
+      _otTxId = t.id;
+      _selectedLaborEmpIds
+        ..clear()
+        ..addAll(t.employeeIds);
+      _otRateController.text = _strNum(t.otAmount ?? t.amount);
+      _otHoursController.text = _strNum(t.otHours);
+      _otDescController.text =
+          _stripRecorderSuffix(t.otDescription ?? '');
+      return;
+    }
+
+    final g = txs.first;
+    _genericTxId = g.id;
+    _amountController.text = _strNum(g.amount);
+    _descriptionController.text =
+        _stripRecorderSuffix(g.description);
+    if (g.category.isNotEmpty &&
+        _categoryController.text.trim().isEmpty) {
+      _categoryController.text = g.category;
+    }
+    setIfEmpty(_categoryController, g.category);
   }
 
   @override
@@ -233,6 +534,112 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     } catch (_) {}
   }
 
+  static const Duration _successPopupHold = Duration(milliseconds: 1400);
+
+  void _showSavingPopup() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(strokeWidth: 2.8),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Text(
+                  'กำลังบันทึกข้อมูล',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _dismissSavingPopup() {
+    if (!mounted) return;
+    final nav = Navigator.of(context, rootNavigator: true);
+    if (nav.canPop()) nav.pop();
+  }
+
+  Future<void> _showSuccessPopupAndPopToHome(String message) async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                size: 56,
+                color: Colors.green.shade600,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await Future<void>.delayed(_successPopupHold);
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _runSaveWithPopups({
+    required Future<void> Function() body,
+    required String successMessage,
+  }) async {
+    if (!mounted) return;
+    setState(() => _saving = true);
+    var savingDialogOpen = false;
+    try {
+      _showSavingPopup();
+      savingDialogOpen = true;
+      await body();
+      if (!mounted) return;
+      _dismissSavingPopup();
+      savingDialogOpen = false;
+      await _showSuccessPopupAndPopToHome(successMessage);
+    } catch (error) {
+      if (savingDialogOpen && mounted) _dismissSavingPopup();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _saveQuickEntry() async {
     if (_isSandWashMode) {
       await _saveSandWashEntry();
@@ -259,53 +666,48 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       return;
     }
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
 
-    try {
-      final description = _appendRecorder(_descriptionController.text.trim());
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกข้อมูลสำเร็จ',
+      body: () async {
+        final description = _appendRecorder(_descriptionController.text.trim());
 
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final entry = AppTransaction(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        date: '$y-$m-$d',
-        type: 'Expense',
-        category: _categoryController.text.trim(),
-        description: description,
-        amount: double.parse(_amountController.text.trim()),
-      );
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final gid = _genericTxId ??
+            DateTime.now().millisecondsSinceEpoch.toString();
+        _genericTxId = gid;
+        final entry = AppTransaction(
+          id: gid,
+          date: '$y-$m-$d',
+          type: 'Expense',
+          category: _categoryController.text.trim(),
+          description: description,
+          amount: double.parse(_amountController.text.trim()),
+        );
 
-      await widget.service.upsertTransaction(entry);
-      await _rememberSelectedRecorder();
-      _amountController.clear();
-      _descriptionController.clear();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกข้อมูลสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+        await _persist(entry);
+        await _rememberSelectedRecorder();
+        _amountController.clear();
+        _descriptionController.clear();
+      },
+    );
   }
 
   Future<void> _saveSandWashEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกล้างทรายสำเร็จ',
+      body: () async {
       final s1m = double.tryParse(_sand1MorningController.text.trim()) ?? 0;
       final s1a = double.tryParse(_sand1AfternoonController.text.trim()) ?? 0;
       final s2m = double.tryParse(_sand2MorningController.text.trim()) ?? 0;
       final s2a = double.tryParse(_sand2AfternoonController.text.trim()) ?? 0;
       final drums = double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
       final total = s1m + s1a + s2m + s2a;
-      if (total <= 0 && drums <= 0) {
-        throw 'กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง';
+      final hadPriorSandRows = _sandRowIdsByKey.isNotEmpty;
+      if (total <= 0 && drums <= 0 && !hadPriorSandRows) {
+        throw 'กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง (บันทึกได้ทีละช่วงแล้วกลับมาเพิ่มภายหลังได้)';
       }
 
       final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -327,9 +729,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         required double morning,
         required double afternoon,
       }) async {
-        if (morning + afternoon <= 0) return;
+        final sandKey = machineType == 'Old' ? 'Old' : 'New';
+        final existingRow = _sandRowIdsByKey[sandKey];
+        if (morning + afternoon <= 0 && existingRow == null) return;
+        final tid = existingRow ??
+            '${DateTime.now().millisecondsSinceEpoch}_$suffix';
+        _sandRowIdsByKey[sandKey] = tid;
         final tx = AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_$suffix',
+          id: tid,
           date: date,
           type: 'Expense',
           category: commonCategory,
@@ -345,7 +752,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
           sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
         );
-        await widget.service.upsertTransaction(tx);
+        await _persist(tx);
       }
 
       await saveMachine(
@@ -363,10 +770,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         afternoon: s2a,
       );
 
-      if (total <= 0 && drums > 0) {
-        await widget.service.upsertTransaction(
+      final hasDrumsRow = _sandRowIdsByKey.containsKey('drums');
+      final persistDrums =
+          hasDrumsRow || (total <= 0 && drums > 0);
+      if (persistDrums && (hasDrumsRow || drums > 0)) {
+        final drumsId = _sandRowIdsByKey['drums'] ??
+            '${DateTime.now().millisecondsSinceEpoch}_drums';
+        _sandRowIdsByKey['drums'] = drumsId;
+        await _persist(
           AppTransaction(
-            id: '${DateTime.now().millisecondsSinceEpoch}_drums',
+            id: drumsId,
             date: date,
             type: 'Expense',
             category: commonCategory,
@@ -391,24 +804,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _sandAfternoonStartController.clear();
       _sandEveningEndController.clear();
       await _rememberSelectedRecorder();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกล้างทรายสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveHomeSandEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกทรายที่ล้างที่บ้านสำเร็จ',
+      body: () async {
       final drums = double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
       final drumsHome =
           double.tryParse(_drumsWashedAtHomeController.text.trim()) ?? 0;
@@ -418,9 +821,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final y = _selectedDate.year.toString().padLeft(4, '0');
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
-      await widget.service.upsertTransaction(
+      final homeId = _homeSandTxId ??
+          '${DateTime.now().millisecondsSinceEpoch}_home_sand';
+      _homeSandTxId = homeId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_home_sand',
+          id: homeId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: _categoryController.text.trim(),
@@ -434,23 +840,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกทรายที่ล้างที่บ้านสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveVehicleTripEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกรถและเที่ยวรถสำเร็จ',
+      body: () async {
       final vehicle = _vehicleIdController.text.trim();
       final driver = _driverIdController.text.trim();
       final details = _vehicleWorkDetailsController.text.trim();
@@ -469,9 +866,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
       final date = '$y-$m-$d';
-      await widget.service.upsertTransaction(
+      final mainVehId = _vehicleMainTxId ??
+          '${DateTime.now().millisecondsSinceEpoch}_veh';
+      _vehicleMainTxId = mainVehId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_veh',
+          id: mainVehId,
           date: date,
           type: 'Expense',
           category: 'Vehicle',
@@ -490,9 +890,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       );
       if (totalTrips > 0) {
         final totalCubic = totalTrips * cubicPerTrip;
-        await widget.service.upsertTransaction(
+        final tripId = _vehicleTripTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_trip';
+        _vehicleTripTxId = tripId;
+        await _persist(
           AppTransaction(
-            id: '${DateTime.now().millisecondsSinceEpoch}_trip',
+            id: tripId,
             date: date,
             type: 'Expense',
             category: 'DailyLog',
@@ -524,23 +927,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _tripAfternoonController.clear();
       _cubicPerTripController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกรถและเที่ยวรถสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveFuelStockInEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกซื้อน้ำมันสำเร็จ',
+      body: () async {
       final liters = double.tryParse(_fuelLitersController.text.trim()) ?? 0;
       final amount = double.tryParse(_fuelAmountController.text.trim()) ?? 0;
       if (amount <= 0) throw 'กรุณาระบุราคาซื้อน้ำมัน';
@@ -548,9 +942,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
       final unit = _fuelUnitController.text.trim() == 'แกลลอน' ? 'gallon' : 'L';
-      await widget.service.upsertTransaction(
+      final fuelInId = _fuelStockInTxId ??
+          '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
+      _fuelStockInTxId = fuelInId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_fuel_in',
+          id: fuelInId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: 'Fuel',
@@ -570,23 +967,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _fuelAmountController.clear();
       _fuelDetailsController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกซื้อน้ำมันสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveFuelVehicleUsageEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
+      body: () async {
       final vehicle = _fuelVehicleController.text.trim();
       final liters = double.tryParse(_fuelVehicleLitersController.text.trim()) ?? 0;
       if (vehicle.isEmpty) throw 'กรุณาระบุรถ';
@@ -594,9 +982,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final y = _selectedDate.year.toString().padLeft(4, '0');
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
-      await widget.service.upsertTransaction(
+      final fuelOutId = _fuelVehicleUseTxId ??
+          '${DateTime.now().millisecondsSinceEpoch}_fuel_out';
+      _fuelVehicleUseTxId = fuelOutId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_fuel_out',
+          id: fuelOutId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: 'Fuel',
@@ -617,23 +1008,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกการใช้น้ำมันรายรถสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveLaborEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกค่าแรงสำเร็จ',
+      body: () async {
       if (_selectedLaborEmpIds.isEmpty) throw 'กรุณาเลือกพนักงาน';
       final wage = double.tryParse(_laborDailyWageController.text.trim()) ?? 0;
       if (wage <= 0) throw 'กรุณาระบุค่าแรงต่อวัน';
@@ -651,9 +1033,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           })
           .where((e) => e.isNotEmpty)
           .join(', ');
-      await widget.service.upsertTransaction(
+      final laborId = _laborTxId ??
+          '${DateTime.now().millisecondsSinceEpoch}_labor';
+      _laborTxId = laborId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_labor',
+          id: laborId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: 'Labor',
@@ -673,23 +1058,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _laborDailyWageController.clear();
       _laborWorkDetailsController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึกค่าแรงสำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _saveOtEntry() async {
-    setState(() => _saving = true);
-    try {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึก OT สำเร็จ',
+      body: () async {
       if (_selectedLaborEmpIds.isEmpty) throw 'กรุณาเลือกพนักงาน';
       final rate = double.tryParse(_otRateController.text.trim()) ?? 0;
       final hours = double.tryParse(_otHoursController.text.trim()) ?? 0;
@@ -699,9 +1075,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
       final total = rate * hours * _selectedLaborEmpIds.length;
-      await widget.service.upsertTransaction(
+      final otId =
+          _otTxId ?? '${DateTime.now().millisecondsSinceEpoch}_ot';
+      _otTxId = otId;
+      await _persist(
         AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_ot',
+          id: otId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: 'Labor',
@@ -723,18 +1102,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _otHoursController.clear();
       _otDescController.clear();
       await _rememberSelectedRecorder();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('บันทึก OT สำเร็จ')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      },
+    );
   }
 
   Future<void> _pickDate() async {
@@ -745,7 +1114,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) {
-      setState(() => _selectedDate = picked);
+      setState(
+        () => _selectedDate =
+            DateTime(picked.year, picked.month, picked.day),
+      );
+      await _loadModuleTransactions();
     }
   }
 
@@ -771,6 +1144,184 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     final dd = d.day.toString().padLeft(2, '0');
     final mm = d.month.toString().padLeft(2, '0');
     return '$dd/$mm/$be';
+  }
+
+  Widget _buildModuleHistorySection() {
+    if (_moduleDayLoading) return const SizedBox.shrink();
+
+    final n = _moduleDayTransactions.length;
+    if (n == 0) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1A2A3C),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD9E4F1)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => setState(
+                    () => _moduleHistoryVisible = !_moduleHistoryVisible,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _moduleHistoryVisible
+                            ? Icons.expand_less_rounded
+                            : Icons.history_rounded,
+                        size: 22,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _moduleHistoryVisible
+                              ? 'ซ่อนประวัติ'
+                              : 'ดูประวัติในวันนี้ ($n รายการ)',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              PopupMenuButton<String>(
+                tooltip: 'เมนูประวัติ',
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                onSelected: (value) {
+                  if (value == 'show') {
+                    setState(() => _moduleHistoryVisible = true);
+                  } else if (value == 'hide') {
+                    setState(() => _moduleHistoryVisible = false);
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'show',
+                    child: Text(
+                      'แสดงรายการ',
+                      style: GoogleFonts.kanit(),
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'hide',
+                    child: Text(
+                      'ซ่อนรายการ',
+                      style: GoogleFonts.kanit(),
+                    ),
+                  ),
+                ],
+                child: Material(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: const BorderSide(color: Color(0xFFD9E4F1)),
+                  ),
+                  child: const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Icon(Icons.more_vert_rounded, size: 22),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.hardEdge,
+            child: _moduleHistoryVisible
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE7EDF5)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
+                              style: GoogleFonts.kanit(
+                                fontSize: 12,
+                                color: Colors.black54,
+                                height: 1.25,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            ..._moduleDayTransactions.map((t) {
+                              final sub = (t.subCategory ?? '').trim();
+                              final meta = [
+                                t.category,
+                                if (sub.isNotEmpty) sub,
+                              ].join(' · ');
+                              return ListTile(
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  t.description,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.kanit(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '$meta\n${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
+                                  style: GoogleFonts.kanit(
+                                    fontSize: 11,
+                                    color: Colors.black54,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
   }
 
   Employee? get _selectedRecorder {
@@ -1114,6 +1665,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
                         children: [
+                          _buildModuleHistorySection(),
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -1179,7 +1731,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     final drums = double.tryParse(_sandDrumsObtainedController.text) ?? 0;
     InputDecoration deco(String label, IconData icon) => InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.kanit(color: const Color(0xFF5A6B7F)),
+          labelStyle: GoogleFonts.kanit(
+            color: const Color(0xFF5A6B7F),
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
           prefixIcon: Icon(icon, color: const Color(0xFF5A6B7F), size: 18),
           filled: true,
           fillColor: Colors.white,
@@ -1207,7 +1763,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         onTap: () => _openNumericPad(controller: controller, label: label),
         style: GoogleFonts.kanit(
           color: const Color(0xFF1D2A3A),
-          fontSize: 19,
+          fontSize: 23,
           fontWeight: FontWeight.w700,
         ),
         decoration: deco(label, Icons.numbers),
@@ -1332,6 +1888,15 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               fontSize: 22,
               fontWeight: FontWeight.w700,
                 color: const Color(0xFF0F5FAF),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'บันทึกทีละส่วนได้ เช่น กรอกคิวเช้าก่อน แล้วกลับมาเพิ่มคิวบ่ายภายหลัง',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              height: 1.35,
+              color: const Color(0xFF5A6B7F),
             ),
           ),
           const SizedBox(height: 14),
@@ -1464,7 +2029,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 const SizedBox(height: 10),
                 _AnimatedInputField(
                   controller: _sandMorningStartController,
-                  style: GoogleFonts.kanit(color: const Color(0xFF1D2A3A)),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                   textInputAction: TextInputAction.next,
                   readOnly: true,
                   onTap: () => _pickSandTime(
@@ -1477,7 +2046,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 const SizedBox(height: 8),
                 _AnimatedInputField(
                   controller: _sandAfternoonStartController,
-                  style: GoogleFonts.kanit(color: const Color(0xFF1D2A3A)),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                   textInputAction: TextInputAction.next,
                   readOnly: true,
                   onTap: () => _pickSandTime(
@@ -1490,7 +2063,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 const SizedBox(height: 8),
                 _AnimatedInputField(
                   controller: _sandEveningEndController,
-                  style: GoogleFonts.kanit(color: const Color(0xFF1D2A3A)),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                   textInputAction: TextInputAction.done,
                   readOnly: true,
                   onTap: () => _pickSandTime(
@@ -1605,15 +2182,15 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             enabled: !_saving,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 gradient: const LinearGradient(
                   colors: [Color(0xFF26C6DA), Color(0xFF1565C0)],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1565C0).withValues(alpha: 0.26),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
+                    color: const Color(0xFF1565C0).withValues(alpha: 0.32),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
@@ -1621,25 +2198,30 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 onPressed: _saving ? null : _saveQuickEntry,
                 icon: _saving
                     ? const SizedBox(
-                        height: 16,
-                        width: 16,
+                        height: 22,
+                        width: 22,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
+                          strokeWidth: 2.4,
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.waves, color: Colors.white),
+                    : const Icon(Icons.waves, color: Colors.white, size: 26),
                 label: Text(
                   _saving ? 'กำลังบันทึก...' : 'บันทึกล้างทราย',
                   style: GoogleFonts.kanit(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
                   ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
-                  minimumSize: const Size.fromHeight(50),
+                  minimumSize: const Size(double.infinity, 60),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
+                  ),
                 ),
               ),
             ),

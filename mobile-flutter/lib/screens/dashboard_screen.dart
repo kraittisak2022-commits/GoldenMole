@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -11,6 +10,7 @@ import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
 import '../services/transaction_service.dart';
+import '../utils/daily_module_transactions.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/page_loading_view.dart';
 import '../widgets/record_module_card.dart';
@@ -20,6 +20,32 @@ import 'employees_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
 import 'transactions_screen.dart';
+
+String _formatThaiDateFromYmd(String ymd) {
+  try {
+    final p = ymd.split('-');
+    if (p.length != 3) return ymd;
+    final d = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+    const months = [
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.',
+    ];
+    final be = d.year + 543;
+    return '${d.day} ${months[d.month - 1]} $be';
+  } catch (_) {
+    return ymd;
+  }
+}
 
 class _DailyModuleDef {
   const _DailyModuleDef({
@@ -43,42 +69,42 @@ const List<_DailyModuleDef> _kDailyModules = [
     icon: Icons.water_drop_outlined,
     category: 'บันทึกการร่อนทราย',
     quickInputTitle: 'บันทึกการร่อนทราย',
-    color: Color(0xFFE56DB1),
+    color: Color(0xFFFF4FA3),
   ),
   _DailyModuleDef(
     title: 'บันทึกรถและจำนวนเที่ยวรถ',
     icon: Icons.local_shipping_outlined,
     category: 'จำนวนเที่ยวรถ',
     quickInputTitle: 'บันทึกรถและเที่ยว',
-    color: Color(0xFF33C6B8),
+    color: Color(0xFF00B8D9),
   ),
   _DailyModuleDef(
     title: 'น้ำมัน',
     icon: Icons.oil_barrel_outlined,
     category: 'น้ำมัน',
     quickInputTitle: 'บันทึกน้ำมัน',
-    color: Color(0xFFF3A62C),
+    color: Color(0xFFFF9800),
   ),
   _DailyModuleDef(
     title: 'ทรายที่ล้างที่บ้าน',
     icon: Icons.waves_outlined,
     category: 'ทรายที่ล้างที่บ้าน',
     quickInputTitle: 'ทรายที่ล้างที่บ้าน',
-    color: Color(0xFF6C7CF3),
+    color: Color(0xFF4A6FFF),
   ),
   _DailyModuleDef(
     title: 'บันทึกการทำงาน',
     icon: Icons.payments_outlined,
     category: 'ค่าแรง',
     quickInputTitle: 'บันทึกการทำงาน',
-    color: Color(0xFF8C5FD3),
+    color: Color(0xFF7E3FF2),
   ),
   _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
     icon: Icons.groups_2_outlined,
     category: 'OT',
     quickInputTitle: 'บันทึกการทำงานล่วงเวลา',
-    color: Color(0xFFE95D6A),
+    color: Color(0xFFFF4D6D),
   ),
 ];
 
@@ -146,10 +172,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _formatBuddhistDateButton(DateTime d) {
+    const wk = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
     final be = d.year + 543;
     final dd = d.day.toString().padLeft(2, '0');
     final mm = d.month.toString().padLeft(2, '0');
-    return '$dd/$mm/$be';
+    return '${wk[d.weekday - 1]} $dd/$mm/$be';
   }
 
   bool _hasEntryForDay(
@@ -157,7 +184,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String category,
     String dayKey,
   ) {
-    return list.any((t) => t.date == dayKey && t.category == category);
+    return list.any(
+      (t) => transactionMatchesDailyModule(t, dayKey, category),
+    );
   }
 
   Future<void> _pickDay() async {
@@ -168,11 +197,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       initialDate: _selectedDay,
       firstDate: first,
       lastDate: last,
-      locale: const Locale('th', 'TH'),
     );
     if (picked != null) {
+      if (!mounted) return;
+      final pickedDate = picked;
       setState(
-        () => _selectedDay = DateTime(picked.year, picked.month, picked.day),
+        () => _selectedDay = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+        ),
       );
     }
   }
@@ -184,6 +218,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         employeeService: EmployeeService(Supabase.instance.client),
         initialCategory: m.category,
         appBarTitle: m.quickInputTitle,
+        selectedDateForModule: DateTime(
+          _selectedDay.year,
+          _selectedDay.month,
+          _selectedDay.day,
+        ),
       ),
     ).then((_) => _refreshHome());
   }
@@ -257,25 +296,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   if (!wide) _mobileTopBar(client: client),
                   Expanded(
-                    child: _bodyPage == 0
-                        ? _DailyHomeBody(
+                    child: FutureBuilder<_HomePayload>(
+                      future: _homeFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            snapshot.data == null) {
+                          final loadingLabel = _bodyPage == 0
+                              ? 'กำลังโหลดแดชบอร์ด'
+                              : 'กำลังโหลดภาพรวม';
+                          return PageLoadingView(label: loadingLabel);
+                        }
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'โหลดข้อมูลไม่สำเร็จ\n${snapshot.error}',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context).textTheme.bodyLarge,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  FilledButton(
+                                    onPressed: _refreshHome,
+                                    child: const Text('ลองอีกครั้ง'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        final data = snapshot.data;
+                        if (data == null) {
+                          return const PageLoadingView(
+                            label: 'กำลังโหลดข้อมูล',
+                          );
+                        }
+                        if (_bodyPage == 0) {
+                          return _DailyHomeContent(
                             currentAdmin: widget.currentAdmin,
-                            homeFuture: _homeFuture,
+                            data: data,
                             selectedDay: _selectedDay,
                             clock: _clock,
-                            onRetry: _refreshHome,
                             onPullRefresh: _pullRefresh,
                             onPickDay: _pickDay,
                             dateKey: _dateKey,
-                            formatBuddhistDateButton: _formatBuddhistDateButton,
+                            formatBuddhistDateButton:
+                                _formatBuddhistDateButton,
                             hasEntryForDay: _hasEntryForDay,
                             onOpenModule: _openQuickInput,
-                          )
-                        : _MetricsBody(
-                            homeFuture: _homeFuture,
-                            currentAdmin: widget.currentAdmin,
-                            onRetry: _refreshHome,
-                          ),
+                          );
+                        }
+                        return _MetricsContent(
+                          data: data,
+                          currentAdmin: widget.currentAdmin,
+                          onRetry: _refreshHome,
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -405,13 +486,12 @@ class _HomePayload {
   final List<AppTransaction> recent;
 }
 
-class _DailyHomeBody extends StatelessWidget {
-  const _DailyHomeBody({
+class _DailyHomeContent extends StatelessWidget {
+  const _DailyHomeContent({
     required this.currentAdmin,
-    required this.homeFuture,
+    required this.data,
     required this.selectedDay,
     required this.clock,
-    required this.onRetry,
     required this.onPullRefresh,
     required this.onPickDay,
     required this.dateKey,
@@ -421,10 +501,9 @@ class _DailyHomeBody extends StatelessWidget {
   });
 
   final AdminUser currentAdmin;
-  final Future<_HomePayload> homeFuture;
+  final _HomePayload data;
   final DateTime selectedDay;
   final DateTime clock;
-  final VoidCallback onRetry;
   final Future<void> Function() onPullRefresh;
   final VoidCallback onPickDay;
   final String Function(DateTime) dateKey;
@@ -435,145 +514,86 @@ class _DailyHomeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_HomePayload>(
-      future: homeFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const PageLoadingView(label: 'กำลังโหลดแดชบอร์ด');
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'โหลดข้อมูลไม่สำเร็จ\n${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: onRetry,
-                    child: Text('ลองอีกครั้ง', style: GoogleFonts.kanit()),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+    final dayKey = dateKey(selectedDay);
+    final lastLabel = data.recent.isNotEmpty
+        ? _formatThaiDateFromYmd(data.recent.first.date)
+        : '—';
 
-        final data = snapshot.data!;
-        final dayKey = dateKey(selectedDay);
-        final lastLabel = data.recent.isNotEmpty
-            ? _formatThaiDateFromYmd(data.recent.first.date)
-            : '—';
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _HomeHeaderCompact(
-                currentAdmin: currentAdmin,
-                appName: data.summary.appName,
-                currentTime:
-                    '${clock.hour.toString().padLeft(2, '0')}:${clock.minute.toString().padLeft(2, '0')}',
-                lastLabel: lastLabel,
-                selectedDateLabel: formatBuddhistDateButton(selectedDay),
-                onPickDay: onPickDay,
-                onRefresh: onPullRefresh,
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.03),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  child: LayoutBuilder(
-                    key: ValueKey(formatBuddhistDateButton(selectedDay)),
-                    builder: (context, constraints) {
-                    final w = constraints.maxWidth;
-                    final cross = w >= 420 ? 3 : 2;
-                    const gap = 8.0;
-                    final rows = (_kDailyModules.length / cross).ceil();
-                    final cellWidth = (w - (gap * (cross - 1))) / cross;
-                    final cellHeight =
-                        (constraints.maxHeight - (gap * (rows - 1))) / rows;
-                    final ratio = cellHeight <= 0
-                        ? 1.0
-                        : (cellWidth / cellHeight);
-                    return GridView.builder(
-                      padding: EdgeInsets.zero,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _kDailyModules.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: cross,
-                        mainAxisSpacing: gap,
-                        crossAxisSpacing: gap,
-                        childAspectRatio: ratio,
-                      ),
-                      itemBuilder: (context, index) {
-                        final m = _kDailyModules[index];
-                        final done = hasEntryForDay(
-                          data.recent,
-                          m.category,
-                          dayKey,
-                        );
-                        return RecordModuleCard(
-                          title: m.title,
-                          icon: m.icon,
-                          tileColor: m.color,
-                          showLightStyle: index.isOdd,
-                          recordedForSelectedDay: done,
-                          onTap: () => onOpenModule(m),
-                        );
-                      },
-                    );
-                    },
-                  ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _HomeHeaderCompact(
+            currentAdmin: currentAdmin,
+            appName: data.summary.appName,
+            currentTime:
+                '${clock.hour.toString().padLeft(2, '0')}:${clock.minute.toString().padLeft(2, '0')}',
+            lastLabel: lastLabel,
+            selectedDateLabel: formatBuddhistDateButton(selectedDay),
+            onPickDay: onPickDay,
+            onRefresh: onPullRefresh,
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.03),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
                 ),
               ),
-            ],
+              child: LayoutBuilder(
+                key: ValueKey(formatBuddhistDateButton(selectedDay)),
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final cross = w >= 420 ? 3 : 2;
+                  const gap = 8.0;
+                  final rows = (_kDailyModules.length / cross).ceil();
+                  final cellWidth = (w - (gap * (cross - 1))) / cross;
+                  final cellHeight =
+                      (constraints.maxHeight - (gap * (rows - 1))) / rows;
+                  final ratio =
+                      cellHeight <= 0 ? 1.0 : (cellWidth / cellHeight);
+                  return GridView.builder(
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _kDailyModules.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: cross,
+                      mainAxisSpacing: gap,
+                      crossAxisSpacing: gap,
+                      childAspectRatio: ratio,
+                    ),
+                    itemBuilder: (context, index) {
+                      final m = _kDailyModules[index];
+                      final done = hasEntryForDay(
+                        data.recent,
+                        m.category,
+                        dayKey,
+                      );
+                      return RecordModuleCard(
+                        title: m.title,
+                        icon: m.icon,
+                        tileColor: m.color,
+                        showLightStyle: index.isOdd,
+                        recordedForSelectedDay: done,
+                        onTap: () => onOpenModule(m),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
-  }
-
-  static String _formatThaiDateFromYmd(String ymd) {
-    try {
-      final p = ymd.split('-');
-      if (p.length != 3) return ymd;
-      final d = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
-      const months = [
-        'ม.ค.',
-        'ก.พ.',
-        'มี.ค.',
-        'เม.ย.',
-        'พ.ค.',
-        'มิ.ย.',
-        'ก.ค.',
-        'ส.ค.',
-        'ก.ย.',
-        'ต.ค.',
-        'พ.ย.',
-        'ธ.ค.',
-      ];
-      final be = d.year + 543;
-      return '${d.day} ${months[d.month - 1]} $be';
-    } catch (_) {
-      return ymd;
-    }
   }
 }
 
@@ -598,21 +618,26 @@ class _HomeHeaderCompact extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF11A8BA), Color(0xFF3DBECC)],
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.primary,
+            colorScheme.primary.withValues(alpha: 0.8),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Color(0xFF11A8BA).withValues(alpha: 0.22),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
+            color: colorScheme.primary.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -621,76 +646,89 @@ class _HomeHeaderCompact extends StatelessWidget {
         children: [
           Row(
             children: [
-              const AppLogo(size: 28),
-              const SizedBox(width: 8),
+              const AppLogo(size: 40),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'บันทึกประจำวัน',
-                  style: GoogleFonts.kanit(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'บันทึกประจำวัน',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      appName,
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  ],
                 ),
               ),
-              FilledButton.icon(
+              IconButton(
                 onPressed: () => onRefresh(),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: Text(
-                  'รีเฟรช',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.88),
-                  foregroundColor: const Color(0xFF17374C),
-                ),
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 28),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Text(
-                  '$appName • ${currentAdmin.displayName}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.kanit(
-                    fontSize: 12.5,
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontWeight: FontWeight.w500,
+              Row(
+                children: [
+                  const Icon(Icons.person_pin, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    currentAdmin.displayName,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: onPickDay,
-                icon: const Icon(Icons.calendar_today_outlined, size: 15),
-                label: Text(
-                  selectedDateLabel,
-                  style: GoogleFonts.kanit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+              InkWell(
+                onTap: onPickDay,
+                borderRadius: BorderRadius.circular(20),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.75)),
-                  backgroundColor: Colors.white.withValues(alpha: 0.20),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.calendar_today,
+                        color: Color(0xFF0D7284),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        selectedDateLabel,
+                        style: const TextStyle(
+                          color: Color(0xFF0D7284),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'เวลา $currentTime • ล่าสุด: $lastLabel',
-            style: GoogleFonts.kanit(
-              fontSize: 11.5,
-              color: Colors.white.withValues(alpha: 0.92),
-            ),
           ),
         ],
       ),
@@ -698,91 +736,83 @@ class _HomeHeaderCompact extends StatelessWidget {
   }
 }
 
-class _MetricsBody extends StatelessWidget {
-  const _MetricsBody({
-    required this.homeFuture,
+class _MetricsContent extends StatelessWidget {
+  const _MetricsContent({
+    required this.data,
     required this.currentAdmin,
     required this.onRetry,
   });
 
-  final Future<_HomePayload> homeFuture;
+  final _HomePayload data;
   final AdminUser currentAdmin;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final client = Supabase.instance.client;
-    return FutureBuilder<_HomePayload>(
-      future: homeFuture,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const PageLoadingView(label: 'กำลังโหลดภาพรวม');
-        }
-        final data = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Text(
-                  'สรุปภาพรวม',
-                  style: GoogleFonts.kanit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
-              ],
-            ),
-            const SizedBox(height: 8),
             Text(
-              'ผู้ใช้งาน: ${currentAdmin.displayName} (${currentAdmin.role})',
-              style: GoogleFonts.kanit(fontSize: 13, color: Colors.black54),
+              'สรุปภาพรวม',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            const SizedBox(height: 12),
-            _MetricTile(
-              title: 'พนักงานทั้งหมด',
-              value: '${data.summary.employeeCount}',
-              icon: Icons.groups_2_outlined,
-            ),
-            _MetricTile(
-              title: 'รายการธุรกรรม',
-              value: '${data.summary.transactionCount}',
-              icon: Icons.receipt_long_outlined,
-            ),
-            _MetricTile(
-              title: 'โครงการที่ดิน',
-              value: '${data.summary.projectCount}',
-              icon: Icons.location_city_outlined,
-            ),
-            _MetricTile(
-              title: 'รายรับรวม',
-              value: '${data.summary.totalRevenue.toStringAsFixed(2)} บาท',
-              icon: Icons.trending_up_outlined,
-            ),
-            _MetricTile(
-              title: 'รายจ่ายรวม',
-              value: '${data.summary.totalExpense.toStringAsFixed(2)} บาท',
-              icon: Icons.trending_down_outlined,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        TransactionsScreen(service: TransactionService(client)),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.receipt_long_outlined),
-              label: Text('จัดการธุรกรรม', style: GoogleFonts.kanit()),
-            ),
+            const Spacer(),
+            IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'ผู้ใช้งาน: ${currentAdmin.displayName} (${currentAdmin.role})',
+          style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
+        ),
+        const SizedBox(height: 12),
+        _MetricTile(
+          title: 'พนักงานทั้งหมด',
+          value: '${data.summary.employeeCount}',
+          icon: Icons.groups_2_outlined,
+        ),
+        _MetricTile(
+          title: 'รายการธุรกรรม',
+          value: '${data.summary.transactionCount}',
+          icon: Icons.receipt_long_outlined,
+        ),
+        _MetricTile(
+          title: 'โครงการที่ดิน',
+          value: '${data.summary.projectCount}',
+          icon: Icons.location_city_outlined,
+        ),
+        _MetricTile(
+          title: 'รายรับรวม',
+          value: '${data.summary.totalRevenue.toStringAsFixed(2)} บาท',
+          icon: Icons.trending_up_outlined,
+        ),
+        _MetricTile(
+          title: 'รายจ่ายรวม',
+          value: '${data.summary.totalExpense.toStringAsFixed(2)} บาท',
+          icon: Icons.trending_down_outlined,
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    TransactionsScreen(service: TransactionService(client)),
+              ),
+            );
+          },
+          icon: const Icon(Icons.receipt_long_outlined),
+          label: const Text('จัดการธุรกรรม'),
+        ),
+      ],
     );
   }
 }
@@ -800,17 +830,22 @@ class _MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: Icon(icon, color: const Color(0xFF11A8BA)),
         title: Text(
           title,
-          style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         subtitle: Text(
           value,
-          style: GoogleFonts.kanit(fontSize: 16, fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
