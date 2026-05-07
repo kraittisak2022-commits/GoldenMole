@@ -519,87 +519,167 @@ class _DailyHomeContent extends StatelessWidget {
         ? _formatThaiDateFromYmd(data.recent.first.date)
         : '—';
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _HomeHeaderCompact(
-            currentAdmin: currentAdmin,
-            appName: data.summary.appName,
-            currentTime:
-                '${clock.hour.toString().padLeft(2, '0')}:${clock.minute.toString().padLeft(2, '0')}',
-            lastLabel: lastLabel,
-            selectedDateLabel: formatBuddhistDateButton(selectedDay),
-            onPickDay: onPickDay,
-            onRefresh: onPullRefresh,
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.03),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: LayoutBuilder(
-                key: ValueKey(formatBuddhistDateButton(selectedDay)),
-                builder: (context, constraints) {
-                  const cross = 3;
-                  const gap = 10.0;
-                  const sideInset = 2.0;
-                  final rows = (_kDailyModules.length / cross).ceil();
-                  final w = constraints.maxWidth;
-                  final usableWidth = w - (sideInset * 2);
-                  final cellWidth = (usableWidth - (gap * (cross - 1))) / cross;
-                  final fitCellHeight =
-                      (constraints.maxHeight - (gap * (rows - 1))) / rows;
-                  final preferredCellHeight = (cellWidth / 0.76).clamp(150.0, 220.0);
-                  final cellHeight = preferredCellHeight > fitCellHeight
-                      ? fitCellHeight
-                      : preferredCellHeight;
-                  final contentHeight = (cellHeight * rows) + (gap * (rows - 1));
-                  final topInset = ((constraints.maxHeight - contentHeight) / 2)
-                      .clamp(0.0, 24.0);
-                  return GridView.builder(
-                    padding: EdgeInsets.fromLTRB(sideInset, topInset, sideInset, 0),
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _kDailyModules.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cross,
-                      mainAxisSpacing: gap,
-                      crossAxisSpacing: gap,
-                      mainAxisExtent: cellHeight,
-                    ),
-                    itemBuilder: (context, index) {
-                      final m = _kDailyModules[index];
-                      final done = hasEntryForDay(
-                        data.recent,
-                        m.category,
-                        dayKey,
-                      );
-                      return RecordModuleCard(
-                        title: m.title,
-                        icon: m.icon,
-                        tileColor: m.color,
-                        showLightStyle: index.isOdd,
-                        recordedForSelectedDay: done,
-                        onTap: () => onOpenModule(m),
-                      );
-                    },
-                  );
-                },
+    final doneCount = _kDailyModules
+        .where((m) => hasEntryForDay(data.recent, m.category, dayKey))
+        .length;
+
+    return Stack(
+      children: [
+        const Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFFEFF9FD), Color(0xFFF9FCFF)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+        Positioned(
+          top: -36,
+          right: -24,
+          child: IgnorePointer(
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF11A8BA).withValues(alpha: 0.14),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: -64,
+          left: -40,
+          child: IgnorePointer(
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF4A6FFF).withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _HomeHeaderCompact(
+                currentAdmin: currentAdmin,
+                appName: data.summary.appName,
+                currentTime:
+                    '${clock.hour.toString().padLeft(2, '0')}:${clock.minute.toString().padLeft(2, '0')}',
+                lastLabel: lastLabel,
+                selectedDateLabel: formatBuddhistDateButton(selectedDay),
+                doneCount: doneCount,
+                totalCount: _kDailyModules.length,
+                onPickDay: onPickDay,
+                onRefresh: onPullRefresh,
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0A5566).withValues(alpha: 0.08),
+                        blurRadius: 22,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.03),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: LayoutBuilder(
+                        key: ValueKey(formatBuddhistDateButton(selectedDay)),
+                        builder: (context, constraints) {
+                          const cross = 3;
+                          const gap = 10.0;
+                          const sideInset = 2.0;
+                          final rows = (_kDailyModules.length / cross).ceil();
+                          final w = constraints.maxWidth;
+                          final usableWidth = w - (sideInset * 2);
+                          final cellWidth =
+                              (usableWidth - (gap * (cross - 1))) / cross;
+                          final fitCellHeight =
+                              (constraints.maxHeight - (gap * (rows - 1))) / rows;
+                          final preferredCellHeight = (cellWidth / 0.76).clamp(
+                            150.0,
+                            220.0,
+                          );
+                          final cellHeight = preferredCellHeight > fitCellHeight
+                              ? fitCellHeight
+                              : preferredCellHeight;
+                          final contentHeight =
+                              (cellHeight * rows) + (gap * (rows - 1));
+                          final topInset =
+                              ((constraints.maxHeight - contentHeight) / 2).clamp(
+                            0.0,
+                            24.0,
+                          );
+                          return GridView.builder(
+                            padding: EdgeInsets.fromLTRB(
+                              sideInset,
+                              topInset,
+                              sideInset,
+                              0,
+                            ),
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _kDailyModules.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: cross,
+                              mainAxisSpacing: gap,
+                              crossAxisSpacing: gap,
+                              mainAxisExtent: cellHeight,
+                            ),
+                            itemBuilder: (context, index) {
+                              final m = _kDailyModules[index];
+                              final done = hasEntryForDay(
+                                data.recent,
+                                m.category,
+                                dayKey,
+                              );
+                              return RecordModuleCard(
+                                title: m.title,
+                                icon: m.icon,
+                                tileColor: m.color,
+                                showLightStyle: index.isOdd,
+                                recordedForSelectedDay: done,
+                                onTap: () => onOpenModule(m),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -611,6 +691,8 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.currentTime,
     required this.lastLabel,
     required this.selectedDateLabel,
+    required this.doneCount,
+    required this.totalCount,
     required this.onPickDay,
     required this.onRefresh,
   });
@@ -620,6 +702,8 @@ class _HomeHeaderCompact extends StatelessWidget {
   final String currentTime;
   final String lastLabel;
   final String selectedDateLabel;
+  final int doneCount;
+  final int totalCount;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
 
@@ -737,7 +821,62 @@ class _HomeHeaderCompact extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _HeaderStatChip(
+                icon: Icons.today_rounded,
+                label: 'วันนี้บันทึกแล้ว $doneCount/$totalCount เมนู',
+              ),
+              _HeaderStatChip(
+                icon: Icons.access_time_filled_rounded,
+                label: 'ล่าสุด $lastLabel',
+              ),
+              _HeaderStatChip(
+                icon: Icons.schedule_rounded,
+                label: 'เวลา $currentTime น.',
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeaderStatChip extends StatelessWidget {
+  const _HeaderStatChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 15),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
