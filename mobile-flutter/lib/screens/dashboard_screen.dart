@@ -486,7 +486,7 @@ class _HomePayload {
   final List<AppTransaction> recent;
 }
 
-class _DailyHomeContent extends StatelessWidget {
+class _DailyHomeContent extends StatefulWidget {
   const _DailyHomeContent({
     required this.currentAdmin,
     required this.data,
@@ -513,164 +513,193 @@ class _DailyHomeContent extends StatelessWidget {
   final void Function(_DailyModuleDef m) onOpenModule;
 
   @override
+  State<_DailyHomeContent> createState() => _DailyHomeContentState();
+}
+
+class _DailyHomeContentState extends State<_DailyHomeContent>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entranceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 760),
+    )..forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DailyHomeContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDay != widget.selectedDay) {
+      _entranceController
+        ..reset()
+        ..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final dayKey = dateKey(selectedDay);
-    final lastLabel = data.recent.isNotEmpty
-        ? _formatThaiDateFromYmd(data.recent.first.date)
+    final dayKey = widget.dateKey(widget.selectedDay);
+    final lastLabel = widget.data.recent.isNotEmpty
+        ? _formatThaiDateFromYmd(widget.data.recent.first.date)
         : '—';
 
     final doneCount = _kDailyModules
-        .where((m) => hasEntryForDay(data.recent, m.category, dayKey))
+        .where(
+          (m) => widget.hasEntryForDay(widget.data.recent, m.category, dayKey),
+        )
         .length;
+    final headerAnim = CurvedAnimation(
+      parent: _entranceController,
+      curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
+    );
+    final panelAnim = CurvedAnimation(
+      parent: _entranceController,
+      curve: const Interval(0.16, 0.78, curve: Curves.easeOutCubic),
+    );
 
     return Stack(
       children: [
-        const Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFEFF9FD), Color(0xFFF9FCFF)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: -36,
-          right: -24,
-          child: IgnorePointer(
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF11A8BA).withValues(alpha: 0.14),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: -64,
-          left: -40,
-          child: IgnorePointer(
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4A6FFF).withValues(alpha: 0.08),
-              ),
-            ),
-          ),
-        ),
+        const Positioned.fill(child: ColoredBox(color: Color(0xFFF8FAFC))),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _HomeHeaderCompact(
-                currentAdmin: currentAdmin,
-                appName: data.summary.appName,
-                currentTime:
-                    '${clock.hour.toString().padLeft(2, '0')}:${clock.minute.toString().padLeft(2, '0')}',
-                lastLabel: lastLabel,
-                selectedDateLabel: formatBuddhistDateButton(selectedDay),
-                doneCount: doneCount,
-                totalCount: _kDailyModules.length,
-                onPickDay: onPickDay,
-                onRefresh: onPullRefresh,
+              FadeTransition(
+                opacity: headerAnim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, -0.08),
+                    end: Offset.zero,
+                  ).animate(headerAnim),
+                  child: _HomeHeaderCompact(
+                    currentAdmin: widget.currentAdmin,
+                    appName: widget.data.summary.appName,
+                    currentTime:
+                        '${widget.clock.hour.toString().padLeft(2, '0')}:${widget.clock.minute.toString().padLeft(2, '0')}',
+                    lastLabel: lastLabel,
+                    selectedDateLabel: widget.formatBuddhistDateButton(
+                      widget.selectedDay,
+                    ),
+                    doneCount: doneCount,
+                    totalCount: _kDailyModules.length,
+                    onPickDay: widget.onPickDay,
+                    onRefresh: widget.onPullRefresh,
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.68),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0A5566).withValues(alpha: 0.08),
-                        blurRadius: 22,
-                        offset: const Offset(0, 10),
+                child: FadeTransition(
+                  opacity: panelAnim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.05),
+                      end: Offset.zero,
+                    ).animate(panelAnim),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(color: const Color(0xFFE7ECF3)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.03),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: LayoutBuilder(
-                        key: ValueKey(formatBuddhistDateButton(selectedDay)),
-                        builder: (context, constraints) {
-                          const cross = 3;
-                          const gap = 10.0;
-                          const sideInset = 2.0;
-                          final rows = (_kDailyModules.length / cross).ceil();
-                          final w = constraints.maxWidth;
-                          final usableWidth = w - (sideInset * 2);
-                          final cellWidth =
-                              (usableWidth - (gap * (cross - 1))) / cross;
-                          final fitCellHeight =
-                              (constraints.maxHeight - (gap * (rows - 1))) / rows;
-                          final preferredCellHeight = (cellWidth / 0.76).clamp(
-                            150.0,
-                            220.0,
-                          );
-                          final cellHeight = preferredCellHeight > fitCellHeight
-                              ? fitCellHeight
-                              : preferredCellHeight;
-                          final contentHeight =
-                              (cellHeight * rows) + (gap * (rows - 1));
-                          final topInset =
-                              ((constraints.maxHeight - contentHeight) / 2).clamp(
-                            0.0,
-                            24.0,
-                          );
-                          return GridView.builder(
-                            padding: EdgeInsets.fromLTRB(
-                              sideInset,
-                              topInset,
-                              sideInset,
-                              0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.03),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
                             ),
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _kDailyModules.length,
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: cross,
-                              mainAxisSpacing: gap,
-                              crossAxisSpacing: gap,
-                              mainAxisExtent: cellHeight,
+                          ),
+                          child: LayoutBuilder(
+                            key: ValueKey(
+                              widget.formatBuddhistDateButton(widget.selectedDay),
                             ),
-                            itemBuilder: (context, index) {
-                              final m = _kDailyModules[index];
-                              final done = hasEntryForDay(
-                                data.recent,
-                                m.category,
-                                dayKey,
+                            builder: (context, constraints) {
+                              const cross = 3;
+                              const gap = 10.0;
+                              const sideInset = 2.0;
+                              final rows = (_kDailyModules.length / cross).ceil();
+                              final w = constraints.maxWidth;
+                              final usableWidth = w - (sideInset * 2);
+                              final cellWidth =
+                                  (usableWidth - (gap * (cross - 1))) / cross;
+                              final fitCellHeight =
+                                  (constraints.maxHeight - (gap * (rows - 1))) / rows;
+                              final preferredCellHeight = (cellWidth / 0.76).clamp(
+                                150.0,
+                                220.0,
                               );
-                              return RecordModuleCard(
-                                title: m.title,
-                                icon: m.icon,
-                                tileColor: m.color,
-                                showLightStyle: index.isOdd,
-                                recordedForSelectedDay: done,
-                                onTap: () => onOpenModule(m),
+                              final cellHeight = preferredCellHeight > fitCellHeight
+                                  ? fitCellHeight
+                                  : preferredCellHeight;
+                              final contentHeight =
+                                  (cellHeight * rows) + (gap * (rows - 1));
+                              final topInset = ((constraints.maxHeight - contentHeight) /
+                                      2)
+                                  .clamp(0.0, 24.0);
+                              return GridView.builder(
+                                padding: EdgeInsets.fromLTRB(
+                                  sideInset,
+                                  topInset,
+                                  sideInset,
+                                  0,
+                                ),
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _kDailyModules.length,
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: cross,
+                                  mainAxisSpacing: gap,
+                                  crossAxisSpacing: gap,
+                                  mainAxisExtent: cellHeight,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final m = _kDailyModules[index];
+                                  final done = widget.hasEntryForDay(
+                                    widget.data.recent,
+                                    m.category,
+                                    dayKey,
+                                  );
+                                  return _StaggerMenuTile(
+                                    parent: _entranceController,
+                                    index: index,
+                                    child: RecordModuleCard(
+                                      title: m.title,
+                                      icon: m.icon,
+                                      tileColor: m.color,
+                                      showLightStyle: index.isOdd,
+                                      recordedForSelectedDay: done,
+                                      onTap: () => widget.onOpenModule(m),
+                                    ),
+                                  );
+                                },
                               );
                             },
-                          );
-                        },
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -680,6 +709,41 @@ class _DailyHomeContent extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StaggerMenuTile extends StatelessWidget {
+  const _StaggerMenuTile({
+    required this.parent,
+    required this.index,
+    required this.child,
+  });
+
+  final Animation<double> parent;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = (0.28 + (index * 0.07)).clamp(0.0, 0.82);
+    final end = (start + 0.28).clamp(0.0, 1.0);
+    final fade = CurvedAnimation(
+      parent: parent,
+      curve: Interval(start, end, curve: Curves.easeOutCubic),
+    );
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.07),
+          end: Offset.zero,
+        ).animate(fade),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(fade),
+          child: child,
+        ),
+      ),
     );
   }
 }
@@ -710,25 +774,18 @@ class _HomeHeaderCompact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            colorScheme.primary.withValues(alpha: 0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE7ECF3)),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -747,19 +804,23 @@ class _HomeHeaderCompact extends StatelessWidget {
                       'บันทึกประจำวัน',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: const Color(0xFF1A2433),
                       ),
                     ),
                     Text(
                       appName,
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      style: const TextStyle(color: Color(0xFF6B7788), fontSize: 14),
                     ),
                   ],
                 ),
               ),
               IconButton(
                 onPressed: () => onRefresh(),
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 28),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: Color(0xFF3A4A5E),
+                  size: 24,
+                ),
               ),
             ],
           ),
@@ -769,11 +830,15 @@ class _HomeHeaderCompact extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.person_pin, color: Colors.white, size: 20),
+                  const Icon(Icons.person_pin, color: Color(0xFF3A4A5E), size: 20),
                   const SizedBox(width: 8),
                   Text(
                     currentAdmin.displayName,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
+                    style: const TextStyle(
+                      color: Color(0xFF2A3546),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),
@@ -786,18 +851,11 @@ class _HomeHeaderCompact extends StatelessWidget {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.95),
+                    color: const Color(0xFFF5F8FC),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.8),
+                      color: const Color(0xFFD9E1EC),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -856,21 +914,21 @@ class _HeaderStatChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
+        color: const Color(0xFFF7FAFD),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
+        border: Border.all(color: const Color(0xFFDCE4EF)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 15),
+            Icon(icon, color: const Color(0xFF415268), size: 15),
             const SizedBox(width: 5),
             Text(
               label,
               style: const TextStyle(
-                color: Colors.white,
+                color: Color(0xFF415268),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),

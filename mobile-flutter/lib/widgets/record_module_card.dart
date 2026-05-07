@@ -53,9 +53,9 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
         recorded ? const Color(0xFF168A45) : const Color(0xFFC73E3E);
     final accent = widget.tileColor;
     final isSandWashTitle = widget.title.contains('บันทึกการร่อนทราย');
-    final cardTint = Color.lerp(Colors.white, accent, 0.44)!;
-    final borderColor = Color.lerp(const Color(0xFFDCE6F0), accent, 0.7)!;
-    final iconBg = Color.lerp(accent, Colors.white, 0.92)!;
+    final cardTint = Colors.white;
+    final borderColor = const Color(0xFFE4EAF2);
+    final iconBg = const Color(0xFFF5F8FC);
     final iconColor = _readableMenuIconColor(accent);
 
     return MouseRegion(
@@ -85,81 +85,37 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                           duration: const Duration(milliseconds: 180),
                           curve: Curves.easeOutCubic,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color.lerp(cardTint, Colors.white, 0.18)!,
-                                cardTint,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            color: cardTint,
                             borderRadius: BorderRadius.circular(26),
-                            border: Border.all(color: borderColor, width: 1.4),
+                            border: Border.all(color: borderColor, width: 1.2),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.white.withValues(alpha: 0.52),
-                                blurRadius: 7,
-                                offset: const Offset(-2, -2),
-                              ),
-                              BoxShadow(
-                                color: accent.withValues(alpha: _hovered ? 0.28 : 0.2),
-                                blurRadius: _hovered ? 20 : 14,
-                                offset: const Offset(0, 8),
-                              ),
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: _hovered ? 0.16 : 0.11),
-                                blurRadius: _hovered ? 24 : 18,
-                                spreadRadius: _hovered ? 1.2 : 0.5,
-                                offset: const Offset(0, 14),
+                                color: Colors.black.withValues(alpha: _hovered ? 0.07 : 0.04),
+                                blurRadius: _hovered ? 16 : 10,
+                                offset: const Offset(0, 5),
                               ),
                             ],
                           ),
                           child: Stack(
                             children: [
-                              Positioned(
-                                top: -24,
-                                right: -20,
-                                child: IgnorePointer(
-                                  child: Container(
-                                    width: 96,
-                                    height: 96,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: accent.withValues(alpha: 0.22),
-                                    ),
-                                  ),
-                                ),
-                              ),
                               Center(
                                 child: AnimatedRotation(
                                   turns: _pressed ? -0.014 : 0,
                                   duration: const Duration(milliseconds: 150),
                                   child: Container(
-                                    width: 94,
-                                    height: 94,
+                                    width: 88,
+                                    height: 88,
                                     decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          iconBg,
-                                          Color.lerp(iconBg, Colors.white, 0.28)!,
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
+                                      color: iconBg,
                                       borderRadius: BorderRadius.circular(28),
                                       border: Border.all(
-                                        color: accent.withValues(alpha: 0.32),
-                                        width: 1.2,
+                                        color: const Color(0xFFE0E7F0),
+                                        width: 1,
                                       ),
                                     ),
                                     child: Icon(
                                       widget.icon,
-                                      size: 52,
+                                      size: 46,
                                       color: iconColor,
                                     ),
                                   ),
@@ -169,30 +125,20 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                           ),
                         ),
                         Positioned(
-                          top: -8,
-                          right: -6,
+                          top: 8,
+                          right: 8,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
-                            width: 30,
-                            height: 30,
+                            width: 26,
+                            height: 26,
                             decoration: BoxDecoration(
-                              color: recorded ? const Color(0xFF18A352) : const Color(0xFFFFB020),
+                              color: recorded ? const Color(0xFF18A352) : const Color(0xFFB0BACA),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2.4),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (recorded
-                                          ? const Color(0xFF18A352)
-                                          : const Color(0xFFFFB020))
-                                      .withValues(alpha: 0.38),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
+                              border: Border.all(color: Colors.white, width: 2),
                             ),
                             child: Icon(
-                              recorded ? Icons.check_rounded : Icons.more_horiz_rounded,
-                              size: 18,
+                              recorded ? Icons.check_rounded : Icons.remove_rounded,
+                              size: 16,
                               color: Colors.white,
                             ),
                           ),
@@ -207,7 +153,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontSize: isSandWashTitle ? 21 : 19,
+                      fontSize: isSandWashTitle ? 20 : 18,
                       fontWeight: FontWeight.w800,
                       color: titleColor,
                       height: 1.2,
@@ -217,9 +163,9 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                   Text(
                     recorded ? 'บันทึกแล้ว' : 'แตะเพื่อบันทึก',
                     style: theme.textTheme.labelLarge?.copyWith(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: statusColor,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: recorded ? statusColor : const Color(0xFF77859A),
                     ),
                   ),
                 ],
