@@ -551,24 +551,31 @@ class _DailyHomeContent extends StatelessWidget {
               child: LayoutBuilder(
                 key: ValueKey(formatBuddhistDateButton(selectedDay)),
                 builder: (context, constraints) {
-                  final w = constraints.maxWidth;
-                  final cross = w >= 420 ? 3 : 2;
-                  const gap = 8.0;
+                  const cross = 3;
+                  const gap = 10.0;
+                  const sideInset = 2.0;
                   final rows = (_kDailyModules.length / cross).ceil();
-                  final cellWidth = (w - (gap * (cross - 1))) / cross;
-                  final cellHeight =
+                  final w = constraints.maxWidth;
+                  final usableWidth = w - (sideInset * 2);
+                  final cellWidth = (usableWidth - (gap * (cross - 1))) / cross;
+                  final fitCellHeight =
                       (constraints.maxHeight - (gap * (rows - 1))) / rows;
-                  final ratio =
-                      cellHeight <= 0 ? 1.0 : (cellWidth / cellHeight);
+                  final preferredCellHeight = (cellWidth / 0.76).clamp(150.0, 220.0);
+                  final cellHeight = preferredCellHeight > fitCellHeight
+                      ? fitCellHeight
+                      : preferredCellHeight;
+                  final contentHeight = (cellHeight * rows) + (gap * (rows - 1));
+                  final topInset = ((constraints.maxHeight - contentHeight) / 2)
+                      .clamp(0.0, 24.0);
                   return GridView.builder(
-                    padding: EdgeInsets.zero,
+                    padding: EdgeInsets.fromLTRB(sideInset, topInset, sideInset, 0),
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: _kDailyModules.length,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: cross,
                       mainAxisSpacing: gap,
                       crossAxisSpacing: gap,
-                      childAspectRatio: ratio,
+                      mainAxisExtent: cellHeight,
                     ),
                     itemBuilder: (context, index) {
                       final m = _kDailyModules[index];

@@ -97,6 +97,11 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                             border: Border.all(color: borderColor, width: 1.4),
                             boxShadow: [
                               BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.52),
+                                blurRadius: 7,
+                                offset: const Offset(-2, -2),
+                              ),
+                              BoxShadow(
                                 color: accent.withValues(alpha: _hovered ? 0.28 : 0.2),
                                 blurRadius: _hovered ? 20 : 14,
                                 offset: const Offset(0, 8),
@@ -105,6 +110,12 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                                 color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: _hovered ? 0.16 : 0.11),
+                                blurRadius: _hovered ? 24 : 18,
+                                spreadRadius: _hovered ? 1.2 : 0.5,
+                                offset: const Offset(0, 14),
                               ),
                             ],
                           ),

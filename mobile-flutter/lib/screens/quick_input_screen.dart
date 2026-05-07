@@ -1581,25 +1581,53 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFFBFCFF),
-        labelStyle: GoogleFonts.kanit(color: const Color(0xFF6A7280)),
-        hintStyle: GoogleFonts.kanit(color: const Color(0xFFA0A8B5)),
+        labelStyle: GoogleFonts.kanit(
+          color: const Color(0xFF6A7280),
+          fontSize: 16.5,
+          fontWeight: FontWeight.w600,
+        ),
+        floatingLabelStyle: GoogleFonts.kanit(
+          color: primary,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+        hintStyle: GoogleFonts.kanit(
+          color: const Color(0xFFA0A8B5),
+          fontSize: 15.5,
+        ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
+          horizontal: 18,
+          vertical: 18,
         ),
         prefixIconColor: const Color(0xFF8A95A5),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 50,
+          minHeight: 50,
+        ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: Color(0xFFE7EBF1)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: primary, width: 1.3),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: primary, width: 1.5),
         ),
       ),
-      textTheme: GoogleFonts.kanitTextTheme(base.textTheme).apply(
-        bodyColor: const Color(0xFF202939),
-        displayColor: const Color(0xFF202939),
+      textTheme: GoogleFonts.kanitTextTheme(base.textTheme).copyWith(
+        bodyLarge: GoogleFonts.kanit(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF202939),
+        ),
+        bodyMedium: GoogleFonts.kanit(
+          fontSize: 17,
+          color: const Color(0xFF202939),
+        ),
+        titleMedium: GoogleFonts.kanit(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF202939),
+        ),
       ),
     );
   }
@@ -1978,9 +2006,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF2F8FF),
                     borderRadius: BorderRadius.circular(12),
@@ -2026,7 +2054,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 _AnimatedInputField(
                   controller: _sandMorningStartController,
                   style: GoogleFonts.kanit(
@@ -2043,7 +2071,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                   ),
                   decoration: deco('ช่วงเช้า เริ่มงาน (07.20)', Icons.wb_sunny_outlined),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _AnimatedInputField(
                   controller: _sandAfternoonStartController,
                   style: GoogleFonts.kanit(
@@ -2060,7 +2088,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                   ),
                   decoration: deco('ช่วงบ่าย เริ่มงาน (13.00)', Icons.wb_twilight_outlined),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _AnimatedInputField(
                   controller: _sandEveningEndController,
                   style: GoogleFonts.kanit(
@@ -3372,7 +3400,12 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
             controller: widget.controller,
             keyboardType: widget.keyboardType,
             onChanged: widget.onChanged,
-            style: widget.style,
+            style: widget.style ??
+                GoogleFonts.kanit(
+                  color: const Color(0xFF1D2A3A),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
             textInputAction: widget.textInputAction,
             inputFormatters: widget.inputFormatters,
             readOnly: widget.readOnly,
