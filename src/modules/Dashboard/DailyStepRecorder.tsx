@@ -24,6 +24,34 @@ import {
 
 type DraftMergeSection = 'labor' | 'vehicle' | 'trip' | 'sand' | 'fuel' | 'income' | 'event';
 const ALL_DRAFT_MERGE_SECTIONS: DraftMergeSection[] = ['labor', 'vehicle', 'trip', 'sand', 'fuel', 'income', 'event'];
+type MobileSignatureMeta = { source: string; signedAt?: string; signedBy?: string };
+const parseMobileSignatureNote = (note?: string): MobileSignatureMeta | null => {
+    if (!note) return null;
+    const raw = String(note).trim();
+    if (!raw.startsWith('mobile_signature:')) return null;
+    const payload = raw.slice('mobile_signature:'.length).trim();
+    if (!payload) return null;
+    try {
+        const parsed = JSON.parse(payload) as MobileSignatureMeta;
+        if (!parsed || typeof parsed !== 'object') return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+};
+const formatSignatureDateTime = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('th-TH', {
+        timeZone: 'Asia/Bangkok',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
 
 interface DailyStepRecorderProps {
     employees: Employee[];
@@ -3231,6 +3259,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             const sandTotal = ((t as any).sandMorning || 0) + ((t as any).sandAfternoon || 0);
                                                             const drums = (t as any).drumsObtained ?? 0;
                                                             const isDrumsOnly = sandTotal === 0 && drums > 0;
+                                                            const mobileSignature = parseMobileSignatureNote(t.note);
                                                             return (
                                                             <div key={t.id} className="min-w-[190px] p-2.5 bg-white border border-slate-200 rounded-xl text-xs relative shadow-sm dark:bg-white/[0.03] dark:border-white/10">
                                                                 <div className="font-bold text-slate-700 dark:text-slate-200">🌊 {t.description}</div>
@@ -3238,6 +3267,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                     <div className="text-teal-700 dark:text-teal-300 font-semibold mt-1">🪣 {drums} ถัง</div>
                                                                 ) : (
                                                                     <div className="text-slate-600 dark:text-slate-300 font-semibold mt-1">เช้า {(t as any).sandMorning || 0} + บ่าย {(t as any).sandAfternoon || 0} = {sandTotal} คิว</div>
+                                                                )}
+                                                                {mobileSignature && (
+                                                                    <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                                        ✍️ เซ็นจาก Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                        {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                    </div>
                                                                 )}
                                                                 {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                                             </div>
@@ -3603,6 +3638,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             <div className="flex gap-2 overflow-x-auto pb-2">
                                                                 {fuelInTx.map(t => (
                                                                     <div key={t.id} className="min-w-[220px] p-3 bg-red-50 border border-red-100 rounded-xl text-xs relative">
+                                                                        {(() => {
+                                                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                                                            if (!mobileSignature) return null;
+                                                                            return (
+                                                                                <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                         <div className="font-bold text-red-800">⛽ {(t as any).fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'}</div>
                                                                         <div className="text-red-700 mt-1 font-semibold">ซื้อเข้า <span className="font-bold">{(t.quantity || 0).toLocaleString()} {(t.unit === 'gallon' ? 'แกลลอน' : 'ลิตร')}</span></div>
                                                                         <div className="text-red-700 font-semibold">ราคา <span className="font-bold">{(t.amount || 0).toLocaleString()} บาท</span></div>
@@ -3619,6 +3664,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             <div className="flex gap-2 overflow-x-auto pb-2">
                                                                 {fuelOutTx.map(t => (
                                                                     <div key={t.id} className="min-w-[220px] p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs relative">
+                                                                        {(() => {
+                                                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                                                            if (!mobileSignature) return null;
+                                                                            return (
+                                                                                <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                         <div className="font-bold text-indigo-800">🚛 {t.vehicleId || '-'}</div>
                                                                         <div className="text-indigo-700 mt-1 font-semibold">{(t as any).fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: <span className="font-bold">{(t.quantity || 0).toLocaleString()} {(t.unit === 'gallon' ? 'แกลลอน' : 'ลิตร')}</span></div>
                                                                         {t.amount > 0 && <div className="text-indigo-700 font-semibold">คิดเป็นเงิน <span className="font-bold">{t.amount.toLocaleString()} บาท</span></div>}
@@ -3855,6 +3910,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
                                         {dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').map(t => (
                                             <div key={t.id} className="min-w-[220px] p-3 bg-lime-50 border border-lime-200 rounded-xl text-xs relative">
+                                                {(() => {
+                                                    const mobileSignature = parseMobileSignatureNote(t.note);
+                                                    if (!mobileSignature) return null;
+                                                    return (
+                                                        <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                            ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                            {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                        </div>
+                                                    );
+                                                })()}
                                                 <div className="font-bold text-lime-800">{t.description || 'รายรับ'}</div>
                                                 <div className="text-lime-700 font-semibold mt-1">฿{(t.amount || 0).toLocaleString()}</div>
                                                 {t.quantity != null && <div className="text-lime-600 mt-0.5">ปริมาณ: {t.quantity} {t.unit || ''}</div>}

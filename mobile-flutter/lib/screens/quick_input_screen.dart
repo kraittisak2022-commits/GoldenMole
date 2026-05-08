@@ -74,6 +74,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
 
   late DateTime _selectedDate;
   bool _saving = false;
+  String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
   List<AppTransaction> _moduleDayTransactions = const [];
   bool _moduleDayLoading = false;
@@ -585,8 +586,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     required String successMessage,
   }) async {
     if (!mounted) return;
-    final signed = await _requestSignatureBeforeSave();
-    if (!signed) return;
+    final signature = await _requestSignatureBeforeSave();
+    if (signature == null) return;
+    _activeSignatureNote = signature.note;
     setState(() => _saving = true);
     var savingDialogOpen = false;
     try {
@@ -605,6 +607,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         );
       }
     } finally {
+      _activeSignatureNote = null;
       if (mounted) setState(() => _saving = false);
     }
   }
@@ -654,6 +657,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           category: _categoryController.text.trim(),
           description: description,
           amount: double.parse(_amountController.text.trim()),
+          note: _activeSignatureNote,
         );
 
         await _persist(entry);
@@ -716,6 +720,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           sandMachineType: machineType,
           drumsObtained: drums,
           drumsWashedAtHome: 0,
+          note: _activeSignatureNote,
           sandMorningStart: morningStart.isEmpty ? null : morningStart,
           sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
           sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
@@ -756,6 +761,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             amount: 0,
             drumsObtained: drums,
             drumsWashedAtHome: 0,
+            note: _activeSignatureNote,
             sandMorningStart: morningStart.isEmpty ? null : morningStart,
             sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
             sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
@@ -802,6 +808,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           amount: 0,
           drumsObtained: drums,
           drumsWashedAtHome: drumsHome,
+          note: _activeSignatureNote,
         ),
       );
       _sandDrumsObtainedController.clear();
@@ -846,6 +853,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${_vehicleWorkType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}]',
               ),
           amount: vehicleWage + driverWage,
+          note: _activeSignatureNote,
           vehicleId: vehicle,
           driverId: driver,
           vehicleWage: vehicleWage,
@@ -871,6 +879,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                   '$vehicle: ${totalTrips.toStringAsFixed(0)} เที่ยว × ${cubicPerTrip.toStringAsFixed(0)} คิว',
                 ),
             amount: 0,
+            note: _activeSignatureNote,
             vehicleId: vehicle,
             driverId: driver,
             tripCount: totalTrips,
@@ -921,6 +930,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 'ซื้อน้ำมัน ${_fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${liters.toStringAsFixed(0)} ${_fuelUnitController.text} ${amount.toStringAsFixed(0)} บาท',
               ),
           amount: amount,
+          note: _activeSignatureNote,
           quantity: liters,
           unit: unit,
           fuelType: _fuelType,
@@ -961,6 +971,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${_fuelVehicleType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
               ),
           amount: 0,
+          note: _activeSignatureNote,
           quantity: liters,
           unit: 'L',
           fuelType: _fuelVehicleType,
@@ -1010,6 +1021,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           employeeIds: _selectedLaborEmpIds.toList(),
           workType: _laborWorkType,
           amount: total,
+          note: _activeSignatureNote,
           description:
               _appendRecorder(
                 'ค่าแรง (${_selectedLaborEmpIds.length} คน) ${_laborWorkType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}${names.isNotEmpty ? ' [$names]' : ''}',
@@ -1050,6 +1062,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           laborStatus: 'OT',
           employeeIds: _selectedLaborEmpIds.toList(),
           amount: total,
+          note: _activeSignatureNote,
           otAmount: rate,
           otHours: hours,
           otDescription: _otDescController.text.trim(),
@@ -1364,13 +1377,13 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     setState(() => controller.text = _formatTimeDot(selected));
   }
 
-  Future<bool> _requestSignatureBeforeSave() async {
-    final confirmed = await showDialog<bool>(
+  Future<_CapturedSignature?> _requestSignatureBeforeSave() async {
+    final signature = await showDialog<_CapturedSignature>(
       context: context,
       barrierDismissible: !_saving,
       builder: (context) => const _SignatureDialog(),
     );
-    return confirmed ?? false;
+    return signature;
   }
 
   ThemeData _quickFormTheme(BuildContext context) {
@@ -3151,6 +3164,19 @@ class _SignatureDialog extends StatefulWidget {
 class _SignatureDialogState extends State<_SignatureDialog> {
   final List<List<Offset>> _strokes = [];
 
+  _CapturedSignature _buildPayload() {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final signer =
+        Supabase.instance.client.auth.currentUser?.email?.trim().isNotEmpty ==
+                true
+            ? Supabase.instance.client.auth.currentUser!.email!.trim()
+            : 'android-user';
+    final pointCount = _strokes.fold<int>(0, (sum, s) => sum + s.length);
+    final note =
+        'mobile_signature:${'{"source":"android","signedAt":"$now","signedBy":"$signer","strokes":${_strokes.length},"points":$pointCount}'}';
+    return _CapturedSignature(note: note);
+  }
+
   bool get _hasSignature =>
       _strokes.any((stroke) => stroke.length > 1);
 
@@ -3226,7 +3252,7 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                   const Spacer(),
                   FilledButton(
                     onPressed: _hasSignature
-                        ? () => Navigator.of(context).pop(true)
+                        ? () => Navigator.of(context).pop(_buildPayload())
                         : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF0F9EA8),
@@ -3272,6 +3298,11 @@ class _SignaturePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SignaturePainter oldDelegate) =>
       oldDelegate.strokes != strokes;
+}
+
+class _CapturedSignature {
+  const _CapturedSignature({required this.note});
+  final String note;
 }
 
 class _AnimatedInputFieldState extends State<_AnimatedInputField> {
