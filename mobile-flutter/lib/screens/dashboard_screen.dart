@@ -128,9 +128,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final TransactionService _txService;
   int _bodyPage = 0;
   DateTime _selectedDay = DateTime.now();
-  DateTime _clock = DateTime.now();
   bool _serverOnline = true;
-  Timer? _ticker;
   late Future<_HomePayload> _homeFuture;
 
   @override
@@ -138,29 +136,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _loadHome();
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() => _clock = DateTime.now());
-    });
   }
 
   @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
+  void dispose() => super.dispose();
 
   Future<_HomePayload> _loadHome() async {
     try {
       final results = await Future.wait([
         widget.dashboardService.fetchSummary(),
-        _txService.fetchRecentTransactions(limit: 60),
+        _txService.fetchTransactionsForDate(_dateKey(_selectedDay)),
       ]);
       final summary = results[0] as DashboardSummary;
-      final recent = results[1] as List<AppTransaction>;
+      final dayTransactions = results[1] as List<AppTransaction>;
       if (mounted && !_serverOnline) {
         setState(() => _serverOnline = true);
       }
-      return _HomePayload(summary: summary, recent: recent);
+      return _HomePayload(summary: summary, dayTransactions: dayTransactions);
     } catch (_) {
       if (mounted && _serverOnline) {
         setState(() => _serverOnline = false);
@@ -207,17 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'ธันวาคม',
     ];
     final be = d.year + 543;
-    return '${weekdays[d.weekday - 1]} วันที่ ${d.day} เดือน${months[d.month - 1]} พ.ศ.$be';
-  }
-
-  bool _hasEntryForDay(
-    List<AppTransaction> list,
-    String category,
-    String dayKey,
-  ) {
-    return list.any(
-      (t) => transactionMatchesDailyModule(t, dayKey, category),
-    );
+    return '${weekdays[d.weekday - 1]} ที่ ${d.day} เดือน${months[d.month - 1]} พ.ศ.$be';
   }
 
   Future<void> _pickDay() async {
@@ -232,13 +214,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (picked != null) {
       if (!mounted) return;
       final pickedDate = picked;
-      setState(
-        () => _selectedDay = DateTime(
+      setState(() {
+        _selectedDay = DateTime(
           pickedDate.year,
           pickedDate.month,
           pickedDate.day,
-        ),
-      );
+        );
+        _homeFuture = _loadHome();
+      });
     }
   }
 
@@ -372,13 +355,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             data: data,
                             serverOnline: _serverOnline,
                             selectedDay: _selectedDay,
-                            clock: _clock,
                             onPullRefresh: _pullRefresh,
                             onPickDay: _pickDay,
                             dateKey: _dateKey,
                             formatBuddhistDateButton:
                                 _formatBuddhistDateButton,
-                            hasEntryForDay: _hasEntryForDay,
                             onOpenModule: _openQuickInput,
                           );
                         }
@@ -512,10 +493,10 @@ class _SideIcon extends StatelessWidget {
 }
 
 class _HomePayload {
-  const _HomePayload({required this.summary, required this.recent});
+  const _HomePayload({required this.summary, required this.dayTransactions});
 
   final DashboardSummary summary;
-  final List<AppTransaction> recent;
+  final List<AppTransaction> dayTransactions;
 }
 
 class _DailyHomeContent extends StatefulWidget {
@@ -524,12 +505,10 @@ class _DailyHomeContent extends StatefulWidget {
     required this.data,
     required this.serverOnline,
     required this.selectedDay,
-    required this.clock,
     required this.onPullRefresh,
     required this.onPickDay,
     required this.dateKey,
     required this.formatBuddhistDateButton,
-    required this.hasEntryForDay,
     required this.onOpenModule,
   });
 
@@ -537,13 +516,10 @@ class _DailyHomeContent extends StatefulWidget {
   final _HomePayload data;
   final bool serverOnline;
   final DateTime selectedDay;
-  final DateTime clock;
   final Future<void> Function() onPullRefresh;
   final VoidCallback onPickDay;
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
-  final bool Function(List<AppTransaction> list, String category, String dayKey)
-  hasEntryForDay;
   final void Function(_DailyModuleDef m) onOpenModule;
 
   @override
@@ -582,15 +558,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   @override
   Widget build(BuildContext context) {
     final dayKey = widget.dateKey(widget.selectedDay);
-    final lastLabel = widget.data.recent.isNotEmpty
-        ? _formatThaiDateFromYmd(widget.data.recent.first.date)
+    final lastLabel = widget.data.dayTransactions.isNotEmpty
+        ? _formatThaiDateFromYmd(widget.data.dayTransactions.first.date)
         : '—';
 
-    final doneCount = _kDailyModules
-        .where(
-          (m) => widget.hasEntryForDay(widget.data.recent, m.category, dayKey),
-        )
-        .length;
+    final recordedCategories = <String>{};
+    for (final module in _kDailyModules) {
+      final done = widget.data.dayTransactions.any(
+        (t) => transactionMatchesDailyModule(t, dayKey, module.category),
+      );
+      if (done) recordedCategories.add(module.category);
+    }
+    final doneCount = recordedCategories.length;
     final headerAnim = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
@@ -617,8 +596,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   ).animate(headerAnim),
                   child: _HomeHeaderCompact(
                     appName: widget.data.summary.appName,
-                    currentTime:
-                        '${widget.clock.hour.toString().padLeft(2, '0')}:${widget.clock.minute.toString().padLeft(2, '0')}',
                     lastLabel: lastLabel,
                     serverOnline: widget.serverOnline,
                     selectedDateLabel: widget.formatBuddhistDateButton(
@@ -712,10 +689,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 ),
                                 itemBuilder: (context, index) {
                                   final m = _kDailyModules[index];
-                                  final done = widget.hasEntryForDay(
-                                    widget.data.recent,
+                                  final done = recordedCategories.contains(
                                     m.category,
-                                    dayKey,
                                   );
                                   return _StaggerMenuTile(
                                     parent: _entranceController,
@@ -785,7 +760,6 @@ class _StaggerMenuTile extends StatelessWidget {
 class _HomeHeaderCompact extends StatelessWidget {
   const _HomeHeaderCompact({
     required this.appName,
-    required this.currentTime,
     required this.lastLabel,
     required this.serverOnline,
     required this.selectedDateLabel,
@@ -796,7 +770,6 @@ class _HomeHeaderCompact extends StatelessWidget {
   });
 
   final String appName;
-  final String currentTime;
   final String lastLabel;
   final bool serverOnline;
   final String selectedDateLabel;
@@ -912,10 +885,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                 icon: Icons.access_time_filled_rounded,
                 label: 'ล่าสุด $lastLabel',
               ),
-              _HeaderStatChip(
-                icon: Icons.schedule_rounded,
-                label: 'เวลา $currentTime น.',
-              ),
+              const _LiveClockChip(),
               _HeaderStatChip(
                 icon: serverOnline
                     ? Icons.cloud_done_rounded
@@ -931,6 +901,31 @@ class _HomeHeaderCompact extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LiveClockChip extends StatelessWidget {
+  const _LiveClockChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = Stream<DateTime>.periodic(
+      const Duration(seconds: 30),
+      (_) => DateTime.now(),
+    );
+    return StreamBuilder<DateTime>(
+      stream: stream,
+      initialData: DateTime.now(),
+      builder: (context, snapshot) {
+        final now = snapshot.data ?? DateTime.now();
+        final hh = now.hour.toString().padLeft(2, '0');
+        final mm = now.minute.toString().padLeft(2, '0');
+        return _HeaderStatChip(
+          icon: Icons.schedule_rounded,
+          label: 'เวลา $hh:$mm น.',
+        );
+      },
     );
   }
 }
