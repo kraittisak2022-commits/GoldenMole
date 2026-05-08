@@ -34,100 +34,125 @@ class _BootstrapSplashState extends State<BootstrapSplash>
 
   @override
   Widget build(BuildContext context) {
+    final textPrimary = const Color(0xFF1B2735);
+    final textSecondary = const Color(0xFF73849A);
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF050510), Color(0xFF0A0A1A), Color(0xFF101028)],
-          ),
-        ),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
         child: Stack(
-          alignment: Alignment.center,
           children: [
-            Positioned(
-              top: -60,
-              left: -20,
-              child: AnimatedBuilder(
-                animation: _controller,
-                builder: (context, _) {
-                  final t = _controller.value * 2 * math.pi;
-                  return Transform.translate(
-                    offset: Offset(10 * math.sin(t * 0.7), 8 * math.cos(t)),
-                    child: Container(
-                      width: 200,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [const Color(0x330096FF), Colors.transparent],
-                        ),
-                      ),
-                    ),
-                  );
-                },
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _SplashGraphicPainter(progress: _controller),
               ),
             ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, _) {
-                    final pulse =
-                        1.0 + 0.05 * math.sin(_controller.value * 2 * math.pi);
-                    return Transform.scale(
-                      scale: pulse,
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(26),
-                          border: Border.all(color: const Color(0x3300C8FF)),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x4400C8FF),
-                              blurRadius: 28,
-                              spreadRadius: 0,
-                            ),
-                          ],
-                        ),
-                        child: const AppLogo(size: 112),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      final pulse =
+                          1.0 + 0.02 * math.sin(_controller.value * 2 * math.pi);
+                      return Transform.scale(scale: pulse, child: child);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xFFE3EAF2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  'Goldenmole',
-                  style: GoogleFonts.kanit(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
+                      child: const AppLogo(size: 96),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Construction Management',
-                  style: GoogleFonts.kanit(fontSize: 14, color: Colors.white70),
-                ),
-                const SizedBox(height: 36),
-                const SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color: Color(0xFF00C8FF),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Golden Mole User',
+                    style: GoogleFonts.kanit(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: textPrimary,
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    'Construction Management',
+                    style: GoogleFonts.kanit(fontSize: 13.5, color: textSecondary),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.6,
+                      color: const Color(0xFF2D8CFF),
+                      backgroundColor: const Color(0xFFDCE6F2),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _SplashGraphicPainter extends CustomPainter {
+  _SplashGraphicPainter({required this.progress}) : super(repaint: progress);
+
+  final Animation<double> progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = progress.value * 2 * math.pi;
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    final orb1 = Offset(
+      size.width * 0.18 + 14 * math.sin(t * 0.85),
+      size.height * 0.2 + 10 * math.cos(t * 0.6),
+    );
+    final orb2 = Offset(
+      size.width * 0.82 + 12 * math.cos(t * 0.72),
+      size.height * 0.78 + 10 * math.sin(t * 0.52),
+    );
+
+    paint.shader = const RadialGradient(
+      colors: [Color(0x262D8CFF), Color(0x002D8CFF)],
+    ).createShader(Rect.fromCircle(center: orb1, radius: 170));
+    canvas.drawCircle(orb1, 170, paint);
+
+    paint.shader = const RadialGradient(
+      colors: [Color(0x1F11A8BA), Color(0x0011A8BA)],
+    ).createShader(Rect.fromCircle(center: orb2, radius: 190));
+    canvas.drawCircle(orb2, 190, paint);
+
+    final linePaint = Paint()
+      ..color = const Color(0x1F7D90A8)
+      ..strokeWidth = 1.1
+      ..style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(-40, size.height * 0.6)
+      ..quadraticBezierTo(
+        size.width * 0.35 + 14 * math.sin(t * 0.9),
+        size.height * 0.53,
+        size.width + 40,
+        size.height * 0.64,
+      );
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SplashGraphicPainter oldDelegate) => true;
 }

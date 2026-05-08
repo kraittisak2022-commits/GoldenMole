@@ -129,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _bodyPage = 0;
   DateTime _selectedDay = DateTime.now();
   DateTime _clock = DateTime.now();
+  bool _serverOnline = true;
   Timer? _ticker;
   late Future<_HomePayload> _homeFuture;
 
@@ -149,13 +150,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<_HomePayload> _loadHome() async {
-    final results = await Future.wait([
-      widget.dashboardService.fetchSummary(),
-      _txService.fetchRecentTransactions(limit: 60),
-    ]);
-    final summary = results[0] as DashboardSummary;
-    final recent = results[1] as List<AppTransaction>;
-    return _HomePayload(summary: summary, recent: recent);
+    try {
+      final results = await Future.wait([
+        widget.dashboardService.fetchSummary(),
+        _txService.fetchRecentTransactions(limit: 60),
+      ]);
+      final summary = results[0] as DashboardSummary;
+      final recent = results[1] as List<AppTransaction>;
+      if (mounted && !_serverOnline) {
+        setState(() => _serverOnline = true);
+      }
+      return _HomePayload(summary: summary, recent: recent);
+    } catch (_) {
+      if (mounted && _serverOnline) {
+        setState(() => _serverOnline = false);
+      }
+      rethrow;
+    }
   }
 
   void _refreshHome() {
@@ -172,11 +183,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _formatBuddhistDateButton(DateTime d) {
-    const wk = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+    const weekdays = [
+      'วันจันทร์',
+      'วันอังคาร',
+      'วันพุธ',
+      'วันพฤหัสบดี',
+      'วันศุกร์',
+      'วันเสาร์',
+      'วันอาทิตย์',
+    ];
+    const months = [
+      'มกราคม',
+      'กุมภาพันธ์',
+      'มีนาคม',
+      'เมษายน',
+      'พฤษภาคม',
+      'มิถุนายน',
+      'กรกฎาคม',
+      'สิงหาคม',
+      'กันยายน',
+      'ตุลาคม',
+      'พฤศจิกายน',
+      'ธันวาคม',
+    ];
     final be = d.year + 543;
-    final dd = d.day.toString().padLeft(2, '0');
-    final mm = d.month.toString().padLeft(2, '0');
-    return '${wk[d.weekday - 1]} $dd/$mm/$be';
+    return '${weekdays[d.weekday - 1]} วันที่ ${d.day} เดือน${months[d.month - 1]} พ.ศ.$be';
   }
 
   bool _hasEntryForDay(
@@ -339,6 +370,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           return _DailyHomeContent(
                             currentAdmin: widget.currentAdmin,
                             data: data,
+                            serverOnline: _serverOnline,
                             selectedDay: _selectedDay,
                             clock: _clock,
                             onPullRefresh: _pullRefresh,
@@ -490,6 +522,7 @@ class _DailyHomeContent extends StatefulWidget {
   const _DailyHomeContent({
     required this.currentAdmin,
     required this.data,
+    required this.serverOnline,
     required this.selectedDay,
     required this.clock,
     required this.onPullRefresh,
@@ -502,6 +535,7 @@ class _DailyHomeContent extends StatefulWidget {
 
   final AdminUser currentAdmin;
   final _HomePayload data;
+  final bool serverOnline;
   final DateTime selectedDay;
   final DateTime clock;
   final Future<void> Function() onPullRefresh;
@@ -582,11 +616,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     end: Offset.zero,
                   ).animate(headerAnim),
                   child: _HomeHeaderCompact(
-                    currentAdmin: widget.currentAdmin,
                     appName: widget.data.summary.appName,
                     currentTime:
                         '${widget.clock.hour.toString().padLeft(2, '0')}:${widget.clock.minute.toString().padLeft(2, '0')}',
                     lastLabel: lastLabel,
+                    serverOnline: widget.serverOnline,
                     selectedDateLabel: widget.formatBuddhistDateButton(
                       widget.selectedDay,
                     ),
@@ -750,10 +784,10 @@ class _StaggerMenuTile extends StatelessWidget {
 
 class _HomeHeaderCompact extends StatelessWidget {
   const _HomeHeaderCompact({
-    required this.currentAdmin,
     required this.appName,
     required this.currentTime,
     required this.lastLabel,
+    required this.serverOnline,
     required this.selectedDateLabel,
     required this.doneCount,
     required this.totalCount,
@@ -761,10 +795,10 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.onRefresh,
   });
 
-  final AdminUser currentAdmin;
   final String appName;
   final String currentTime;
   final String lastLabel;
+  final bool serverOnline;
   final String selectedDateLabel;
   final int doneCount;
   final int totalCount;
@@ -814,66 +848,52 @@ class _HomeHeaderCompact extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: () => onRefresh(),
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                  color: Color(0xFF3A4A5E),
-                  size: 24,
+              const SizedBox(width: 8),
+              _PressScaleButton(
+                child: InkWell(
+                  onTap: onPickDay,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Ink(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F8FC),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFFD9E1EC),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.calendar_today,
+                          color: Color(0xFF0D7284),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          selectedDateLabel,
+                          style: const TextStyle(
+                            color: Color(0xFF0D7284),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.person_pin, color: Color(0xFF3A4A5E), size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    currentAdmin.displayName,
-                    style: const TextStyle(
-                      color: Color(0xFF2A3546),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-              InkWell(
-                onTap: onPickDay,
-                borderRadius: BorderRadius.circular(20),
-                child: Ink(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F8FC),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: const Color(0xFFD9E1EC),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        color: Color(0xFF0D7284),
-                        size: 14,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        selectedDateLabel,
-                        style: const TextStyle(
-                          color: Color(0xFF0D7284),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+              _PressScaleButton(
+                child: IconButton(
+                  onPressed: () => onRefresh(),
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    color: Color(0xFF3A4A5E),
+                    size: 24,
                   ),
                 ),
               ),
@@ -896,6 +916,17 @@ class _HomeHeaderCompact extends StatelessWidget {
                 icon: Icons.schedule_rounded,
                 label: 'เวลา $currentTime น.',
               ),
+              _HeaderStatChip(
+                icon: serverOnline
+                    ? Icons.cloud_done_rounded
+                    : Icons.cloud_off_rounded,
+                label: serverOnline
+                    ? 'เซิร์ฟเวอร์: ออนไลน์'
+                    : 'เซิร์ฟเวอร์: ออฟไลน์',
+                iconColor: serverOnline
+                    ? const Color(0xFF1E8E56)
+                    : const Color(0xFFC25050),
+              ),
             ],
           ),
         ],
@@ -905,10 +936,15 @@ class _HomeHeaderCompact extends StatelessWidget {
 }
 
 class _HeaderStatChip extends StatelessWidget {
-  const _HeaderStatChip({required this.icon, required this.label});
+  const _HeaderStatChip({
+    required this.icon,
+    required this.label,
+    this.iconColor = const Color(0xFF415268),
+  });
 
   final IconData icon;
   final String label;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -923,7 +959,7 @@ class _HeaderStatChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: const Color(0xFF415268), size: 15),
+            Icon(icon, color: iconColor, size: 15),
             const SizedBox(width: 5),
             Text(
               label,
@@ -935,6 +971,34 @@ class _HeaderStatChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PressScaleButton extends StatefulWidget {
+  const _PressScaleButton({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_PressScaleButton> createState() => _PressScaleButtonState();
+}
+
+class _PressScaleButtonState extends State<_PressScaleButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 130),
+        curve: Curves.easeOutCubic,
+        scale: _pressed ? 0.96 : 1,
+        child: widget.child,
       ),
     );
   }
