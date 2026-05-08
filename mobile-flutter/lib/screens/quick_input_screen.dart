@@ -1616,95 +1616,54 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       );
     }
 
-    Widget machineCard({
+    Widget periodRow({
       required String title,
-      required Color color,
-      required TextEditingController morning,
-      required TextEditingController afternoon,
-      required double subtotal,
+      required IconData icon,
+      required Color iconColor,
+      required TextEditingController machine1Controller,
+      required TextEditingController machine2Controller,
     }) {
-      final active = subtotal > 0;
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
+      return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFFFFF), Color(0xFFF8FCFF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: const Color(0xFFF7FBFF),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: active ? color.withValues(alpha: 0.45) : const Color(0xFFDCEAF7),
-            width: active ? 1.4 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (active ? color : Colors.black).withValues(
-                alpha: active ? 0.14 : 0.02,
-              ),
-              blurRadius: active ? 14 : 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: const Color(0xFFDCEAF7)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: GoogleFonts.kanit(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1D2736),
                   ),
-                  child: Icon(Icons.settings_input_component_rounded, size: 14, color: color),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: numberField(
+                    controller: machine1Controller,
+                    label: 'เครื่องร่อน 1 (เก่า)',
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1D2A3A),
-                    ),
+                  child: numberField(
+                    controller: machine2Controller,
+                    label: 'เครื่องร่อน 2 (ใหม่)',
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: numberField(controller: morning, label: 'เช้า (คิว)')),
-                const SizedBox(width: 8),
-                Expanded(child: numberField(controller: afternoon, label: 'บ่าย (คิว)')),
-              ],
-            ),
-            const SizedBox(height: 6),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: Text(
-                'รวม ${subtotal.toStringAsFixed(0)} คิว',
-                key: ValueKey(subtotal.toStringAsFixed(0)),
-                textAlign: TextAlign.right,
-                style: GoogleFonts.kanit(
-                  color: color.withValues(alpha: 0.95),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             ),
           ],
         ),
@@ -1761,20 +1720,20 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          machineCard(
-            title: 'เครื่องร่อน 1 (เก่า)',
-            color: const Color(0xFF42A5F5),
-            morning: _sand1MorningController,
-            afternoon: _sand1AfternoonController,
-            subtotal: s1,
+          periodRow(
+            title: 'ช่วงเช้า',
+            icon: Icons.wb_sunny_outlined,
+            iconColor: const Color(0xFF1F9CF0),
+            machine1Controller: _sand1MorningController,
+            machine2Controller: _sand2MorningController,
           ),
           const SizedBox(height: 12),
-          machineCard(
-            title: 'เครื่องร่อน 2 (ใหม่)',
-            color: const Color(0xFF26C6DA),
-            morning: _sand2MorningController,
-            afternoon: _sand2AfternoonController,
-            subtotal: s2,
+          periodRow(
+            title: 'ช่วงบ่าย',
+            icon: Icons.wb_twilight_outlined,
+            iconColor: const Color(0xFF2FB6B0),
+            machine1Controller: _sand1AfternoonController,
+            machine2Controller: _sand2AfternoonController,
           ),
           const SizedBox(height: 12),
           Container(
@@ -1873,58 +1832,68 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _AnimatedInputField(
-                  controller: _sandMorningStartController,
-                  style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  readOnly: true,
-                  onTap: () => _pickSandTime(
-                    controller: _sandMorningStartController,
-                    hour: 7,
-                    minute: 20,
-                  ),
-                  decoration: deco('ช่วงเช้า เริ่มงาน (07.20)', Icons.wb_sunny_outlined),
-                ),
-                const SizedBox(height: 12),
-                _AnimatedInputField(
-                  controller: _sandAfternoonStartController,
-                  style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  readOnly: true,
-                  onTap: () => _pickSandTime(
-                    controller: _sandAfternoonStartController,
-                    hour: 13,
-                    minute: 0,
-                  ),
-                  decoration: deco('ช่วงบ่าย เริ่มงาน (13.00)', Icons.wb_twilight_outlined),
-                ),
-                const SizedBox(height: 12),
-                _AnimatedInputField(
-                  controller: _sandEveningEndController,
-                  style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textInputAction: TextInputAction.done,
-                  readOnly: true,
-                  onTap: () => _pickSandTime(
-                    controller: _sandEveningEndController,
-                    hour: 16,
-                    minute: 20,
-                  ),
-                  decoration: deco(
-                    'ช่วงเย็น หยุดล้าง (16.20)',
-                    Icons.nightlight_round_outlined,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AnimatedInputField(
+                        controller: _sandMorningStartController,
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFF1D2A3A),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textInputAction: TextInputAction.next,
+                        readOnly: true,
+                        onTap: () => _pickSandTime(
+                          controller: _sandMorningStartController,
+                          hour: 7,
+                          minute: 20,
+                        ),
+                        decoration: deco('เช้าเริ่ม (07.20)', Icons.wb_sunny_outlined),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _AnimatedInputField(
+                        controller: _sandAfternoonStartController,
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFF1D2A3A),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textInputAction: TextInputAction.next,
+                        readOnly: true,
+                        onTap: () => _pickSandTime(
+                          controller: _sandAfternoonStartController,
+                          hour: 13,
+                          minute: 0,
+                        ),
+                        decoration: deco('บ่ายเริ่ม (13.00)', Icons.wb_twilight_outlined),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _AnimatedInputField(
+                        controller: _sandEveningEndController,
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFF1D2A3A),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textInputAction: TextInputAction.done,
+                        readOnly: true,
+                        onTap: () => _pickSandTime(
+                          controller: _sandEveningEndController,
+                          hour: 16,
+                          minute: 20,
+                        ),
+                        decoration: deco(
+                          'เย็นหยุด (16.20)',
+                          Icons.nightlight_round_outlined,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
