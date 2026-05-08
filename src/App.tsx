@@ -1198,7 +1198,7 @@ function App() {
     }, [undoAction]);
 
     useEffect(() => {
-        if (!isAuthenticated || activeMenu !== 'DailyWizard') return;
+        if (!isLoggedIn || activeMenu !== 'DailyWizard') return;
         let disposed = false;
         const refreshTransactions = async () => {
             try {
@@ -1219,7 +1219,7 @@ function App() {
             disposed = true;
             window.clearInterval(timer);
         };
-    }, [isAuthenticated, activeMenu]);
+    }, [isLoggedIn, activeMenu]);
 
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
         setProjects(prev => {

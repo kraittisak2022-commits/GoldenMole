@@ -88,6 +88,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   /// แถวที่บันทึกในวงจรนี้แล้ว — อย่ายิง created_at ซ้ำ
   final Set<String> _persistOmitCreatedSessionIds = {};
   final Map<String, String> _sandRowIdsByKey = {};
+  List<String> _sand1OperatorNames = const [];
+  List<String> _sand2OperatorNames = const [];
   String? _vehicleMainTxId;
   String? _vehicleTripTxId;
   String? _fuelStockInTxId;
@@ -168,6 +170,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _sandMorningStartController.clear();
       _sandAfternoonStartController.clear();
       _sandEveningEndController.clear();
+      _sand1OperatorNames = const [];
+      _sand2OperatorNames = const [];
     } else if (_isHomeSandMode) {
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
@@ -254,6 +258,37 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   String _stripRecorderSuffix(String raw) =>
       raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
 
+  String _employeeLabelFromIdOrName(String raw) {
+    final token = raw.trim();
+    if (token.isEmpty) return '';
+    for (final e in _employees) {
+      if (e.id == token) {
+        return (e.nickname.isNotEmpty ? e.nickname : e.name).trim();
+      }
+    }
+    return token;
+  }
+
+  List<String> _extractNamesFromDescription(String description) {
+    final plain = _stripRecorderSuffix(description);
+    final m = RegExp(r'\[([^\]]+)\]').firstMatch(plain);
+    if (m == null) return const [];
+    return m.group(1)!
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _operatorNamesFromTransaction(AppTransaction t) {
+    final fromIds = t.sandOperators
+        .map(_employeeLabelFromIdOrName)
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+    if (fromIds.isNotEmpty) return fromIds;
+    return _extractNamesFromDescription(t.description);
+  }
+
   void _hydrateFormsFromTransactions(List<AppTransaction> txs) {
     if (txs.isEmpty) return;
     void setIfEmpty(TextEditingController c, String val) {
@@ -263,6 +298,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
 
     if (_isSandWashMode) {
       var inferredMaxDrums = 0.0;
+      List<String> oldMachineNames = const [];
+      List<String> newMachineNames = const [];
       for (final t in txs) {
         final rowDrums = t.drumsObtained ?? 0;
         if (rowDrums > inferredMaxDrums) {
@@ -276,6 +313,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               _strNum(t.sandMorning);
           _sand1AfternoonController.text =
               _strNum(t.sandAfternoon);
+          final names = _operatorNamesFromTransaction(t);
+          if (oldMachineNames.isEmpty && names.isNotEmpty) {
+            oldMachineNames = names;
+          }
         } else if (mt == 'new' ||
             (t.description).contains('เครื่องร่อน 2')) {
           _sandRowIdsByKey.putIfAbsent('New', () => t.id);
@@ -283,6 +324,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               _strNum(t.sandMorning);
           _sand2AfternoonController.text =
               _strNum(t.sandAfternoon);
+          final names = _operatorNamesFromTransaction(t);
+          if (newMachineNames.isEmpty && names.isNotEmpty) {
+            newMachineNames = names;
+          }
         } else if (t.description.contains('จำนวนถัง')) {
           _sandRowIdsByKey.putIfAbsent('drums', () => t.id);
           _sandDrumsObtainedController.text = _strNum(t.drumsObtained);
@@ -301,6 +346,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       if (_sandDrumsObtainedController.text.trim().isEmpty && inferredMaxDrums > 0) {
         _sandDrumsObtainedController.text = _strNum(inferredMaxDrums);
       }
+      _sand1OperatorNames = oldMachineNames;
+      _sand2OperatorNames = newMachineNames;
       return;
     }
 
@@ -465,6 +512,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           return pos.contains('คนขับ') || pos.contains('driver');
         }).toList();
       });
+      if (_isSandWashMode && _moduleDayTransactions.isNotEmpty) {
+        setState(() {
+          _hydrateFormsFromTransactions(_moduleDayTransactions);
+        });
+      }
     } catch (_) {}
   }
 
@@ -1760,6 +1812,99 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             machine1Controller: _sand1AfternoonController,
             machine2Controller: _sand2AfternoonController,
           ),
+          if (_sand1OperatorNames.isNotEmpty || _sand2OperatorNames.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FBFF),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFDCEAF7)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'พนักงานที่ล้าง (ดึงจากข้อมูลเว็บ)',
+                    style: GoogleFonts.kanit(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1D2736),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_sand1OperatorNames.isNotEmpty) ...[
+                        Text(
+                          'เครื่องร่อน 1 (เก่า)',
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E4FB8),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _sand1OperatorNames
+                              .map(
+                                (name) => Chip(
+                                  label: Text(
+                                    name,
+                                    style: GoogleFonts.kanit(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1E4FB8),
+                                    ),
+                                  ),
+                                  backgroundColor: const Color(0xFFE8F0FF),
+                                  side: const BorderSide(color: Color(0xFFC9DAFF)),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      if (_sand2OperatorNames.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'เครื่องร่อน 2 (ใหม่)',
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0A6F95),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _sand2OperatorNames
+                              .map(
+                                (name) => Chip(
+                                  label: Text(
+                                    name,
+                                    style: GoogleFonts.kanit(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF0A6F95),
+                                    ),
+                                  ),
+                                  backgroundColor: const Color(0xFFE4F7FF),
+                                  side: const BorderSide(color: Color(0xFFC3EFFF)),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -3258,6 +3403,7 @@ class _SignatureDialogState extends State<_SignatureDialog> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onPanStart: (details) {
                     setState(() => _strokes.add([details.localPosition]));
                   },
@@ -3337,8 +3483,7 @@ class _SignaturePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SignaturePainter oldDelegate) =>
-      oldDelegate.strokes != strokes;
+  bool shouldRepaint(covariant _SignaturePainter oldDelegate) => true;
 }
 
 class _CapturedSignature {
