@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
@@ -35,7 +34,6 @@ class QuickInputScreen extends StatefulWidget {
 
 class _QuickInputScreenState extends State<QuickInputScreen> {
   static const Color _bg = Color(0xFFFDFEFF);
-  static const String _employeeUsageKey = 'quick_input_employee_usage';
 
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
@@ -73,8 +71,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   List<Employee> _employees = const [];
   List<Employee> _driverEmployees = const [];
   List<String> _cars = const [];
-  Map<String, int> _employeeUsage = const {};
-  String? _selectedEmployeeId;
 
   late DateTime _selectedDate;
   bool _saving = false;
@@ -443,30 +439,14 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
 
   Future<void> _loadEmployees() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final usageRaw = prefs.getString(_employeeUsageKey);
-      final usage = <String, int>{};
-      if (usageRaw != null && usageRaw.isNotEmpty) {
-        final entries = usageRaw.split('|');
-        for (final e in entries) {
-          final pair = e.split(':');
-          if (pair.length == 2) {
-            usage[pair[0]] = int.tryParse(pair[1]) ?? 0;
-          }
-        }
-      }
       final list = await widget.employeeService.fetchEmployees();
       list.sort((a, b) {
-        final ua = usage[a.id] ?? 0;
-        final ub = usage[b.id] ?? 0;
-        if (ua != ub) return ub.compareTo(ua);
         return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
           b.nickname.isNotEmpty ? b.nickname : b.name,
         );
       });
       if (!mounted) return;
       setState(() {
-        _employeeUsage = usage;
         _employees = list;
         _driverEmployees = list.where((e) {
           final pos = (e.position ?? '').toLowerCase();
@@ -493,18 +473,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       if (!mounted) return;
       setState(() => _cars = cars);
     } catch (_) {}
-  }
-
-  Future<void> _rememberEmployeeUsage(String employeeId) async {
-    if (employeeId.isEmpty) return;
-    final next = Map<String, int>.from(_employeeUsage);
-    next[employeeId] = (next[employeeId] ?? 0) + 1;
-    final serialized = next.entries.map((e) => '${e.key}:${e.value}').join('|');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_employeeUsageKey, serialized);
-    if (!mounted) return;
-    setState(() => _employeeUsage = next);
-    await _loadEmployees();
   }
 
   Future<void> _loadOtSuggestions() async {
@@ -617,6 +585,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     required String successMessage,
   }) async {
     if (!mounted) return;
+    final signed = await _requestSignatureBeforeSave();
+    if (!signed) return;
     setState(() => _saving = true);
     var savingDialogOpen = false;
     try {
@@ -687,7 +657,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         );
 
         await _persist(entry);
-        await _rememberSelectedRecorder();
         _amountController.clear();
         _descriptionController.clear();
       },
@@ -802,7 +771,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _sandMorningStartController.clear();
       _sandAfternoonStartController.clear();
       _sandEveningEndController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -838,7 +806,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       );
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -925,7 +892,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _tripMorningController.clear();
       _tripAfternoonController.clear();
       _cubicPerTripController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -965,7 +931,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _fuelLitersController.clear();
       _fuelAmountController.clear();
       _fuelDetailsController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -1006,7 +971,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       );
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -1056,7 +1020,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _selectedLaborEmpIds.clear();
       _laborDailyWageController.clear();
       _laborWorkDetailsController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -1100,7 +1063,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _otRateController.clear();
       _otHoursController.clear();
       _otDescController.clear();
-      await _rememberSelectedRecorder();
       },
     );
   }
@@ -1323,56 +1285,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     );
   }
 
-  Employee? get _selectedRecorder {
-    if (_selectedEmployeeId == null || _selectedEmployeeId!.isEmpty) return null;
-    for (final e in _employees) {
-      if (e.id == _selectedEmployeeId) return e;
-    }
-    return null;
-  }
-
-  String get _selectedRecorderName {
-    final e = _selectedRecorder;
-    if (e == null) return '';
-    return e.nickname.isNotEmpty ? e.nickname : e.name;
-  }
-
-  String _normalizePersonName(String raw) {
-    final noParen = raw.replaceAll(RegExp(r'\s*\([^)]*\)\s*'), ' ');
-    return noParen.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-  }
-
-  List<Employee> get _recorderEmployees {
-    final dedup = <String, Employee>{};
-    for (final e in _employees) {
-      final display = e.nickname.isNotEmpty ? e.nickname : e.name;
-      final key = _normalizePersonName(display);
-      if (!dedup.containsKey(key)) {
-        dedup[key] = e;
-      }
-    }
-    if (_selectedRecorder != null) {
-      final selected = _selectedRecorder!;
-      final key = _normalizePersonName(
-        selected.nickname.isNotEmpty ? selected.nickname : selected.name,
-      );
-      dedup[key] ??= selected;
-    }
-    return dedup.values.toList();
-  }
-
-  String _appendRecorder(String text) {
-    final recorder = _selectedRecorderName;
-    if (recorder.isEmpty) return text;
-    final base = text.trim();
-    return base.isEmpty ? 'ผู้กรอก: $recorder' : '$base (ผู้กรอก: $recorder)';
-  }
-
-  Future<void> _rememberSelectedRecorder() async {
-    if (_selectedEmployeeId != null && _selectedEmployeeId!.isNotEmpty) {
-      await _rememberEmployeeUsage(_selectedEmployeeId!);
-    }
-  }
+  String _appendRecorder(String text) => text.trim();
 
   String _formatTimeDot(TimeOfDay t) {
     final hh = t.hour.toString().padLeft(2, '0');
@@ -1451,104 +1364,13 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     setState(() => controller.text = _formatTimeDot(selected));
   }
 
-  Widget _buildRecorderPickerCard() {
-    final selectedName = _selectedRecorderName;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE7EDF5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE9F2FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.badge_outlined,
-                  size: 18,
-                  color: Color(0xFF1565C0),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'ผู้กรอกข้อมูล',
-                  style: GoogleFonts.kanit(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1D2736),
-                  ),
-                ),
-              ),
-              if (selectedName.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF6EE),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFCFE9D8)),
-                  ),
-                  child: Text(
-                    selectedName,
-                    style: GoogleFonts.kanit(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1B8E4B),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            key: ValueKey('recorder-${_selectedEmployeeId ?? 'none'}-${_employees.length}'),
-            initialValue: _selectedEmployeeId,
-            decoration: const InputDecoration(
-              hintText: 'เลือกพนักงานผู้กรอกข้อมูล',
-              prefixIcon: Icon(Icons.person_outline_rounded),
-            ),
-            borderRadius: BorderRadius.circular(14),
-            dropdownColor: Colors.white,
-            elevation: 2,
-            style: GoogleFonts.kanit(color: const Color(0xFF1D2736)),
-            items: [
-              DropdownMenuItem<String>(
-                value: null,
-                child: Text('ไม่ระบุ', style: GoogleFonts.kanit(color: Colors.black54)),
-              ),
-              ..._recorderEmployees.map((e) {
-                final name = e.nickname.isNotEmpty ? e.nickname : e.name;
-                final count = _employeeUsage[e.id] ?? 0;
-                return DropdownMenuItem<String>(
-                  value: e.id,
-                  child: Text(
-                    count > 0 ? '$name • บันทึก $count ครั้ง' : name,
-                    style: GoogleFonts.kanit(color: Colors.black87),
-                  ),
-                );
-              }),
-            ],
-            onChanged: (v) => setState(() => _selectedEmployeeId = v),
-          ),
-        ],
-      ),
+  Future<bool> _requestSignatureBeforeSave() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !_saving,
+      builder: (context) => const _SignatureDialog(),
     );
+    return confirmed ?? false;
   }
 
   ThemeData _quickFormTheme(BuildContext context) {
@@ -1708,8 +1530,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                             ),
                             child: Column(
                               children: [
-                                _buildRecorderPickerCard(),
-                                const SizedBox(height: 14),
                                 (_isSandWashMode
                                     ? _buildSandWashFormCard()
                                     : _isVehicleTripMode
@@ -3350,6 +3170,132 @@ class _TimelineDot extends StatelessWidget {
       ],
     );
   }
+}
+
+class _SignatureDialog extends StatefulWidget {
+  const _SignatureDialog();
+
+  @override
+  State<_SignatureDialog> createState() => _SignatureDialogState();
+}
+
+class _SignatureDialogState extends State<_SignatureDialog> {
+  final List<List<Offset>> _strokes = [];
+
+  bool get _hasSignature =>
+      _strokes.any((stroke) => stroke.length > 1);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+      contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+      title: Text(
+        'ลงลายเซ็นก่อนบันทึก',
+        style: GoogleFonts.kanit(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF203246),
+        ),
+      ),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'เซ็นชื่อในกรอบด้านล่าง แล้วกด "ยืนยันลายเซ็น"',
+              style: GoogleFonts.kanit(
+                fontSize: 13,
+                color: const Color(0xFF6A7B8F),
+              ),
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: GestureDetector(
+                onPanStart: (details) {
+                  setState(() => _strokes.add([details.localPosition]));
+                },
+                onPanUpdate: (details) {
+                  if (_strokes.isEmpty) return;
+                  setState(() => _strokes.last.add(details.localPosition));
+                },
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FBFF),
+                    border: Border.all(color: const Color(0xFFD7E2EE)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: CustomPaint(
+                    painter: _SignaturePainter(strokes: _strokes),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => setState(_strokes.clear),
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: Text(
+                    'ล้างลายเซ็น',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: _hasSignature
+                      ? () => Navigator.of(context).pop(true)
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F9EA8),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    'ยืนยันลายเซ็น',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SignaturePainter extends CustomPainter {
+  const _SignaturePainter({required this.strokes});
+
+  final List<List<Offset>> strokes;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1C3D5A)
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    for (final stroke in strokes) {
+      for (var i = 0; i < stroke.length - 1; i++) {
+        canvas.drawLine(stroke[i], stroke[i + 1], paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SignaturePainter oldDelegate) =>
+      oldDelegate.strokes != strokes;
 }
 
 class _AnimatedInputFieldState extends State<_AnimatedInputField> {
