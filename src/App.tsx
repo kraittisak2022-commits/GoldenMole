@@ -1197,6 +1197,30 @@ function App() {
         return () => window.clearInterval(ticker);
     }, [undoAction]);
 
+    useEffect(() => {
+        if (!isAuthenticated || activeMenu !== 'DailyWizard') return;
+        let disposed = false;
+        const refreshTransactions = async () => {
+            try {
+                const latest = await db.fetchTransactions();
+                if (disposed) return;
+                setTransactions(normalizeTransactionsCreatedAt(latest));
+            } catch (err) {
+                console.error('daily wizard auto refresh transactions failed:', err);
+            }
+        };
+
+        void refreshTransactions();
+        const timer = window.setInterval(() => {
+            void refreshTransactions();
+        }, 15000);
+
+        return () => {
+            disposed = true;
+            window.clearInterval(timer);
+        };
+    }, [isAuthenticated, activeMenu]);
+
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
         setProjects(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;

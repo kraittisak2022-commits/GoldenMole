@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -260,7 +262,12 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     }
 
     if (_isSandWashMode) {
+      var inferredMaxDrums = 0.0;
       for (final t in txs) {
+        final rowDrums = t.drumsObtained ?? 0;
+        if (rowDrums > inferredMaxDrums) {
+          inferredMaxDrums = rowDrums;
+        }
         final mt = (t.sandMachineType ?? '').toLowerCase();
         if (mt == 'old' ||
             (t.description).contains('เครื่องร่อน 1')) {
@@ -289,6 +296,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         if (t.sandEveningEnd?.isNotEmpty == true) {
           _sandEveningEndController.text = t.sandEveningEnd!;
         }
+      }
+      // Fallback: if no dedicated "จำนวนถัง" row exists, use max drums from Sand rows.
+      if (_sandDrumsObtainedController.text.trim().isEmpty && inferredMaxDrums > 0) {
+        _sandDrumsObtainedController.text = _strNum(inferredMaxDrums);
       }
       return;
     }
@@ -686,9 +697,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       final m = _selectedDate.month.toString().padLeft(2, '0');
       final d = _selectedDate.day.toString().padLeft(2, '0');
       final date = '$y-$m-$d';
-      final commonCategory = _categoryController.text.trim().isEmpty
-          ? 'บันทึกการร่อนทราย'
-          : _categoryController.text.trim();
+      // Keep category aligned with web Daily Wizard schema.
+      final commonCategory = 'DailyLog';
       final commonSub = 'Sand';
       final morningStart = _sandMorningStartController.text.trim();
       final afternoonStart = _sandAfternoonStartController.text.trim();
@@ -744,8 +754,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       );
 
       final hasDrumsRow = _sandRowIdsByKey.containsKey('drums');
-      final persistDrums =
-          hasDrumsRow || (total <= 0 && drums > 0);
+      // Keep a dedicated drums row whenever user provides drums,
+      // so the data shape matches Daily Wizard expectations.
+      final persistDrums = hasDrumsRow || drums > 0;
       if (persistDrums && (hasDrumsRow || drums > 0)) {
         final drumsId = _sandRowIdsByKey['drums'] ??
             '${DateTime.now().millisecondsSinceEpoch}_drums';
@@ -802,7 +813,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           id: homeId,
           date: '$y-$m-$d',
           type: 'Expense',
-          category: _categoryController.text.trim(),
+          // Keep category aligned with web Daily Wizard schema.
+          category: 'DailyLog',
           subCategory: 'Sand',
           description: _appendRecorder('ทรายที่ล้างที่บ้าน'),
           amount: 0,
@@ -3164,6 +3176,9 @@ class _SignatureDialog extends StatefulWidget {
 class _SignatureDialogState extends State<_SignatureDialog> {
   final List<List<Offset>> _strokes = [];
 
+  double _roundCoord(double value) =>
+      double.parse(value.toStringAsFixed(2));
+
   _CapturedSignature _buildPayload() {
     final now = DateTime.now().toUtc().toIso8601String();
     final signer =
@@ -3172,8 +3187,34 @@ class _SignatureDialogState extends State<_SignatureDialog> {
             ? Supabase.instance.client.auth.currentUser!.email!.trim()
             : 'android-user';
     final pointCount = _strokes.fold<int>(0, (sum, s) => sum + s.length);
-    final note =
-        'mobile_signature:${'{"source":"android","signedAt":"$now","signedBy":"$signer","strokes":${_strokes.length},"points":$pointCount}'}';
+    final paths = <List<List<double>>>[];
+    for (final stroke in _strokes) {
+      if (stroke.length < 2) continue;
+      final sampled = <List<double>>[];
+      final step = stroke.length > 180 ? (stroke.length / 180).ceil() : 1;
+      for (var i = 0; i < stroke.length; i += step) {
+        final p = stroke[i];
+        sampled.add([_roundCoord(p.dx), _roundCoord(p.dy)]);
+      }
+      final last = stroke.last;
+      if (sampled.isEmpty ||
+          sampled.last[0] != _roundCoord(last.dx) ||
+          sampled.last[1] != _roundCoord(last.dy)) {
+        sampled.add([_roundCoord(last.dx), _roundCoord(last.dy)]);
+      }
+      if (sampled.length >= 2) {
+        paths.add(sampled);
+      }
+    }
+    final payload = {
+      'source': 'android',
+      'signedAt': now,
+      'signedBy': signer,
+      'strokes': _strokes.length,
+      'points': pointCount,
+      'paths': paths,
+    };
+    final note = 'mobile_signature:${jsonEncode(payload)}';
     return _CapturedSignature(note: note);
   }
 

@@ -24,7 +24,12 @@ import {
 
 type DraftMergeSection = 'labor' | 'vehicle' | 'trip' | 'sand' | 'fuel' | 'income' | 'event';
 const ALL_DRAFT_MERGE_SECTIONS: DraftMergeSection[] = ['labor', 'vehicle', 'trip', 'sand', 'fuel', 'income', 'event'];
-type MobileSignatureMeta = { source: string; signedAt?: string; signedBy?: string };
+type MobileSignatureMeta = {
+    source: string;
+    signedAt?: string;
+    signedBy?: string;
+    paths?: number[][][];
+};
 const parseMobileSignatureNote = (note?: string): MobileSignatureMeta | null => {
     if (!note) return null;
     const raw = String(note).trim();
@@ -51,6 +56,57 @@ const formatSignatureDateTime = (iso?: string) => {
         hour: '2-digit',
         minute: '2-digit',
     });
+};
+const normalizeTimeInputValue = (raw?: string | null) => {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    const normalized = value.replace(/\./g, ':');
+    const m = normalized.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!m) return '';
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return '';
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return '';
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+const hasSignaturePaths = (meta: MobileSignatureMeta | null) =>
+    !!meta &&
+    Array.isArray(meta.paths) &&
+    meta.paths.some(path => Array.isArray(path) && path.length >= 2);
+const MobileSignatureAttachment = ({ meta }: { meta: MobileSignatureMeta }) => {
+    if (!hasSignaturePaths(meta)) return null;
+    const paths = (meta.paths || []).filter(path => Array.isArray(path) && path.length >= 2);
+    let maxX = 1;
+    let maxY = 1;
+    paths.forEach(path => {
+        path.forEach((point) => {
+            const x = Number(point?.[0] || 0);
+            const y = Number(point?.[1] || 0);
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        });
+    });
+    return (
+        <div className="mt-1 rounded-md border border-cyan-200 bg-white px-1.5 py-1 dark:border-cyan-500/30 dark:bg-slate-900/30">
+            <div className="mb-1 text-[10px] font-semibold text-cyan-700 dark:text-cyan-200">ลายเซ็นแนบ</div>
+            <svg viewBox={`0 0 ${Math.max(10, maxX + 4)} ${Math.max(10, maxY + 4)}`} className="h-14 w-full rounded border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-950/40">
+                {paths.map((path, idx) => {
+                    const points = path.map((point) => `${Number(point?.[0] || 0)},${Number(point?.[1] || 0)}`).join(' ');
+                    return (
+                        <polyline
+                            key={`mobile-signature-path-${idx}`}
+                            points={points}
+                            fill="none"
+                            stroke="#0f172a"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                    );
+                })}
+            </svg>
+        </div>
+    );
 };
 
 interface DailyStepRecorderProps {
@@ -1405,10 +1461,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 ...sandTx.map(t => (t.drumsObtained != null ? Number(t.drumsObtained) : 0))
             );
             setSandDrumsObtained(drums > 0 ? String(drums) : '');
-            const first = sandTx[0] as any;
-            setSandMorningStart(first.sandMorningStart || '');
-            setSandAfternoonStart(first.sandAfternoonStart || '');
-            setSandEveningEnd(first.sandEveningEnd || '');
+            const txWithTime = sandTx.find((t: any) =>
+                !!(t.sandMorningStart || t.sandAfternoonStart || t.sandEveningEnd)
+            ) as any;
+            const first = (txWithTime || sandTx[0]) as any;
+            setSandMorningStart(normalizeTimeInputValue(first.sandMorningStart));
+            setSandAfternoonStart(normalizeTimeInputValue(first.sandAfternoonStart));
+            setSandEveningEnd(normalizeTimeInputValue(first.sandEveningEnd));
             setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
             const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
             sandTx.forEach((t: any) => {
@@ -3274,6 +3333,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                                     </div>
                                                                 )}
+                                                                {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
                                                                 {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                                             </div>
                                                         );})}
@@ -3642,10 +3702,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                             const mobileSignature = parseMobileSignatureNote(t.note);
                                                                             if (!mobileSignature) return null;
                                                                             return (
-                                                                                <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
-                                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
-                                                                                </div>
+                                                                                <>
+                                                                                    <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                        {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                                    </div>
+                                                                                    <MobileSignatureAttachment meta={mobileSignature} />
+                                                                                </>
                                                                             );
                                                                         })()}
                                                                         <div className="font-bold text-red-800">⛽ {(t as any).fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'}</div>
@@ -3668,10 +3731,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                             const mobileSignature = parseMobileSignatureNote(t.note);
                                                                             if (!mobileSignature) return null;
                                                                             return (
-                                                                                <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
-                                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
-                                                                                </div>
+                                                                                <>
+                                                                                    <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                        {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                                    </div>
+                                                                                    <MobileSignatureAttachment meta={mobileSignature} />
+                                                                                </>
                                                                             );
                                                                         })()}
                                                                         <div className="font-bold text-indigo-800">🚛 {t.vehicleId || '-'}</div>
@@ -3914,10 +3980,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     const mobileSignature = parseMobileSignatureNote(t.note);
                                                     if (!mobileSignature) return null;
                                                     return (
-                                                        <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                            ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
-                                                            {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
-                                                        </div>
+                                                        <>
+                                                            <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
+                                                                ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                            </div>
+                                                            <MobileSignatureAttachment meta={mobileSignature} />
+                                                        </>
                                                     );
                                                 })()}
                                                 <div className="font-bold text-lime-800">{t.description || 'รายรับ'}</div>

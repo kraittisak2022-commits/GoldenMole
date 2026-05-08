@@ -69,8 +69,15 @@ export const saveTransaction = async (t: Transaction): Promise<boolean> => {
     // Ensure JSON array fields
     if (row.employee_ids && !Array.isArray(row.employee_ids)) row.employee_ids = [];
     if (row.sand_operators && !Array.isArray(row.sand_operators)) row.sand_operators = [];
-    const { error } = await supabase.from('transactions').upsert(row, { onConflict: 'id' });
+    const { data, error } = await supabase
+        .from('transactions')
+        .upsert(row, { onConflict: 'id' })
+        .select('id');
     if (error) { console.error('saveTransaction error:', error); return false; }
+    if (!data || data.length === 0) {
+        console.error('saveTransaction verification failed: no row returned after upsert');
+        return false;
+    }
     return true;
 };
 
