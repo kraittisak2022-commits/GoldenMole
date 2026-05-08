@@ -3156,85 +3156,91 @@ class _SignatureDialogState extends State<_SignatureDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    final screen = MediaQuery.of(context).size;
+    final dialogWidth = (screen.width * 0.92).clamp(360.0, 820.0);
+    final canvasHeight = (screen.height * 0.36).clamp(240.0, 420.0);
+
+    return Dialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
-      contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-      title: Text(
-        'ลงลายเซ็นก่อนบันทึก',
-        style: GoogleFonts.kanit(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          color: const Color(0xFF203246),
-        ),
-      ),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'เซ็นชื่อในกรอบด้านล่าง แล้วกด "ยืนยันลายเซ็น"',
-              style: GoogleFonts.kanit(
-                fontSize: 13,
-                color: const Color(0xFF6A7B8F),
-              ),
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: GestureDetector(
-                onPanStart: (details) {
-                  setState(() => _strokes.add([details.localPosition]));
-                },
-                onPanUpdate: (details) {
-                  if (_strokes.isEmpty) return;
-                  setState(() => _strokes.last.add(details.localPosition));
-                },
-                child: Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FBFF),
-                    border: Border.all(color: const Color(0xFFD7E2EE)),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: CustomPaint(
-                    painter: _SignaturePainter(strokes: _strokes),
-                    child: const SizedBox.expand(),
-                  ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: SizedBox(
+        width: dialogWidth,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'ลงลายเซ็นก่อนบันทึก',
+                style: GoogleFonts.kanit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF203246),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () => setState(_strokes.clear),
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: Text(
-                    'ล้างลายเซ็น',
-                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              const SizedBox(height: 6),
+              Text(
+                'เซ็นชื่อในกรอบด้านล่าง แล้วกด "ยืนยันลายเซ็น"',
+                style: GoogleFonts.kanit(
+                  fontSize: 13.5,
+                  color: const Color(0xFF6A7B8F),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: GestureDetector(
+                  onPanStart: (details) {
+                    setState(() => _strokes.add([details.localPosition]));
+                  },
+                  onPanUpdate: (details) {
+                    if (_strokes.isEmpty) return;
+                    setState(() => _strokes.last.add(details.localPosition));
+                  },
+                  child: Container(
+                    height: canvasHeight,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FBFF),
+                      border: Border.all(color: const Color(0xFFD7E2EE)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: CustomPaint(
+                      painter: _SignaturePainter(strokes: _strokes),
+                      child: const SizedBox.expand(),
+                    ),
                   ),
                 ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: _hasSignature
-                      ? () => Navigator.of(context).pop(true)
-                      : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F9EA8),
-                    foregroundColor: Colors.white,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => setState(_strokes.clear),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text(
+                      'ล้างลายเซ็น',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                  child: Text(
-                    'ยืนยันลายเซ็น',
-                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: _hasSignature
+                        ? () => Navigator.of(context).pop(true)
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F9EA8),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      'ยืนยันลายเซ็น',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3250,9 +3256,10 @@ class _SignaturePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = const Color(0xFF1C3D5A)
-      ..strokeWidth = 2.4
+      ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true
       ..style = PaintingStyle.stroke;
 
     for (final stroke in strokes) {
