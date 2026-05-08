@@ -334,7 +334,8 @@ function App() {
         if (!currentAdmin) return false;
         if (currentAdmin.role === 'SuperAdmin') return true;
         if (!isDataEntryDailyWizardOnly) return true;
-        return activeMenu === 'DailyWizard';
+        // Allow save from standalone DailyWizard menu and Dashboard's Wizard tab.
+        return activeMenu === 'DailyWizard' || activeMenu === 'Dashboard';
     }, [activeMenu, currentAdmin, isDataEntryDailyWizardOnly]);
     const nonHiddenTransactions = useMemo(() => {
         const hidden = new Set(settings.appDefaults?.hiddenTransactionIds || []);
@@ -979,7 +980,7 @@ function App() {
 
     const handleSave = async (t: Transaction) => {
         if (!canMutateTransactionsInCurrentMenu()) {
-            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะเมนู บันทึกงานประจำวัน (Daily Wizard)');
+            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
             return;
         }
@@ -1112,7 +1113,7 @@ function App() {
 
     const handleDeleteTransaction = useCallback((id: string) => {
         if (!canMutateTransactionsInCurrentMenu()) {
-            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะเมนู บันทึกงานประจำวัน (Daily Wizard)');
+            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
             return;
         }
