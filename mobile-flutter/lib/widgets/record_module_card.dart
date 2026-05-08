@@ -103,8 +103,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                                   turns: _pressed ? -0.014 : 0,
                                   duration: const Duration(milliseconds: 150),
                                   child: Container(
-                                    width: 88,
-                                    height: 88,
+                                    width: 104,
+                                    height: 104,
                                     decoration: BoxDecoration(
                                       color: iconBg,
                                       borderRadius: BorderRadius.circular(28),
@@ -115,7 +115,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                                     ),
                                     child: Icon(
                                       widget.icon,
-                                      size: 46,
+                                      size: 58,
                                       color: iconColor,
                                     ),
                                   ),
