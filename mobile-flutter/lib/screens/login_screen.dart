@@ -31,6 +31,8 @@ class _LoginScreenState extends State<LoginScreen>
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _usernameFocus = FocusNode();
+  final _passwordFocus = FocusNode();
 
   bool _submitting = false;
   bool _darkMode = true;
@@ -68,10 +70,13 @@ class _LoginScreenState extends State<LoginScreen>
     _shimmerController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _submitting = true;
@@ -80,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen>
 
     try {
       final admin = await widget.authService.login(
-        _usernameController.text,
+        _usernameController.text.trim(),
         _passwordController.text,
       );
       widget.onLoginSuccess(admin);
@@ -93,6 +98,12 @@ class _LoginScreenState extends State<LoginScreen>
         setState(() => _submitting = false);
       }
     }
+  }
+
+  void _handleKeyboardSubmit() {
+    if (_submitting) return;
+    FocusScope.of(context).unfocus();
+    _submit();
   }
 
   InputDecoration _fieldDecoration({
@@ -159,41 +170,43 @@ class _LoginScreenState extends State<LoginScreen>
         body: Stack(
           children: [
             Positioned.fill(child: _buildBackground()),
-            AnimatedBuilder(
-              animation: _ambientController,
-              builder: (context, _) {
-                final t = _ambientController.value * 2 * math.pi;
-                return Stack(
-                  children: [
-                    Positioned(
-                      top: -80 + 14 * math.sin(t * 0.8),
-                      left: -40 + 10 * math.cos(t * 0.6),
-                      child: _glowOrb(
-                        size: 260,
-                        colors: _darkMode
-                            ? [const Color(0x330096FF), Colors.transparent]
-                            : [
-                                _gold.withValues(alpha: 0.14),
-                                Colors.transparent,
-                              ],
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _ambientController,
+                builder: (context, _) {
+                  final t = _ambientController.value * 2 * math.pi;
+                  return Stack(
+                    children: [
+                      Positioned(
+                        top: -80 + 14 * math.sin(t * 0.8),
+                        left: -40 + 10 * math.cos(t * 0.6),
+                        child: _glowOrb(
+                          size: 260,
+                          colors: _darkMode
+                              ? [const Color(0x330096FF), Colors.transparent]
+                              : [
+                                  _gold.withValues(alpha: 0.14),
+                                  Colors.transparent,
+                                ],
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      bottom: -60 + 12 * math.cos(t * 0.9),
-                      right: -30 + 8 * math.sin(t * 0.5),
-                      child: _glowOrb(
-                        size: 220,
-                        colors: _darkMode
-                            ? [const Color(0x287850FF), Colors.transparent]
-                            : [
-                                _goldDark.withValues(alpha: 0.12),
-                                Colors.transparent,
-                              ],
+                      Positioned(
+                        bottom: -60 + 12 * math.cos(t * 0.9),
+                        right: -30 + 8 * math.sin(t * 0.5),
+                        child: _glowOrb(
+                          size: 220,
+                          colors: _darkMode
+                              ? [const Color(0x287850FF), Colors.transparent]
+                              : [
+                                  _goldDark.withValues(alpha: 0.12),
+                                  Colors.transparent,
+                                ],
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
             SafeArea(
               child: Align(
@@ -247,6 +260,8 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                   child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
                       vertical: 28,
@@ -256,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen>
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(28),
                         child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                           child: Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(28),
@@ -326,10 +341,15 @@ class _LoginScreenState extends State<LoginScreen>
                                         const SizedBox(height: 22),
                                         TextFormField(
                                           controller: _usernameController,
+                                          focusNode: _usernameFocus,
                                           style: GoogleFonts.kanit(
                                             color: textPrimary,
                                             fontSize: 15,
                                           ),
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) {
+                                            _passwordFocus.requestFocus();
+                                          },
                                           cursorColor: _darkMode
                                               ? const Color(0xFF00C8FF)
                                               : _goldDark,
@@ -349,11 +369,15 @@ class _LoginScreenState extends State<LoginScreen>
                                         const SizedBox(height: 14),
                                         TextFormField(
                                           controller: _passwordController,
+                                          focusNode: _passwordFocus,
                                           obscureText: _obscurePassword,
                                           style: GoogleFonts.kanit(
                                             color: textPrimary,
                                             fontSize: 15,
                                           ),
+                                          textInputAction: TextInputAction.done,
+                                          onFieldSubmitted: (_) =>
+                                              _handleKeyboardSubmit(),
                                           cursorColor: _darkMode
                                               ? const Color(0xFF00C8FF)
                                               : _goldDark,

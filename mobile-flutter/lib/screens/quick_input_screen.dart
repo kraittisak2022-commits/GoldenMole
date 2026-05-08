@@ -34,7 +34,6 @@ class QuickInputScreen extends StatefulWidget {
 }
 
 class _QuickInputScreenState extends State<QuickInputScreen> {
-  static const Color _accent = Color(0xFF1565C0);
   static const Color _bg = Color(0xFFFDFEFF);
   static const String _employeeUsageKey = 'quick_input_employee_usage';
 
@@ -89,7 +88,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   final Set<String> _persistOmitCreatedForIds = {};
   /// แถวที่บันทึกในวงจรนี้แล้ว — อย่ายิง created_at ซ้ำ
   final Set<String> _persistOmitCreatedSessionIds = {};
-  Map<String, String> _sandRowIdsByKey = {};
+  final Map<String, String> _sandRowIdsByKey = {};
   String? _vehicleMainTxId;
   String? _vehicleTripTxId;
   String? _fuelStockInTxId;
@@ -1556,7 +1555,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     final base = Theme.of(context);
     const primary = Color(0xFF0F9EA8);
     return base.copyWith(
-      useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
         brightness: Brightness.light,
@@ -3378,7 +3376,11 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.identity()..scale(_pressed ? 0.995 : (_focused ? 1.01 : 1.0)),
+        transform: Matrix4.diagonal3Values(
+          _pressed ? 0.995 : (_focused ? 1.01 : 1.0),
+          _pressed ? 0.995 : (_focused ? 1.01 : 1.0),
+          1.0,
+        ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
