@@ -176,10 +176,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final Map<String, String> _sandRowIdsByKey = {};
   List<String> _sand1OperatorNames = const [];
   List<String> _sand2OperatorNames = const [];
-  String? _vehicleMainTxId;
-  String? _vehicleTripTxId;
-  String? _fuelStockInTxId;
-  String? _fuelVehicleUseTxId;
   String? _laborTxId;
   String? _otTxId;
   String? _homeSandTxId;
@@ -191,13 +187,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
   bool get _isHomeSandMode =>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
-  String _vehicleWorkType = 'FullDay';
-  String _fuelType = 'Diesel';
-  String _fuelVehicleType = 'Diesel';
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [
     _FuelVehicleDraft.empty(),
   ];
-  String _laborWorkType = 'FullDay';
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
   ];
@@ -294,10 +286,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _persistOmitCreatedForIds.clear();
     _persistOmitCreatedSessionIds.clear();
     _sandRowIdsByKey.clear();
-    _vehicleMainTxId = null;
-    _vehicleTripTxId = null;
-    _fuelStockInTxId = null;
-    _fuelVehicleUseTxId = null;
     _laborTxId = null;
     _otTxId = null;
     _homeSandTxId = null;
@@ -494,17 +482,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return id;
   }
 
-  String _vehicleWorkTypeLabel(String workType) {
-    switch (workType) {
-      case 'HalfDay':
-        return 'ครึ่งวัน';
-      case 'Hourly':
-        return 'รายชั่วโมง';
-      default:
-        return 'เต็มวัน';
-    }
-  }
-
   String _employeeLabelFromIdOrName(String raw) {
     final token = raw.trim();
     if (token.isEmpty) return '';
@@ -613,24 +590,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final t in txs) {
         final key = (t.vehicleId ?? '').trim();
         final draft = ensureDraft(key);
-        if (t.category == 'Vehicle') {
-          draft.mainTxId = t.id;
-          draft.vehicleId = (t.vehicleId ?? '').trim();
-          draft.driverId = (t.driverId ?? '').trim();
-          draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
-          draft.workDetailsController.text = draft.workDetails;
-          final wt = (t.workType ?? '').trim();
-          draft.workType = wt == 'HalfDay' || wt == 'Hourly' ? wt : 'FullDay';
-          if (draft.workType == 'Hourly') {
-            final hourlyMatch = RegExp(
-              r'(\d+(?:\.\d+)?)\s*ชม',
-            ).firstMatch(_stripRecorderSuffix(t.workDetails ?? ''));
-            if (hourlyMatch != null) {
-              draft.hourlyHours = hourlyMatch.group(1) ?? '';
-              draft.hourlyHoursController.text = draft.hourlyHours;
-            }
-          }
-        } else if (t.subCategory == 'VehicleTrip' ||
+        if (t.subCategory == 'VehicleTrip' ||
             (t.category == 'DailyLog' &&
                 (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
           draft.tripTxId = t.id;
@@ -649,6 +609,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (draft.workDetails.isEmpty) {
             draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
             draft.workDetailsController.text = draft.workDetails;
+          }
+          final wt = (t.workType ?? '').trim();
+          draft.workType = wt == 'HalfDay' || wt == 'Hourly' ? wt : 'FullDay';
+          if (draft.workType == 'Hourly') {
+            final hourlyMatch = RegExp(
+              r'(\d+(?:\.\d+)?)\s*ชม',
+            ).firstMatch(_stripRecorderSuffix(t.workDetails ?? ''));
+            if (hourlyMatch != null) {
+              draft.hourlyHours = hourlyMatch.group(1) ?? '';
+              draft.hourlyHoursController.text = draft.hourlyHours;
+            }
           }
         }
       }
@@ -726,7 +697,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _laborWorkDetailsController.text = _stripRecorderSuffix(
         t.workDetails ?? '',
       );
-      _laborWorkType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
       return;
     }
 
@@ -872,9 +842,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final txs = await widget.service.fetchTransactions();
       final ranked = <String, int>{};
       for (final tx in txs) {
-        final isVehicle =
-            tx.category == 'Vehicle' ||
-            tx.subCategory == 'VehicleTrip' ||
+        final isVehicle = tx.subCategory == 'VehicleTrip' ||
             (tx.category == 'DailyLog' &&
                 (tx.perCarTrips ?? tx.tripCount ?? 0) > 0);
         if (!isVehicle) continue;
@@ -1303,31 +1271,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     : '$details (${_strNum(hourlyHours)} ชม.)')
               : details;
 
-          final mainVehId =
-              row.mainTxId ?? '${DateTime.now().millisecondsSinceEpoch}_veh_$i';
-          row.mainTxId = mainVehId;
-          await _persist(
-            AppTransaction(
-              id: mainVehId,
-              date: date,
-              type: 'Expense',
-              category: 'Vehicle',
-              description: _appendRecorder(
-                'รถ: $vehicle (${detailsWithHours.isEmpty ? '-' : detailsWithHours}) [${_vehicleWorkTypeLabel(row.workType)}]',
-              ),
-              amount: 0,
-              note: _activeSignatureNote,
-              vehicleId: vehicle,
-              driverId: driver,
-              vehicleWage: 0,
-              driverWage: 0,
-              workDetails: _appendRecorder(detailsWithHours),
-              workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
-                  ? row.workType
-                  : 'FullDay',
-            ),
-          );
-
           if (totalTrips <= 0) continue;
           final totalCubic = totalTrips * cubicPerTrip;
           final tripId =
@@ -1356,96 +1299,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               perCarTrips: totalTrips,
               perCarCubic: totalCubic,
               workDetails: _appendRecorder(detailsWithHours),
+              workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
+                  ? row.workType
+                  : 'FullDay',
             ),
           );
         }
         _replaceVehicleDrafts(const []);
-      },
-    );
-  }
-
-  Future<void> _saveFuelStockInEntry() async {
-    await _runSaveWithPopups(
-      successMessage: 'บันทึกซื้อน้ำมันสำเร็จ',
-      body: () async {
-        final liters = double.tryParse(_fuelLitersController.text.trim()) ?? 0;
-        final amount = double.tryParse(_fuelAmountController.text.trim()) ?? 0;
-        if (amount <= 0) throw 'กรุณาระบุราคาซื้อน้ำมัน';
-        final y = _selectedDate.year.toString().padLeft(4, '0');
-        final m = _selectedDate.month.toString().padLeft(2, '0');
-        final d = _selectedDate.day.toString().padLeft(2, '0');
-        final unit = _fuelUnitController.text.trim() == 'แกลลอน'
-            ? 'gallon'
-            : 'L';
-        final fuelInId =
-            _fuelStockInTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
-        _fuelStockInTxId = fuelInId;
-        await _persist(
-          AppTransaction(
-            id: fuelInId,
-            date: '$y-$m-$d',
-            type: 'Expense',
-            category: 'Fuel',
-            description: _appendRecorder(
-              'ซื้อน้ำมัน ${_fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${liters.toStringAsFixed(0)} ${_fuelUnitController.text} ${amount.toStringAsFixed(0)} บาท',
-            ),
-            amount: amount,
-            note: _activeSignatureNote,
-            quantity: liters,
-            unit: unit,
-            fuelType: _fuelType,
-            fuelMovement: 'stock_in',
-            workDetails: _appendRecorder(_fuelDetailsController.text.trim()),
-          ),
-        );
-        _fuelLitersController.clear();
-        _fuelAmountController.clear();
-        _fuelDetailsController.clear();
-      },
-    );
-  }
-
-  Future<void> _saveFuelVehicleUsageEntry() async {
-    await _runSaveWithPopups(
-      successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
-      body: () async {
-        final vehicle = _fuelVehicleController.text.trim();
-        final liters =
-            double.tryParse(_fuelVehicleLitersController.text.trim()) ?? 0;
-        if (vehicle.isEmpty) throw 'กรุณาระบุรถ';
-        if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมัน';
-        final y = _selectedDate.year.toString().padLeft(4, '0');
-        final m = _selectedDate.month.toString().padLeft(2, '0');
-        final d = _selectedDate.day.toString().padLeft(2, '0');
-        final fuelOutId =
-            _fuelVehicleUseTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_fuel_out';
-        _fuelVehicleUseTxId = fuelOutId;
-        await _persist(
-          AppTransaction(
-            id: fuelOutId,
-            date: '$y-$m-$d',
-            type: 'Expense',
-            category: 'Fuel',
-            subCategory: 'VehicleUsage',
-            description: _appendRecorder(
-              'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${_fuelVehicleType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
-            ),
-            amount: 0,
-            note: _activeSignatureNote,
-            quantity: liters,
-            unit: 'L',
-            fuelType: _fuelVehicleType,
-            fuelMovement: 'stock_out',
-            vehicleId: vehicle,
-            workDetails: _appendRecorder(
-              _fuelVehicleTimeController.text.trim(),
-            ),
-          ),
-        );
-        _fuelVehicleLitersController.clear();
-        _fuelVehicleTimeController.clear();
       },
     );
   }
@@ -3821,8 +3681,9 @@ class _VehicleTripRowsBoard extends StatefulWidget {
 }
 
 class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
-  @override
-  Widget build(BuildContext context) {
+  late final ValueNotifier<_VehicleTripAggregate> _summaryNotifier;
+
+  _VehicleTripAggregate _calcAggregate() {
     double sumTrips = 0;
     double sumCubic = 0;
     for (final row in widget.rows) {
@@ -3833,6 +3694,39 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
       sumTrips += rowTrips;
       sumCubic += rowTrips * perTrip;
     }
+    return _VehicleTripAggregate(
+      sumTrips: sumTrips,
+      sumCubic: sumCubic,
+      rowCount: widget.rows.length,
+    );
+  }
+
+  void _refreshAggregate() {
+    _summaryNotifier.value = _calcAggregate();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _summaryNotifier = ValueNotifier<_VehicleTripAggregate>(_calcAggregate());
+  }
+
+  @override
+  void didUpdateWidget(covariant _VehicleTripRowsBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.rows, widget.rows)) {
+      _refreshAggregate();
+    }
+  }
+
+  @override
+  void dispose() {
+    _summaryNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3840,7 +3734,7 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
         ...List.generate(widget.rows.length, (index) {
           final row = widget.rows[index];
           return _VehicleTripRowItem(
-            key: ValueKey('row_${row.mainTxId ?? row.tripTxId ?? index}'),
+            key: ValueKey('row_${row.tripTxId ?? index}'),
             index: index,
             row: row,
             canDelete: widget.rows.length > 1,
@@ -3855,18 +3749,22 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
                 final removed = widget.rows.removeAt(index);
                 removed.dispose();
               });
+              _refreshAggregate();
               widget.notifyParentRefresh();
             },
             onChanged: () {
+              _refreshAggregate();
               widget.notifyParentRefresh();
-              setState(() {});
             },
           );
         }),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () {
-            setState(() => widget.rows.add(_VehicleTripDraft.empty()));
+            setState(() {
+              widget.rows.add(_VehicleTripDraft.empty());
+            });
+            _refreshAggregate();
             widget.notifyParentRefresh();
           },
           icon: const Icon(Icons.add_rounded),
@@ -3876,34 +3774,49 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
           ),
         ),
         const SizedBox(height: 8),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4F8FD),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: sumTrips > 0
-                  ? const Color(0xFFBFD8F4)
-                  : const Color(0xFFE2EAF4),
-            ),
-          ),
-          child: AnimatedSwitcher(
+        ValueListenableBuilder<_VehicleTripAggregate>(
+          valueListenable: _summaryNotifier,
+          builder: (context, agg, _) => AnimatedContainer(
             duration: const Duration(milliseconds: 220),
-            child: Text(
-              'รวม ${sumTrips.toStringAsFixed(0)} เที่ยว • ${sumCubic.toStringAsFixed(0)} คิว (${widget.rows.length} คัน)',
-              key: ValueKey(
-                '${sumTrips.toStringAsFixed(0)}-${sumCubic.toStringAsFixed(0)}-${widget.rows.length}',
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F8FD),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: agg.sumTrips > 0
+                    ? const Color(0xFFBFD8F4)
+                    : const Color(0xFFE2EAF4),
               ),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: Text(
+                'รวม ${agg.sumTrips.toStringAsFixed(0)} เที่ยว • ${agg.sumCubic.toStringAsFixed(0)} คิว (${agg.rowCount} คัน)',
+                key: ValueKey(
+                  '${agg.sumTrips.toStringAsFixed(0)}-${agg.sumCubic.toStringAsFixed(0)}-${agg.rowCount}',
+                ),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ),
       ],
     );
   }
+}
+
+class _VehicleTripAggregate {
+  const _VehicleTripAggregate({
+    required this.sumTrips,
+    required this.sumCubic,
+    required this.rowCount,
+  });
+
+  final double sumTrips;
+  final double sumCubic;
+  final int rowCount;
 }
 
 class _VehicleTripRowItem extends StatefulWidget {
@@ -4869,35 +4782,24 @@ class _CapturedSignature {
 }
 
 class _VehicleTripDraft {
-  _VehicleTripDraft({
-    this.mainTxId,
-    this.tripTxId,
-    this.vehicleId = '',
-    this.driverId = '',
-    this.workType = 'FullDay',
-    this.hourlyHours = '',
-    this.workDetails = '',
-    this.tripMorning = '',
-    this.tripAfternoon = '',
-    this.cubicPerTrip = '',
-  }) : workDetailsController = TextEditingController(text: workDetails),
-       hourlyHoursController = TextEditingController(text: hourlyHours),
-       tripMorningController = TextEditingController(text: tripMorning),
-       tripAfternoonController = TextEditingController(text: tripAfternoon),
-       cubicPerTripController = TextEditingController(text: cubicPerTrip);
+  _VehicleTripDraft()
+      : workDetailsController = TextEditingController(),
+        hourlyHoursController = TextEditingController(),
+        tripMorningController = TextEditingController(),
+        tripAfternoonController = TextEditingController(),
+        cubicPerTripController = TextEditingController();
 
   factory _VehicleTripDraft.empty() => _VehicleTripDraft();
 
-  String? mainTxId;
   String? tripTxId;
-  String vehicleId;
-  String driverId;
-  String workType;
-  String hourlyHours;
-  String workDetails;
-  String tripMorning;
-  String tripAfternoon;
-  String cubicPerTrip;
+  String vehicleId = '';
+  String driverId = '';
+  String workType = 'FullDay';
+  String hourlyHours = '';
+  String workDetails = '';
+  String tripMorning = '';
+  String tripAfternoon = '';
+  String cubicPerTrip = '';
   final TextEditingController workDetailsController;
   final TextEditingController hourlyHoursController;
   final TextEditingController tripMorningController;
@@ -4914,22 +4816,17 @@ class _VehicleTripDraft {
 }
 
 class _FuelVehicleDraft {
-  _FuelVehicleDraft({
-    this.txId,
-    this.vehicleId = '',
-    this.fuelType = 'Diesel',
-    this.liters = '',
-    this.time = '',
-  }) : litersController = TextEditingController(text: liters),
-       timeController = TextEditingController(text: time);
+  _FuelVehicleDraft()
+      : litersController = TextEditingController(),
+        timeController = TextEditingController();
 
   factory _FuelVehicleDraft.empty() => _FuelVehicleDraft();
 
   String? txId;
-  String vehicleId;
-  String fuelType;
-  String liters;
-  String time;
+  String vehicleId = '';
+  String fuelType = 'Diesel';
+  String liters = '';
+  String time = '';
   final TextEditingController litersController;
   final TextEditingController timeController;
 
