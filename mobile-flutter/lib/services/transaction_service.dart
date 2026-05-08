@@ -34,10 +34,19 @@ class TransactionService {
     AppTransaction item, {
     bool omitCreatedAt = false,
   }) async {
-    await _client.from('transactions').upsert(
+    final rows = await _client
+        .from('transactions')
+        .upsert(
           item.toInsertMap(omitCreatedAt: omitCreatedAt),
           onConflict: 'id',
-        );
+        )
+        .select('id');
+
+    if (rows.isEmpty) {
+      throw Exception(
+        'ไม่สามารถยืนยันผลการบันทึกข้อมูลได้ (server ไม่ตอบกลับแถวที่บันทึก)',
+      );
+    }
   }
 
   Future<void> deleteTransaction(String id) async {
