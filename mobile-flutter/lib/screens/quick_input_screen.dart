@@ -4610,6 +4610,7 @@ class _SignatureDialog extends StatefulWidget {
 
 class _SignatureDialogState extends State<_SignatureDialog> {
   final List<List<Offset>> _strokes = [];
+  int _paintRevision = 0;
 
   double _roundCoord(double value) => double.parse(value.toStringAsFixed(2));
 
@@ -4693,11 +4694,17 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onPanStart: (details) {
-                    setState(() => _strokes.add([details.localPosition]));
+                    setState(() {
+                      _strokes.add([details.localPosition]);
+                      _paintRevision++;
+                    });
                   },
                   onPanUpdate: (details) {
                     if (_strokes.isEmpty) return;
-                    setState(() => _strokes.last.add(details.localPosition));
+                    setState(() {
+                      _strokes.last.add(details.localPosition);
+                      _paintRevision++;
+                    });
                   },
                   child: Container(
                     height: canvasHeight,
@@ -4708,7 +4715,10 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                     ),
                     child: RepaintBoundary(
                       child: CustomPaint(
-                        painter: _SignaturePainter(strokes: _strokes),
+                        painter: _SignaturePainter(
+                          strokes: _strokes,
+                          revision: _paintRevision,
+                        ),
                         child: const SizedBox.expand(),
                       ),
                     ),
@@ -4719,7 +4729,10 @@ class _SignatureDialogState extends State<_SignatureDialog> {
               Row(
                 children: [
                   TextButton.icon(
-                    onPressed: () => setState(_strokes.clear),
+                    onPressed: () => setState(() {
+                      _strokes.clear();
+                      _paintRevision++;
+                    }),
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: Text(
                       'ล้างลายเซ็น',
@@ -4751,9 +4764,10 @@ class _SignatureDialogState extends State<_SignatureDialog> {
 }
 
 class _SignaturePainter extends CustomPainter {
-  const _SignaturePainter({required this.strokes});
+  const _SignaturePainter({required this.strokes, required this.revision});
 
   final List<List<Offset>> strokes;
+  final int revision;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -4773,7 +4787,8 @@ class _SignaturePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SignaturePainter oldDelegate) => true;
+  bool shouldRepaint(covariant _SignaturePainter oldDelegate) =>
+      oldDelegate.revision != revision;
 }
 
 class _CapturedSignature {
@@ -4872,56 +4887,57 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return Focus(
       onFocusChange: (focused) => setState(() => _focused = focused),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: AnimatedScale(
+        duration: Duration(milliseconds: reduceMotion ? 80 : 140),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.diagonal3Values(
-          _pressed ? 0.995 : (_focused ? 1.01 : 1.0),
-          _pressed ? 0.995 : (_focused ? 1.01 : 1.0),
-          1.0,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            if (_focused)
-              BoxShadow(
-                color: const Color(0xFF2D8CFF).withValues(alpha: 0.18),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-          ],
-        ),
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) => setState(() => _pressed = false),
-          onTapCancel: () => setState(() => _pressed = false),
-          child: TextFormField(
-            focusNode: _focusNode,
-            controller: widget.controller,
-            keyboardType: widget.keyboardType,
-            onChanged: widget.onChanged,
-            style:
-                widget.style ??
-                GoogleFonts.kanit(
-                  color: const Color(0xFF1D2A3A),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+        scale: _pressed ? 0.996 : (_focused ? 1.004 : 1.0),
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: reduceMotion ? 80 : 140),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              if (_focused)
+                BoxShadow(
+                  color: const Color(0xFF2D8CFF).withValues(alpha: 0.14),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-            textInputAction: widget.textInputAction,
-            inputFormatters: widget.inputFormatters,
-            readOnly: widget.readOnly,
-            onTap: () {
-              widget.onTap?.call();
-              if (widget.readOnly) return;
-              if (!_focusNode.hasFocus) {
-                _focusNode.requestFocus();
-              }
-              SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-            },
-            decoration: widget.decoration,
+            ],
+          ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTapDown: (_) => setState(() => _pressed = true),
+            onTapUp: (_) => setState(() => _pressed = false),
+            onTapCancel: () => setState(() => _pressed = false),
+            child: TextFormField(
+              focusNode: _focusNode,
+              controller: widget.controller,
+              keyboardType: widget.keyboardType,
+              onChanged: widget.onChanged,
+              style:
+                  widget.style ??
+                  GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+              textInputAction: widget.textInputAction,
+              inputFormatters: widget.inputFormatters,
+              readOnly: widget.readOnly,
+              onTap: () {
+                widget.onTap?.call();
+                if (widget.readOnly) return;
+                if (!_focusNode.hasFocus) {
+                  _focusNode.requestFocus();
+                }
+                SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+              },
+              decoration: widget.decoration,
+            ),
           ),
         ),
       ),

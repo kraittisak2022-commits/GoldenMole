@@ -543,13 +543,20 @@ class _DailyHomeContent extends StatefulWidget {
 class _DailyHomeContentState extends State<_DailyHomeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
+  late final bool _reduceMotion;
+  static const _kPanelShadowColor = Color(0x12000000);
 
   @override
   void initState() {
     super.initState();
+    _reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 760),
+      duration: Duration(milliseconds: _reduceMotion ? 340 : 760),
     )..forward();
   }
 
@@ -571,6 +578,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
   @override
   Widget build(BuildContext context) {
+    final useLiteAnimations = _reduceMotion;
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? _formatThaiDateFromYmd(widget.data.dayTransactions.first.date)
@@ -638,26 +646,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         border: Border.all(color: const Color(0xFFE7ECF3)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5),
+                            color: _kPanelShadowColor,
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
                           ),
                         ],
                       ),
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                         child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 260),
-                          transitionBuilder: (child, animation) => FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.03),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          ),
+                          duration: Duration(milliseconds: useLiteAnimations ? 140 : 260),
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(opacity: animation, child: child),
                           child: LayoutBuilder(
                             key: ValueKey(
                               widget.formatBuddhistDateButton(widget.selectedDay),
@@ -693,6 +693,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   0,
                                 ),
                                 physics: const NeverScrollableScrollPhysics(),
+                                addAutomaticKeepAlives: false,
+                                addRepaintBoundaries: true,
                                 itemCount: _kDailyModules.length,
                                 gridDelegate:
                                     SliverGridDelegateWithFixedCrossAxisCount(
@@ -709,6 +711,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   return _StaggerMenuTile(
                                     parent: _entranceController,
                                     index: index,
+                                    lite: useLiteAnimations,
                                     child: RecordModuleCard(
                                       title: m.title,
                                       icon: m.icon,
@@ -740,17 +743,19 @@ class _StaggerMenuTile extends StatelessWidget {
   const _StaggerMenuTile({
     required this.parent,
     required this.index,
+    required this.lite,
     required this.child,
   });
 
   final Animation<double> parent;
   final int index;
+  final bool lite;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final start = (0.28 + (index * 0.07)).clamp(0.0, 0.82);
-    final end = (start + 0.28).clamp(0.0, 1.0);
+    final start = (0.22 + (index * 0.05)).clamp(0.0, 0.82);
+    final end = (start + (lite ? 0.18 : 0.28)).clamp(0.0, 1.0);
     final fade = CurvedAnimation(
       parent: parent,
       curve: Interval(start, end, curve: Curves.easeOutCubic),
@@ -759,12 +764,12 @@ class _StaggerMenuTile extends StatelessWidget {
       opacity: fade,
       child: SlideTransition(
         position: Tween<Offset>(
-          begin: const Offset(0, 0.07),
+          begin: Offset(0, lite ? 0.03 : 0.07),
           end: Offset.zero,
         ).animate(fade),
         child: ScaleTransition(
-          scale: Tween<double>(begin: 0.96, end: 1).animate(fade),
-          child: child,
+          scale: Tween<double>(begin: lite ? 0.985 : 0.96, end: 1).animate(fade),
+          child: RepaintBoundary(child: child),
         ),
       ),
     );
@@ -804,9 +809,9 @@ class _HomeHeaderCompact extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE7ECF3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: _DailyHomeContentState._kPanelShadowColor,
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
