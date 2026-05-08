@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -148,6 +149,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _otDescController = TextEditingController();
   List<Employee> _employees = const [];
   List<Employee> _driverEmployees = const [];
+  Map<String, Employee> _employeesById = const {};
   List<String> _cars = const [];
 
   late DateTime _selectedDate;
@@ -156,6 +158,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   late final Animation<Offset> _entranceSlide;
   late final Animation<double> _contentFade;
   late final Animation<Offset> _contentSlide;
+  Timer? _uiRebuildDebounce;
   bool _saving = false;
   String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
@@ -220,9 +223,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   @override
   void initState() {
     super.initState();
+    final reduceMotion =
+        WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      duration: Duration(milliseconds: reduceMotion ? 320 : 440),
     );
     _entranceFade = CurvedAnimation(
       parent: _entranceController,
@@ -482,10 +487,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _driverLabelFromId(String driverId) {
     final id = driverId.trim();
     if (id.isEmpty) return '-';
-    for (final e in _employees) {
-      if (e.id == id) {
-        return e.nickname.isNotEmpty ? e.nickname : e.name;
-      }
+    final e = _employeesById[id];
+    if (e != null) {
+      return e.nickname.isNotEmpty ? e.nickname : e.name;
     }
     return id;
   }
@@ -504,10 +508,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _employeeLabelFromIdOrName(String raw) {
     final token = raw.trim();
     if (token.isEmpty) return '';
-    for (final e in _employees) {
-      if (e.id == token) {
-        return (e.nickname.isNotEmpty ? e.nickname : e.name).trim();
-      }
+    final e = _employeesById[token];
+    if (e != null) {
+      return (e.nickname.isNotEmpty ? e.nickname : e.name).trim();
     }
     return token;
   }
@@ -750,6 +753,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   @override
   void dispose() {
+    _uiRebuildDebounce?.cancel();
     _entranceController.dispose();
     _amountController.dispose();
     _descriptionController.dispose();
@@ -785,6 +789,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     super.dispose();
   }
 
+  void _scheduleUiRefresh({Duration delay = const Duration(milliseconds: 110)}) {
+    _uiRebuildDebounce?.cancel();
+    _uiRebuildDebounce = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
   Future<void> _loadEmployees() async {
     try {
       final list = await widget.employeeService.fetchEmployees();
@@ -796,6 +808,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!mounted) return;
       setState(() {
         _employees = list;
+        _employeesById = {for (final e in list) e.id: e};
         _driverEmployees = list
             .where((e) => !e.inactive)
             .where(_isDriverEmployee)
@@ -2031,7 +2044,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget build(BuildContext context) {
     final heading = widget.appBarTitle ?? 'คีย์ข้อมูลง่าย';
     final canPop = Navigator.of(context).canPop();
-    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final media = MediaQuery.of(context);
+    final keyboardInset = media.viewInsets.bottom;
+    final isLargeTablet = media.size.shortestSide >= 700;
+    final contentMaxWidth = isLargeTablet ? 980.0 : 760.0;
     return Theme(
       data: _quickFormTheme(context),
       child: GestureDetector(
@@ -2095,50 +2111,60 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         opacity: _contentFade,
                         child: SlideTransition(
                           position: _contentSlide,
-                          child: ListView(
-                        padding: EdgeInsets.fromLTRB(
-                          14,
-                          0,
-                          14,
-                          28 + keyboardInset,
-                        ),
-                        children: [
-                          _buildModuleHistorySection(),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: const Color(0xFFE7EDF5),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.035),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                              child: ListView(
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                cacheExtent: isLargeTablet ? 1200 : 700,
+                                padding: EdgeInsets.fromLTRB(
+                                  14,
+                                  0,
+                                  14,
+                                  28 + keyboardInset,
                                 ),
-                              ],
+                                children: [
+                                  _buildModuleHistorySection(),
+                                  RepaintBoundary(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(24),
+                                        border: Border.all(
+                                          color: const Color(0xFFE7EDF5),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.03),
+                                            blurRadius: isLargeTablet ? 14 : 18,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          (_isSandWashMode
+                                              ? _buildSandWashFormCard()
+                                              : _isVehicleTripMode
+                                              ? _buildVehicleTripFormCard()
+                                              : _isFuelMode
+                                              ? _buildFuelFormCard()
+                                              : _isHomeSandMode
+                                              ? _buildHomeSandFormCard()
+                                              : _isLaborMode
+                                              ? _buildLaborFormCard()
+                                              : _isOtMode
+                                              ? _buildOtFormCard()
+                                              : _buildFormCard()),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            child: Column(
-                              children: [
-                                (_isSandWashMode
-                                    ? _buildSandWashFormCard()
-                                    : _isVehicleTripMode
-                                    ? _buildVehicleTripFormCard()
-                                    : _isFuelMode
-                                    ? _buildFuelFormCard()
-                                    : _isHomeSandMode
-                                    ? _buildHomeSandFormCard()
-                                    : _isLaborMode
-                                    ? _buildLaborFormCard()
-                                    : _isOtMode
-                                    ? _buildOtFormCard()
-                                    : _buildFormCard()),
-                              ],
-                            ),
-                          ),
-                        ],
                           ),
                         ),
                       ),
@@ -2199,7 +2225,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }) {
       return _AnimatedInputField(
         controller: controller,
-        onChanged: (_) => setState(() {}),
+        onChanged: (_) => _scheduleUiRefresh(),
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         textInputAction: TextInputAction.next,
@@ -2300,21 +2326,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               fontSize: 13,
               height: 1.35,
               color: const Color(0xFF5A6B7F),
-            ),
-          ),
-          const SizedBox(height: 14),
-          InkWell(
-            onTap: _pickDate,
-            borderRadius: BorderRadius.circular(12),
-            child: InputDecorator(
-              decoration: deco('วันที่บันทึก', Icons.calendar_month_outlined),
-              child: Text(
-                _formatDate(_selectedDate),
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1D2A3A),
-                ),
-              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2961,33 +2972,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (_vehicleTripDrafts.isEmpty) {
       _vehicleTripDrafts.add(_VehicleTripDraft.empty());
     }
-    double sumTrips = 0;
-    double sumCubic = 0;
-    for (final row in _vehicleTripDrafts) {
-      final morning = double.tryParse(row.tripMorning) ?? 0;
-      final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
-      final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
-      final rowTrips = morning + afternoon;
-      sumTrips += rowTrips;
-      sumCubic += rowTrips * perTrip;
-    }
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE3ECF7)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
+    return _VehicleTripFormSection(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE3ECF7)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
@@ -2998,344 +3000,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF0F5FAF),
             ),
           ),
-          const SizedBox(height: 10),
-          ...List.generate(_vehicleTripDrafts.length, (index) {
-            final row = _vehicleTripDrafts[index];
-            final rowTrips =
-                (double.tryParse(row.tripMorning) ?? 0) +
-                (double.tryParse(row.tripAfternoon) ?? 0);
-            final rowCubic =
-                rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
-            return Container(
-              margin: EdgeInsets.only(
-                bottom: index == _vehicleTripDrafts.length - 1 ? 0 : 12,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9FCFF),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFDCE8F5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'คันที่ ${index + 1}',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF205A9A),
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_vehicleTripDrafts.length > 1)
-                        IconButton(
-                          onPressed: () {
-                            setState(() {
-                              final removed = _vehicleTripDrafts.removeAt(
-                                index,
-                              );
-                              removed.dispose();
-                            });
-                          },
-                          icon: const Icon(Icons.delete_outline_rounded),
-                          color: const Color(0xFFD14343),
-                          tooltip: 'ลบคันนี้',
-                        ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey('vehicle_${index}_${row.vehicleId}'),
-                          initialValue: row.vehicleId.isEmpty
-                              ? null
-                              : row.vehicleId,
-                          decoration: const InputDecoration(
-                            labelText: 'รถ/เครื่องจักร',
-                            prefixIcon: Icon(Icons.local_shipping_outlined),
-                          ),
-                          items: _cars
-                              .map(
-                                (c) => DropdownMenuItem<String>(
-                                  value: c,
-                                  child: Text(c, style: GoogleFonts.kanit()),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => row.vehicleId = v ?? ''),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey('driver_${index}_${row.driverId}'),
-                          initialValue:
-                              row.driverId.isEmpty ||
-                                  !_driverEmployees.any(
-                                    (e) => e.id == row.driverId,
-                                  )
-                              ? null
-                              : row.driverId,
-                          decoration: const InputDecoration(
-                            labelText: 'คนขับ',
-                            prefixIcon: Icon(Icons.badge_outlined),
-                          ),
-                          items: _driverEmployees
-                              .map(
-                                (e) => DropdownMenuItem<String>(
-                                  value: e.id,
-                                  child: Text(
-                                    e.nickname.isNotEmpty ? e.nickname : e.name,
-                                    style: GoogleFonts.kanit(),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => row.driverId = v ?? ''),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_driverEmployees.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถ"',
-                        style: GoogleFonts.kanit(
-                          color: const Color(0xFFD14343),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F8FF),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFD7E6F7)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment<String>(
-                                value: 'FullDay',
-                                label: Text('เต็มวัน'),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'HalfDay',
-                                label: Text('ครึ่งวัน'),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'Hourly',
-                                label: Text('รายชั่วโมง'),
-                              ),
-                            ],
-                            selected: {
-                              row.workType == 'HalfDay' ||
-                                      row.workType == 'Hourly'
-                                  ? row.workType
-                                  : 'FullDay',
-                            },
-                            onSelectionChanged: (selection) {
-                              if (selection.isEmpty) return;
-                              setState(() => row.workType = selection.first);
-                            },
-                            style: ButtonStyle(
-                              textStyle: WidgetStatePropertyAll(
-                                GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (row.workType == 'Hourly') ...[
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: row.hourlyHoursController,
-                      readOnly: true,
-                      onTap: () => _openNumericPad(
-                        controller: row.hourlyHoursController,
-                        label: 'จำนวนชั่วโมง (ชม.)',
-                        onChanged: (v) => row.hourlyHours = v,
-                        allowDecimal: true,
-                        maxDecimalPlaces: 2,
-                      ),
-                      style: GoogleFonts.kanit(
-                        color: const Color(0xFF1D2A3A),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'รายชั่วโมง (ชม.)',
-                        prefixIcon: Icon(Icons.schedule_rounded),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: row.workDetailsController,
-                    onChanged: (v) => row.workDetails = v,
-                    style: GoogleFonts.kanit(
-                      color: const Color(0xFF1D2A3A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'รายละเอียดงาน',
-                      prefixIcon: Icon(Icons.description_outlined),
-                    ),
-                  ),
-                  if (_vehicleWorkSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _vehicleWorkSuggestions
-                          .map(
-                            (s) => ActionChip(
-                              label: Text(
-                                s,
-                                style: GoogleFonts.kanit(fontSize: 13.5),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  row.workDetails = s;
-                                  row.workDetailsController.text = s;
-                                  row.workDetailsController.selection =
-                                      TextSelection.collapsed(offset: s.length);
-                                });
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: row.tripMorningController,
-                          readOnly: true,
-                          onTap: () => _openNumericPad(
-                            controller: row.tripMorningController,
-                            label: 'ช่วงเช้า (เที่ยว)',
-                            onChanged: (v) => row.tripMorning = v,
-                          ),
-                          style: GoogleFonts.kanit(
-                            color: const Color(0xFF1D2A3A),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'ช่วงเช้า (เที่ยว)',
-                            prefixIcon: Icon(Icons.wb_sunny_outlined),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          controller: row.tripAfternoonController,
-                          readOnly: true,
-                          onTap: () => _openNumericPad(
-                            controller: row.tripAfternoonController,
-                            label: 'ช่วงบ่าย (เที่ยว)',
-                            onChanged: (v) => row.tripAfternoon = v,
-                          ),
-                          style: GoogleFonts.kanit(
-                            color: const Color(0xFF1D2A3A),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'ช่วงบ่าย (เที่ยว)',
-                            prefixIcon: Icon(Icons.nightlight_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: row.cubicPerTripController,
-                    readOnly: true,
-                    onTap: () => _openNumericPad(
-                      controller: row.cubicPerTripController,
-                      label: 'คิวต่อเที่ยว',
-                      onChanged: (v) => row.cubicPerTrip = v,
-                    ),
-                    style: GoogleFonts.kanit(
-                      color: const Color(0xFF1D2A3A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'คิวต่อเที่ยว',
-                      prefixIcon: Icon(Icons.straighten_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_vehicleLabelFromId(row.vehicleId)} • ${_driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว',
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF2C4D77),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () {
-              setState(() => _vehicleTripDrafts.add(_VehicleTripDraft.empty()));
-            },
-            icon: const Icon(Icons.add_rounded),
-            label: Text(
-              'เพิ่มรถอีกคัน',
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-            ),
-          ),
-          const SizedBox(height: 8),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F8FD),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: sumTrips > 0
-                    ? const Color(0xFFBFD8F4)
-                    : const Color(0xFFE2EAF4),
-              ),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: Text(
-                'รวม ${sumTrips.toStringAsFixed(0)} เที่ยว • ${sumCubic.toStringAsFixed(0)} คิว (${_vehicleTripDrafts.length} คัน)',
-                key: ValueKey(
-                  '${sumTrips.toStringAsFixed(0)}-${sumCubic.toStringAsFixed(0)}-${_vehicleTripDrafts.length}',
-                ),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-              ),
-            ),
+          _VehicleTripRowsBoard(
+            rows: _vehicleTripDrafts,
+            cars: _cars,
+            drivers: _driverEmployees,
+            workSuggestions: _vehicleWorkSuggestions,
+            vehicleLabelFromId: _vehicleLabelFromId,
+            driverLabelFromId: _driverLabelFromId,
+            openNumericPad: _openNumericPad,
+            notifyParentRefresh: _scheduleUiRefresh,
           ),
           const SizedBox(height: 12),
           _SmoothPressable(
@@ -3353,6 +3026,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -3458,7 +3132,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() => row.vehicleId = v ?? ''),
+                    onChanged: (v) {
+                      row.vehicleId = v ?? '';
+                      _scheduleUiRefresh();
+                    },
                   ),
                   if (fuelCars.isEmpty)
                     Padding(
@@ -3617,7 +3294,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           const SizedBox(height: 10),
           TextFormField(
             controller: _drumsWashedAtHomeController,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => _scheduleUiRefresh(),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'จำนวนทรายที่ล้างที่บ้านวันนี้',
@@ -3695,335 +3372,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildLaborCanvasBoard() {
-    final assignedIds = _collectLaborAssignedIds();
-    final available = _employees
-        .where((e) => !assignedIds.contains(e.id))
-        .toList();
-
-    Widget bucketCard({required _LaborWorkCategory category}) {
-      final id = category.id;
-      final title = category.label;
-      final tint = category.color;
-      final ids = _laborAssignments[id] ?? <String>{};
-      final expanded = (_laborBucketExpanded[id] ?? false) || ids.isNotEmpty;
-      return DragTarget<String>(
-        onWillAcceptWithDetails: (details) => true,
-        onAcceptWithDetails: (details) {
-          final empId = details.data;
-          setState(() {
-            for (final bucket in _laborAssignments.values) {
-              bucket.remove(empId);
-            }
-            _laborAssignments[id]?.add(empId);
-            _laborBucketExpanded[id] = true;
-            _laborPickedIds.remove(empId);
-          });
-        },
-        builder: (context, candidateData, rejectedData) {
-          final isHovering = candidateData.isNotEmpty;
-          final hasMembers = ids.isNotEmpty;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: EdgeInsets.all(hasMembers ? 10 : 8),
-            decoration: BoxDecoration(
-              color: tint.withValues(alpha: isHovering ? 0.2 : 0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: tint.withValues(alpha: isHovering ? 0.85 : 0.45),
-                width: isHovering ? 1.8 : 1.2,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.kanit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1F2B3A),
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: tint.withValues(alpha: 0.5)),
-                      ),
-                      child: Text(
-                        '${ids.length} คน',
-                        style: GoogleFonts.kanit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF314C6D),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: expanded ? 'ยุบช่อง' : 'ขยายช่อง',
-                      onPressed: () {
-                        setState(() {
-                          _laborBucketExpanded[id] = !expanded;
-                        });
-                      },
-                      icon: AnimatedRotation(
-                        turns: expanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        child: const Icon(
-                          Icons.expand_more_rounded,
-                          size: 20,
-                          color: Color(0xFF314C6D),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: expanded
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: ids.map((empId) {
-                                final emp = _employees.where((e) => e.id == empId).toList();
-                                final label = emp.isEmpty
-                                    ? empId
-                                    : (emp.first.nickname.isNotEmpty
-                                          ? emp.first.nickname
-                                          : emp.first.name);
-                                return LongPressDraggable<String>(
-                                  data: empId,
-                                  feedback: Material(
-                                    color: Colors.transparent,
-                                    child: Chip(
-                                      label: Text(
-                                        label,
-                                        style: GoogleFonts.kanit(
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      backgroundColor: tint.withValues(alpha: 0.92),
-                                    ),
-                                  ),
-                                  childWhenDragging: Opacity(
-                                    opacity: 0.35,
-                                    child: InputChip(
-                                      label: Text(
-                                        label,
-                                        style: GoogleFonts.kanit(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      onDeleted: null,
-                                    ),
-                                  ),
-                                  child: InputChip(
-                                    label: Text(
-                                      label,
-                                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                                    ),
-                                    onDeleted: () {
-                                      setState(() {
-                                        _laborAssignments[id]?.remove(empId);
-                                        if ((_laborAssignments[id]?.isEmpty ??
-                                            true)) {
-                                          _laborBucketExpanded[id] = false;
-                                        }
-                                      });
-                                    },
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                        )
-                      : Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'ลากคนมาวางที่ช่องนี้',
-                            style: GoogleFonts.kanit(
-                              fontSize: 12.5,
-                              color: const Color(0xFF5B6D83),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 6),
-                OutlinedButton.icon(
-                  onPressed: _laborPickedIds.isEmpty
-                      ? null
-                      : () {
-                          setState(() {
-                            for (final bucket in _laborAssignments.values) {
-                              bucket.removeAll(_laborPickedIds);
-                            }
-                            _laborAssignments[id]?.addAll(_laborPickedIds);
-                            _laborBucketExpanded[id] = true;
-                            _laborPickedIds.clear();
-                          });
-                        },
-                  icon: const Icon(Icons.south_west_rounded, size: 16),
-                  label: Text(
-                    'ย้ายคนที่เลือกมาที่กล่องนี้',
-                    style: GoogleFonts.kanit(fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCE7F3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                'เลือกพนักงานเพื่อย้ายลงกล่องงาน',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${_laborPickedIds.length} คน',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF5B6D83),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          DragTarget<String>(
-            onWillAcceptWithDetails: (details) => true,
-            onAcceptWithDetails: (details) {
-              final empId = details.data;
-              setState(() {
-                for (final bucket in _laborAssignments.values) {
-                  bucket.remove(empId);
-                }
-                _laborPickedIds.remove(empId);
-              });
-            },
-            builder: (context, candidateData, rejectedData) {
-              final isHovering = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isHovering
-                      ? const Color(0xFFDDEBFA)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isHovering
-                        ? const Color(0xFF73A6E8)
-                        : Colors.transparent,
-                  ),
-                ),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: available.map((e) {
-                    final id = e.id;
-                    final selected = _laborPickedIds.contains(id);
-                    final name = e.nickname.isNotEmpty ? e.nickname : e.name;
-                    return LongPressDraggable<String>(
-                      data: id,
-                      feedback: Material(
-                        color: Colors.transparent,
-                        child: Chip(
-                          label: Text(
-                            name,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          backgroundColor: const Color(0xFF3C78C8),
-                        ),
-                      ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.35,
-                        child: FilterChip(
-                          label: Text(
-                            name,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          selected: selected,
-                          onSelected: null,
-                        ),
-                      ),
-                      child: FilterChip(
-                        label: Text(
-                          name,
-                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                        ),
-                        selected: selected,
-                        onSelected: (_) {
-                          setState(() {
-                            if (selected) {
-                              _laborPickedIds.remove(id);
-                            } else {
-                              _laborPickedIds.add(id);
-                            }
-                          });
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 10),
-          ..._laborCategories.asMap().entries.map((entry) {
-            final i = entry.key;
-            final category = entry.value;
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: i == _laborCategories.length - 1 ? 0 : 8,
-              ),
-              child: bucketCard(category: category),
-            );
-          }),
-        ],
-      ),
+    return _LaborDragBoard(
+      categories: _laborCategories,
+      employees: _employees,
+      employeesById: _employeesById,
+      assignments: _laborAssignments,
+      pickedIds: _laborPickedIds,
+      bucketExpanded: _laborBucketExpanded,
     );
   }
 
   Widget _buildLaborFormCard() {
-    final assignedIds = _collectLaborAssignedIds();
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -4052,31 +3411,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 8),
-          _buildLaborCanvasBoard(),
-          const SizedBox(height: 8),
-          const SizedBox(height: 6),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F8FD),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: assignedIds.isNotEmpty
-                    ? const Color(0xFFBFD8F4)
-                    : const Color(0xFFE2EAF4),
-              ),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: Text(
-                'พนักงานที่จัดลงงานแล้ว ${assignedIds.length} คน',
-                key: ValueKey('${assignedIds.length}'),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-              ),
-            ),
+          _LaborCanvasSection(
+            child: _buildLaborCanvasBoard(),
           ),
           const SizedBox(height: 12),
           _SmoothPressable(
@@ -4177,7 +3513,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _otHoursController,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => _scheduleUiRefresh(),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'จำนวนชั่วโมง OT',
@@ -4250,7 +3586,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildFormCard() {
-    return Container(
+        return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -4451,6 +3787,867 @@ class _AnimatedInputField extends StatefulWidget {
   State<_AnimatedInputField> createState() => _AnimatedInputFieldState();
 }
 
+typedef _OpenNumericPad = void Function({
+  required TextEditingController controller,
+  required String label,
+  ValueChanged<String>? onChanged,
+  bool allowDecimal,
+  int maxDecimalPlaces,
+});
+
+class _VehicleTripRowsBoard extends StatefulWidget {
+  const _VehicleTripRowsBoard({
+    required this.rows,
+    required this.cars,
+    required this.drivers,
+    required this.workSuggestions,
+    required this.vehicleLabelFromId,
+    required this.driverLabelFromId,
+    required this.openNumericPad,
+    required this.notifyParentRefresh,
+  });
+
+  final List<_VehicleTripDraft> rows;
+  final List<String> cars;
+  final List<Employee> drivers;
+  final List<String> workSuggestions;
+  final String Function(String vehicleId) vehicleLabelFromId;
+  final String Function(String driverId) driverLabelFromId;
+  final _OpenNumericPad openNumericPad;
+  final VoidCallback notifyParentRefresh;
+
+  @override
+  State<_VehicleTripRowsBoard> createState() => _VehicleTripRowsBoardState();
+}
+
+class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
+  @override
+  Widget build(BuildContext context) {
+    double sumTrips = 0;
+    double sumCubic = 0;
+    for (final row in widget.rows) {
+      final morning = double.tryParse(row.tripMorning) ?? 0;
+      final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
+      final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
+      final rowTrips = morning + afternoon;
+      sumTrips += rowTrips;
+      sumCubic += rowTrips * perTrip;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        ...List.generate(widget.rows.length, (index) {
+          final row = widget.rows[index];
+          return _VehicleTripRowItem(
+            key: ValueKey('row_${row.mainTxId ?? row.tripTxId ?? index}'),
+            index: index,
+            row: row,
+            canDelete: widget.rows.length > 1,
+            cars: widget.cars,
+            drivers: widget.drivers,
+            workSuggestions: widget.workSuggestions,
+            vehicleLabelFromId: widget.vehicleLabelFromId,
+            driverLabelFromId: widget.driverLabelFromId,
+            openNumericPad: widget.openNumericPad,
+            onDelete: () {
+              setState(() {
+                final removed = widget.rows.removeAt(index);
+                removed.dispose();
+              });
+              widget.notifyParentRefresh();
+            },
+            onChanged: () {
+              widget.notifyParentRefresh();
+              setState(() {});
+            },
+          );
+        }),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() => widget.rows.add(_VehicleTripDraft.empty()));
+            widget.notifyParentRefresh();
+          },
+          icon: const Icon(Icons.add_rounded),
+          label: Text(
+            'เพิ่มรถอีกคัน',
+            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(height: 8),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F8FD),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: sumTrips > 0
+                  ? const Color(0xFFBFD8F4)
+                  : const Color(0xFFE2EAF4),
+            ),
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: Text(
+              'รวม ${sumTrips.toStringAsFixed(0)} เที่ยว • ${sumCubic.toStringAsFixed(0)} คิว (${widget.rows.length} คัน)',
+              key: ValueKey(
+                '${sumTrips.toStringAsFixed(0)}-${sumCubic.toStringAsFixed(0)}-${widget.rows.length}',
+              ),
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VehicleTripRowItem extends StatefulWidget {
+  const _VehicleTripRowItem({
+    super.key,
+    required this.index,
+    required this.row,
+    required this.canDelete,
+    required this.cars,
+    required this.drivers,
+    required this.workSuggestions,
+    required this.vehicleLabelFromId,
+    required this.driverLabelFromId,
+    required this.openNumericPad,
+    required this.onDelete,
+    required this.onChanged,
+  });
+
+  final int index;
+  final _VehicleTripDraft row;
+  final bool canDelete;
+  final List<String> cars;
+  final List<Employee> drivers;
+  final List<String> workSuggestions;
+  final String Function(String vehicleId) vehicleLabelFromId;
+  final String Function(String driverId) driverLabelFromId;
+  final _OpenNumericPad openNumericPad;
+  final VoidCallback onDelete;
+  final VoidCallback onChanged;
+
+  @override
+  State<_VehicleTripRowItem> createState() => _VehicleTripRowItemState();
+}
+
+class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
+  @override
+  Widget build(BuildContext context) {
+    final row = widget.row;
+    final rowTrips =
+        (double.tryParse(row.tripMorning) ?? 0) +
+        (double.tryParse(row.tripAfternoon) ?? 0);
+    final rowCubic = rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FCFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDCE8F5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'คันที่ ${widget.index + 1}',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF205A9A),
+                ),
+              ),
+              const Spacer(),
+              if (widget.canDelete)
+                IconButton(
+                  onPressed: widget.onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  color: const Color(0xFFD14343),
+                  tooltip: 'ลบคันนี้',
+                ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('vehicle_${widget.index}_${row.vehicleId}'),
+                  initialValue: row.vehicleId.isEmpty ? null : row.vehicleId,
+                  decoration: const InputDecoration(
+                    labelText: 'รถ/เครื่องจักร',
+                    prefixIcon: Icon(Icons.local_shipping_outlined),
+                  ),
+                  items: widget.cars
+                      .map(
+                        (c) => DropdownMenuItem<String>(
+                          value: c,
+                          child: Text(c, style: GoogleFonts.kanit()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => row.vehicleId = v ?? '');
+                    widget.onChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('driver_${widget.index}_${row.driverId}'),
+                  initialValue: row.driverId.isEmpty ||
+                          !widget.drivers.any((e) => e.id == row.driverId)
+                      ? null
+                      : row.driverId,
+                  decoration: const InputDecoration(
+                    labelText: 'คนขับ',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                  items: widget.drivers
+                      .map(
+                        (e) => DropdownMenuItem<String>(
+                          value: e.id,
+                          child: Text(
+                            e.nickname.isNotEmpty ? e.nickname : e.name,
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => row.driverId = v ?? '');
+                    widget.onChanged();
+                  },
+                ),
+              ),
+            ],
+          ),
+          if (widget.drivers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถ"',
+                style: GoogleFonts.kanit(
+                  color: const Color(0xFFD14343),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F8FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD7E6F7)),
+            ),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(value: 'FullDay', label: Text('เต็มวัน')),
+                ButtonSegment<String>(value: 'HalfDay', label: Text('ครึ่งวัน')),
+                ButtonSegment<String>(value: 'Hourly', label: Text('รายชั่วโมง')),
+              ],
+              selected: {
+                row.workType == 'HalfDay' || row.workType == 'Hourly'
+                    ? row.workType
+                    : 'FullDay',
+              },
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) return;
+                setState(() => row.workType = selection.first);
+                widget.onChanged();
+              },
+              style: ButtonStyle(
+                textStyle: WidgetStatePropertyAll(
+                  GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ),
+          if (row.workType == 'Hourly') ...[
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: row.hourlyHoursController,
+              readOnly: true,
+              onTap: () => widget.openNumericPad(
+                controller: row.hourlyHoursController,
+                label: 'จำนวนชั่วโมง (ชม.)',
+                onChanged: (v) {
+                  row.hourlyHours = v;
+                  widget.onChanged();
+                  setState(() {});
+                },
+                allowDecimal: true,
+                maxDecimalPlaces: 2,
+              ),
+              style: GoogleFonts.kanit(
+                color: const Color(0xFF1D2A3A),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'รายชั่วโมง (ชม.)',
+                prefixIcon: Icon(Icons.schedule_rounded),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: row.workDetailsController,
+            onChanged: (v) => row.workDetails = v,
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'รายละเอียดงาน',
+              prefixIcon: Icon(Icons.description_outlined),
+            ),
+          ),
+          if (widget.workSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.workSuggestions
+                  .map(
+                    (s) => ActionChip(
+                      label: Text(s, style: GoogleFonts.kanit(fontSize: 13.5)),
+                      onPressed: () {
+                        setState(() {
+                          row.workDetails = s;
+                          row.workDetailsController.text = s;
+                          row.workDetailsController.selection =
+                              TextSelection.collapsed(offset: s.length);
+                        });
+                        widget.onChanged();
+                      },
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: row.tripMorningController,
+                  readOnly: true,
+                  onTap: () => widget.openNumericPad(
+                    controller: row.tripMorningController,
+                    label: 'ช่วงเช้า (เที่ยว)',
+                    onChanged: (v) {
+                      row.tripMorning = v;
+                      widget.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'ช่วงเช้า (เที่ยว)',
+                    prefixIcon: Icon(Icons.wb_sunny_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  controller: row.tripAfternoonController,
+                  readOnly: true,
+                  onTap: () => widget.openNumericPad(
+                    controller: row.tripAfternoonController,
+                    label: 'ช่วงบ่าย (เที่ยว)',
+                    onChanged: (v) {
+                      row.tripAfternoon = v;
+                      widget.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'ช่วงบ่าย (เที่ยว)',
+                    prefixIcon: Icon(Icons.nightlight_outlined),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: row.cubicPerTripController,
+            readOnly: true,
+            onTap: () => widget.openNumericPad(
+              controller: row.cubicPerTripController,
+              label: 'คิวต่อเที่ยว',
+              onChanged: (v) {
+                row.cubicPerTrip = v;
+                widget.onChanged();
+                setState(() {});
+              },
+            ),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'คิวต่อเที่ยว',
+              prefixIcon: Icon(Icons.straighten_outlined),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF2C4D77),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LaborDragBoard extends StatefulWidget {
+  const _LaborDragBoard({
+    required this.categories,
+    required this.employees,
+    required this.employeesById,
+    required this.assignments,
+    required this.pickedIds,
+    required this.bucketExpanded,
+  });
+
+  final List<_LaborWorkCategory> categories;
+  final List<Employee> employees;
+  final Map<String, Employee> employeesById;
+  final Map<String, Set<String>> assignments;
+  final Set<String> pickedIds;
+  final Map<String, bool> bucketExpanded;
+
+  @override
+  State<_LaborDragBoard> createState() => _LaborDragBoardState();
+}
+
+class _LaborDragBoardState extends State<_LaborDragBoard> {
+  Set<String> _collectAssigned() {
+    final out = <String>{};
+    for (final entry in widget.assignments.values) {
+      out.addAll(entry);
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedIds = _collectAssigned();
+    final available = widget.employees
+        .where((e) => !assignedIds.contains(e.id))
+        .toList();
+
+    Widget bucketCard(_LaborWorkCategory category) {
+      final id = category.id;
+      final ids = widget.assignments[id] ?? <String>{};
+      final expanded = (widget.bucketExpanded[id] ?? false) || ids.isNotEmpty;
+      return _LaborBucketCard(
+        category: category,
+        ids: ids,
+        expanded: expanded,
+        employeesById: widget.employeesById,
+        onToggleExpanded: () => setState(() {
+          widget.bucketExpanded[id] = !expanded;
+        }),
+        onMovePickedHere: widget.pickedIds.isEmpty
+            ? null
+            : () => setState(() {
+                for (final bucket in widget.assignments.values) {
+                  bucket.removeAll(widget.pickedIds);
+                }
+                widget.assignments[id]?.addAll(widget.pickedIds);
+                widget.bucketExpanded[id] = true;
+                widget.pickedIds.clear();
+              }),
+        onDropEmployee: (empId) => setState(() {
+          for (final bucket in widget.assignments.values) {
+            bucket.remove(empId);
+          }
+          widget.assignments[id]?.add(empId);
+          widget.bucketExpanded[id] = true;
+          widget.pickedIds.remove(empId);
+        }),
+        onDeleteEmployee: (empId) => setState(() {
+          widget.assignments[id]?.remove(empId);
+          if ((widget.assignments[id]?.isEmpty ?? true)) {
+            widget.bucketExpanded[id] = false;
+          }
+        }),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCE7F3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'เลือกพนักงานเพื่อย้ายลงกล่องงาน',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+              const Spacer(),
+              Text(
+                '${widget.pickedIds.length} คน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF5B6D83),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DragTarget<String>(
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              final empId = details.data;
+              setState(() {
+                for (final bucket in widget.assignments.values) {
+                  bucket.remove(empId);
+                }
+                widget.pickedIds.remove(empId);
+              });
+            },
+            builder: (context, candidateData, rejectedData) {
+              final isHovering = candidateData.isNotEmpty;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isHovering ? const Color(0xFFDDEBFA) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isHovering
+                        ? const Color(0xFF73A6E8)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: available.map((e) {
+                    final id = e.id;
+                    final selected = widget.pickedIds.contains(id);
+                    final name = e.nickname.isNotEmpty ? e.nickname : e.name;
+                    return LongPressDraggable<String>(
+                      data: id,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: Chip(
+                          label: Text(
+                            name,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          backgroundColor: const Color(0xFF3C78C8),
+                        ),
+                      ),
+                      childWhenDragging: Opacity(
+                        opacity: 0.35,
+                        child: FilterChip(
+                          label: Text(
+                            name,
+                            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                          ),
+                          selected: selected,
+                          onSelected: null,
+                        ),
+                      ),
+                      child: FilterChip(
+                        label: Text(
+                          name,
+                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                        ),
+                        selected: selected,
+                        onSelected: (_) => setState(() {
+                          if (selected) {
+                            widget.pickedIds.remove(id);
+                          } else {
+                            widget.pickedIds.add(id);
+                          }
+                        }),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const spacing = 8.0;
+              final itemWidth = (constraints.maxWidth - (spacing * 2)) / 3;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: widget.categories
+                    .map((category) => SizedBox(width: itemWidth, child: bucketCard(category)))
+                    .toList(),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F8FD),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: assignedIds.isNotEmpty
+                    ? const Color(0xFFBFD8F4)
+                    : const Color(0xFFE2EAF4),
+              ),
+            ),
+            child: Text(
+              'พนักงานที่จัดลงงานแล้ว ${assignedIds.length} คน',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LaborBucketCard extends StatelessWidget {
+  const _LaborBucketCard({
+    required this.category,
+    required this.ids,
+    required this.expanded,
+    required this.employeesById,
+    required this.onToggleExpanded,
+    required this.onDropEmployee,
+    required this.onDeleteEmployee,
+    required this.onMovePickedHere,
+  });
+
+  final _LaborWorkCategory category;
+  final Set<String> ids;
+  final bool expanded;
+  final Map<String, Employee> employeesById;
+  final VoidCallback onToggleExpanded;
+  final ValueChanged<String> onDropEmployee;
+  final ValueChanged<String> onDeleteEmployee;
+  final VoidCallback? onMovePickedHere;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) => onDropEmployee(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        final hasMembers = ids.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: EdgeInsets.all(hasMembers ? 10 : 8),
+          decoration: BoxDecoration(
+            color: category.color.withValues(alpha: isHovering ? 0.2 : 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: category.color.withValues(alpha: isHovering ? 0.85 : 0.45),
+              width: isHovering ? 1.8 : 1.2,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      category.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1F2B3A),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: category.color.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Text(
+                      '${ids.length} คน',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF314C6D),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                    tooltip: expanded ? 'ยุบช่อง' : 'ขยายช่อง',
+                    onPressed: onToggleExpanded,
+                    icon: AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: const Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: Color(0xFF314C6D),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: expanded
+                    ? Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: ids.map((empId) {
+                          final emp = employeesById[empId];
+                          final label =
+                              emp == null ? empId : (emp.nickname.isNotEmpty ? emp.nickname : emp.name);
+                          return LongPressDraggable<String>(
+                            data: empId,
+                            feedback: Material(
+                              color: Colors.transparent,
+                              child: Chip(
+                                label: Text(
+                                  label,
+                                  style: GoogleFonts.kanit(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                backgroundColor: category.color.withValues(alpha: 0.92),
+                              ),
+                            ),
+                            childWhenDragging: Opacity(
+                              opacity: 0.35,
+                              child: InputChip(
+                                label: Text(
+                                  label,
+                                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                                ),
+                                onDeleted: null,
+                              ),
+                            ),
+                            child: InputChip(
+                              label: Text(
+                                label,
+                                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                              ),
+                              onDeleted: () => onDeleteEmployee(empId),
+                            ),
+                          );
+                        }).toList(),
+                      )
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'ลากคนมาวางที่ช่องนี้',
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            color: const Color(0xFF5B6D83),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 6),
+              OutlinedButton.icon(
+                onPressed: onMovePickedHere,
+                icon: const Icon(Icons.south_west_rounded, size: 16),
+                label: Text(
+                  'ย้ายคนที่เลือกมาที่กล่องนี้',
+                  style: GoogleFonts.kanit(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LaborCanvasSection extends StatelessWidget {
+  const _LaborCanvasSection({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: child,
+    );
+  }
+}
+
+class _VehicleTripFormSection extends StatelessWidget {
+  const _VehicleTripFormSection({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: child,
+    );
+  }
+}
+
 class _TimelineDot extends StatelessWidget {
   const _TimelineDot({
     required this.icon,
@@ -4596,9 +4793,11 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                       border: Border.all(color: const Color(0xFFD7E2EE)),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: CustomPaint(
-                      painter: _SignaturePainter(strokes: _strokes),
-                      child: const SizedBox.expand(),
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _SignaturePainter(strokes: _strokes),
+                        child: const SizedBox.expand(),
+                      ),
                     ),
                   ),
                 ),
@@ -4860,23 +5059,21 @@ class _SmoothPressableState extends State<_SmoothPressable> {
           ? () => setState(() => _pressed = false)
           : null,
       child: AnimatedSlide(
-        duration: const Duration(milliseconds: 120),
+        duration: const Duration(milliseconds: 100),
         curve: Curves.easeOutCubic,
-        offset: Offset(0, _pressed ? 0.006 : 0),
+        offset: Offset(0, _pressed ? 0.004 : 0),
         child: AnimatedScale(
-          duration: const Duration(milliseconds: 120),
+          duration: const Duration(milliseconds: 100),
           curve: Curves.easeOutCubic,
-          scale: _pressed ? 0.985 : 1,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            curve: Curves.easeOutCubic,
+          scale: _pressed ? 0.988 : 1,
+          child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04),
-                  blurRadius: _pressed ? 8 : 12,
-                  offset: Offset(0, _pressed ? 2 : 5),
+                  color: Colors.black.withValues(alpha: 0.035),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
