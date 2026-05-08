@@ -830,19 +830,41 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const sandGrandTotal = sand1Total + sand2Total;
     const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
     const batchStockSummary = useMemo(() => {
-        const summary = new Map<string, { sourceDate: string; obtained: number; used: number }>();
+        const summary = new Map<string, { sourceDate: string; obtained: number }>();
+        // usageKey = `${batchId}|${date}` to avoid counting the same day usage multiple times
+        // when the wizard saves multiple sand transactions in one submit (e.g. machine 1 + machine 2).
+        const usageByBatchDay = new Map<string, number>();
         allSandTx.forEach((t: any) => {
             const batchId = String(t.sandBatchId || '').trim();
             if (!batchId) return;
             const sourceDate = normalizeDate(t.date);
-            const rec = summary.get(batchId) || { sourceDate, obtained: 0, used: 0 };
+            const rec = summary.get(batchId) || { sourceDate, obtained: 0 };
+            rec.sourceDate = rec.sourceDate < sourceDate ? rec.sourceDate : sourceDate;
             rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
-            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-            rec.used += usages.reduce((s: number, u: any) => s + Math.max(0, Number(u?.drums || 0)), 0);
             summary.set(batchId, rec);
+
+            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
+            usages.forEach((u: any) => {
+                const usageBatchId = String(u?.batchId || '').trim();
+                if (!usageBatchId) return;
+                const usageDrums = Math.max(0, Number(u?.drums || 0));
+                const usageKey = `${usageBatchId}|${sourceDate}`;
+                const prev = usageByBatchDay.get(usageKey) || 0;
+                usageByBatchDay.set(usageKey, Math.max(prev, usageDrums));
+            });
         });
+
+        const usedByBatch = new Map<string, number>();
+        usageByBatchDay.forEach((drums, key) => {
+            const batchId = key.split('|')[0];
+            usedByBatch.set(batchId, (usedByBatch.get(batchId) || 0) + drums);
+        });
+
         return Array.from(summary.entries())
-            .map(([batchId, v]) => ({ batchId, ...v, available: Math.max(0, v.obtained - v.used) }))
+            .map(([batchId, v]) => {
+                const used = usedByBatch.get(batchId) || 0;
+                return { batchId, ...v, used, available: Math.max(0, v.obtained - used) };
+            })
             .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
     }, [allSandTx]);
     const sourceBatchesForHome = useMemo(() => {
