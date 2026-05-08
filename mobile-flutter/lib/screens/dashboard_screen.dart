@@ -245,22 +245,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Navigator.of(context).push<T>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: const Duration(milliseconds: 320),
-        reverseTransitionDuration: const Duration(milliseconds: 240),
+        transitionDuration: const Duration(milliseconds: 380),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
-            curve: Curves.easeOutCubic,
+            curve: Curves.easeOutQuart,
             reverseCurve: Curves.easeInCubic,
           );
           final slide = Tween<Offset>(
-            begin: const Offset(0.05, 0),
+            begin: const Offset(0.03, 0.015),
             end: Offset.zero,
           ).animate(curved);
           final fade = Tween<double>(begin: 0, end: 1).animate(curved);
+          final scale = Tween<double>(begin: 0.985, end: 1).animate(curved);
           return FadeTransition(
             opacity: fade,
-            child: SlideTransition(position: slide, child: child),
+            child: SlideTransition(
+              position: slide,
+              child: ScaleTransition(scale: scale, child: child),
+            ),
           );
         },
       ),

@@ -35,7 +35,8 @@ class QuickInputScreen extends StatefulWidget {
   State<QuickInputScreen> createState() => _QuickInputScreenState();
 }
 
-class _QuickInputScreenState extends State<QuickInputScreen> {
+class _QuickInputScreenState extends State<QuickInputScreen>
+    with SingleTickerProviderStateMixin {
   static const List<_LaborWorkCategory> _laborCategories = [
     _LaborWorkCategory(
       id: 'wash_old',
@@ -150,6 +151,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   List<String> _cars = const [];
 
   late DateTime _selectedDate;
+  late final AnimationController _entranceController;
+  late final Animation<double> _entranceFade;
+  late final Animation<Offset> _entranceSlide;
+  late final Animation<double> _contentFade;
+  late final Animation<Offset> _contentSlide;
   bool _saving = false;
   String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
@@ -211,6 +217,37 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _entranceFade = CurvedAnimation(
+      parent: _entranceController,
+      curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+    );
+    _entranceSlide = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: const Interval(0.0, 0.62, curve: Curves.easeOutCubic),
+      ),
+    );
+    _contentFade = CurvedAnimation(
+      parent: _entranceController,
+      curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+    );
+    _contentSlide = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+      ),
+    );
+    _entranceController.forward();
     final d = widget.selectedDateForModule ?? DateTime.now();
     _selectedDate = DateTime(d.year, d.month, d.day);
     _categoryController = TextEditingController(
@@ -687,6 +724,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
 
   @override
   void dispose() {
+    _entranceController.dispose();
     _amountController.dispose();
     _descriptionController.dispose();
     _categoryController.dispose();
@@ -1577,45 +1615,91 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1A2A3C),
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFFD9E4F1)),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: () => setState(
-                    () => _moduleHistoryVisible = !_moduleHistoryVisible,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _moduleHistoryVisible
-                            ? Icons.expand_less_rounded
-                            : Icons.history_rounded,
-                        size: 22,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _moduleHistoryVisible
-                              ? 'ซ่อนประวัติ'
-                              : 'ดูประวัติในวันนี้ ($n รายการ)',
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.kanit(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14.5,
-                          ),
-                        ),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_moduleHistoryVisible
+                                ? theme.colorScheme.primary
+                                : Colors.black)
+                            .withValues(
+                              alpha: _moduleHistoryVisible ? 0.2 : 0.04,
+                            ),
+                        blurRadius: _moduleHistoryVisible ? 14 : 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
+                  ),
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1A2A3C),
+                      backgroundColor: Colors.white,
+                      side: BorderSide(
+                        color: _moduleHistoryVisible
+                            ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                            : const Color(0xFFD9E4F1),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(
+                        () => _moduleHistoryVisible = !_moduleHistoryVisible,
+                      );
+                    },
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: _moduleHistoryVisible ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(
+                            _moduleHistoryVisible
+                                ? Icons.expand_less_rounded
+                                : Icons.history_rounded,
+                            size: 22,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0.06, 0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            ),
+                            child: Text(
+                              _moduleHistoryVisible
+                                  ? 'ซ่อนประวัติ'
+                                  : 'ดูประวัติในวันนี้ ($n รายการ)',
+                              key: ValueKey(_moduleHistoryVisible),
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1929,7 +2013,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 ),
               ),
               SafeArea(
-                child: Column(
+                child: FadeTransition(
+                  opacity: _entranceFade,
+                  child: SlideTransition(
+                    position: _entranceSlide,
+                    child: Column(
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1960,7 +2048,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                     ),
                     const SizedBox(height: 14),
                     Expanded(
-                      child: ListView(
+                      child: FadeTransition(
+                        opacity: _contentFade,
+                        child: SlideTransition(
+                          position: _contentSlide,
+                          child: ListView(
                         padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
                         children: [
                           _buildModuleHistorySection(),
@@ -1999,9 +2091,13 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                             ),
                           ),
                         ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -4628,16 +4724,43 @@ class _SmoothPressableState extends State<_SmoothPressable> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapDown: widget.enabled
+          ? (_) {
+              HapticFeedback.lightImpact();
+              setState(() => _pressed = true);
+            }
+          : null,
       onTapUp: widget.enabled ? (_) => setState(() => _pressed = false) : null,
       onTapCancel: widget.enabled
           ? () => setState(() => _pressed = false)
           : null,
-      child: AnimatedScale(
+      child: AnimatedSlide(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
-        scale: _pressed ? 0.985 : 1,
-        child: widget.child,
+        offset: Offset(0, _pressed ? 0.006 : 0),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          scale: _pressed ? 0.985 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04),
+                  blurRadius: _pressed ? 8 : 12,
+                  offset: Offset(0, _pressed ? 2 : 5),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: widget.child,
+            ),
+          ),
+        ),
       ),
     );
   }
