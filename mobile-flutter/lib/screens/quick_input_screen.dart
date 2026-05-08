@@ -208,6 +208,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final Map<String, Set<String>> _laborAssignments = {
     for (final c in _laborCategories) c.id: <String>{},
   };
+  final Map<String, bool> _laborBucketExpanded = {
+    for (final c in _laborCategories) c.id: false,
+  };
   List<String> _vehicleWorkSuggestions = const [];
   bool get _isLaborMode =>
       widget.initialCategory == 'ค่าแรง' ||
@@ -260,9 +263,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _loadModuleTransactions(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted) return;
+      await _loadModuleTransactions();
+    });
   }
 
   String _quickYmd(DateTime d) {
@@ -358,6 +363,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _laborPickedIds.clear();
       for (final k in _laborAssignments.keys) {
         _laborAssignments[k]?.clear();
+      }
+      for (final k in _laborBucketExpanded.keys) {
+        _laborBucketExpanded[k] = false;
       }
       _laborDailyWageController.clear();
       _laborWorkDetailsController.clear();
@@ -465,10 +473,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   bool _isDriverEmployee(Employee e) {
-    final raw = (e.position ?? '').trim();
-    if (raw.isEmpty) return false;
-    final pos = raw.toLowerCase();
-    return raw == 'คนขับรถ' || pos == 'driver' || pos.contains('คนขับ');
+    final positions = e.positions.isNotEmpty
+        ? e.positions
+        : ((e.position ?? '').trim().isEmpty ? const <String>[] : <String>[e.position!.trim()]);
+    return positions.contains('คนขับรถ');
   }
 
   String _driverLabelFromId(String driverId) {
@@ -610,6 +618,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           draft.workDetailsController.text = draft.workDetails;
           final wt = (t.workType ?? '').trim();
           draft.workType = wt == 'HalfDay' || wt == 'Hourly' ? wt : 'FullDay';
+          if (draft.workType == 'Hourly') {
+            final hourlyMatch = RegExp(
+              r'(\d+(?:\.\d+)?)\s*ชม',
+            ).firstMatch(_stripRecorderSuffix(t.workDetails ?? ''));
+            if (hourlyMatch != null) {
+              draft.hourlyHours = hourlyMatch.group(1) ?? '';
+              draft.hourlyHoursController.text = draft.hourlyHours;
+            }
+          }
         } else if (t.subCategory == 'VehicleTrip' ||
             (t.category == 'DailyLog' &&
                 (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
@@ -678,15 +695,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final k in _laborAssignments.keys) {
         _laborAssignments[k]?.clear();
       }
+      for (final k in _laborBucketExpanded.keys) {
+        _laborBucketExpanded[k] = false;
+      }
       final loadedAssignments =
           t.workAssignments ?? const <String, List<String>>{};
       if (loadedAssignments.isNotEmpty) {
         loadedAssignments.forEach((key, ids) {
           if (!_laborAssignments.containsKey(key)) return;
           _laborAssignments[key]?.addAll(ids);
+          if ((_laborAssignments[key]?.isNotEmpty ?? false)) {
+            _laborBucketExpanded[key] = true;
+          }
         });
       } else {
         _laborAssignments['general']?.addAll(t.employeeIds);
+        if ((_laborAssignments['general']?.isNotEmpty ?? false)) {
+          _laborBucketExpanded['general'] = true;
+        }
       }
       final mult = ((t.workType ?? '') == 'HalfDay') ? 0.5 : 1.0;
       if (mult > 0 && (t.amount) > 0 && t.employeeIds.isNotEmpty) {
@@ -770,7 +796,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!mounted) return;
       setState(() {
         _employees = list;
-        _driverEmployees = list.where(_isDriverEmployee).toList();
+        _driverEmployees = list
+            .where((e) => !e.inactive)
+            .where(_isDriverEmployee)
+            .toList();
       });
       if (_isSandWashMode && _moduleDayTransactions.isNotEmpty) {
         setState(() {
@@ -1224,6 +1253,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           return row.vehicleId.trim().isNotEmpty ||
               row.driverId.trim().isNotEmpty ||
               row.workDetails.trim().isNotEmpty ||
+              row.hourlyHours.trim().isNotEmpty ||
               row.tripMorning.trim().isNotEmpty ||
               row.tripAfternoon.trim().isNotEmpty ||
               row.cubicPerTrip.trim().isNotEmpty;
@@ -1242,6 +1272,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final vehicle = row.vehicleId.trim();
           final driver = row.driverId.trim();
           final details = row.workDetails.trim();
+          final hourlyHours = double.tryParse(row.hourlyHours.trim()) ?? 0;
           final tripMorning = double.tryParse(row.tripMorning.trim()) ?? 0;
           final tripAfternoon = double.tryParse(row.tripAfternoon.trim()) ?? 0;
           final totalTrips = tripMorning + tripAfternoon;
@@ -1250,6 +1281,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (vehicle.isEmpty || driver.isEmpty) {
             throw 'กรุณาระบุรถและคนขับให้ครบทุกคัน';
           }
+          if (row.workType == 'Hourly' && hourlyHours <= 0) {
+            throw 'กรุณาระบุชั่วโมงทำงานสำหรับรายการรายชั่วโมง';
+          }
+          final detailsWithHours = row.workType == 'Hourly'
+              ? (details.isEmpty
+                    ? 'งานรายชั่วโมง ${_strNum(hourlyHours)} ชม.'
+                    : '$details (${_strNum(hourlyHours)} ชม.)')
+              : details;
 
           final mainVehId =
               row.mainTxId ?? '${DateTime.now().millisecondsSinceEpoch}_veh_$i';
@@ -1261,7 +1300,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               type: 'Expense',
               category: 'Vehicle',
               description: _appendRecorder(
-                'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${_vehicleWorkTypeLabel(row.workType)}]',
+                'รถ: $vehicle (${detailsWithHours.isEmpty ? '-' : detailsWithHours}) [${_vehicleWorkTypeLabel(row.workType)}]',
               ),
               amount: 0,
               note: _activeSignatureNote,
@@ -1269,7 +1308,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               driverId: driver,
               vehicleWage: 0,
               driverWage: 0,
-              workDetails: _appendRecorder(details),
+              workDetails: _appendRecorder(detailsWithHours),
               workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
                   ? row.workType
                   : 'FullDay',
@@ -1303,7 +1342,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               totalCubic: totalCubic,
               perCarTrips: totalTrips,
               perCarCubic: totalCubic,
-              workDetails: _appendRecorder(details),
+              workDetails: _appendRecorder(detailsWithHours),
             ),
           );
         }
@@ -1511,6 +1550,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _laborPickedIds.clear();
         for (final k in _laborAssignments.keys) {
           _laborAssignments[k]?.clear();
+        }
+        for (final k in _laborBucketExpanded.keys) {
+          _laborBucketExpanded[k] = false;
         }
         _laborDailyWageController.clear();
         _laborWorkDetailsController.clear();
@@ -1989,6 +2031,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget build(BuildContext context) {
     final heading = widget.appBarTitle ?? 'คีย์ข้อมูลง่าย';
     final canPop = Navigator.of(context).canPop();
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return Theme(
       data: _quickFormTheme(context),
       child: GestureDetector(
@@ -2053,7 +2096,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         child: SlideTransition(
                           position: _contentSlide,
                           child: ListView(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
+                        padding: EdgeInsets.fromLTRB(
+                          14,
+                          0,
+                          14,
+                          28 + keyboardInset,
+                        ),
                         children: [
                           _buildModuleHistorySection(),
                           Container(
@@ -3113,6 +3161,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ],
                     ),
                   ),
+                  if (row.workType == 'Hourly') ...[
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: row.hourlyHoursController,
+                      readOnly: true,
+                      onTap: () => _openNumericPad(
+                        controller: row.hourlyHoursController,
+                        label: 'จำนวนชั่วโมง (ชม.)',
+                        onChanged: (v) => row.hourlyHours = v,
+                        allowDecimal: true,
+                        maxDecimalPlaces: 2,
+                      ),
+                      style: GoogleFonts.kanit(
+                        color: const Color(0xFF1D2A3A),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'รายชั่วโมง (ชม.)',
+                        prefixIcon: Icon(Icons.schedule_rounded),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: row.workDetailsController,
@@ -3634,6 +3705,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final title = category.label;
       final tint = category.color;
       final ids = _laborAssignments[id] ?? <String>{};
+      final expanded = (_laborBucketExpanded[id] ?? false) || ids.isNotEmpty;
       return DragTarget<String>(
         onWillAcceptWithDetails: (details) => true,
         onAcceptWithDetails: (details) {
@@ -3643,14 +3715,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               bucket.remove(empId);
             }
             _laborAssignments[id]?.add(empId);
+            _laborBucketExpanded[id] = true;
             _laborPickedIds.remove(empId);
           });
         },
         builder: (context, candidateData, rejectedData) {
           final isHovering = candidateData.isNotEmpty;
+          final hasMembers = ids.isNotEmpty;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(hasMembers ? 10 : 8),
             decoration: BoxDecoration(
               color: tint.withValues(alpha: isHovering ? 0.2 : 0.12),
               borderRadius: BorderRadius.circular(14),
@@ -3692,61 +3766,106 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ),
                       ),
                     ),
+                    IconButton(
+                      tooltip: expanded ? 'ยุบช่อง' : 'ขยายช่อง',
+                      onPressed: () {
+                        setState(() {
+                          _laborBucketExpanded[id] = !expanded;
+                        });
+                      },
+                      icon: AnimatedRotation(
+                        turns: expanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        child: const Icon(
+                          Icons.expand_more_rounded,
+                          size: 20,
+                          color: Color(0xFF314C6D),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: ids.map((empId) {
-                    final emp = _employees.where((e) => e.id == empId).toList();
-                    final label = emp.isEmpty
-                        ? empId
-                        : (emp.first.nickname.isNotEmpty
-                              ? emp.first.nickname
-                              : emp.first.name);
-                    return LongPressDraggable<String>(
-                      data: empId,
-                      feedback: Material(
-                        color: Colors.transparent,
-                        child: Chip(
-                          label: Text(
-                            label,
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: expanded
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: ids.map((empId) {
+                                final emp = _employees.where((e) => e.id == empId).toList();
+                                final label = emp.isEmpty
+                                    ? empId
+                                    : (emp.first.nickname.isNotEmpty
+                                          ? emp.first.nickname
+                                          : emp.first.name);
+                                return LongPressDraggable<String>(
+                                  data: empId,
+                                  feedback: Material(
+                                    color: Colors.transparent,
+                                    child: Chip(
+                                      label: Text(
+                                        label,
+                                        style: GoogleFonts.kanit(
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      backgroundColor: tint.withValues(alpha: 0.92),
+                                    ),
+                                  ),
+                                  childWhenDragging: Opacity(
+                                    opacity: 0.35,
+                                    child: InputChip(
+                                      label: Text(
+                                        label,
+                                        style: GoogleFonts.kanit(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      onDeleted: null,
+                                    ),
+                                  ),
+                                  child: InputChip(
+                                    label: Text(
+                                      label,
+                                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                                    ),
+                                    onDeleted: () {
+                                      setState(() {
+                                        _laborAssignments[id]?.remove(empId);
+                                        if ((_laborAssignments[id]?.isEmpty ??
+                                            true)) {
+                                          _laborBucketExpanded[id] = false;
+                                        }
+                                      });
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        )
+                      : Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'ลากคนมาวางที่ช่องนี้',
                             style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              fontSize: 12.5,
+                              color: const Color(0xFF5B6D83),
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          backgroundColor: tint.withValues(alpha: 0.92),
                         ),
-                      ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.35,
-                        child: InputChip(
-                          label: Text(
-                            label,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          onDeleted: null,
-                        ),
-                      ),
-                      child: InputChip(
-                        label: Text(
-                          label,
-                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                        ),
-                        onDeleted: () {
-                          setState(() {
-                            _laborAssignments[id]?.remove(empId);
-                          });
-                        },
-                      ),
-                    );
-                  }).toList(),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 OutlinedButton.icon(
                   onPressed: _laborPickedIds.isEmpty
                       ? null
@@ -3756,13 +3875,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               bucket.removeAll(_laborPickedIds);
                             }
                             _laborAssignments[id]?.addAll(_laborPickedIds);
+                            _laborBucketExpanded[id] = true;
                             _laborPickedIds.clear();
                           });
                         },
                   icon: const Icon(Icons.south_west_rounded, size: 16),
                   label: Text(
                     'ย้ายคนที่เลือกมาที่กล่องนี้',
-                    style: GoogleFonts.kanit(fontSize: 12.5),
+                    style: GoogleFonts.kanit(fontSize: 12),
                   ),
                 ),
               ],
@@ -4556,11 +4676,13 @@ class _VehicleTripDraft {
     this.vehicleId = '',
     this.driverId = '',
     this.workType = 'FullDay',
+    this.hourlyHours = '',
     this.workDetails = '',
     this.tripMorning = '',
     this.tripAfternoon = '',
     this.cubicPerTrip = '',
   }) : workDetailsController = TextEditingController(text: workDetails),
+       hourlyHoursController = TextEditingController(text: hourlyHours),
        tripMorningController = TextEditingController(text: tripMorning),
        tripAfternoonController = TextEditingController(text: tripAfternoon),
        cubicPerTripController = TextEditingController(text: cubicPerTrip);
@@ -4572,17 +4694,20 @@ class _VehicleTripDraft {
   String vehicleId;
   String driverId;
   String workType;
+  String hourlyHours;
   String workDetails;
   String tripMorning;
   String tripAfternoon;
   String cubicPerTrip;
   final TextEditingController workDetailsController;
+  final TextEditingController hourlyHoursController;
   final TextEditingController tripMorningController;
   final TextEditingController tripAfternoonController;
   final TextEditingController cubicPerTripController;
 
   void dispose() {
     workDetailsController.dispose();
+    hourlyHoursController.dispose();
     tripMorningController.dispose();
     tripAfternoonController.dispose();
     cubicPerTripController.dispose();

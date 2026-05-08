@@ -8,6 +8,7 @@ class Employee {
     this.phone,
     this.startDate,
     this.position,
+    this.positions = const [],
     this.inactive = false,
   });
 
@@ -19,10 +20,12 @@ class Employee {
   final String? phone;
   final String? startDate;
   final String? position;
+  final List<String> positions;
   final bool inactive;
 
   factory Employee.fromMap(Map<String, dynamic> row) {
     final baseWageRaw = row['base_wage'];
+    final positionsRaw = row['positions'];
     return Employee(
       id: (row['id'] ?? '').toString(),
       name: (row['name'] ?? '').toString(),
@@ -32,6 +35,12 @@ class Employee {
       phone: row['phone']?.toString(),
       startDate: row['start_date']?.toString(),
       position: row['position']?.toString(),
+      positions: <String>[
+        if (positionsRaw is List)
+          ...positionsRaw
+              .map((e) => '$e')
+              .where((e) => e.trim().isNotEmpty),
+      ],
       inactive: row['inactive'] == true,
     );
   }
@@ -46,6 +55,7 @@ class Employee {
       'phone': phone,
       'start_date': startDate,
       'position': position,
+      if (positions.isNotEmpty) 'positions': positions,
       'inactive': inactive,
     };
   }
