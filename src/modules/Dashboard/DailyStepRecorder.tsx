@@ -2275,12 +2275,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             <p className="text-sm text-slate-500 dark:text-slate-400 py-2">ยังไม่มีรายการค่าแรง/OT วันนี้ — เมื่อกดบันทึกจะแสดงที่นี่ทันที</p>
                                         ) : (
                                             <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                                {dayTransactions.filter(t => t.category === 'Labor').map(t => (
-                                                    <div key={t.id} className="flex justify-between items-center text-sm py-1.5 px-2 rounded-lg bg-white/80 dark:bg-white/5 border border-emerald-100 dark:border-emerald-500/20">
-                                                        <span className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{t.description}</span>
-                                                        <span className="text-emerald-700 dark:text-emerald-300 font-bold shrink-0 ml-2">฿{t.amount?.toLocaleString() ?? 0}</span>
-                                                    </div>
-                                                ))}
+                                                {dayTransactions.filter(t => t.category === 'Labor').map(t => {
+                                                    const mobileSignature = parseMobileSignatureNote(t.note);
+                                                    return (
+                                                        <div key={t.id} className="text-sm py-1.5 px-2 rounded-lg bg-white/80 dark:bg-white/5 border border-emerald-100 dark:border-emerald-500/20">
+                                                            <div className="flex justify-between items-center gap-2">
+                                                                <span className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{t.description}</span>
+                                                                <span className="text-emerald-700 dark:text-emerald-300 font-bold shrink-0">฿{t.amount?.toLocaleString() ?? 0}</span>
+                                                            </div>
+                                                            {mobileSignature && (
+                                                                <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                                </div>
+                                                            )}
+                                                            {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -2840,49 +2852,59 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             <div className="h-full flex flex-col animate-slide-up">
                                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Truck className="text-amber-500" /> บันทึกการใช้รถ</h3>
                                 <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
-                                    {dayTransactions.filter(t => t.category === 'Vehicle').map(t => (
-                                        <div
-                                            key={t.id}
-                                            className={`min-w-[200px] max-w-[240px] shrink-0 relative rounded-lg border p-2 pr-9 text-xs transition-colors ${editingVehicleTxId === t.id ? 'border-amber-400 bg-amber-100/80 ring-1 ring-amber-300' : 'border-amber-100 bg-amber-50'}`}
-                                        >
-                                            <div className="absolute right-1 top-1 flex gap-0.5">
-                                                <button
-                                                    type="button"
-                                                    title="แก้ไข"
-                                                    onClick={() => loadVehicleForEdit(t)}
-                                                    className="rounded-md p-1.5 text-amber-700 hover:bg-amber-200/80 active:bg-amber-300/80"
-                                                >
-                                                    <Pencil size={14} />
-                                                </button>
-                                                {onDeleteTransaction && (
+                                    {dayTransactions.filter(t => t.category === 'Vehicle').map(t => {
+                                        const mobileSignature = parseMobileSignatureNote(t.note);
+                                        return (
+                                            <div
+                                                key={t.id}
+                                                className={`min-w-[200px] max-w-[240px] shrink-0 relative rounded-lg border p-2 pr-9 text-xs transition-colors ${editingVehicleTxId === t.id ? 'border-amber-400 bg-amber-100/80 ring-1 ring-amber-300' : 'border-amber-100 bg-amber-50'}`}
+                                            >
+                                                <div className="absolute right-1 top-1 flex gap-0.5">
                                                     <button
                                                         type="button"
-                                                        title="ลบ"
-                                                        onClick={async () => {
-                                                            if (!(await sessionConfirm('ลบรายการรถนี้?', { title: 'ยืนยันการลบ' }))) return;
-                                                            onDeleteTransaction(t.id);
-                                                            if (editingVehicleTxId === t.id) {
-                                                                setEditingVehicleTxId(null);
-                                                                setVehCar('');
-                                                                setVehDriver('');
-                                                                setVehMachineWage(defaultVehicleMachineWage);
-                                                                setVehWage('');
-                                                                setVehDetails('');
-                                                                setVehWorkType('FullDay');
-                                                            }
-                                                        }}
-                                                        className="rounded-md p-1.5 text-amber-700 hover:bg-red-100 hover:text-red-600 active:bg-red-200"
+                                                        title="แก้ไข"
+                                                        onClick={() => loadVehicleForEdit(t)}
+                                                        className="rounded-md p-1.5 text-amber-700 hover:bg-amber-200/80 active:bg-amber-300/80"
                                                     >
-                                                        <Trash2 size={14} />
+                                                        <Pencil size={14} />
                                                     </button>
+                                                    {onDeleteTransaction && (
+                                                        <button
+                                                            type="button"
+                                                            title="ลบ"
+                                                            onClick={async () => {
+                                                                if (!(await sessionConfirm('ลบรายการรถนี้?', { title: 'ยืนยันการลบ' }))) return;
+                                                                onDeleteTransaction(t.id);
+                                                                if (editingVehicleTxId === t.id) {
+                                                                    setEditingVehicleTxId(null);
+                                                                    setVehCar('');
+                                                                    setVehDriver('');
+                                                                    setVehMachineWage(defaultVehicleMachineWage);
+                                                                    setVehWage('');
+                                                                    setVehDetails('');
+                                                                    setVehWorkType('FullDay');
+                                                                }
+                                                            }}
+                                                            className="rounded-md p-1.5 text-amber-700 hover:bg-red-100 hover:text-red-600 active:bg-red-200"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="font-bold text-amber-900 pr-1">{t.vehicleId}</div>
+                                                <div className="text-amber-800/90 text-[10px] font-semibold">{(t as any).workType === 'HalfDay' ? 'ครึ่งวัน' : (t as any).workType === 'Hourly' ? 'รายชั่วโมง' : 'เต็มวัน'}</div>
+                                                <div className="text-amber-700 line-clamp-3">{t.workDetails}</div>
+                                                <div className="mt-1 text-[10px] font-medium text-amber-900/80">฿{(t.amount ?? 0).toLocaleString()}</div>
+                                                {mobileSignature && (
+                                                    <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                        {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                    </div>
                                                 )}
+                                                {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
                                             </div>
-                                            <div className="font-bold text-amber-900 pr-1">{t.vehicleId}</div>
-                                            <div className="text-amber-800/90 text-[10px] font-semibold">{(t as any).workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}</div>
-                                            <div className="text-amber-700 line-clamp-3">{t.workDetails}</div>
-                                            <div className="mt-1 text-[10px] font-medium text-amber-900/80">฿{(t.amount ?? 0).toLocaleString()}</div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                     {dayTransactions.filter(t => t.category === 'Vehicle').length === 0 && <span className="text-sm text-slate-400 italic">ยังไม่มีรายการรถวันนี้</span>}
                                 </div>
                                 <div className="space-y-4 bg-white p-4 rounded-xl border mb-4">
@@ -3124,14 +3146,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {/* Saved entries from today */}
                                 {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length > 0 && (
                                     <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
-                                        {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').map(t => (
-                                            <div key={t.id} className="min-w-[200px] p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs">
-                                                <div className="font-bold text-emerald-900">✅ {t.vehicleId}</div>
-                                                <div className="text-emerald-700 font-semibold">{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic || (t as any).totalCubic || 0} คิว</div>
-                                                <div className="text-emerald-600 mt-0.5">{t.workDetails || '-'}</div>
-                                                <div className="text-emerald-500/70 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
-                                            </div>
-                                        ))}
+                                        {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').map(t => {
+                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                            return (
+                                                <div key={t.id} className="min-w-[200px] p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs">
+                                                    <div className="font-bold text-emerald-900">✅ {t.vehicleId}</div>
+                                                    <div className="text-emerald-700 font-semibold">{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic || (t as any).totalCubic || 0} คิว</div>
+                                                    <div className="text-emerald-600 mt-0.5">{t.workDetails || '-'}</div>
+                                                    <div className="text-emerald-500/70 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
+                                                    {mobileSignature && (
+                                                        <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                            ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                            {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
+                                                        </div>
+                                                    )}
+                                                    {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 

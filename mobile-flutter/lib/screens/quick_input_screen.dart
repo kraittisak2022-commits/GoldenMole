@@ -428,8 +428,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   }
 
   bool _isDriverEmployee(Employee e) {
-    final pos = (e.position ?? '').trim().toLowerCase();
-    return pos == 'คนขับรถ' || pos == 'driver' || pos.contains('คนขับ');
+    final raw = (e.position ?? '').trim();
+    if (raw.isEmpty) return false;
+    final pos = raw.toLowerCase();
+    return raw == 'คนขับรถ' || pos == 'driver' || pos.contains('คนขับ');
   }
 
   String _driverLabelFromId(String driverId) {
@@ -441,6 +443,17 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       }
     }
     return id;
+  }
+
+  String _vehicleWorkTypeLabel(String workType) {
+    switch (workType) {
+      case 'HalfDay':
+        return 'ครึ่งวัน';
+      case 'Hourly':
+        return 'รายชั่วโมง';
+      default:
+        return 'เต็มวัน';
+    }
   }
 
   String _employeeLabelFromIdOrName(String raw) {
@@ -558,7 +571,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           draft.driverId = (t.driverId ?? '').trim();
           draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
           draft.workDetailsController.text = draft.workDetails;
-          draft.workType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
+          final wt = (t.workType ?? '').trim();
+          draft.workType = wt == 'HalfDay' || wt == 'Hourly' ? wt : 'FullDay';
         } else if (t.subCategory == 'VehicleTrip' ||
             (t.category == 'DailyLog' &&
                 (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
@@ -1209,7 +1223,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               type: 'Expense',
               category: 'Vehicle',
               description: _appendRecorder(
-                'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}]',
+                'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${_vehicleWorkTypeLabel(row.workType)}]',
               ),
               amount: 0,
               note: _activeSignatureNote,
@@ -1218,7 +1232,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               vehicleWage: 0,
               driverWage: 0,
               workDetails: _appendRecorder(details),
-              workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+              workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
+                  ? row.workType
+                  : 'FullDay',
             ),
           );
 
@@ -2599,6 +2615,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     required TextEditingController controller,
     required String label,
     ValueChanged<String>? onChanged,
+    bool allowDecimal = false,
+    int maxDecimalPlaces = 2,
   }) async {
     String value = controller.text;
     await showModalBottomSheet<void>(
@@ -2609,6 +2627,20 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         Widget key(String k) {
           return FilledButton(
             onPressed: () {
+              if (k == '.' && !allowDecimal) return;
+              if (k == '.') {
+                if (value.contains('.')) return;
+                value = value.isEmpty ? '0.' : '$value.';
+                controller.text = value;
+                onChanged?.call(value);
+                setState(() {});
+                return;
+              }
+              if (allowDecimal && value.contains('.')) {
+                final idx = value.indexOf('.');
+                final decimals = value.substring(idx + 1);
+                if (decimals.length >= maxDecimalPlaces) return;
+              }
               value += k;
               controller.text = value;
               onChanged?.call(value);
@@ -2705,6 +2737,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                       ),
                     ),
                     key('0'),
+                    if (allowDecimal) key('.'),
                     FilledButton(
                       onPressed: () {
                         if (value.isNotEmpty) {
@@ -2928,7 +2961,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
-                        'ยังไม่พบพนักงานตำแหน่งคนขับรถ',
+                        'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถ"',
                         style: GoogleFonts.kanit(
                           color: const Color(0xFFD14343),
                           fontWeight: FontWeight.w700,
@@ -2949,18 +2982,36 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน',
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF244B75),
+                          child: SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment<String>(
+                                value: 'FullDay',
+                                label: Text('เต็มวัน'),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'HalfDay',
+                                label: Text('ครึ่งวัน'),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'Hourly',
+                                label: Text('รายชั่วโมง'),
+                              ),
+                            ],
+                            selected: {
+                              row.workType == 'HalfDay' ||
+                                      row.workType == 'Hourly'
+                                  ? row.workType
+                                  : 'FullDay',
+                            },
+                            onSelectionChanged: (selection) {
+                              if (selection.isEmpty) return;
+                              setState(() => row.workType = selection.first);
+                            },
+                            style: ButtonStyle(
+                              textStyle: WidgetStatePropertyAll(
+                                GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                              ),
                             ),
-                          ),
-                        ),
-                        Switch(
-                          value: row.workType == 'HalfDay',
-                          onChanged: (v) => setState(
-                            () => row.workType = v ? 'HalfDay' : 'FullDay',
                           ),
                         ),
                       ],
@@ -3285,6 +3336,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                       controller: row.litersController,
                       label: 'ใช้น้ำมัน (ลิตร)',
                       onChanged: (v) => row.liters = v,
+                      allowDecimal: true,
+                      maxDecimalPlaces: 2,
                     ),
                     style: GoogleFonts.kanit(
                       color: const Color(0xFF1D2A3A),
