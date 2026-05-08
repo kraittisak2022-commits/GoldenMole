@@ -18,6 +18,7 @@ class QuickInputScreen extends StatefulWidget {
     required this.employeeService,
     this.initialCategory,
     this.appBarTitle,
+
     /// วันที่ตามที่เลือกบนแดชบอร์ด (ให้โหลดธุรกรรมเดิมของวันนั้นได้)
     this.selectedDateForModule,
   });
@@ -35,6 +36,83 @@ class QuickInputScreen extends StatefulWidget {
 }
 
 class _QuickInputScreenState extends State<QuickInputScreen> {
+  static const List<_LaborWorkCategory> _laborCategories = [
+    _LaborWorkCategory(
+      id: 'wash_old',
+      label: 'ล้างทราย เครื่องร่อน1(เก่า)',
+      color: Color(0xFF4A90E2),
+    ),
+    _LaborWorkCategory(
+      id: 'wash_new',
+      label: 'ล้างทราย เครื่องร่อน2(ใหม่)',
+      color: Color(0xFF24A7B8),
+    ),
+    _LaborWorkCategory(
+      id: 'wash_home',
+      label: 'ล้างทรายที่บ้าน',
+      color: Color(0xFF2CB67D),
+    ),
+    _LaborWorkCategory(
+      id: 'wash_yard',
+      label: 'ล้างทรายที่ท่าทราย',
+      color: Color(0xFF6B6FEA),
+    ),
+    _LaborWorkCategory(
+      id: 'general',
+      label: 'งานทั่วไป',
+      color: Color(0xFF5F6AD8),
+    ),
+    _LaborWorkCategory(
+      id: 'new_machine',
+      label: 'ทำเครื่องใหม่',
+      color: Color(0xFF28A0D7),
+    ),
+    _LaborWorkCategory(
+      id: 'new_house',
+      label: 'ทำบ้านใหม่',
+      color: Color(0xFFC447E3),
+    ),
+    _LaborWorkCategory(
+      id: 'filter_a',
+      label: 'ทำกรองเครื่องสูบน้ำ',
+      color: Color(0xFFC447E3),
+    ),
+    _LaborWorkCategory(
+      id: 'filter_b',
+      label: 'ทำกรองเครื่องสูบน้ำ B',
+      color: Color(0xFF27A1DA),
+    ),
+    _LaborWorkCategory(
+      id: 'night_shift',
+      label: 'เวรกลางคืน',
+      color: Color(0xFF7B5AE6),
+    ),
+    _LaborWorkCategory(
+      id: 'wash_yard_house',
+      label: 'ล้างทรายบ้าน',
+      color: Color(0xFF7A66E3),
+    ),
+    _LaborWorkCategory(
+      id: 'sift_home',
+      label: 'ร่อนทรายบ้าน',
+      color: Color(0xFFE14897),
+    ),
+    _LaborWorkCategory(
+      id: 'house_team',
+      label: 'ทำบ้านแม่มะงาน',
+      color: Color(0xFFE64CA0),
+    ),
+    _LaborWorkCategory(
+      id: 'excavator_control',
+      label: 'ควบคุมรถขุด',
+      color: Color(0xFF7962E6),
+    ),
+    _LaborWorkCategory(
+      id: 'sand_watch',
+      label: 'เฝ้าทำทราย',
+      color: Color(0xFFE64A9E),
+    ),
+  ];
   static const Color _bg = Color(0xFFFDFEFF);
 
   final _formKey = GlobalKey<FormState>();
@@ -52,8 +130,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   final _sandEveningEndController = TextEditingController();
   final _vehicleIdController = TextEditingController();
   final _driverIdController = TextEditingController();
-  final _vehicleWageController = TextEditingController();
-  final _driverWageController = TextEditingController();
   final _vehicleWorkDetailsController = TextEditingController();
   final _tripMorningController = TextEditingController();
   final _tripAfternoonController = TextEditingController();
@@ -67,7 +143,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   final _fuelVehicleTimeController = TextEditingController();
   final _laborDailyWageController = TextEditingController();
   final _laborWorkDetailsController = TextEditingController();
-  final _otRateController = TextEditingController();
   final _otHoursController = TextEditingController();
   final _otDescController = TextEditingController();
   List<Employee> _employees = const [];
@@ -80,11 +155,13 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   List<String> _otDescSuggestions = const [];
   List<AppTransaction> _moduleDayTransactions = const [];
   bool _moduleDayLoading = false;
+
   /// แสดงรายการประวัติเฉพาะเมื่อผู้ใช้กด (ค่าเริ่มต้นซ่อน)
   bool _moduleHistoryVisible = false;
 
   /// แถวที่โหลดจากระบบ (คงค่า created_at เดิมเมื่ออัปเดตซ้ำ)
   final Set<String> _persistOmitCreatedForIds = {};
+
   /// แถวที่บันทึกในวงจรนี้แล้ว — อย่ายิง created_at ซ้ำ
   final Set<String> _persistOmitCreatedSessionIds = {};
   final Map<String, String> _sandRowIdsByKey = {};
@@ -108,8 +185,24 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   String _vehicleWorkType = 'FullDay';
   String _fuelType = 'Diesel';
   String _fuelVehicleType = 'Diesel';
+  final List<_FuelVehicleDraft> _fuelVehicleDrafts = [
+    _FuelVehicleDraft.empty(),
+  ];
   String _laborWorkType = 'FullDay';
+  final List<_VehicleTripDraft> _vehicleTripDrafts = [
+    _VehicleTripDraft.empty(),
+  ];
+  double _homeSandAvailable = 0;
+  double _homeSandBeforeToday = 0;
+  double _homeSandTodayObtained = 0;
+  bool _homeWashAll = false;
   final Set<String> _selectedLaborEmpIds = {};
+  final Set<String> _otEligibleEmpIds = {};
+  final Set<String> _laborPickedIds = {};
+  final Map<String, Set<String>> _laborAssignments = {
+    for (final c in _laborCategories) c.id: <String>{},
+  };
+  List<String> _vehicleWorkSuggestions = const [];
   bool get _isLaborMode =>
       widget.initialCategory == 'ค่าแรง' ||
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
@@ -128,7 +221,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     _loadEmployees();
     _loadAppCars();
     _loadOtSuggestions();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadModuleTransactions());
+    _loadVehicleWorkSuggestions();
+    _refreshHomeSandStock();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadModuleTransactions(),
+    );
   }
 
   String _quickYmd(DateTime d) {
@@ -139,7 +236,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   }
 
   Future<void> _persist(AppTransaction t) async {
-    final omitCreated = _persistOmitCreatedForIds.contains(t.id) ||
+    final omitCreated =
+        _persistOmitCreatedForIds.contains(t.id) ||
         _persistOmitCreatedSessionIds.contains(t.id);
     await widget.service.upsertTransaction(t, omitCreatedAt: omitCreated);
     _persistOmitCreatedSessionIds.add(t.id);
@@ -159,6 +257,32 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     _genericTxId = null;
   }
 
+  void _disposeVehicleDrafts() {
+    for (final row in _vehicleTripDrafts) {
+      row.dispose();
+    }
+  }
+
+  void _replaceVehicleDrafts(List<_VehicleTripDraft> nextRows) {
+    _disposeVehicleDrafts();
+    _vehicleTripDrafts
+      ..clear()
+      ..addAll(nextRows.isEmpty ? [_VehicleTripDraft.empty()] : nextRows);
+  }
+
+  void _disposeFuelVehicleDrafts() {
+    for (final row in _fuelVehicleDrafts) {
+      row.dispose();
+    }
+  }
+
+  void _replaceFuelVehicleDrafts(List<_FuelVehicleDraft> nextRows) {
+    _disposeFuelVehicleDrafts();
+    _fuelVehicleDrafts
+      ..clear()
+      ..addAll(nextRows.isEmpty ? [_FuelVehicleDraft.empty()] : nextRows);
+  }
+
   /// ล้างฟอร์มก่อนโหลดวันใหม่ เพื่อไม่ให้เหลือค่าจากวันก่อนหน้า
   void _clearModuleFormFields() {
     if (_isSandWashMode) {
@@ -175,15 +299,15 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     } else if (_isHomeSandMode) {
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
+      _homeWashAll = false;
     } else if (_isVehicleTripMode) {
       _vehicleIdController.clear();
       _driverIdController.clear();
-      _vehicleWageController.clear();
-      _driverWageController.clear();
       _vehicleWorkDetailsController.clear();
       _tripMorningController.clear();
       _tripAfternoonController.clear();
       _cubicPerTripController.clear();
+      _replaceVehicleDrafts(const []);
     } else if (_isFuelMode) {
       _fuelLitersController.clear();
       _fuelAmountController.clear();
@@ -191,13 +315,17 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _fuelVehicleController.clear();
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
+      _replaceFuelVehicleDrafts(const []);
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
+      _laborPickedIds.clear();
+      for (final k in _laborAssignments.keys) {
+        _laborAssignments[k]?.clear();
+      }
       _laborDailyWageController.clear();
       _laborWorkDetailsController.clear();
     } else if (_isOtMode) {
       _selectedLaborEmpIds.clear();
-      _otRateController.clear();
       _otHoursController.clear();
       _otDescController.clear();
     } else {
@@ -218,6 +346,21 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     try {
       final ymd = _quickYmd(_selectedDate);
       final rows = await widget.service.fetchTransactionsForDate(ymd);
+      if (_isOtMode) {
+        _otEligibleEmpIds
+          ..clear()
+          ..addAll(
+            rows
+                .where(
+                  (t) =>
+                      t.category == 'Labor' &&
+                      (t.laborStatus == 'Work' ||
+                          t.subCategory == 'Attendance'),
+                )
+                .expand((t) => t.employeeIds)
+                .where((id) => id.trim().isNotEmpty),
+          );
+      }
       final matched = rows
           .where((t) => transactionMatchesDailyModule(t, ymd, cat))
           .toList();
@@ -235,6 +378,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         _moduleDayLoading = false;
         _moduleHistoryVisible = false;
       });
+      await _refreshHomeSandStock();
       _hydrateFormsFromTransactions(matched);
       if (!mounted) return;
       setState(() {});
@@ -258,6 +402,47 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   String _stripRecorderSuffix(String raw) =>
       raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
 
+  String _vehicleLabelFromId(String vehicleId) {
+    final v = vehicleId.trim();
+    if (v.isEmpty) return '-';
+    return v;
+  }
+
+  bool _isMacroCarName(String raw) {
+    final s = raw.trim().toLowerCase();
+    if (s.isEmpty) return false;
+    return s.contains('แม็คโคร') ||
+        s.contains('แมคโคร') ||
+        s.contains('excavator') ||
+        s.contains('backhoe');
+  }
+
+  List<String> _fuelMacroCars() {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final car in _cars) {
+      if (!_isMacroCarName(car)) continue;
+      if (seen.add(car)) out.add(car);
+    }
+    return out;
+  }
+
+  bool _isDriverEmployee(Employee e) {
+    final pos = (e.position ?? '').trim().toLowerCase();
+    return pos == 'คนขับรถ' || pos == 'driver' || pos.contains('คนขับ');
+  }
+
+  String _driverLabelFromId(String driverId) {
+    final id = driverId.trim();
+    if (id.isEmpty) return '-';
+    for (final e in _employees) {
+      if (e.id == id) {
+        return e.nickname.isNotEmpty ? e.nickname : e.name;
+      }
+    }
+    return id;
+  }
+
   String _employeeLabelFromIdOrName(String raw) {
     final token = raw.trim();
     if (token.isEmpty) return '';
@@ -273,7 +458,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     final plain = _stripRecorderSuffix(description);
     final m = RegExp(r'\[([^\]]+)\]').firstMatch(plain);
     if (m == null) return const [];
-    return m.group(1)!
+    return m
+        .group(1)!
         .split(',')
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
@@ -306,24 +492,18 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
           inferredMaxDrums = rowDrums;
         }
         final mt = (t.sandMachineType ?? '').toLowerCase();
-        if (mt == 'old' ||
-            (t.description).contains('เครื่องร่อน 1')) {
+        if (mt == 'old' || (t.description).contains('เครื่องร่อน 1')) {
           _sandRowIdsByKey.putIfAbsent('Old', () => t.id);
-          _sand1MorningController.text =
-              _strNum(t.sandMorning);
-          _sand1AfternoonController.text =
-              _strNum(t.sandAfternoon);
+          _sand1MorningController.text = _strNum(t.sandMorning);
+          _sand1AfternoonController.text = _strNum(t.sandAfternoon);
           final names = _operatorNamesFromTransaction(t);
           if (oldMachineNames.isEmpty && names.isNotEmpty) {
             oldMachineNames = names;
           }
-        } else if (mt == 'new' ||
-            (t.description).contains('เครื่องร่อน 2')) {
+        } else if (mt == 'new' || (t.description).contains('เครื่องร่อน 2')) {
           _sandRowIdsByKey.putIfAbsent('New', () => t.id);
-          _sand2MorningController.text =
-              _strNum(t.sandMorning);
-          _sand2AfternoonController.text =
-              _strNum(t.sandAfternoon);
+          _sand2MorningController.text = _strNum(t.sandMorning);
+          _sand2AfternoonController.text = _strNum(t.sandAfternoon);
           final names = _operatorNamesFromTransaction(t);
           if (newMachineNames.isEmpty && names.isNotEmpty) {
             newMachineNames = names;
@@ -343,7 +523,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         }
       }
       // Fallback: if no dedicated "จำนวนถัง" row exists, use max drums from Sand rows.
-      if (_sandDrumsObtainedController.text.trim().isEmpty && inferredMaxDrums > 0) {
+      if (_sandDrumsObtainedController.text.trim().isEmpty &&
+          inferredMaxDrums > 0) {
         _sandDrumsObtainedController.text = _strNum(inferredMaxDrums);
       }
       _sand1OperatorNames = oldMachineNames;
@@ -354,82 +535,117 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     if (_isHomeSandMode) {
       final t = txs.first;
       _homeSandTxId = t.id;
-      _sandDrumsObtainedController.text =
-          _strNum(t.drumsObtained);
-      _drumsWashedAtHomeController.text =
-          _strNum(t.drumsWashedAtHome);
+      _drumsWashedAtHomeController.text = _strNum(t.drumsWashedAtHome);
       return;
     }
 
     if (_isVehicleTripMode) {
+      final byVehicle = <String, _VehicleTripDraft>{};
+      _VehicleTripDraft ensureDraft(String vehicleId) {
+        final key = vehicleId.trim().isEmpty ? '__unknown__' : vehicleId.trim();
+        return byVehicle.putIfAbsent(
+          key,
+          () => _VehicleTripDraft.empty()..vehicleId = vehicleId.trim(),
+        );
+      }
+
       for (final t in txs) {
+        final key = (t.vehicleId ?? '').trim();
+        final draft = ensureDraft(key);
         if (t.category == 'Vehicle') {
-          _vehicleMainTxId = t.id;
-          _vehicleIdController.text = t.vehicleId ?? '';
-          _driverIdController.text = t.driverId ?? '';
-          _vehicleWageController.text = _strNum(t.vehicleWage);
-          _driverWageController.text = _strNum(t.driverWage);
-          _vehicleWorkDetailsController.text =
-              _stripRecorderSuffix(t.workDetails ?? '');
-          _vehicleWorkType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
+          draft.mainTxId = t.id;
+          draft.vehicleId = (t.vehicleId ?? '').trim();
+          draft.driverId = (t.driverId ?? '').trim();
+          draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
+          draft.workDetailsController.text = draft.workDetails;
+          draft.workType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
         } else if (t.subCategory == 'VehicleTrip' ||
-            (t.category == 'DailyLog' && (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
-          _vehicleTripTxId = t.id;
-          _tripMorningController.text =
-              _strNum(t.tripMorning);
-          _tripAfternoonController.text =
-              _strNum(t.tripAfternoon);
-          _cubicPerTripController.text =
-              _strNum(t.cubicPerTrip);
+            (t.category == 'DailyLog' &&
+                (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
+          draft.tripTxId = t.id;
+          draft.vehicleId = draft.vehicleId.isEmpty
+              ? (t.vehicleId ?? '').trim()
+              : draft.vehicleId;
+          draft.driverId = draft.driverId.isEmpty
+              ? (t.driverId ?? '').trim()
+              : draft.driverId;
+          draft.tripMorning = _strNum(t.tripMorning);
+          draft.tripAfternoon = _strNum(t.tripAfternoon);
+          draft.cubicPerTrip = _strNum(t.cubicPerTrip);
+          draft.tripMorningController.text = draft.tripMorning;
+          draft.tripAfternoonController.text = draft.tripAfternoon;
+          draft.cubicPerTripController.text = draft.cubicPerTrip;
+          if (draft.workDetails.isEmpty) {
+            draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
+            draft.workDetailsController.text = draft.workDetails;
+          }
         }
       }
+
+      final loaded = byVehicle.values.where((d) {
+        return d.vehicleId.isNotEmpty ||
+            d.driverId.isNotEmpty ||
+            d.workDetails.isNotEmpty ||
+            d.tripMorning.isNotEmpty ||
+            d.tripAfternoon.isNotEmpty ||
+            d.cubicPerTrip.isNotEmpty;
+      }).toList();
+      _replaceVehicleDrafts(loaded);
       return;
     }
 
     if (_isFuelMode) {
+      final drafts = <_FuelVehicleDraft>[];
       for (final t in txs) {
-        if (t.fuelMovement == 'stock_out') {
-          _fuelVehicleUseTxId = t.id;
-          _fuelVehicleController.text = t.vehicleId ?? '';
-          _fuelVehicleLitersController.text = _strNum(t.quantity);
-          _fuelVehicleTimeController.text =
-              _stripRecorderSuffix(t.workDetails ?? '');
-          if ((t.fuelType ?? '').isNotEmpty) {
-            _fuelVehicleType =
-                t.fuelType == 'Gasoline' ? 'Gasoline' : 'Diesel';
-          }
-        } else if (t.fuelMovement == 'stock_in') {
-          _fuelStockInTxId = t.id;
-          _fuelLitersController.text = _strNum(t.quantity);
-          _fuelAmountController.text =
-              _strNum((t.amount).abs() > 0 ? t.amount : null);
-          _fuelDetailsController.text =
-              _stripRecorderSuffix(t.workDetails ?? '');
-          final u = (t.unit ?? '').toLowerCase();
-          if (u == 'gallon') _fuelUnitController.text = 'แกลลอน';
-          if ((t.fuelType ?? '').isNotEmpty) {
-            _fuelType = t.fuelType == 'Gasoline' ? 'Gasoline' : 'Diesel';
-          }
-        }
+        final isVehicleUsage =
+            t.fuelMovement == 'stock_out' ||
+            (t.vehicleId ?? '').trim().isNotEmpty;
+        if (!isVehicleUsage) continue;
+        final draft = _FuelVehicleDraft.empty();
+        draft.txId = t.id;
+        draft.vehicleId = (t.vehicleId ?? '').trim();
+        draft.fuelType = ((t.fuelType ?? '').toLowerCase().contains('ben'))
+            ? 'Benzine'
+            : 'Diesel';
+        draft.liters = _strNum(t.quantity);
+        draft.time = _stripRecorderSuffix(t.workDetails ?? '');
+        draft.litersController.text = draft.liters;
+        draft.timeController.text = draft.time;
+        drafts.add(draft);
       }
+      _replaceFuelVehicleDrafts(drafts);
       return;
     }
 
     if (_isLaborMode) {
-      final t =
-          txs.firstWhere((x) => (x.amount) > 0, orElse: () => txs.first);
+      final t = txs.firstWhere((x) => (x.amount) > 0, orElse: () => txs.first);
       _laborTxId = t.id;
       _selectedLaborEmpIds
         ..clear()
         ..addAll(t.employeeIds);
+      _laborPickedIds.clear();
+      for (final k in _laborAssignments.keys) {
+        _laborAssignments[k]?.clear();
+      }
+      final loadedAssignments =
+          t.workAssignments ?? const <String, List<String>>{};
+      if (loadedAssignments.isNotEmpty) {
+        loadedAssignments.forEach((key, ids) {
+          if (!_laborAssignments.containsKey(key)) return;
+          _laborAssignments[key]?.addAll(ids);
+        });
+      } else {
+        _laborAssignments['general']?.addAll(t.employeeIds);
+      }
       final mult = ((t.workType ?? '') == 'HalfDay') ? 0.5 : 1.0;
       if (mult > 0 && (t.amount) > 0 && t.employeeIds.isNotEmpty) {
         _laborDailyWageController.text = _strNum(
           (t.amount) / (t.employeeIds.length * mult),
         );
       }
-      _laborWorkDetailsController.text =
-          _stripRecorderSuffix(t.workDetails ?? '');
+      _laborWorkDetailsController.text = _stripRecorderSuffix(
+        t.workDetails ?? '',
+      );
       _laborWorkType = (t.workType == 'HalfDay') ? 'HalfDay' : 'FullDay';
       return;
     }
@@ -440,20 +656,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       _selectedLaborEmpIds
         ..clear()
         ..addAll(t.employeeIds);
-      _otRateController.text = _strNum(t.otAmount ?? t.amount);
       _otHoursController.text = _strNum(t.otHours);
-      _otDescController.text =
-          _stripRecorderSuffix(t.otDescription ?? '');
+      _otDescController.text = _stripRecorderSuffix(t.otDescription ?? '');
       return;
     }
 
     final g = txs.first;
     _genericTxId = g.id;
     _amountController.text = _strNum(g.amount);
-    _descriptionController.text =
-        _stripRecorderSuffix(g.description);
-    if (g.category.isNotEmpty &&
-        _categoryController.text.trim().isEmpty) {
+    _descriptionController.text = _stripRecorderSuffix(g.description);
+    if (g.category.isNotEmpty && _categoryController.text.trim().isEmpty) {
       _categoryController.text = g.category;
     }
     setIfEmpty(_categoryController, g.category);
@@ -475,8 +687,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     _sandEveningEndController.dispose();
     _vehicleIdController.dispose();
     _driverIdController.dispose();
-    _vehicleWageController.dispose();
-    _driverWageController.dispose();
     _vehicleWorkDetailsController.dispose();
     _tripMorningController.dispose();
     _tripAfternoonController.dispose();
@@ -490,9 +700,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     _fuelVehicleTimeController.dispose();
     _laborDailyWageController.dispose();
     _laborWorkDetailsController.dispose();
-    _otRateController.dispose();
     _otHoursController.dispose();
     _otDescController.dispose();
+    _disposeVehicleDrafts();
+    _disposeFuelVehicleDrafts();
     super.dispose();
   }
 
@@ -507,10 +718,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       if (!mounted) return;
       setState(() {
         _employees = list;
-        _driverEmployees = list.where((e) {
-          final pos = (e.position ?? '').toLowerCase();
-          return pos.contains('คนขับ') || pos.contains('driver');
-        }).toList();
+        _driverEmployees = list.where(_isDriverEmployee).toList();
       });
       if (_isSandWashMode && _moduleDayTransactions.isNotEmpty) {
         setState(() {
@@ -565,6 +773,70 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     } catch (_) {}
   }
 
+  Future<void> _loadVehicleWorkSuggestions() async {
+    try {
+      final txs = await widget.service.fetchTransactions();
+      final ranked = <String, int>{};
+      for (final tx in txs) {
+        final isVehicle =
+            tx.category == 'Vehicle' ||
+            tx.subCategory == 'VehicleTrip' ||
+            (tx.category == 'DailyLog' &&
+                (tx.perCarTrips ?? tx.tripCount ?? 0) > 0);
+        if (!isVehicle) continue;
+        final raw = (tx.workDetails ?? '').trim();
+        if (raw.isEmpty) continue;
+        ranked[raw] = (ranked[raw] ?? 0) + 1;
+      }
+      final sorted = ranked.entries.toList()
+        ..sort((a, b) {
+          final byCount = b.value.compareTo(a.value);
+          if (byCount != 0) return byCount;
+          return a.key.compareTo(b.key);
+        });
+      if (!mounted) return;
+      setState(() {
+        _vehicleWorkSuggestions = sorted.map((e) => e.key).take(10).toList();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _refreshHomeSandStock() async {
+    try {
+      final rows = await widget.service.fetchTransactions();
+      final map = <String, _HomeSandDaily>{};
+      for (final t in rows) {
+        if (t.category != 'DailyLog' || t.subCategory != 'Sand') continue;
+        final day = t.date;
+        final rec = map.putIfAbsent(day, () => _HomeSandDaily());
+        final obtained = t.drumsObtained ?? 0;
+        final home = t.drumsWashedAtHome ?? 0;
+        if (obtained > rec.obtained) rec.obtained = obtained;
+        if (home > rec.home) rec.home = home;
+      }
+      final selected = _quickYmd(_selectedDate);
+      final days = map.keys.toList()..sort();
+      var before = 0.0;
+      for (final d in days) {
+        if (d.compareTo(selected) >= 0) continue;
+        final rec = map[d]!;
+        before = (before + rec.obtained - rec.home).clamp(0.0, 9999999.0);
+      }
+      final today = map[selected] ?? _HomeSandDaily();
+      final available = (before + today.obtained).clamp(0.0, 9999999.0);
+      if (!mounted) return;
+      setState(() {
+        _homeSandBeforeToday = before;
+        _homeSandTodayObtained = today.obtained;
+        _homeSandAvailable = available;
+        if (_drumsWashedAtHomeController.text.trim().isEmpty &&
+            today.home > 0) {
+          _drumsWashedAtHomeController.text = _strNum(today.home);
+        }
+      });
+    } catch (_) {}
+  }
+
   static const Duration _successPopupHold = Duration(milliseconds: 1400);
 
   void _showSavingPopup() {
@@ -575,7 +847,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       builder: (_) => PopScope(
         canPop: false,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           content: Row(
             children: [
               const SizedBox(
@@ -588,8 +862,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 child: Text(
                   'กำลังบันทึกข้อมูล',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -614,8 +888,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       builder: (_) => PopScope(
         canPop: false,
         child: AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -628,9 +903,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -665,9 +940,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     } catch (error) {
       if (savingDialogOpen && mounted) _dismissSavingPopup();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
       }
     } finally {
       _activeSignatureNote = null;
@@ -685,7 +960,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       return;
     }
     if (_isFuelMode) {
-      await _saveFuelStockInEntry();
+      await _saveFuelVehicleUsageEntries();
       return;
     }
     if (_isHomeSandMode) {
@@ -710,8 +985,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
-        final gid = _genericTxId ??
-            DateTime.now().millisecondsSinceEpoch.toString();
+        final gid =
+            _genericTxId ?? DateTime.now().millisecondsSinceEpoch.toString();
         _genericTxId = gid;
         final entry = AppTransaction(
           id: gid,
@@ -734,112 +1009,116 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกล้างทรายสำเร็จ',
       body: () async {
-      final s1m = double.tryParse(_sand1MorningController.text.trim()) ?? 0;
-      final s1a = double.tryParse(_sand1AfternoonController.text.trim()) ?? 0;
-      final s2m = double.tryParse(_sand2MorningController.text.trim()) ?? 0;
-      final s2a = double.tryParse(_sand2AfternoonController.text.trim()) ?? 0;
-      final drums = double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
-      final total = s1m + s1a + s2m + s2a;
-      final hadPriorSandRows = _sandRowIdsByKey.isNotEmpty;
-      if (total <= 0 && drums <= 0 && !hadPriorSandRows) {
-        throw 'กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง (บันทึกได้ทีละช่วงแล้วกลับมาเพิ่มภายหลังได้)';
-      }
+        final s1m = double.tryParse(_sand1MorningController.text.trim()) ?? 0;
+        final s1a = double.tryParse(_sand1AfternoonController.text.trim()) ?? 0;
+        final s2m = double.tryParse(_sand2MorningController.text.trim()) ?? 0;
+        final s2a = double.tryParse(_sand2AfternoonController.text.trim()) ?? 0;
+        final drums =
+            double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
+        final total = s1m + s1a + s2m + s2a;
+        final hadPriorSandRows = _sandRowIdsByKey.isNotEmpty;
+        if (total <= 0 && drums <= 0 && !hadPriorSandRows) {
+          throw 'กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง (บันทึกได้ทีละช่วงแล้วกลับมาเพิ่มภายหลังได้)';
+        }
 
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final date = '$y-$m-$d';
-      // Keep category aligned with web Daily Wizard schema.
-      final commonCategory = 'DailyLog';
-      final commonSub = 'Sand';
-      final morningStart = _sandMorningStartController.text.trim();
-      final afternoonStart = _sandAfternoonStartController.text.trim();
-      final eveningEnd = _sandEveningEndController.text.trim();
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        // Keep category aligned with web Daily Wizard schema.
+        final commonCategory = 'DailyLog';
+        final commonSub = 'Sand';
+        final morningStart = _sandMorningStartController.text.trim();
+        final afternoonStart = _sandAfternoonStartController.text.trim();
+        final eveningEnd = _sandEveningEndController.text.trim();
 
-      Future<void> saveMachine({
-        required String suffix,
-        required String machineType,
-        required String description,
-        required double morning,
-        required double afternoon,
-      }) async {
-        final sandKey = machineType == 'Old' ? 'Old' : 'New';
-        final existingRow = _sandRowIdsByKey[sandKey];
-        if (morning + afternoon <= 0 && existingRow == null) return;
-        final tid = existingRow ??
-            '${DateTime.now().millisecondsSinceEpoch}_$suffix';
-        _sandRowIdsByKey[sandKey] = tid;
-        final tx = AppTransaction(
-          id: tid,
-          date: date,
-          type: 'Expense',
-          category: commonCategory,
-          subCategory: commonSub,
-          description: _appendRecorder(description),
-          amount: 0,
-          sandMorning: morning,
-          sandAfternoon: afternoon,
-          sandMachineType: machineType,
-          drumsObtained: drums,
-          drumsWashedAtHome: 0,
-          note: _activeSignatureNote,
-          sandMorningStart: morningStart.isEmpty ? null : morningStart,
-          sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
-          sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
-        );
-        await _persist(tx);
-      }
-
-      await saveMachine(
-        suffix: 's1',
-        machineType: 'Old',
-        description: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
-        morning: s1m,
-        afternoon: s1a,
-      );
-      await saveMachine(
-        suffix: 's2',
-        machineType: 'New',
-        description: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
-        morning: s2m,
-        afternoon: s2a,
-      );
-
-      final hasDrumsRow = _sandRowIdsByKey.containsKey('drums');
-      // Keep a dedicated drums row whenever user provides drums,
-      // so the data shape matches Daily Wizard expectations.
-      final persistDrums = hasDrumsRow || drums > 0;
-      if (persistDrums && (hasDrumsRow || drums > 0)) {
-        final drumsId = _sandRowIdsByKey['drums'] ??
-            '${DateTime.now().millisecondsSinceEpoch}_drums';
-        _sandRowIdsByKey['drums'] = drumsId;
-        await _persist(
-          AppTransaction(
-            id: drumsId,
+        Future<void> saveMachine({
+          required String suffix,
+          required String machineType,
+          required String description,
+          required double morning,
+          required double afternoon,
+        }) async {
+          final sandKey = machineType == 'Old' ? 'Old' : 'New';
+          final existingRow = _sandRowIdsByKey[sandKey];
+          if (morning + afternoon <= 0 && existingRow == null) return;
+          final tid =
+              existingRow ?? '${DateTime.now().millisecondsSinceEpoch}_$suffix';
+          _sandRowIdsByKey[sandKey] = tid;
+          final tx = AppTransaction(
+            id: tid,
             date: date,
             type: 'Expense',
             category: commonCategory,
             subCategory: commonSub,
-            description: _appendRecorder('จำนวนถังที่ได้วันนี้'),
+            description: _appendRecorder(description),
             amount: 0,
+            sandMorning: morning,
+            sandAfternoon: afternoon,
+            sandMachineType: machineType,
             drumsObtained: drums,
             drumsWashedAtHome: 0,
             note: _activeSignatureNote,
             sandMorningStart: morningStart.isEmpty ? null : morningStart,
             sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
             sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
-          ),
-        );
-      }
+          );
+          await _persist(tx);
+        }
 
-      _sand1MorningController.clear();
-      _sand1AfternoonController.clear();
-      _sand2MorningController.clear();
-      _sand2AfternoonController.clear();
-      _sandDrumsObtainedController.clear();
-      _sandMorningStartController.clear();
-      _sandAfternoonStartController.clear();
-      _sandEveningEndController.clear();
+        await saveMachine(
+          suffix: 's1',
+          machineType: 'Old',
+          description: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
+          morning: s1m,
+          afternoon: s1a,
+        );
+        await saveMachine(
+          suffix: 's2',
+          machineType: 'New',
+          description: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
+          morning: s2m,
+          afternoon: s2a,
+        );
+
+        final hasDrumsRow = _sandRowIdsByKey.containsKey('drums');
+        // Keep a dedicated drums row whenever user provides drums,
+        // so the data shape matches Daily Wizard expectations.
+        final persistDrums = hasDrumsRow || drums > 0;
+        if (persistDrums && (hasDrumsRow || drums > 0)) {
+          final drumsId =
+              _sandRowIdsByKey['drums'] ??
+              '${DateTime.now().millisecondsSinceEpoch}_drums';
+          _sandRowIdsByKey['drums'] = drumsId;
+          await _persist(
+            AppTransaction(
+              id: drumsId,
+              date: date,
+              type: 'Expense',
+              category: commonCategory,
+              subCategory: commonSub,
+              description: _appendRecorder('จำนวนถังที่ได้วันนี้'),
+              amount: 0,
+              drumsObtained: drums,
+              drumsWashedAtHome: 0,
+              note: _activeSignatureNote,
+              sandMorningStart: morningStart.isEmpty ? null : morningStart,
+              sandAfternoonStart: afternoonStart.isEmpty
+                  ? null
+                  : afternoonStart,
+              sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
+            ),
+          );
+        }
+
+        _sand1MorningController.clear();
+        _sand1AfternoonController.clear();
+        _sand2MorningController.clear();
+        _sand2AfternoonController.clear();
+        _sandDrumsObtainedController.clear();
+        _sandMorningStartController.clear();
+        _sandAfternoonStartController.clear();
+        _sandEveningEndController.clear();
       },
     );
   }
@@ -848,35 +1127,39 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกทรายที่ล้างที่บ้านสำเร็จ',
       body: () async {
-      final drums = double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
-      final drumsHome =
-          double.tryParse(_drumsWashedAtHomeController.text.trim()) ?? 0;
-      if (drums <= 0 && drumsHome <= 0) {
-        throw 'กรุณากรอกจำนวนถังอย่างน้อย 1 ค่า';
-      }
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final homeId = _homeSandTxId ??
-          '${DateTime.now().millisecondsSinceEpoch}_home_sand';
-      _homeSandTxId = homeId;
-      await _persist(
-        AppTransaction(
-          id: homeId,
-          date: '$y-$m-$d',
-          type: 'Expense',
-          // Keep category aligned with web Daily Wizard schema.
-          category: 'DailyLog',
-          subCategory: 'Sand',
-          description: _appendRecorder('ทรายที่ล้างที่บ้าน'),
-          amount: 0,
-          drumsObtained: drums,
-          drumsWashedAtHome: drumsHome,
-          note: _activeSignatureNote,
-        ),
-      );
-      _sandDrumsObtainedController.clear();
-      _drumsWashedAtHomeController.clear();
+        final maxWashable = _homeSandAvailable;
+        final typedHome =
+            double.tryParse(_drumsWashedAtHomeController.text.trim()) ?? 0;
+        final drumsHome = _homeWashAll ? maxWashable : typedHome;
+        if (drumsHome <= 0) throw 'กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้';
+        if (drumsHome > maxWashable) {
+          throw 'จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)';
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final homeId =
+            _homeSandTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_home_sand';
+        _homeSandTxId = homeId;
+        await _persist(
+          AppTransaction(
+            id: homeId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            // Keep category aligned with web Daily Wizard schema.
+            category: 'DailyLog',
+            subCategory: 'Sand',
+            description: _appendRecorder('ทรายที่ล้างที่บ้าน'),
+            amount: 0,
+            drumsObtained: 0,
+            drumsWashedAtHome: drumsHome,
+            note: _activeSignatureNote,
+          ),
+        );
+        _drumsWashedAtHomeController.clear();
+        _homeWashAll = false;
+        await _refreshHomeSandStock();
       },
     );
   }
@@ -885,86 +1168,92 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกรถและเที่ยวรถสำเร็จ',
       body: () async {
-      final vehicle = _vehicleIdController.text.trim();
-      final driver = _driverIdController.text.trim();
-      final details = _vehicleWorkDetailsController.text.trim();
-      final vehicleWage = double.tryParse(_vehicleWageController.text.trim()) ?? 0;
-      final driverWage = double.tryParse(_driverWageController.text.trim()) ?? 0;
-      final tripMorning = double.tryParse(_tripMorningController.text.trim()) ?? 0;
-      final tripAfternoon =
-          double.tryParse(_tripAfternoonController.text.trim()) ?? 0;
-      final totalTrips = tripMorning + tripAfternoon;
-      final cubicPerTrip = double.tryParse(_cubicPerTripController.text.trim()) ?? 0;
-      if (vehicle.isEmpty || driver.isEmpty) {
-        throw 'กรุณาระบุรถและคนขับ';
-      }
-      if (vehicleWage < 0 || driverWage < 0) throw 'ค่าจ้างต้องไม่ติดลบ';
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final date = '$y-$m-$d';
-      final mainVehId = _vehicleMainTxId ??
-          '${DateTime.now().millisecondsSinceEpoch}_veh';
-      _vehicleMainTxId = mainVehId;
-      await _persist(
-        AppTransaction(
-          id: mainVehId,
-          date: date,
-          type: 'Expense',
-          category: 'Vehicle',
-          description:
-              _appendRecorder(
-                'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${_vehicleWorkType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}]',
+        final activeRows = _vehicleTripDrafts.where((row) {
+          return row.vehicleId.trim().isNotEmpty ||
+              row.driverId.trim().isNotEmpty ||
+              row.workDetails.trim().isNotEmpty ||
+              row.tripMorning.trim().isNotEmpty ||
+              row.tripAfternoon.trim().isNotEmpty ||
+              row.cubicPerTrip.trim().isNotEmpty;
+        }).toList();
+        if (activeRows.isEmpty) {
+          throw 'กรุณาระบุข้อมูลรถอย่างน้อย 1 คัน';
+        }
+
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+
+        for (var i = 0; i < activeRows.length; i++) {
+          final row = activeRows[i];
+          final vehicle = row.vehicleId.trim();
+          final driver = row.driverId.trim();
+          final details = row.workDetails.trim();
+          final tripMorning = double.tryParse(row.tripMorning.trim()) ?? 0;
+          final tripAfternoon = double.tryParse(row.tripAfternoon.trim()) ?? 0;
+          final totalTrips = tripMorning + tripAfternoon;
+          final cubicPerTrip = double.tryParse(row.cubicPerTrip.trim()) ?? 0;
+
+          if (vehicle.isEmpty || driver.isEmpty) {
+            throw 'กรุณาระบุรถและคนขับให้ครบทุกคัน';
+          }
+
+          final mainVehId =
+              row.mainTxId ?? '${DateTime.now().millisecondsSinceEpoch}_veh_$i';
+          row.mainTxId = mainVehId;
+          await _persist(
+            AppTransaction(
+              id: mainVehId,
+              date: date,
+              type: 'Expense',
+              category: 'Vehicle',
+              description: _appendRecorder(
+                'รถ: $vehicle (${details.isEmpty ? '-' : details}) [${row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}]',
               ),
-          amount: vehicleWage + driverWage,
-          note: _activeSignatureNote,
-          vehicleId: vehicle,
-          driverId: driver,
-          vehicleWage: vehicleWage,
-          driverWage: driverWage,
-          workDetails: _appendRecorder(details),
-          workType: _vehicleWorkType,
-        ),
-      );
-      if (totalTrips > 0) {
-        final totalCubic = totalTrips * cubicPerTrip;
-        final tripId = _vehicleTripTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_trip';
-        _vehicleTripTxId = tripId;
-        await _persist(
-          AppTransaction(
-            id: tripId,
-            date: date,
-            type: 'Expense',
-            category: 'DailyLog',
-            subCategory: 'VehicleTrip',
-            description:
-                _appendRecorder(
-                  '$vehicle: ${totalTrips.toStringAsFixed(0)} เที่ยว × ${cubicPerTrip.toStringAsFixed(0)} คิว',
-                ),
-            amount: 0,
-            note: _activeSignatureNote,
-            vehicleId: vehicle,
-            driverId: driver,
-            tripCount: totalTrips,
-            tripMorning: tripMorning,
-            tripAfternoon: tripAfternoon,
-            cubicPerTrip: cubicPerTrip,
-            totalCubic: totalCubic,
-            perCarTrips: totalTrips,
-            perCarCubic: totalCubic,
-            workDetails: _appendRecorder(details),
-          ),
-        );
-      }
-      _vehicleIdController.clear();
-      _driverIdController.clear();
-      _vehicleWageController.clear();
-      _driverWageController.clear();
-      _vehicleWorkDetailsController.clear();
-      _tripMorningController.clear();
-      _tripAfternoonController.clear();
-      _cubicPerTripController.clear();
+              amount: 0,
+              note: _activeSignatureNote,
+              vehicleId: vehicle,
+              driverId: driver,
+              vehicleWage: 0,
+              driverWage: 0,
+              workDetails: _appendRecorder(details),
+              workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+            ),
+          );
+
+          if (totalTrips <= 0) continue;
+          final totalCubic = totalTrips * cubicPerTrip;
+          final tripId =
+              row.tripTxId ??
+              '${DateTime.now().millisecondsSinceEpoch}_trip_$i';
+          row.tripTxId = tripId;
+          await _persist(
+            AppTransaction(
+              id: tripId,
+              date: date,
+              type: 'Expense',
+              category: 'DailyLog',
+              subCategory: 'VehicleTrip',
+              description: _appendRecorder(
+                '$vehicle: ${totalTrips.toStringAsFixed(0)} เที่ยว × ${cubicPerTrip.toStringAsFixed(0)} คิว',
+              ),
+              amount: 0,
+              note: _activeSignatureNote,
+              vehicleId: vehicle,
+              driverId: driver,
+              tripCount: totalTrips,
+              tripMorning: tripMorning,
+              tripAfternoon: tripAfternoon,
+              cubicPerTrip: cubicPerTrip,
+              totalCubic: totalCubic,
+              perCarTrips: totalTrips,
+              perCarCubic: totalCubic,
+              workDetails: _appendRecorder(details),
+            ),
+          );
+        }
+        _replaceVehicleDrafts(const []);
       },
     );
   }
@@ -973,38 +1262,40 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกซื้อน้ำมันสำเร็จ',
       body: () async {
-      final liters = double.tryParse(_fuelLitersController.text.trim()) ?? 0;
-      final amount = double.tryParse(_fuelAmountController.text.trim()) ?? 0;
-      if (amount <= 0) throw 'กรุณาระบุราคาซื้อน้ำมัน';
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final unit = _fuelUnitController.text.trim() == 'แกลลอน' ? 'gallon' : 'L';
-      final fuelInId = _fuelStockInTxId ??
-          '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
-      _fuelStockInTxId = fuelInId;
-      await _persist(
-        AppTransaction(
-          id: fuelInId,
-          date: '$y-$m-$d',
-          type: 'Expense',
-          category: 'Fuel',
-          description:
-              _appendRecorder(
-                'ซื้อน้ำมัน ${_fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${liters.toStringAsFixed(0)} ${_fuelUnitController.text} ${amount.toStringAsFixed(0)} บาท',
-              ),
-          amount: amount,
-          note: _activeSignatureNote,
-          quantity: liters,
-          unit: unit,
-          fuelType: _fuelType,
-          fuelMovement: 'stock_in',
-          workDetails: _appendRecorder(_fuelDetailsController.text.trim()),
-        ),
-      );
-      _fuelLitersController.clear();
-      _fuelAmountController.clear();
-      _fuelDetailsController.clear();
+        final liters = double.tryParse(_fuelLitersController.text.trim()) ?? 0;
+        final amount = double.tryParse(_fuelAmountController.text.trim()) ?? 0;
+        if (amount <= 0) throw 'กรุณาระบุราคาซื้อน้ำมัน';
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final unit = _fuelUnitController.text.trim() == 'แกลลอน'
+            ? 'gallon'
+            : 'L';
+        final fuelInId =
+            _fuelStockInTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
+        _fuelStockInTxId = fuelInId;
+        await _persist(
+          AppTransaction(
+            id: fuelInId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            description: _appendRecorder(
+              'ซื้อน้ำมัน ${_fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${liters.toStringAsFixed(0)} ${_fuelUnitController.text} ${amount.toStringAsFixed(0)} บาท',
+            ),
+            amount: amount,
+            note: _activeSignatureNote,
+            quantity: liters,
+            unit: unit,
+            fuelType: _fuelType,
+            fuelMovement: 'stock_in',
+            workDetails: _appendRecorder(_fuelDetailsController.text.trim()),
+          ),
+        );
+        _fuelLitersController.clear();
+        _fuelAmountController.clear();
+        _fuelDetailsController.clear();
       },
     );
   }
@@ -1013,39 +1304,102 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
       body: () async {
-      final vehicle = _fuelVehicleController.text.trim();
-      final liters = double.tryParse(_fuelVehicleLitersController.text.trim()) ?? 0;
-      if (vehicle.isEmpty) throw 'กรุณาระบุรถ';
-      if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมัน';
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final fuelOutId = _fuelVehicleUseTxId ??
-          '${DateTime.now().millisecondsSinceEpoch}_fuel_out';
-      _fuelVehicleUseTxId = fuelOutId;
-      await _persist(
-        AppTransaction(
-          id: fuelOutId,
-          date: '$y-$m-$d',
-          type: 'Expense',
-          category: 'Fuel',
-          subCategory: 'VehicleUsage',
-          description:
-              _appendRecorder(
-                'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${_fuelVehicleType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
+        final vehicle = _fuelVehicleController.text.trim();
+        final liters =
+            double.tryParse(_fuelVehicleLitersController.text.trim()) ?? 0;
+        if (vehicle.isEmpty) throw 'กรุณาระบุรถ';
+        if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมัน';
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final fuelOutId =
+            _fuelVehicleUseTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_fuel_out';
+        _fuelVehicleUseTxId = fuelOutId;
+        await _persist(
+          AppTransaction(
+            id: fuelOutId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: 'VehicleUsage',
+            description: _appendRecorder(
+              'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${_fuelVehicleType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
+            ),
+            amount: 0,
+            note: _activeSignatureNote,
+            quantity: liters,
+            unit: 'L',
+            fuelType: _fuelVehicleType,
+            fuelMovement: 'stock_out',
+            vehicleId: vehicle,
+            workDetails: _appendRecorder(
+              _fuelVehicleTimeController.text.trim(),
+            ),
+          ),
+        );
+        _fuelVehicleLitersController.clear();
+        _fuelVehicleTimeController.clear();
+      },
+    );
+  }
+
+  Future<void> _saveFuelVehicleUsageEntries() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
+      body: () async {
+        final fuelCars = _fuelMacroCars();
+        if (fuelCars.isEmpty) {
+          throw 'ยังไม่พบรถแม็คโครในตั้งค่าแอพ';
+        }
+        final activeRows = _fuelVehicleDrafts.where((row) {
+          return row.vehicleId.trim().isNotEmpty ||
+              row.liters.trim().isNotEmpty ||
+              row.time.trim().isNotEmpty;
+        }).toList();
+        if (activeRows.isEmpty) {
+          throw 'กรุณาระบุข้อมูลการใช้น้ำมันอย่างน้อย 1 คัน';
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+
+        for (var i = 0; i < activeRows.length; i++) {
+          final row = activeRows[i];
+          final vehicle = row.vehicleId.trim();
+          final liters = double.tryParse(row.liters.trim()) ?? 0;
+          if (vehicle.isEmpty) throw 'กรุณาเลือกรถให้ครบทุกคัน';
+          if (!fuelCars.contains(vehicle)) {
+            throw 'เลือกรถได้เฉพาะรถแม็คโคร';
+          }
+          if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมันให้มากกว่า 0';
+          final txId =
+              row.txId ??
+              '${DateTime.now().millisecondsSinceEpoch}_fuel_out_$i';
+          row.txId = txId;
+          await _persist(
+            AppTransaction(
+              id: txId,
+              date: date,
+              type: 'Expense',
+              category: 'Fuel',
+              subCategory: 'VehicleUsage',
+              description: _appendRecorder(
+                'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${row.fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
               ),
-          amount: 0,
-          note: _activeSignatureNote,
-          quantity: liters,
-          unit: 'L',
-          fuelType: _fuelVehicleType,
-          fuelMovement: 'stock_out',
-          vehicleId: vehicle,
-          workDetails: _appendRecorder(_fuelVehicleTimeController.text.trim()),
-        ),
-      );
-      _fuelVehicleLitersController.clear();
-      _fuelVehicleTimeController.clear();
+              amount: 0,
+              note: _activeSignatureNote,
+              quantity: liters,
+              unit: 'L',
+              fuelType: row.fuelType,
+              fuelMovement: 'stock_out',
+              vehicleId: vehicle,
+              workDetails: _appendRecorder(row.time.trim()),
+            ),
+          );
+        }
+        _replaceFuelVehicleDrafts(const []);
       },
     );
   }
@@ -1054,48 +1408,58 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึกค่าแรงสำเร็จ',
       body: () async {
-      if (_selectedLaborEmpIds.isEmpty) throw 'กรุณาเลือกพนักงาน';
-      final wage = double.tryParse(_laborDailyWageController.text.trim()) ?? 0;
-      if (wage <= 0) throw 'กรุณาระบุค่าแรงต่อวัน';
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final multiplier = _laborWorkType == 'HalfDay' ? 0.5 : 1.0;
-      final total = wage * _selectedLaborEmpIds.length * multiplier;
-      final names = _selectedLaborEmpIds
-          .map((id) {
-            for (final e in _employees) {
-              if (e.id == id) return e.nickname.isNotEmpty ? e.nickname : e.name;
-            }
-            return '';
-          })
-          .where((e) => e.isNotEmpty)
-          .join(', ');
-      final laborId = _laborTxId ??
-          '${DateTime.now().millisecondsSinceEpoch}_labor';
-      _laborTxId = laborId;
-      await _persist(
-        AppTransaction(
-          id: laborId,
-          date: '$y-$m-$d',
-          type: 'Expense',
-          category: 'Labor',
-          subCategory: 'Attendance',
-          laborStatus: 'Work',
-          employeeIds: _selectedLaborEmpIds.toList(),
-          workType: _laborWorkType,
-          amount: total,
-          note: _activeSignatureNote,
-          description:
-              _appendRecorder(
-                'ค่าแรง (${_selectedLaborEmpIds.length} คน) ${_laborWorkType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน'}${names.isNotEmpty ? ' [$names]' : ''}',
-              ),
-          workDetails: _appendRecorder(_laborWorkDetailsController.text.trim()),
-        ),
-      );
-      _selectedLaborEmpIds.clear();
-      _laborDailyWageController.clear();
-      _laborWorkDetailsController.clear();
+        final assignedIds = _collectLaborAssignedIds();
+        if (assignedIds.isEmpty) throw 'กรุณาเลือกพนักงานลงกล่องงาน';
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final assignmentPayload = <String, List<String>>{};
+        for (final entry in _laborAssignments.entries) {
+          if (entry.value.isEmpty) continue;
+          assignmentPayload[entry.key] = entry.value.toList();
+        }
+        final assignmentText = assignmentPayload.entries
+            .map((e) => '${_laborCategoryLabel(e.key)}(${e.value.length})')
+            .join(', ');
+        final names = assignedIds
+            .map((id) {
+              for (final e in _employees) {
+                if (e.id == id) {
+                  return e.nickname.isNotEmpty ? e.nickname : e.name;
+                }
+              }
+              return '';
+            })
+            .where((e) => e.isNotEmpty)
+            .join(', ');
+        final laborId =
+            _laborTxId ?? '${DateTime.now().millisecondsSinceEpoch}_labor';
+        _laborTxId = laborId;
+        await _persist(
+          AppTransaction(
+            id: laborId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Attendance',
+            laborStatus: 'Work',
+            employeeIds: assignedIds.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'ค่าแรง (${assignedIds.length} คน)${names.isNotEmpty ? ' [$names]' : ''}${assignmentText.isNotEmpty ? ' {$assignmentText}' : ''}',
+            ),
+            workAssignments: assignmentPayload,
+            customWorkCategories: _laborCategoryPayload(),
+          ),
+        );
+        _selectedLaborEmpIds.clear();
+        _laborPickedIds.clear();
+        for (final k in _laborAssignments.keys) {
+          _laborAssignments[k]?.clear();
+        }
+        _laborDailyWageController.clear();
+        _laborWorkDetailsController.clear();
       },
     );
   }
@@ -1104,42 +1468,41 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     await _runSaveWithPopups(
       successMessage: 'บันทึก OT สำเร็จ',
       body: () async {
-      if (_selectedLaborEmpIds.isEmpty) throw 'กรุณาเลือกพนักงาน';
-      final rate = double.tryParse(_otRateController.text.trim()) ?? 0;
-      final hours = double.tryParse(_otHoursController.text.trim()) ?? 0;
-      if (rate <= 0) throw 'กรุณาระบุค่า OT';
-      if (hours <= 0) throw 'กรุณาระบุชั่วโมง OT';
-      final y = _selectedDate.year.toString().padLeft(4, '0');
-      final m = _selectedDate.month.toString().padLeft(2, '0');
-      final d = _selectedDate.day.toString().padLeft(2, '0');
-      final total = rate * hours * _selectedLaborEmpIds.length;
-      final otId =
-          _otTxId ?? '${DateTime.now().millisecondsSinceEpoch}_ot';
-      _otTxId = otId;
-      await _persist(
-        AppTransaction(
-          id: otId,
-          date: '$y-$m-$d',
-          type: 'Expense',
-          category: 'Labor',
-          subCategory: 'OT',
-          laborStatus: 'OT',
-          employeeIds: _selectedLaborEmpIds.toList(),
-          amount: total,
-          note: _activeSignatureNote,
-          otAmount: rate,
-          otHours: hours,
-          otDescription: _otDescController.text.trim(),
-          description:
-              _appendRecorder(
-                'OT ${_otDescController.text.trim()} (${hours.toStringAsFixed(1)}ชม.) ${_selectedLaborEmpIds.length} คน',
-              ),
-        ),
-      );
-      _selectedLaborEmpIds.clear();
-      _otRateController.clear();
-      _otHoursController.clear();
-      _otDescController.clear();
+        final selectedIds = _selectedLaborEmpIds
+            .where((id) => _otEligibleEmpIds.contains(id))
+            .toList();
+        if (selectedIds.isEmpty) {
+          throw 'กรุณาเลือกพนักงานที่ทำงานวันนี้';
+        }
+        final hours = double.tryParse(_otHoursController.text.trim()) ?? 0;
+        if (hours <= 0) throw 'กรุณาระบุชั่วโมง OT';
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final otId = _otTxId ?? '${DateTime.now().millisecondsSinceEpoch}_ot';
+        _otTxId = otId;
+        await _persist(
+          AppTransaction(
+            id: otId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'OT',
+            laborStatus: 'OT',
+            employeeIds: selectedIds,
+            amount: 0,
+            note: _activeSignatureNote,
+            otAmount: 0,
+            otHours: hours,
+            otDescription: _otDescController.text.trim(),
+            description: _appendRecorder(
+              'OT ${_otDescController.text.trim()} (${hours.toStringAsFixed(1)}ชม.) ${selectedIds.length} คน',
+            ),
+          ),
+        );
+        _selectedLaborEmpIds.clear();
+        _otHoursController.clear();
+        _otDescController.clear();
       },
     );
   }
@@ -1153,8 +1516,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     );
     if (picked != null) {
       setState(
-        () => _selectedDate =
-            DateTime(picked.year, picked.month, picked.day),
+        () => _selectedDate = DateTime(picked.year, picked.month, picked.day),
       );
       await _loadModuleTransactions();
     }
@@ -1258,17 +1620,11 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 itemBuilder: (context) => [
                   PopupMenuItem<String>(
                     value: 'show',
-                    child: Text(
-                      'แสดงรายการ',
-                      style: GoogleFonts.kanit(),
-                    ),
+                    child: Text('แสดงรายการ', style: GoogleFonts.kanit()),
                   ),
                   PopupMenuItem<String>(
                     value: 'hide',
-                    child: Text(
-                      'ซ่อนรายการ',
-                      style: GoogleFonts.kanit(),
-                    ),
+                    child: Text('ซ่อนรายการ', style: GoogleFonts.kanit()),
                   ),
                 ],
                 child: Material(
@@ -1537,7 +1893,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       data: _quickFormTheme(context),
       child: GestureDetector(
         onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity != null && details.primaryVelocity! > 550) {
+          if (details.primaryVelocity != null &&
+              details.primaryVelocity! > 550) {
             Navigator.maybePop(context);
           }
         },
@@ -1596,7 +1953,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: const Color(0xFFE7EDF5)),
+                              border: Border.all(
+                                color: const Color(0xFFE7EDF5),
+                              ),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withValues(alpha: 0.035),
@@ -1610,16 +1969,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                                 (_isSandWashMode
                                     ? _buildSandWashFormCard()
                                     : _isVehicleTripMode
-                                        ? _buildVehicleTripFormCard()
-                                        : _isFuelMode
-                                            ? _buildFuelFormCard()
-                                            : _isHomeSandMode
-                                                ? _buildHomeSandFormCard()
-                                                : _isLaborMode
-                                                    ? _buildLaborFormCard()
-                                                    : _isOtMode
-                                                        ? _buildOtFormCard()
-                                                : _buildFormCard()),
+                                    ? _buildVehicleTripFormCard()
+                                    : _isFuelMode
+                                    ? _buildFuelFormCard()
+                                    : _isHomeSandMode
+                                    ? _buildHomeSandFormCard()
+                                    : _isLaborMode
+                                    ? _buildLaborFormCard()
+                                    : _isOtMode
+                                    ? _buildOtFormCard()
+                                    : _buildFormCard()),
                               ],
                             ),
                           ),
@@ -1646,31 +2005,33 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     if (_sandEveningEndController.text.trim().isEmpty) {
       _sandEveningEndController.text = '16.20';
     }
-    final s1 = (double.tryParse(_sand1MorningController.text) ?? 0) +
+    final s1 =
+        (double.tryParse(_sand1MorningController.text) ?? 0) +
         (double.tryParse(_sand1AfternoonController.text) ?? 0);
-    final s2 = (double.tryParse(_sand2MorningController.text) ?? 0) +
+    final s2 =
+        (double.tryParse(_sand2MorningController.text) ?? 0) +
         (double.tryParse(_sand2AfternoonController.text) ?? 0);
     final total = s1 + s2;
     final drums = double.tryParse(_sandDrumsObtainedController.text) ?? 0;
     InputDecoration deco(String label, IconData icon) => InputDecoration(
-          labelText: label,
-          labelStyle: GoogleFonts.kanit(
-            color: const Color(0xFF5A6B7F),
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-          prefixIcon: Icon(icon, color: const Color(0xFF5A6B7F), size: 18),
-          filled: true,
-          fillColor: Colors.white,
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD9E4F1)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF2D8CFF), width: 1.3),
-          ),
-        );
+      labelText: label,
+      labelStyle: GoogleFonts.kanit(
+        color: const Color(0xFF5A6B7F),
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+      ),
+      prefixIcon: Icon(icon, color: const Color(0xFF5A6B7F), size: 18),
+      filled: true,
+      fillColor: Colors.white,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFD9E4F1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF2D8CFF), width: 1.3),
+      ),
+    );
 
     Widget numberField({
       required TextEditingController controller,
@@ -1769,7 +2130,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             style: GoogleFonts.kanit(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-                color: const Color(0xFF0F5FAF),
+              color: const Color(0xFF0F5FAF),
             ),
           ),
           const SizedBox(height: 6),
@@ -1791,7 +2152,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 _formatDate(_selectedDate),
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1D2A3A),
+                  color: const Color(0xFF1D2A3A),
                 ),
               ),
             ),
@@ -1812,7 +2173,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             machine1Controller: _sand1AfternoonController,
             machine2Controller: _sand2AfternoonController,
           ),
-          if (_sand1OperatorNames.isNotEmpty || _sand2OperatorNames.isNotEmpty) ...[
+          if (_sand1OperatorNames.isNotEmpty ||
+              _sand2OperatorNames.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1860,7 +2222,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                                     ),
                                   ),
                                   backgroundColor: const Color(0xFFE8F0FF),
-                                  side: const BorderSide(color: Color(0xFFC9DAFF)),
+                                  side: const BorderSide(
+                                    color: Color(0xFFC9DAFF),
+                                  ),
                                   visualDensity: VisualDensity.compact,
                                 ),
                               )
@@ -1892,7 +2256,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                                     ),
                                   ),
                                   backgroundColor: const Color(0xFFE4F7FF),
-                                  side: const BorderSide(color: Color(0xFFC3EFFF)),
+                                  side: const BorderSide(
+                                    color: Color(0xFFC3EFFF),
+                                  ),
                                   visualDensity: VisualDensity.compact,
                                 ),
                               )
@@ -1955,7 +2321,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 ),
                 const SizedBox(height: 14),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF2F8FF),
                     borderRadius: BorderRadius.circular(12),
@@ -2019,7 +2388,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                           hour: 7,
                           minute: 20,
                         ),
-                        decoration: deco('เช้าเริ่ม (07.20)', Icons.wb_sunny_outlined),
+                        decoration: deco(
+                          'เช้าเริ่ม (07.20)',
+                          Icons.wb_sunny_outlined,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2038,7 +2410,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                           hour: 13,
                           minute: 0,
                         ),
-                        decoration: deco('บ่ายเริ่ม (13.00)', Icons.wb_twilight_outlined),
+                        decoration: deco(
+                          'บ่ายเริ่ม (13.00)',
+                          Icons.wb_twilight_outlined,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2081,14 +2456,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: drums > 0 ? const Color(0xFF9FC5F0) : const Color(0xFFDCEAF7),
+                color: drums > 0
+                    ? const Color(0xFF9FC5F0)
+                    : const Color(0xFFDCEAF7),
                 width: drums > 0 ? 1.4 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF1565C0).withValues(
-                    alpha: drums > 0 ? 0.12 : 0.02,
-                  ),
+                  color: const Color(
+                    0xFF1565C0,
+                  ).withValues(alpha: drums > 0 ? 0.12 : 0.02),
                   blurRadius: drums > 0 ? 14 : 8,
                   offset: const Offset(0, 2),
                 ),
@@ -2153,7 +2530,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               ),
               child: Text(
                 'รวมล้างทราย: ${total.toStringAsFixed(0)} คิว • จำนวนถังที่ได้: ${drums.toStringAsFixed(0)} ถัง',
-                key: ValueKey('${total.toStringAsFixed(0)}-${drums.toStringAsFixed(0)}'),
+                key: ValueKey(
+                  '${total.toStringAsFixed(0)}-${drums.toStringAsFixed(0)}',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(
                   color: const Color(0xFF0F5FAF),
@@ -2219,6 +2598,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   Future<void> _openNumericPad({
     required TextEditingController controller,
     required String label,
+    ValueChanged<String>? onChanged,
   }) async {
     String value = controller.text;
     await showModalBottomSheet<void>(
@@ -2231,6 +2611,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             onPressed: () {
               value += k;
               controller.text = value;
+              onChanged?.call(value);
               setState(() {});
             },
             style: FilledButton.styleFrom(
@@ -2310,6 +2691,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                       onPressed: () {
                         value = '';
                         controller.text = value;
+                        onChanged?.call(value);
                         setState(() {});
                       },
                       style: FilledButton.styleFrom(
@@ -2328,6 +2710,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                         if (value.isNotEmpty) {
                           value = value.substring(0, value.length - 1);
                           controller.text = value;
+                          onChanged?.call(value);
                           setState(() {});
                         }
                       },
@@ -2371,12 +2754,46 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     );
   }
 
+  Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
+    final initial = TimeOfDay.now();
+    final t = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: const Color(0xFF1565C0)),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (t == null) return;
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    final value = '$hh:$mm';
+    setState(() {
+      row.time = value;
+      row.timeController.text = value;
+    });
+  }
+
   Widget _buildVehicleTripFormCard() {
-    final tripMorning = double.tryParse(_tripMorningController.text) ?? 0;
-    final tripAfternoon = double.tryParse(_tripAfternoonController.text) ?? 0;
-    final totalTrips = tripMorning + tripAfternoon;
-    final cubicPerTrip = double.tryParse(_cubicPerTripController.text) ?? 0;
-    final totalCubic = totalTrips * cubicPerTrip;
+    if (_vehicleTripDrafts.isEmpty) {
+      _vehicleTripDrafts.add(_VehicleTripDraft.empty());
+    }
+    double sumTrips = 0;
+    double sumCubic = 0;
+    for (final row in _vehicleTripDrafts) {
+      final morning = double.tryParse(row.tripMorning) ?? 0;
+      final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
+      final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
+      final rowTrips = morning + afternoon;
+      sumTrips += rowTrips;
+      sumCubic += rowTrips * perTrip;
+    }
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -2405,149 +2822,275 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _vehicleIdController.text.isEmpty
-                      ? null
-                      : _vehicleIdController.text,
-                  decoration: const InputDecoration(
-                    labelText: 'รถ/เครื่องจักร',
-                    prefixIcon: Icon(Icons.local_shipping_outlined),
-                  ),
-                  items: _cars
-                      .map(
-                        (c) => DropdownMenuItem<String>(
-                          value: c,
-                          child: Text(c, style: GoogleFonts.kanit()),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => _vehicleIdController.text = v ?? '',
-                ),
+          ...List.generate(_vehicleTripDrafts.length, (index) {
+            final row = _vehicleTripDrafts[index];
+            final rowTrips =
+                (double.tryParse(row.tripMorning) ?? 0) +
+                (double.tryParse(row.tripAfternoon) ?? 0);
+            final rowCubic =
+                rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
+            return Container(
+              margin: EdgeInsets.only(
+                bottom: index == _vehicleTripDrafts.length - 1 ? 0 : 12,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _driverIdController.text.isEmpty
-                      ? null
-                      : _driverIdController.text,
-                  decoration: const InputDecoration(
-                    labelText: 'คนขับ',
-                    prefixIcon: Icon(Icons.badge_outlined),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FCFF),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFDCE8F5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'คันที่ ${index + 1}',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF205A9A),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_vehicleTripDrafts.length > 1)
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              final removed = _vehicleTripDrafts.removeAt(
+                                index,
+                              );
+                              removed.dispose();
+                            });
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: const Color(0xFFD14343),
+                          tooltip: 'ลบคันนี้',
+                        ),
+                    ],
                   ),
-                  items: _driverEmployees
-                      .map(
-                        (e) => DropdownMenuItem<String>(
-                          value: e.id,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey('vehicle_${index}_${row.vehicleId}'),
+                          initialValue: row.vehicleId.isEmpty
+                              ? null
+                              : row.vehicleId,
+                          decoration: const InputDecoration(
+                            labelText: 'รถ/เครื่องจักร',
+                            prefixIcon: Icon(Icons.local_shipping_outlined),
+                          ),
+                          items: _cars
+                              .map(
+                                (c) => DropdownMenuItem<String>(
+                                  value: c,
+                                  child: Text(c, style: GoogleFonts.kanit()),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => row.vehicleId = v ?? ''),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey('driver_${index}_${row.driverId}'),
+                          initialValue:
+                              row.driverId.isEmpty ||
+                                  !_driverEmployees.any(
+                                    (e) => e.id == row.driverId,
+                                  )
+                              ? null
+                              : row.driverId,
+                          decoration: const InputDecoration(
+                            labelText: 'คนขับ',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                          ),
+                          items: _driverEmployees
+                              .map(
+                                (e) => DropdownMenuItem<String>(
+                                  value: e.id,
+                                  child: Text(
+                                    e.nickname.isNotEmpty ? e.nickname : e.name,
+                                    style: GoogleFonts.kanit(),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => row.driverId = v ?? ''),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_driverEmployees.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'ยังไม่พบพนักงานตำแหน่งคนขับรถ',
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFFD14343),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F8FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFD7E6F7)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
                           child: Text(
-                            e.nickname.isNotEmpty ? e.nickname : e.name,
-                            style: GoogleFonts.kanit(),
+                            row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน',
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF244B75),
+                            ),
                           ),
                         ),
-                      )
-                      .toList(),
-                  onChanged: (v) => _driverIdController.text = v ?? '',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text('เต็มวัน', style: GoogleFonts.kanit()),
-                selected: _vehicleWorkType == 'FullDay',
-                onSelected: (_) => setState(() => _vehicleWorkType = 'FullDay'),
-              ),
-              ChoiceChip(
-                label: Text('ครึ่งวัน', style: GoogleFonts.kanit()),
-                selected: _vehicleWorkType == 'HalfDay',
-                onSelected: (_) => setState(() => _vehicleWorkType = 'HalfDay'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _AnimatedInputField(
-                  controller: _vehicleWageController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'ค่าจ้างรถ (บาท)',
-                    prefixIcon: Icon(Icons.currency_exchange_outlined),
+                        Switch(
+                          value: row.workType == 'HalfDay',
+                          onChanged: (v) => setState(
+                            () => row.workType = v ? 'HalfDay' : 'FullDay',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _AnimatedInputField(
-                  controller: _driverWageController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'เบี้ยเลี้ยงคนขับ (บาท)',
-                    prefixIcon: Icon(Icons.payments_outlined),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: row.workDetailsController,
+                    onChanged: (v) => row.workDetails = v,
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'รายละเอียดงาน',
+                      prefixIcon: Icon(Icons.description_outlined),
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _vehicleWorkDetailsController,
-            decoration: const InputDecoration(
-              labelText: 'รายละเอียดงาน',
-              prefixIcon: Icon(Icons.description_outlined),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'บันทึกรถและจำนวนเที่ยวรถ',
-            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _AnimatedInputField(
-                  controller: _tripMorningController,
-                  onChanged: (_) => setState(() {}),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'ช่วงเช้า (เที่ยว)',
-                    prefixIcon: Icon(Icons.wb_sunny_outlined),
+                  if (_vehicleWorkSuggestions.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _vehicleWorkSuggestions
+                          .map(
+                            (s) => ActionChip(
+                              label: Text(
+                                s,
+                                style: GoogleFonts.kanit(fontSize: 13.5),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  row.workDetails = s;
+                                  row.workDetailsController.text = s;
+                                  row.workDetailsController.selection =
+                                      TextSelection.collapsed(offset: s.length);
+                                });
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: row.tripMorningController,
+                          readOnly: true,
+                          onTap: () => _openNumericPad(
+                            controller: row.tripMorningController,
+                            label: 'ช่วงเช้า (เที่ยว)',
+                            onChanged: (v) => row.tripMorning = v,
+                          ),
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFF1D2A3A),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'ช่วงเช้า (เที่ยว)',
+                            prefixIcon: Icon(Icons.wb_sunny_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: row.tripAfternoonController,
+                          readOnly: true,
+                          onTap: () => _openNumericPad(
+                            controller: row.tripAfternoonController,
+                            label: 'ช่วงบ่าย (เที่ยว)',
+                            onChanged: (v) => row.tripAfternoon = v,
+                          ),
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFF1D2A3A),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'ช่วงบ่าย (เที่ยว)',
+                            prefixIcon: Icon(Icons.nightlight_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _AnimatedInputField(
-                  controller: _tripAfternoonController,
-                  onChanged: (_) => setState(() {}),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'ช่วงบ่าย (เที่ยว)',
-                    prefixIcon: Icon(Icons.nightlight_outlined),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: row.cubicPerTripController,
+                    readOnly: true,
+                    onTap: () => _openNumericPad(
+                      controller: row.cubicPerTripController,
+                      label: 'คิวต่อเที่ยว',
+                      onChanged: (v) => row.cubicPerTrip = v,
+                    ),
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'คิวต่อเที่ยว',
+                      prefixIcon: Icon(Icons.straighten_outlined),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${_vehicleLabelFromId(row.vehicleId)} • ${_driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF2C4D77),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          }),
           const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _cubicPerTripController,
-            onChanged: (_) => setState(() {}),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'คิวต่อเที่ยว',
-              prefixIcon: Icon(Icons.straighten_outlined),
+          OutlinedButton.icon(
+            onPressed: () {
+              setState(() => _vehicleTripDrafts.add(_VehicleTripDraft.empty()));
+            },
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'เพิ่มรถอีกคัน',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 8),
@@ -2559,14 +3102,18 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               color: const Color(0xFFF4F8FD),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: totalTrips > 0 ? const Color(0xFFBFD8F4) : const Color(0xFFE2EAF4),
+                color: sumTrips > 0
+                    ? const Color(0xFFBFD8F4)
+                    : const Color(0xFFE2EAF4),
               ),
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: Text(
-                'รวม ${totalTrips.toStringAsFixed(0)} เที่ยว • ${totalCubic.toStringAsFixed(0)} คิว',
-                key: ValueKey('${totalTrips.toStringAsFixed(0)}-${totalCubic.toStringAsFixed(0)}'),
+                'รวม ${sumTrips.toStringAsFixed(0)} เที่ยว • ${sumCubic.toStringAsFixed(0)} คิว (${_vehicleTripDrafts.length} คัน)',
+                key: ValueKey(
+                  '${sumTrips.toStringAsFixed(0)}-${sumCubic.toStringAsFixed(0)}-${_vehicleTripDrafts.length}',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
@@ -2582,7 +3129,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                 _saving ? 'กำลังบันทึก...' : 'บันทึกรถและเที่ยวรถ',
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
             ),
           ),
         ],
@@ -2591,13 +3140,21 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   }
 
   Widget _buildFuelFormCard() {
+    final fuelCars = _fuelMacroCars();
+    if (_fuelVehicleDrafts.isEmpty) {
+      _fuelVehicleDrafts.add(_FuelVehicleDraft.empty());
+    }
+    double totalLiters = 0;
+    for (final row in _fuelVehicleDrafts) {
+      totalLiters += double.tryParse(row.liters) ?? 0;
+    }
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
@@ -2611,150 +3168,203 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Fuel Entry',
+            'บันทึกการใช้น้ำมันของรถแต่ละคัน',
             style: GoogleFonts.kanit(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
               color: const Color(0xFF0F5FAF),
             ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text('ดีเซล', style: GoogleFonts.kanit()),
-                selected: _fuelType == 'Diesel',
-                onSelected: (_) => setState(() => _fuelType = 'Diesel'),
-              ),
-              ChoiceChip(
-                label: Text('เบนซิน', style: GoogleFonts.kanit()),
-                selected: _fuelType == 'Benzine',
-                onSelected: (_) => setState(() => _fuelType = 'Benzine'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _AnimatedInputField(
-                  controller: _fuelLitersController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'จำนวนลิตร',
-                    prefixIcon: Icon(Icons.local_gas_station_outlined),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _fuelUnitController.text,
-                  decoration: const InputDecoration(
-                    labelText: 'หน่วย',
-                    prefixIcon: Icon(Icons.straighten_outlined),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'ลิตร', child: Text('ลิตร')),
-                    DropdownMenuItem(value: 'แกลลอน', child: Text('แกลลอน')),
-                  ],
-                  onChanged: (v) => _fuelUnitController.text = v ?? 'ลิตร',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _fuelAmountController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'ราคาซื้อน้ำมัน (บาท)',
-              prefixIcon: Icon(Icons.payments_outlined),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _fuelDetailsController,
-            decoration: const InputDecoration(
-              labelText: 'รายละเอียดเพิ่มเติม',
-              prefixIcon: Icon(Icons.note_alt_outlined),
-            ),
-          ),
           const SizedBox(height: 10),
-          _SmoothPressable(
-            enabled: !_saving,
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _saveFuelStockInEntry,
-              icon: const Icon(Icons.add_circle_outline),
-              label: Text('บันทึกซื้อน้ำมันเข้า', style: GoogleFonts.kanit()),
-            ),
-          ),
-          const Divider(height: 22),
-          Text(
-            'บันทึกการใช้น้ำมันของรถแต่ละคัน',
-            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: _fuelVehicleController.text.isEmpty
+          ...List.generate(_fuelVehicleDrafts.length, (index) {
+            final row = _fuelVehicleDrafts[index];
+            return Container(
+              margin: EdgeInsets.only(
+                bottom: index == _fuelVehicleDrafts.length - 1 ? 0 : 12,
+              ),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FCFF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFDCE8F5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'คันที่ ${index + 1}',
+                        style: GoogleFonts.kanit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF205A9A),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_fuelVehicleDrafts.length > 1)
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              final removed = _fuelVehicleDrafts.removeAt(
+                                index,
+                              );
+                              removed.dispose();
+                            });
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: const Color(0xFFD14343),
+                          tooltip: 'ลบคันนี้',
+                        ),
+                    ],
+                  ),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('fuel_vehicle_${index}_${row.vehicleId}'),
+                    initialValue:
+                        row.vehicleId.isEmpty ||
+                            !fuelCars.contains(row.vehicleId)
+                        ? null
+                        : row.vehicleId,
+                    decoration: const InputDecoration(
+                      labelText: 'เลือกรถแม็คโคร',
+                      prefixIcon: Icon(Icons.local_shipping_outlined),
+                    ),
+                    items: fuelCars
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c,
+                            child: Text(
+                              c,
+                              style: GoogleFonts.kanit(fontSize: 18),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => row.vehicleId = v ?? ''),
+                  ),
+                  if (fuelCars.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFFD14343),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: Text(
+                          'ดีเซล',
+                          style: GoogleFonts.kanit(fontSize: 16),
+                        ),
+                        selected: row.fuelType == 'Diesel',
+                        onSelected: (_) =>
+                            setState(() => row.fuelType = 'Diesel'),
+                      ),
+                      ChoiceChip(
+                        label: Text(
+                          'เบนซิน',
+                          style: GoogleFonts.kanit(fontSize: 16),
+                        ),
+                        selected: row.fuelType == 'Benzine',
+                        onSelected: (_) =>
+                            setState(() => row.fuelType = 'Benzine'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: row.litersController,
+                    readOnly: true,
+                    onTap: () => _openNumericPad(
+                      controller: row.litersController,
+                      label: 'ใช้น้ำมัน (ลิตร)',
+                      onChanged: (v) => row.liters = v,
+                    ),
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'ใช้น้ำมัน (ลิตร)',
+                      prefixIcon: Icon(Icons.opacity_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: row.timeController,
+                    readOnly: true,
+                    onTap: () => _pickFuelTime(row),
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'เวลาเติมน้ำมัน (ไม่บังคับ)',
+                      prefixIcon: Icon(Icons.access_time_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: fuelCars.isEmpty
                 ? null
-                : _fuelVehicleController.text,
-            decoration: const InputDecoration(
-              labelText: 'เลือกรถ',
-              prefixIcon: Icon(Icons.local_shipping_outlined),
-            ),
-            items: _cars
-                .map(
-                  (c) => DropdownMenuItem<String>(
-                    value: c,
-                    child: Text(c, style: GoogleFonts.kanit()),
+                : () => setState(
+                    () => _fuelVehicleDrafts.add(_FuelVehicleDraft.empty()),
                   ),
-                )
-                .toList(),
-            onChanged: (v) => _fuelVehicleController.text = v ?? '',
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text('ดีเซล', style: GoogleFonts.kanit()),
-                selected: _fuelVehicleType == 'Diesel',
-                onSelected: (_) => setState(() => _fuelVehicleType = 'Diesel'),
-              ),
-              ChoiceChip(
-                label: Text('เบนซิน', style: GoogleFonts.kanit()),
-                selected: _fuelVehicleType == 'Benzine',
-                onSelected: (_) => setState(() => _fuelVehicleType = 'Benzine'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _fuelVehicleLitersController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'ใช้น้ำมัน (ลิตร)',
-              prefixIcon: Icon(Icons.opacity_outlined),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _fuelVehicleTimeController,
-            decoration: const InputDecoration(
-              labelText: 'เวลาเติมน้ำมัน (เช่น 13:45)',
-              prefixIcon: Icon(Icons.access_time_outlined),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'เพิ่มรถอีกคัน',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F8FD),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: totalLiters > 0
+                    ? const Color(0xFFBFD8F4)
+                    : const Color(0xFFE2EAF4),
+              ),
+            ),
+            child: Text(
+              'รวมใช้น้ำมัน ${totalLiters.toStringAsFixed(0)} ลิตร (${_fuelVehicleDrafts.length} คัน)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
-              onPressed: _saving ? null : _saveFuelVehicleUsageEntry,
+              onPressed: _saving ? null : _saveFuelVehicleUsageEntries,
               icon: const Icon(Icons.directions_car_outlined),
-              label: Text('บันทึกการใช้น้ำมันรายรถ', style: GoogleFonts.kanit()),
+              label: Text(
+                'บันทึกการใช้น้ำมันรายรถ',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(62),
+              ),
             ),
           ),
         ],
@@ -2763,9 +3373,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
   }
 
   Widget _buildHomeSandFormCard() {
-    final obtained = double.tryParse(_sandDrumsObtainedController.text) ?? 0;
-    final home = double.tryParse(_drumsWashedAtHomeController.text) ?? 0;
-    final remain = (obtained - home).clamp(0, 999999).toDouble();
+    final typedHome = double.tryParse(_drumsWashedAtHomeController.text) ?? 0;
+    final home = _homeWashAll ? _homeSandAvailable : typedHome;
+    final remain = (_homeSandAvailable - home).clamp(0, 999999).toDouble();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -2795,13 +3405,25 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            controller: _sandDrumsObtainedController,
-            onChanged: (_) => setState(() {}),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'จำนวนถังที่ได้วันนี้',
-              prefixIcon: Icon(Icons.inventory_2_outlined),
+          SwitchListTile(
+            value: _homeWashAll,
+            onChanged: (v) {
+              setState(() {
+                _homeWashAll = v;
+                if (v) {
+                  _drumsWashedAtHomeController.text = _strNum(
+                    _homeSandAvailable,
+                  );
+                }
+              });
+            },
+            title: Text(
+              'ล้างทรายทั้งหมด (ตัดรอบ)',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              'ระบบจะใช้จำนวนคงเหลือทั้งหมด ${_homeSandAvailable.toStringAsFixed(0)} ถัง',
+              style: GoogleFonts.kanit(fontSize: 12.5),
             ),
           ),
           const SizedBox(height: 10),
@@ -2812,7 +3434,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              'ล้างที่บ้านวันนี้: ${home.toStringAsFixed(0)} • จำนวนถังคงเหลือ: ${remain.toStringAsFixed(0)}',
+              'คงเหลือก่อนวันนี้: ${_homeSandBeforeToday.toStringAsFixed(0)} • ได้เพิ่มวันนี้: ${_homeSandTodayObtained.toStringAsFixed(0)}\nล้างที่บ้านวันนี้: ${home.toStringAsFixed(0)} • คงเหลือหลังล้าง: ${remain.toStringAsFixed(0)}',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
             ),
@@ -2822,42 +3444,317 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             onPressed: _saving ? null : _saveQuickEntry,
             icon: const Icon(Icons.save_outlined),
             label: Text('บันทึกทรายที่ล้างที่บ้าน', style: GoogleFonts.kanit()),
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLaborEmployeePicker() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _employees.map((e) {
-        final id = e.id;
-        final selected = _selectedLaborEmpIds.contains(id);
-        final name = e.nickname.isNotEmpty ? e.nickname : e.name;
-        return FilterChip(
-          label: Text(name, style: GoogleFonts.kanit()),
-          selected: selected,
-          onSelected: (_) {
-            setState(() {
-              if (selected) {
-                _selectedLaborEmpIds.remove(id);
-              } else {
-                _selectedLaborEmpIds.add(id);
-              }
-            });
-          },
-        );
-      }).toList(),
+  Set<String> _collectLaborAssignedIds() {
+    final out = <String>{};
+    for (final entry in _laborAssignments.values) {
+      out.addAll(entry);
+    }
+    return out;
+  }
+
+  List<Map<String, String>> _laborCategoryPayload() {
+    return _laborCategories
+        .map((c) => {'id': c.id, 'label': c.label})
+        .toList(growable: false);
+  }
+
+  String _laborCategoryLabel(String id) {
+    for (final c in _laborCategories) {
+      if (c.id == id) return c.label;
+    }
+    return id;
+  }
+
+  Widget _buildLaborCanvasBoard() {
+    final assignedIds = _collectLaborAssignedIds();
+    final available = _employees
+        .where((e) => !assignedIds.contains(e.id))
+        .toList();
+
+    Widget bucketCard({required _LaborWorkCategory category}) {
+      final id = category.id;
+      final title = category.label;
+      final tint = category.color;
+      final ids = _laborAssignments[id] ?? <String>{};
+      return DragTarget<String>(
+        onWillAcceptWithDetails: (details) => true,
+        onAcceptWithDetails: (details) {
+          final empId = details.data;
+          setState(() {
+            for (final bucket in _laborAssignments.values) {
+              bucket.remove(empId);
+            }
+            _laborAssignments[id]?.add(empId);
+            _laborPickedIds.remove(empId);
+          });
+        },
+        builder: (context, candidateData, rejectedData) {
+          final isHovering = candidateData.isNotEmpty;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: tint.withValues(alpha: isHovering ? 0.2 : 0.12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: tint.withValues(alpha: isHovering ? 0.85 : 0.45),
+                width: isHovering ? 1.8 : 1.2,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.kanit(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1F2B3A),
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: tint.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        '${ids.length} คน',
+                        style: GoogleFonts.kanit(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF314C6D),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: ids.map((empId) {
+                    final emp = _employees.where((e) => e.id == empId).toList();
+                    final label = emp.isEmpty
+                        ? empId
+                        : (emp.first.nickname.isNotEmpty
+                              ? emp.first.nickname
+                              : emp.first.name);
+                    return LongPressDraggable<String>(
+                      data: empId,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: Chip(
+                          label: Text(
+                            label,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          backgroundColor: tint.withValues(alpha: 0.92),
+                        ),
+                      ),
+                      childWhenDragging: Opacity(
+                        opacity: 0.35,
+                        child: InputChip(
+                          label: Text(
+                            label,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          onDeleted: null,
+                        ),
+                      ),
+                      child: InputChip(
+                        label: Text(
+                          label,
+                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                        ),
+                        onDeleted: () {
+                          setState(() {
+                            _laborAssignments[id]?.remove(empId);
+                          });
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _laborPickedIds.isEmpty
+                      ? null
+                      : () {
+                          setState(() {
+                            for (final bucket in _laborAssignments.values) {
+                              bucket.removeAll(_laborPickedIds);
+                            }
+                            _laborAssignments[id]?.addAll(_laborPickedIds);
+                            _laborPickedIds.clear();
+                          });
+                        },
+                  icon: const Icon(Icons.south_west_rounded, size: 16),
+                  label: Text(
+                    'ย้ายคนที่เลือกมาที่กล่องนี้',
+                    style: GoogleFonts.kanit(fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCE7F3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'เลือกพนักงานเพื่อย้ายลงกล่องงาน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_laborPickedIds.length} คน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF5B6D83),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DragTarget<String>(
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              final empId = details.data;
+              setState(() {
+                for (final bucket in _laborAssignments.values) {
+                  bucket.remove(empId);
+                }
+                _laborPickedIds.remove(empId);
+              });
+            },
+            builder: (context, candidateData, rejectedData) {
+              final isHovering = candidateData.isNotEmpty;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isHovering
+                      ? const Color(0xFFDDEBFA)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isHovering
+                        ? const Color(0xFF73A6E8)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: available.map((e) {
+                    final id = e.id;
+                    final selected = _laborPickedIds.contains(id);
+                    final name = e.nickname.isNotEmpty ? e.nickname : e.name;
+                    return LongPressDraggable<String>(
+                      data: id,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: Chip(
+                          label: Text(
+                            name,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          backgroundColor: const Color(0xFF3C78C8),
+                        ),
+                      ),
+                      childWhenDragging: Opacity(
+                        opacity: 0.35,
+                        child: FilterChip(
+                          label: Text(
+                            name,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          selected: selected,
+                          onSelected: null,
+                        ),
+                      ),
+                      child: FilterChip(
+                        label: Text(
+                          name,
+                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                        ),
+                        selected: selected,
+                        onSelected: (_) {
+                          setState(() {
+                            if (selected) {
+                              _laborPickedIds.remove(id);
+                            } else {
+                              _laborPickedIds.add(id);
+                            }
+                          });
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          ..._laborCategories.asMap().entries.map((entry) {
+            final i = entry.key;
+            final category = entry.value;
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: i == _laborCategories.length - 1 ? 0 : 8,
+              ),
+              child: bucketCard(category: category),
+            );
+          }),
+        ],
+      ),
     );
   }
 
   Widget _buildLaborFormCard() {
-    final wage = double.tryParse(_laborDailyWageController.text) ?? 0;
-    final multi = _laborWorkType == 'HalfDay' ? 0.5 : 1.0;
-    final total = wage * _selectedLaborEmpIds.length * multi;
+    final assignedIds = _collectLaborAssignedIds();
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -2886,42 +3783,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLaborEmployeePicker(),
+          _buildLaborCanvasBoard(),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text('เต็มวัน', style: GoogleFonts.kanit()),
-                selected: _laborWorkType == 'FullDay',
-                onSelected: (_) => setState(() => _laborWorkType = 'FullDay'),
-              ),
-              ChoiceChip(
-                label: Text('ครึ่งวัน', style: GoogleFonts.kanit()),
-                selected: _laborWorkType == 'HalfDay',
-                onSelected: (_) => setState(() => _laborWorkType = 'HalfDay'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _laborDailyWageController,
-            onChanged: (_) => setState(() {}),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'ค่าแรงต่อวัน (บาท/คน)',
-              prefixIcon: Icon(Icons.payments_outlined),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _laborWorkDetailsController,
-            decoration: const InputDecoration(
-              labelText: 'รายละเอียดงาน',
-              prefixIcon: Icon(Icons.work_history_outlined),
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
@@ -2930,14 +3794,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               color: const Color(0xFFF4F8FD),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: total > 0 ? const Color(0xFFBFD8F4) : const Color(0xFFE2EAF4),
+                color: assignedIds.isNotEmpty
+                    ? const Color(0xFFBFD8F4)
+                    : const Color(0xFFE2EAF4),
               ),
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: Text(
-                'รวมค่าแรง: ${total.toStringAsFixed(0)} บาท (${_selectedLaborEmpIds.length} คน)',
-                key: ValueKey('${total.toStringAsFixed(0)}-${_selectedLaborEmpIds.length}'),
+                'พนักงานที่จัดลงงานแล้ว ${assignedIds.length} คน',
+                key: ValueKey('${assignedIds.length}'),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
@@ -2950,7 +3816,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               onPressed: _saving ? null : _saveQuickEntry,
               icon: const Icon(Icons.save_outlined),
               label: Text('บันทึกค่าแรง', style: GoogleFonts.kanit()),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
             ),
           ),
         ],
@@ -2958,10 +3826,56 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
     );
   }
 
+  Widget _buildOtEmployeePicker() {
+    final workedToday = _employees
+        .where((e) => _otEligibleEmpIds.contains(e.id))
+        .toList();
+    if (workedToday.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF5E8),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFF3DEB8)),
+        ),
+        child: Text(
+          'ยังไม่พบพนักงานที่ทำงานวันนี้ (บันทึกค่าแรงก่อน แล้วค่อยลง OT)',
+          style: GoogleFonts.kanit(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF8A6A2C),
+          ),
+        ),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: workedToday.map((e) {
+        final id = e.id;
+        final selected = _selectedLaborEmpIds.contains(id);
+        final name = e.nickname.isNotEmpty ? e.nickname : e.name;
+        return FilterChip(
+          label: Text(name, style: GoogleFonts.kanit()),
+          selected: selected,
+          onSelected: (_) {
+            setState(() {
+              if (selected) {
+                _selectedLaborEmpIds.remove(id);
+              } else {
+                _selectedLaborEmpIds.add(id);
+              }
+            });
+          },
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildOtFormCard() {
-    final rate = double.tryParse(_otRateController.text) ?? 0;
     final hours = double.tryParse(_otHoursController.text) ?? 0;
-    final total = rate * hours * _selectedLaborEmpIds.length;
+    final selectedCount = _selectedLaborEmpIds
+        .where((id) => _otEligibleEmpIds.contains(id))
+        .length;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -2990,17 +3904,7 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLaborEmployeePicker(),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _otRateController,
-            onChanged: (_) => setState(() {}),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'ค่า OT (บาท/คน/ชม.)',
-              prefixIcon: Icon(Icons.attach_money_outlined),
-            ),
-          ),
+          _buildOtEmployeePicker(),
           const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _otHoursController,
@@ -3028,7 +3932,8 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
                   .map(
                     (s) => ActionChip(
                       label: Text(s, style: GoogleFonts.kanit(fontSize: 12)),
-                      onPressed: () => setState(() => _otDescController.text = s),
+                      onPressed: () =>
+                          setState(() => _otDescController.text = s),
                     ),
                   )
                   .toList(),
@@ -3043,14 +3948,16 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               color: const Color(0xFFFFF7E8),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: total > 0 ? const Color(0xFFF2D39D) : const Color(0xFFF3E7CC),
+                color: selectedCount > 0 && hours > 0
+                    ? const Color(0xFFF2D39D)
+                    : const Color(0xFFF3E7CC),
               ),
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: Text(
-                'รวม OT: ${total.toStringAsFixed(0)} บาท (${_selectedLaborEmpIds.length} คน × ${hours.toStringAsFixed(1)} ชม.)',
-                key: ValueKey('${total.toStringAsFixed(0)}-${hours.toStringAsFixed(1)}-${_selectedLaborEmpIds.length}'),
+                'OT ที่เลือก: $selectedCount คน × ${hours.toStringAsFixed(1)} ชม.',
+                key: ValueKey('$selectedCount-${hours.toStringAsFixed(1)}'),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
@@ -3063,7 +3970,9 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
               onPressed: _saving ? null : _saveQuickEntry,
               icon: const Icon(Icons.save_outlined),
               label: Text('บันทึก OT', style: GoogleFonts.kanit()),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
             ),
           ),
         ],
@@ -3090,7 +3999,10 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF3EA0FF), width: 1.2),
+              borderSide: const BorderSide(
+                color: Color(0xFF3EA0FF),
+                width: 1.2,
+              ),
             ),
           ),
         ),
@@ -3241,7 +4153,6 @@ class _QuickInputScreenState extends State<QuickInputScreen> {
       ),
     );
   }
-
 }
 
 class _AnimatedInputField extends StatefulWidget {
@@ -3321,16 +4232,15 @@ class _SignatureDialog extends StatefulWidget {
 class _SignatureDialogState extends State<_SignatureDialog> {
   final List<List<Offset>> _strokes = [];
 
-  double _roundCoord(double value) =>
-      double.parse(value.toStringAsFixed(2));
+  double _roundCoord(double value) => double.parse(value.toStringAsFixed(2));
 
   _CapturedSignature _buildPayload() {
     final now = DateTime.now().toUtc().toIso8601String();
     final signer =
         Supabase.instance.client.auth.currentUser?.email?.trim().isNotEmpty ==
-                true
-            ? Supabase.instance.client.auth.currentUser!.email!.trim()
-            : 'android-user';
+            true
+        ? Supabase.instance.client.auth.currentUser!.email!.trim()
+        : 'android-user';
     final pointCount = _strokes.fold<int>(0, (sum, s) => sum + s.length);
     final paths = <List<List<double>>>[];
     for (final stroke in _strokes) {
@@ -3363,8 +4273,7 @@ class _SignatureDialogState extends State<_SignatureDialog> {
     return _CapturedSignature(note: note);
   }
 
-  bool get _hasSignature =>
-      _strokes.any((stroke) => stroke.length > 1);
+  bool get _hasSignature => _strokes.any((stroke) => stroke.length > 1);
 
   @override
   Widget build(BuildContext context) {
@@ -3491,6 +4400,89 @@ class _CapturedSignature {
   final String note;
 }
 
+class _VehicleTripDraft {
+  _VehicleTripDraft({
+    this.mainTxId,
+    this.tripTxId,
+    this.vehicleId = '',
+    this.driverId = '',
+    this.workType = 'FullDay',
+    this.workDetails = '',
+    this.tripMorning = '',
+    this.tripAfternoon = '',
+    this.cubicPerTrip = '',
+  }) : workDetailsController = TextEditingController(text: workDetails),
+       tripMorningController = TextEditingController(text: tripMorning),
+       tripAfternoonController = TextEditingController(text: tripAfternoon),
+       cubicPerTripController = TextEditingController(text: cubicPerTrip);
+
+  factory _VehicleTripDraft.empty() => _VehicleTripDraft();
+
+  String? mainTxId;
+  String? tripTxId;
+  String vehicleId;
+  String driverId;
+  String workType;
+  String workDetails;
+  String tripMorning;
+  String tripAfternoon;
+  String cubicPerTrip;
+  final TextEditingController workDetailsController;
+  final TextEditingController tripMorningController;
+  final TextEditingController tripAfternoonController;
+  final TextEditingController cubicPerTripController;
+
+  void dispose() {
+    workDetailsController.dispose();
+    tripMorningController.dispose();
+    tripAfternoonController.dispose();
+    cubicPerTripController.dispose();
+  }
+}
+
+class _FuelVehicleDraft {
+  _FuelVehicleDraft({
+    this.txId,
+    this.vehicleId = '',
+    this.fuelType = 'Diesel',
+    this.liters = '',
+    this.time = '',
+  }) : litersController = TextEditingController(text: liters),
+       timeController = TextEditingController(text: time);
+
+  factory _FuelVehicleDraft.empty() => _FuelVehicleDraft();
+
+  String? txId;
+  String vehicleId;
+  String fuelType;
+  String liters;
+  String time;
+  final TextEditingController litersController;
+  final TextEditingController timeController;
+
+  void dispose() {
+    litersController.dispose();
+    timeController.dispose();
+  }
+}
+
+class _HomeSandDaily {
+  double obtained = 0;
+  double home = 0;
+}
+
+class _LaborWorkCategory {
+  const _LaborWorkCategory({
+    required this.id,
+    required this.label,
+    required this.color,
+  });
+
+  final String id;
+  final String label;
+  final Color color;
+}
+
 class _AnimatedInputFieldState extends State<_AnimatedInputField> {
   bool _focused = false;
   bool _pressed = false;
@@ -3541,7 +4533,8 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
             controller: widget.controller,
             keyboardType: widget.keyboardType,
             onChanged: widget.onChanged,
-            style: widget.style ??
+            style:
+                widget.style ??
                 GoogleFonts.kanit(
                   color: const Color(0xFF1D2A3A),
                   fontSize: 20,
@@ -3567,10 +4560,7 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
 }
 
 class _SmoothPressable extends StatefulWidget {
-  const _SmoothPressable({
-    required this.child,
-    this.enabled = true,
-  });
+  const _SmoothPressable({required this.child, this.enabled = true});
 
   final Widget child;
   final bool enabled;
@@ -3587,7 +4577,9 @@ class _SmoothPressableState extends State<_SmoothPressable> {
     return GestureDetector(
       onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
       onTapUp: widget.enabled ? (_) => setState(() => _pressed = false) : null,
-      onTapCancel: widget.enabled ? () => setState(() => _pressed = false) : null,
+      onTapCancel: widget.enabled
+          ? () => setState(() => _pressed = false)
+          : null,
       child: AnimatedScale(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,

@@ -26,6 +26,8 @@ class AppTransaction {
     this.vehicleWage,
     this.workDetails,
     this.workType,
+    this.workAssignments,
+    this.customWorkCategories,
     this.quantity,
     this.unit,
     this.fuelType,
@@ -69,6 +71,8 @@ class AppTransaction {
   final double? vehicleWage;
   final String? workDetails;
   final String? workType;
+  final Map<String, List<String>>? workAssignments;
+  final List<Map<String, String>>? customWorkCategories;
   final double? quantity;
   final String? unit;
   final String? fuelType;
@@ -83,6 +87,7 @@ class AppTransaction {
   final double? otAmount;
   final double? otHours;
   final String? otDescription;
+
   /// จากคอลัมน์ created_at ของฐานข้อมูล (แสดงประวัติ / upsert ให้คงเวลาสร้าง)
   final DateTime? createdAt;
 
@@ -113,7 +118,9 @@ class AppTransaction {
       sandMachineType: row['sand_machine_type']?.toString(),
       sandOperators: <String>[
         if (sandOperatorsRaw is List)
-          ...sandOperatorsRaw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
+          ...sandOperatorsRaw
+              .map((e) => '$e')
+              .where((e) => e.trim().isNotEmpty),
       ],
       drumsObtained: _toDouble(row['drums_obtained']),
       drumsWashedAtHome: _toDouble(row['drums_washed_at_home']),
@@ -126,6 +133,8 @@ class AppTransaction {
       vehicleWage: _toDouble(row['vehicle_wage']),
       workDetails: row['work_details']?.toString(),
       workType: row['work_type']?.toString(),
+      workAssignments: _toStringListMap(row['work_assignments']),
+      customWorkCategories: _toStringMapList(row['custom_work_categories']),
       quantity: _toDouble(row['quantity']),
       unit: row['unit']?.toString(),
       fuelType: row['fuel_type']?.toString(),
@@ -182,8 +191,13 @@ class AppTransaction {
       if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
       if (driverWage != null) 'driver_wage': driverWage,
       if (vehicleWage != null) 'vehicle_wage': vehicleWage,
-      if (workDetails != null && workDetails!.isNotEmpty) 'work_details': workDetails,
+      if (workDetails != null && workDetails!.isNotEmpty)
+        'work_details': workDetails,
       if (workType != null && workType!.isNotEmpty) 'work_type': workType,
+      if (workAssignments != null && workAssignments!.isNotEmpty)
+        'work_assignments': workAssignments,
+      if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
+        'custom_work_categories': customWorkCategories,
       if (quantity != null) 'quantity': quantity,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
@@ -209,5 +223,35 @@ class AppTransaction {
     if (value == null) return null;
     if (value is num) return value.toDouble();
     return double.tryParse('$value');
+  }
+
+  static Map<String, List<String>>? _toStringListMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final out = <String, List<String>>{};
+    for (final entry in raw.entries) {
+      final key = '${entry.key}'.trim();
+      if (key.isEmpty) continue;
+      final v = entry.value;
+      if (v is! List) continue;
+      final items = v
+          .map((e) => '$e')
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+      if (items.isNotEmpty) out[key] = items;
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  static List<Map<String, String>>? _toStringMapList(dynamic raw) {
+    if (raw is! List) return null;
+    final out = <Map<String, String>>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final id = '${item['id'] ?? ''}'.trim();
+      final label = '${item['label'] ?? ''}'.trim();
+      if (id.isEmpty || label.isEmpty) continue;
+      out.add({'id': id, 'label': label});
+    }
+    return out.isEmpty ? null : out;
   }
 }

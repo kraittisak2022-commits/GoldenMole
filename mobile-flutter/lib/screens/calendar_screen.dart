@@ -30,11 +30,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
   );
   DateTime _selectedDate = DateTime.now();
   late Future<_CalendarPayload> _future;
+  bool _savingEntry = false;
+
+  final TextEditingController _eventTitleController = TextEditingController();
+  final TextEditingController _eventTimeController = TextEditingController();
+  final TextEditingController _eventNoteController = TextEditingController();
+  final Set<String> _leaveEmpIds = {};
+  String _entryMode = 'Holiday';
+  String _leaveType = 'Leave';
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _eventTitleController.dispose();
+    _eventTimeController.dispose();
+    _eventNoteController.dispose();
+    super.dispose();
   }
 
   Future<_CalendarPayload> _load() async {
@@ -47,6 +63,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() {
       _future = _load();
     });
+  }
+
+  String _ymd(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  Future<void> _saveCalendarOrLeaveEntry(_CalendarPayload data) async {
+    if (_savingEntry) return;
+    setState(() => _savingEntry = true);
+    try {
+      final date = _ymd(_selectedDate);
+      if (_entryMode == 'Leave') {
+        if (_leaveEmpIds.isEmpty) {
+          throw Exception('กรุณาเลือกพนักงานอย่างน้อย 1 คน');
+        }
+        final tx = AppTransaction(
+          id: 'leave_${DateTime.now().millisecondsSinceEpoch}',
+          date: date,
+          type: 'Expense',
+          category: 'Labor',
+          subCategory: 'Leave',
+          laborStatus: _leaveType,
+          employeeIds: _leaveEmpIds.toList(),
+          description: _eventTitleController.text.trim().isEmpty
+              ? 'ลางาน'
+              : _eventTitleController.text.trim(),
+          amount: 0,
+          note: _eventNoteController.text.trim(),
+        );
+        await widget.transactionService.upsertTransaction(tx);
+      } else {
+        final title = _eventTitleController.text.trim();
+        if (title.isEmpty) {
+          throw Exception('กรุณากรอกหัวข้อวันหยุด/กิจกรรม');
+        }
+        final tx = AppTransaction(
+          id: 'cal_${DateTime.now().millisecondsSinceEpoch}',
+          date: date,
+          type: 'Expense',
+          category: 'Calendar',
+          subCategory: _entryMode,
+          description: title,
+          amount: 0,
+          eventTime: _eventTimeController.text.trim(),
+          note: _eventNoteController.text.trim(),
+        );
+        await widget.transactionService.upsertTransaction(tx);
+      }
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _entryMode == 'Leave'
+                ? 'บันทึกลางานสำเร็จ (ซิงก์ไปเว็บแดชบอร์ดแล้ว)'
+                : 'บันทึกปฏิทินสำเร็จ (ซิงก์ไปเว็บแดชบอร์ดแล้ว)',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString(), style: GoogleFonts.kanit())),
+      );
+    } finally {
+      if (mounted) setState(() => _savingEntry = false);
+    }
   }
 
   void _pickDay(_CalendarDay day) {
@@ -101,8 +189,188 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   'ไม่มีข้อมูลวันหยุดหรือการลาในวันนี้',
                   style: GoogleFonts.kanit(color: Colors.black54),
                 ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _openCreateEntrySheet();
+                },
+                icon: const Icon(Icons.add_circle_outline),
+                label: Text('เพิ่มวันหยุด / ลางาน', style: GoogleFonts.kanit()),
+              ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _openCreateEntrySheet() {
+    _eventTitleController.clear();
+    _eventTimeController.clear();
+    _eventNoteController.clear();
+    _leaveEmpIds.clear();
+    _entryMode = 'Holiday';
+    _leaveType = 'Leave';
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return FutureBuilder<_CalendarPayload>(
+          future: _future,
+          builder: (context, snapshot) {
+            final data = snapshot.data;
+            return StatefulBuilder(
+              builder: (context, setSheetState) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    6,
+                    16,
+                    MediaQuery.of(context).viewInsets.bottom + 20,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'เพิ่มข้อมูลปฏิทิน • ${_formatDateThai(_selectedDate)}',
+                          style: GoogleFonts.kanit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                              value: 'Holiday',
+                              label: Text('วันหยุด/นัดหมาย'),
+                              icon: Icon(Icons.event),
+                            ),
+                            ButtonSegment(
+                              value: 'Leave',
+                              label: Text('ลางาน'),
+                              icon: Icon(Icons.badge_outlined),
+                            ),
+                          ],
+                          selected: {_entryMode},
+                          onSelectionChanged: (set) {
+                            setSheetState(() => _entryMode = set.first);
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        if (_entryMode == 'Leave') ...[
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(
+                                value: 'Leave',
+                                label: Text('ลากิจ'),
+                              ),
+                              ButtonSegment(
+                                value: 'Sick',
+                                label: Text('ลาป่วย'),
+                              ),
+                              ButtonSegment(
+                                value: 'Personal',
+                                label: Text('ลาอื่นๆ'),
+                              ),
+                            ],
+                            selected: {_leaveType},
+                            onSelectionChanged: (set) {
+                              setSheetState(() => _leaveType = set.first);
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: (data?.employees ?? const <Employee>[])
+                                .map((e) {
+                                  final id = e.id;
+                                  final selected = _leaveEmpIds.contains(id);
+                                  final name = e.nickname.isNotEmpty
+                                      ? e.nickname
+                                      : e.name;
+                                  return FilterChip(
+                                    label: Text(
+                                      name,
+                                      style: GoogleFonts.kanit(),
+                                    ),
+                                    selected: selected,
+                                    onSelected: (_) {
+                                      setSheetState(() {
+                                        if (selected) {
+                                          _leaveEmpIds.remove(id);
+                                        } else {
+                                          _leaveEmpIds.add(id);
+                                        }
+                                      });
+                                    },
+                                  );
+                                })
+                                .toList(),
+                          ),
+                        ] else ...[
+                          TextFormField(
+                            controller: _eventTitleController,
+                            decoration: const InputDecoration(
+                              labelText: 'หัวข้อ',
+                              prefixIcon: Icon(Icons.title),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _eventTimeController,
+                            decoration: const InputDecoration(
+                              labelText: 'เวลา (ไม่บังคับ)',
+                              prefixIcon: Icon(Icons.schedule_outlined),
+                            ),
+                            onTap: () async {
+                              final t = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.now(),
+                              );
+                              if (t == null) return;
+                              _eventTimeController.text =
+                                  '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+                              setSheetState(() {});
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _eventNoteController,
+                          minLines: 2,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'หมายเหตุ',
+                            prefixIcon: Icon(Icons.notes_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed: _savingEntry || data == null
+                              ? null
+                              : () => _saveCalendarOrLeaveEntry(data),
+                          icon: const Icon(Icons.save_outlined),
+                          label: Text(
+                            _savingEntry ? 'กำลังบันทึก...' : 'บันทึก',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -126,14 +394,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           Text(
             title,
-            style: GoogleFonts.kanit(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+            style: GoogleFonts.kanit(color: color, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           ...lines.map(
-            (e) => Text('• $e', style: GoogleFonts.kanit(color: Colors.black87)),
+            (e) =>
+                Text('• $e', style: GoogleFonts.kanit(color: Colors.black87)),
           ),
         ],
       ),
@@ -184,6 +450,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
               m,
               data.transactions,
               data.employees,
+            );
+            final monthHolidayCount = days
+                .whereType<_CalendarDay>()
+                .where((d) => d.holidays.isNotEmpty)
+                .length;
+            final monthLeaveCount = days.whereType<_CalendarDay>().fold<int>(
+              0,
+              (sum, d) => sum + d.leaveNames.length,
             );
             final selectedLabel =
                 '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
@@ -243,6 +517,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           fontSize: 13,
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _miniStat(
+                            icon: Icons.celebration_outlined,
+                            label: 'วันหยุด',
+                            value: '$monthHolidayCount วัน',
+                          ),
+                          _miniStat(
+                            icon: Icons.badge_outlined,
+                            label: 'ลางาน',
+                            value: '$monthLeaveCount คน',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: Row(
+                    children: [
+                      _legendChip(
+                        color: const Color(0xFFE57373),
+                        label: 'วันหยุด',
+                      ),
+                      const SizedBox(width: 8),
+                      _legendChip(
+                        color: const Color(0xFFFFB74D),
+                        label: 'ลางาน',
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: _openCreateEntrySheet,
+                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                        label: Text('เพิ่มข้อมูล', style: GoogleFonts.kanit()),
+                      ),
                     ],
                   ),
                 ),
@@ -250,7 +563,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     children: [
-                      for (final d in const ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'])
+                      for (final d in const [
+                        'อา',
+                        'จ',
+                        'อ',
+                        'พ',
+                        'พฤ',
+                        'ศ',
+                        'ส',
+                      ])
                         Expanded(
                           child: Center(
                             child: Text(
@@ -302,6 +623,60 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ],
             );
           },
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openCreateEntrySheet,
+          icon: const Icon(Icons.add),
+          label: Text('เพิ่มวันหยุด/ลา', style: GoogleFonts.kanit()),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniStat({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            '$label $value',
+            style: GoogleFonts.kanit(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendChip({required Color color, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.kanit(
+          color: color,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
