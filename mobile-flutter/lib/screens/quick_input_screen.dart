@@ -36,6 +36,13 @@ class QuickInputScreen extends StatefulWidget {
   State<QuickInputScreen> createState() => _QuickInputScreenState();
 }
 
+/// ชื่อเล่น/ชื่อจริงที่แสดงใน UI (ตัดคำอย่าง `(นอน)` ที่ต่อท้ายในฐานข้อมูล)
+String _employeeUiDisplayName(Employee e) {
+  final raw =
+      e.nickname.trim().isNotEmpty ? e.nickname.trim() : e.name.trim();
+  return raw.replaceAll(RegExp(r'\s*[\(（]\s*นอน\s*[\)）]'), '').trim();
+}
+
 class _QuickInputScreenState extends State<QuickInputScreen>
     with SingleTickerProviderStateMixin {
   static const List<_LaborWorkCategory> _laborCategories = [
@@ -143,11 +150,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelVehicleController = TextEditingController();
   final _fuelVehicleLitersController = TextEditingController();
   final _fuelVehicleTimeController = TextEditingController();
-  final _laborDailyWageController = TextEditingController();
   final _laborWorkDetailsController = TextEditingController();
-  final _otHoursController = TextEditingController();
   final _otDescController = TextEditingController();
   List<Employee> _employees = const [];
+  bool _employeesLoading = false;
+  int _employeesLoadPercent = 0;
+  Timer? _employeesLoadProgressTimer;
   List<Employee> _driverEmployees = const [];
   Map<String, Employee> _employeesById = const {};
   List<String> _cars = const [];
@@ -177,7 +185,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<String> _sand1OperatorNames = const [];
   List<String> _sand2OperatorNames = const [];
   String? _laborTxId;
-  String? _otTxId;
   String? _homeSandTxId;
   String? _genericTxId;
   bool get _isSandWashMode =>
@@ -198,7 +205,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   double _homeSandTodayObtained = 0;
   bool _homeWashAll = false;
   final Set<String> _selectedLaborEmpIds = {};
-  final Set<String> _otEligibleEmpIds = {};
   final Set<String> _laborPickedIds = {};
   final Map<String, Set<String>> _laborAssignments = {
     for (final c in _laborCategories) c.id: <String>{},
@@ -206,6 +212,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final Map<String, bool> _laborBucketExpanded = {
     for (final c in _laborCategories) c.id: false,
   };
+  final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
   bool get _isLaborMode =>
       widget.initialCategory == 'ค่าแรง' ||
@@ -260,6 +267,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
+    _otGroups.add(_OtGroupDraft.empty());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future<void>.delayed(const Duration(milliseconds: 180));
       if (!mounted) return;
@@ -287,7 +295,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _persistOmitCreatedSessionIds.clear();
     _sandRowIdsByKey.clear();
     _laborTxId = null;
-    _otTxId = null;
     _homeSandTxId = null;
     _genericTxId = null;
   }
@@ -360,11 +367,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final k in _laborBucketExpanded.keys) {
         _laborBucketExpanded[k] = false;
       }
-      _laborDailyWageController.clear();
       _laborWorkDetailsController.clear();
     } else if (_isOtMode) {
-      _selectedLaborEmpIds.clear();
-      _otHoursController.clear();
+      for (final g in _otGroups) {
+        g.dispose();
+      }
+      _otGroups.clear();
+      _otGroups.add(_OtGroupDraft.empty());
       _otDescController.clear();
     } else {
       _amountController.clear();
@@ -384,21 +393,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     try {
       final ymd = _quickYmd(_selectedDate);
       final rows = await widget.service.fetchTransactionsForDate(ymd);
-      if (_isOtMode) {
-        _otEligibleEmpIds
-          ..clear()
-          ..addAll(
-            rows
-                .where(
-                  (t) =>
-                      t.category == 'Labor' &&
-                      (t.laborStatus == 'Work' ||
-                          t.subCategory == 'Attendance'),
-                )
-                .expand((t) => t.employeeIds)
-                .where((id) => id.trim().isNotEmpty),
-          );
-      }
       final matched = rows
           .where((t) => transactionMatchesDailyModule(t, ymd, cat))
           .toList();
@@ -660,7 +654,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isLaborMode) {
-      final t = txs.firstWhere((x) => (x.amount) > 0, orElse: () => txs.first);
+      final t = txs.first;
       _laborTxId = t.id;
       _selectedLaborEmpIds
         ..clear()
@@ -688,12 +682,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _laborBucketExpanded['general'] = true;
         }
       }
-      final mult = ((t.workType ?? '') == 'HalfDay') ? 0.5 : 1.0;
-      if (mult > 0 && (t.amount) > 0 && t.employeeIds.isNotEmpty) {
-        _laborDailyWageController.text = _strNum(
-          (t.amount) / (t.employeeIds.length * mult),
-        );
-      }
       _laborWorkDetailsController.text = _stripRecorderSuffix(
         t.workDetails ?? '',
       );
@@ -701,13 +689,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isOtMode) {
-      final t = txs.first;
-      _otTxId = t.id;
-      _selectedLaborEmpIds
-        ..clear()
-        ..addAll(t.employeeIds);
-      _otHoursController.text = _strNum(t.otHours);
-      _otDescController.text = _stripRecorderSuffix(t.otDescription ?? '');
+      for (final g in _otGroups) {
+        g.dispose();
+      }
+      _otGroups.clear();
+      for (final t in txs) {
+        final g = _OtGroupDraft.empty();
+        g.persistedId = t.id;
+        g.employeeIds.addAll(t.employeeIds);
+        g.hoursController.text = _strNum(t.otHours);
+        _otGroups.add(g);
+      }
+      if (_otGroups.isEmpty) _otGroups.add(_OtGroupDraft.empty());
+      _otDescController.text = txs.isNotEmpty
+          ? _stripRecorderSuffix(txs.first.otDescription ?? '')
+          : '';
       return;
     }
 
@@ -723,6 +719,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   @override
   void dispose() {
+    _employeesLoadProgressTimer?.cancel();
     _uiRebuildDebounce?.cancel();
     _entranceController.dispose();
     _amountController.dispose();
@@ -750,9 +747,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelVehicleController.dispose();
     _fuelVehicleLitersController.dispose();
     _fuelVehicleTimeController.dispose();
-    _laborDailyWageController.dispose();
     _laborWorkDetailsController.dispose();
-    _otHoursController.dispose();
+    for (final g in _otGroups) {
+      g.dispose();
+    }
     _otDescController.dispose();
     _disposeVehicleDrafts();
     _disposeFuelVehicleDrafts();
@@ -767,7 +765,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  bool get _showsEmployeeLoadingUi => _isLaborMode || _isOtMode;
+
   Future<void> _loadEmployees() async {
+    _employeesLoadProgressTimer?.cancel();
+    _employeesLoadProgressTimer = null;
+    final showPct = _showsEmployeeLoadingUi;
+    if (showPct && mounted) {
+      setState(() {
+        _employeesLoading = true;
+        _employeesLoadPercent = 0;
+      });
+      _employeesLoadProgressTimer = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (_) {
+          if (!mounted) return;
+          setState(() {
+            if (_employeesLoadPercent < 92) {
+              _employeesLoadPercent += 7;
+              if (_employeesLoadPercent > 92) _employeesLoadPercent = 92;
+            }
+          });
+        },
+      );
+    }
+
     try {
       final list = await widget.employeeService.fetchEmployees();
       list.sort((a, b) {
@@ -775,6 +797,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           b.nickname.isNotEmpty ? b.nickname : b.name,
         );
       });
+      _employeesLoadProgressTimer?.cancel();
+      _employeesLoadProgressTimer = null;
+      if (!mounted) return;
+      if (showPct && _employeesLoading) {
+        setState(() => _employeesLoadPercent = 100);
+        await Future<void>.delayed(const Duration(milliseconds: 240));
+      }
       if (!mounted) return;
       setState(() {
         _employees = list;
@@ -783,13 +812,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             .where((e) => !e.inactive)
             .where(_isDriverEmployee)
             .toList();
+        _employeesLoading = false;
+        _employeesLoadPercent = 0;
       });
       if (_isSandWashMode && _moduleDayTransactions.isNotEmpty) {
         setState(() {
           _hydrateFormsFromTransactions(_moduleDayTransactions);
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      _employeesLoadProgressTimer?.cancel();
+      _employeesLoadProgressTimer = null;
+      if (mounted) {
+        setState(() {
+          _employeesLoading = false;
+          _employeesLoadPercent = 0;
+        });
+      }
+    }
   }
 
   Future<void> _loadAppCars() async {
@@ -1340,6 +1380,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             throw 'เลือกรถได้เฉพาะรถแม็คโคร';
           }
           if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมันให้มากกว่า 0';
+          if (row.time.trim().isEmpty) {
+            throw 'กรุณาระบุเวลาเติมน้ำมัน (คัน ${i + 1})';
+          }
           final txId =
               row.txId ??
               '${DateTime.now().millisecondsSinceEpoch}_fuel_out_$i';
@@ -1391,7 +1434,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             .map((id) {
               for (final e in _employees) {
                 if (e.id == id) {
-                  return e.nickname.isNotEmpty ? e.nickname : e.name;
+                  return _employeeUiDisplayName(e);
                 }
               }
               return '';
@@ -1427,7 +1470,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         for (final k in _laborBucketExpanded.keys) {
           _laborBucketExpanded[k] = false;
         }
-        _laborDailyWageController.clear();
         _laborWorkDetailsController.clear();
       },
     );
@@ -1437,40 +1479,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     await _runSaveWithPopups(
       successMessage: 'บันทึก OT สำเร็จ',
       body: () async {
-        final selectedIds = _selectedLaborEmpIds
-            .where((id) => _otEligibleEmpIds.contains(id))
-            .toList();
-        if (selectedIds.isEmpty) {
-          throw 'กรุณาเลือกพนักงานที่ทำงานวันนี้';
-        }
-        final hours = double.tryParse(_otHoursController.text.trim()) ?? 0;
-        if (hours <= 0) throw 'กรุณาระบุชั่วโมง OT';
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
-        final otId = _otTxId ?? '${DateTime.now().millisecondsSinceEpoch}_ot';
-        _otTxId = otId;
-        await _persist(
-          AppTransaction(
-            id: otId,
-            date: '$y-$m-$d',
-            type: 'Expense',
-            category: 'Labor',
-            subCategory: 'OT',
-            laborStatus: 'OT',
-            employeeIds: selectedIds,
-            amount: 0,
-            note: _activeSignatureNote,
-            otAmount: 0,
-            otHours: hours,
-            otDescription: _otDescController.text.trim(),
-            description: _appendRecorder(
-              'OT ${_otDescController.text.trim()} (${hours.toStringAsFixed(1)}ชม.) ${selectedIds.length} คน',
+        final date = '$y-$m-$d';
+        final desc = _otDescController.text.trim();
+        var savedCount = 0;
+        final baseTs = DateTime.now().millisecondsSinceEpoch;
+        for (var gi = 0; gi < _otGroups.length; gi++) {
+          final g = _otGroups[gi];
+          final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
+          final ids = g.employeeIds.toList();
+          final hasEmployees = ids.isNotEmpty;
+          final hasHours = hours > 0;
+          if (!hasEmployees && !hasHours) continue;
+          if (!hasEmployees) {
+            throw 'กลุ่มที่ ${gi + 1}: กรุณาเลือกพนักงาน';
+          }
+          if (!hasHours || hours <= 0) {
+            throw 'กลุ่มที่ ${gi + 1}: กรุณาระบุชั่วโมง OT';
+          }
+          final id = g.persistedId ?? '${baseTs}_ot_${gi}_$savedCount';
+          g.persistedId = id;
+          await _persist(
+            AppTransaction(
+              id: id,
+              date: date,
+              type: 'Expense',
+              category: 'Labor',
+              subCategory: 'OT',
+              laborStatus: 'OT',
+              employeeIds: ids,
+              amount: 0,
+              note: _activeSignatureNote,
+              otAmount: 0,
+              otHours: hours,
+              otDescription: desc,
+              description: _appendRecorder(
+                'OT $desc (${hours.toStringAsFixed(1)}ชม.) กลุ่มที่ ${savedCount + 1} (${ids.length} คน)',
+              ),
             ),
-          ),
-        );
-        _selectedLaborEmpIds.clear();
-        _otHoursController.clear();
+          );
+          savedCount++;
+        }
+        if (savedCount == 0) {
+          throw 'กรุณาเลือกพนักงานและระบุชั่วโมงอย่างน้อยหนึ่งกลุ่ม';
+        }
+        for (final g in _otGroups) {
+          g.dispose();
+        }
+        _otGroups.clear();
+        _otGroups.add(_OtGroupDraft.empty());
         _otDescController.clear();
       },
     );
@@ -2633,168 +2692,235 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool allowDecimal = false,
     int maxDecimalPlaces = 2,
   }) async {
-    String value = controller.text;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        Widget key(String k) {
-          return FilledButton(
-            onPressed: () {
-              if (k == '.' && !allowDecimal) return;
-              if (k == '.') {
-                if (value.contains('.')) return;
-                value = value.isEmpty ? '0.' : '$value.';
-                controller.text = value;
-                onChanged?.call(value);
-                setState(() {});
-                return;
-              }
-              if (allowDecimal && value.contains('.')) {
-                final idx = value.indexOf('.');
-                final decimals = value.substring(idx + 1);
-                if (decimals.length >= maxDecimalPlaces) return;
-              }
-              value += k;
-              controller.text = value;
-              onChanged?.call(value);
-              setState(() {});
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1D2A3A),
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              k,
-              style: GoogleFonts.kanit(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          );
-        }
+    await Future<void>.delayed(Duration.zero);
 
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 12,
-            right: 12,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 12,
-          ),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F5FA),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD8E2EE)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: GoogleFonts.kanit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      value.isEmpty ? '0' : value,
-                      style: GoogleFonts.kanit(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1565C0),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                GridView.count(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.8,
-                  children: [
-                    key('1'),
-                    key('2'),
-                    key('3'),
-                    key('4'),
-                    key('5'),
-                    key('6'),
-                    key('7'),
-                    key('8'),
-                    key('9'),
-                    FilledButton(
-                      onPressed: () {
-                        value = '';
-                        controller.text = value;
-                        onChanged?.call(value);
-                        setState(() {});
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFEFEF),
-                        foregroundColor: const Color(0xFFD64545),
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                      child: Text(
-                        'ล้าง',
-                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    key('0'),
-                    if (allowDecimal) key('.'),
-                    FilledButton(
-                      onPressed: () {
-                        if (value.isNotEmpty) {
-                          value = value.substring(0, value.length - 1);
-                          controller.text = value;
-                          onChanged?.call(value);
-                          setState(() {});
+    final rootContext = context;
+    if (!rootContext.mounted) return;
+
+    String value = controller.text;
+
+    await showGeneralDialog<void>(
+      context: rootContext,
+      barrierDismissible: true,
+      barrierLabel:
+          MaterialLocalizations.of(rootContext).modalBarrierDismissLabel,
+      barrierColor: const Color(0x48000000),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (dialogCtx, animation, _) {
+        final curve = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.085),
+                end: Offset.zero,
+              ).animate(curve),
+              child: FadeTransition(
+                opacity: curve,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: 12,
+                    right: 12,
+                    bottom: MediaQuery.viewInsetsOf(dialogCtx).bottom + 14,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: StatefulBuilder(
+                      builder: (context, setModalState) {
+                        Widget keyButton(String k) {
+                          return FilledButton(
+                            onPressed: () {
+                              if (k == '.' && !allowDecimal) return;
+                              if (k == '.') {
+                                if (value.contains('.')) return;
+                                value = value.isEmpty ? '0.' : '$value.';
+                                controller.text = value;
+                                onChanged?.call(value);
+                                setModalState(() {});
+                                return;
+                              }
+                              if (allowDecimal && value.contains('.')) {
+                                final idx = value.indexOf('.');
+                                final decimals = value.substring(idx + 1);
+                                if (decimals.length >= maxDecimalPlaces) {
+                                  return;
+                                }
+                              }
+                              value += k;
+                              controller.text = value;
+                              onChanged?.call(value);
+                              setModalState(() {});
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF1D2A3A),
+                              minimumSize: const Size.fromHeight(54),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              k,
+                              style: GoogleFonts.kanit(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
                         }
+
+                        return Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF2F5FA),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFD8E2EE),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 18,
+                                offset: const Offset(0, -4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      label,
+                                      style: GoogleFonts.kanit(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    value.isEmpty ? '0' : value,
+                                    style: GoogleFonts.kanit(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF1565C0),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              GridView.count(
+                                crossAxisCount: 3,
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 8,
+                                shrinkWrap: true,
+                                physics:
+                                    const NeverScrollableScrollPhysics(),
+                                childAspectRatio: 1.75,
+                                children: [
+                                  keyButton('1'),
+                                  keyButton('2'),
+                                  keyButton('3'),
+                                  keyButton('4'),
+                                  keyButton('5'),
+                                  keyButton('6'),
+                                  keyButton('7'),
+                                  keyButton('8'),
+                                  keyButton('9'),
+                                  FilledButton(
+                                    onPressed: () {
+                                      value = '';
+                                      controller.text = value;
+                                      onChanged?.call(value);
+                                      setModalState(() {});
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFFFFEFEF),
+                                      foregroundColor:
+                                          const Color(0xFFD64545),
+                                      minimumSize:
+                                          const Size.fromHeight(54),
+                                    ),
+                                    child: Text(
+                                      'ล้าง',
+                                      style: GoogleFonts.kanit(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  keyButton('0'),
+                                  if (allowDecimal) keyButton('.'),
+                                  FilledButton(
+                                    onPressed: () {
+                                      if (value.isNotEmpty) {
+                                        value = value.substring(
+                                          0,
+                                          value.length - 1,
+                                        );
+                                        controller.text = value;
+                                        onChanged?.call(value);
+                                        setModalState(() {});
+                                      }
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFFE9F1FF),
+                                      foregroundColor:
+                                          const Color(0xFF1565C0),
+                                      minimumSize:
+                                          const Size.fromHeight(54),
+                                    ),
+                                    child: const Icon(
+                                      Icons.backspace_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: () =>
+                                      Navigator.of(dialogCtx).pop(),
+                                  icon: const Icon(
+                                    Icons.check_circle_outline,
+                                    size: 24,
+                                  ),
+                                  label: Text(
+                                    'เสร็จสิ้น',
+                                    style: GoogleFonts.kanit(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 20,
+                                    ),
+                                  ),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor:
+                                        const Color(0xFF1565C0),
+                                    foregroundColor: Colors.white,
+                                    minimumSize:
+                                        const Size.fromHeight(58),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
                       },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFE9F1FF),
-                        foregroundColor: const Color(0xFF1565C0),
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                      child: const Icon(Icons.backspace_outlined),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.check_circle_outline, size: 24),
-                    label: Text(
-                      'เสร็จสิ้น',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 20,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF1565C0),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(62),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -2972,6 +3098,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                   DropdownButtonFormField<String>(
                     key: ValueKey('fuel_vehicle_${index}_${row.vehicleId}'),
+                    isExpanded: true,
                     initialValue:
                         row.vehicleId.isEmpty ||
                             !fuelCars.contains(row.vehicleId)
@@ -2987,6 +3114,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             value: c,
                             child: Text(
                               c,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.kanit(fontSize: 18),
                             ),
                           ),
@@ -3064,7 +3193,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       fontWeight: FontWeight.w800,
                     ),
                     decoration: const InputDecoration(
-                      labelText: 'เวลาเติมน้ำมัน (ไม่บังคับ)',
+                      labelText: 'เวลาเติมน้ำมัน',
                       prefixIcon: Icon(Icons.access_time_outlined),
                     ),
                   ),
@@ -3152,13 +3281,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 10),
-          TextFormField(
-            controller: _drumsWashedAtHomeController,
-            onChanged: (_) => _scheduleUiRefresh(),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'จำนวนทรายที่ล้างที่บ้านวันนี้',
-              prefixIcon: Icon(Icons.home_work_outlined),
+          IgnorePointer(
+            ignoring: _homeWashAll,
+            child: Opacity(
+              opacity: _homeWashAll ? 0.55 : 1,
+              child: _AnimatedInputField(
+                controller: _drumsWashedAtHomeController,
+                onChanged: (_) => _scheduleUiRefresh(),
+                keyboardType: TextInputType.number,
+                readOnly: true,
+                onTap: () {
+                  if (_homeWashAll) return;
+                  _openNumericPad(
+                    controller: _drumsWashedAtHomeController,
+                    label: 'จำนวนทรายที่ล้างที่บ้านวันนี้ (ถัง)',
+                    onChanged: (_) => _scheduleUiRefresh(),
+                  );
+                },
+                style: GoogleFonts.kanit(
+                  color: const Color(0xFF1D2A3A),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'จำนวนทรายที่ล้างที่บ้านวันนี้',
+                  prefixIcon: Icon(Icons.home_work_outlined),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -3231,6 +3380,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return id;
   }
 
+  Widget _employeeDataLoadProgressBanner() {
+    if (!_employeesLoading) return const SizedBox.shrink();
+    final pct = _employeesLoadPercent.clamp(0, 100);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF7FF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFC8DCF2)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 8,
+                  value: pct / 100.0,
+                  backgroundColor: const Color(0xFFD6E8FA),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF1565C0),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'โหลดข้อมูลพนักงาน $pct%',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                  color: const Color(0xFF205A9A),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLaborCanvasBoard() {
     return _LaborDragBoard(
       categories: _laborCategories,
@@ -3270,6 +3463,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF0F5FAF),
             ),
           ),
+          _employeeDataLoadProgressBanner(),
           const SizedBox(height: 8),
           _LaborCanvasSection(
             child: _buildLaborCanvasBoard(),
@@ -3291,20 +3485,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Widget _buildOtEmployeePicker() {
-    final workedToday = _employees
-        .where((e) => _otEligibleEmpIds.contains(e.id))
-        .toList();
-    if (workedToday.isEmpty) {
+  List<Employee> _sortedEmployeesForOt() {
+    final list = _employees.where((e) => !e.inactive).toList()
+      ..sort(
+        (a, b) => _employeeUiDisplayName(a).compareTo(
+          _employeeUiDisplayName(b),
+        ),
+      );
+    return list;
+  }
+
+  Widget _buildOtEmployeeChips(_OtGroupDraft group) {
+    final list = _sortedEmployeesForOt();
+    if (list.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: const Color(0xFFFFF5E8),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: const Color(0xFFF3DEB8)),
         ),
         child: Text(
-          'ยังไม่พบพนักงานที่ทำงานวันนี้ (บันทึกค่าแรงก่อน แล้วค่อยลง OT)',
+          'ยังไม่มีรายการพนักงานในระบบ',
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w700,
             color: const Color(0xFF8A6A2C),
@@ -3315,19 +3517,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: workedToday.map((e) {
+      children: list.map((e) {
         final id = e.id;
-        final selected = _selectedLaborEmpIds.contains(id);
-        final name = e.nickname.isNotEmpty ? e.nickname : e.name;
+        final selected = group.employeeIds.contains(id);
+        final name = _employeeUiDisplayName(e);
         return FilterChip(
-          label: Text(name, style: GoogleFonts.kanit()),
+          label: Text(name, style: GoogleFonts.kanit(fontSize: 13)),
           selected: selected,
           onSelected: (_) {
             setState(() {
               if (selected) {
-                _selectedLaborEmpIds.remove(id);
+                group.employeeIds.remove(id);
               } else {
-                _selectedLaborEmpIds.add(id);
+                group.employeeIds.add(id);
               }
             });
           },
@@ -3337,10 +3539,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildOtFormCard() {
-    final hours = double.tryParse(_otHoursController.text) ?? 0;
-    final selectedCount = _selectedLaborEmpIds
-        .where((id) => _otEligibleEmpIds.contains(id))
-        .length;
+    final employees = _sortedEmployeesForOt();
+    final summaryLines = <String>[];
+    for (var i = 0; i < _otGroups.length; i++) {
+      final g = _otGroups[i];
+      final h = double.tryParse(g.hoursController.text.trim()) ?? 0;
+      final c = g.employeeIds.length;
+      if (c == 0 && h == 0) continue;
+      if (c > 0 && h > 0) {
+        summaryLines.add('กลุ่ม ${i + 1}: $c คน × ${h.toStringAsFixed(1)} ชม.');
+      }
+    }
+    final summaryKey = summaryLines.join('|');
+    final hasValidPreview = summaryLines.isNotEmpty;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -3368,23 +3580,115 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF0F5FAF),
             ),
           ),
-          const SizedBox(height: 8),
-          _buildOtEmployeePicker(),
-          const SizedBox(height: 8),
-          _AnimatedInputField(
-            controller: _otHoursController,
-            onChanged: (_) => _scheduleUiRefresh(),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'จำนวนชั่วโมง OT',
-              prefixIcon: Icon(Icons.timelapse_outlined),
+          const SizedBox(height: 6),
+          Text(
+            'แบ่งกลุ่มได้หลายกลุ่ม — แต่ละกลุ่มเลือกคนและชั่วโมง OT แยกกัน',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              color: const Color(0xFF5B6D83),
             ),
           ),
+          _employeeDataLoadProgressBanner(),
+          const SizedBox(height: 10),
+          ...List.generate(_otGroups.length, (index) {
+            final g = _otGroups[index];
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index == _otGroups.length - 1 ? 0 : 12,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FCFF),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFDCE8F5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'กลุ่มที่ ${index + 1}',
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF205A9A),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_otGroups.length > 1)
+                          IconButton(
+                            tooltip: 'ลบกลุ่มนี้',
+                            onPressed: () {
+                              setState(() {
+                                final removed = _otGroups.removeAt(index);
+                                removed.dispose();
+                              });
+                            },
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: Color(0xFFD14343),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'เลือกพนักงาน',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: const Color(0xFF314C6D),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _buildOtEmployeeChips(g),
+                    const SizedBox(height: 10),
+                    _AnimatedInputField(
+                      controller: g.hoursController,
+                      onChanged: (_) => _scheduleUiRefresh(),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      readOnly: true,
+                      onTap: () => _openNumericPad(
+                        controller: g.hoursController,
+                        label: 'ชั่วโมง OT (กลุ่มที่ ${index + 1})',
+                        onChanged: (_) => _scheduleUiRefresh(),
+                        allowDecimal: true,
+                        maxDecimalPlaces: 2,
+                      ),
+                      style: GoogleFonts.kanit(
+                        color: const Color(0xFF1D2A3A),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'จำนวนชั่วโมง OT ของกลุ่มนี้',
+                        prefixIcon: Icon(Icons.timelapse_outlined),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          if (employees.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: () => setState(() {
+                _otGroups.add(_OtGroupDraft.empty());
+              }),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(
+                'เพิ่มกลุ่ม OT',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
+            ),
           const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _otDescController,
             decoration: const InputDecoration(
-              labelText: 'รายละเอียดงาน OT',
+              labelText: 'รายละเอียดงาน OT (ใช้ร่วมทุกกลุ่ม)',
               prefixIcon: Icon(Icons.note_alt_outlined),
             ),
           ),
@@ -3413,19 +3717,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFFFFF7E8),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: selectedCount > 0 && hours > 0
+                color: hasValidPreview
                     ? const Color(0xFFF2D39D)
                     : const Color(0xFFF3E7CC),
               ),
             ),
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: Text(
-                'OT ที่เลือก: $selectedCount คน × ${hours.toStringAsFixed(1)} ชม.',
-                key: ValueKey('$selectedCount-${hours.toStringAsFixed(1)}'),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-              ),
+              duration: const Duration(milliseconds: 200),
+              child: summaryLines.isEmpty
+                  ? Text(
+                      'ยังไม่มีกลุ่มที่ครบทั้งคนและชั่วโมง',
+                      key: const ValueKey('ot-empty'),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF7A6A4A),
+                      ),
+                    )
+                  : Text(
+                      summaryLines.join('\n'),
+                      key: ValueKey(summaryKey),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
@@ -3894,6 +4208,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   key: ValueKey('vehicle_${widget.index}_${row.vehicleId}'),
+                  isExpanded: true,
                   initialValue: row.vehicleId.isEmpty ? null : row.vehicleId,
                   decoration: const InputDecoration(
                     labelText: 'รถ/เครื่องจักร',
@@ -3903,7 +4218,12 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                       .map(
                         (c) => DropdownMenuItem<String>(
                           value: c,
-                          child: Text(c, style: GoogleFonts.kanit()),
+                          child: Text(
+                            c,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.kanit(),
+                          ),
                         ),
                       )
                       .toList(),
@@ -3917,6 +4237,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   key: ValueKey('driver_${widget.index}_${row.driverId}'),
+                  isExpanded: true,
                   initialValue: row.driverId.isEmpty ||
                           !widget.drivers.any((e) => e.id == row.driverId)
                       ? null
@@ -3931,6 +4252,8 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                           value: e.id,
                           child: Text(
                             e.nickname.isNotEmpty ? e.nickname : e.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.kanit(),
                           ),
                         ),
@@ -4228,12 +4551,22 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'เลือกพนักงานเพื่อย้ายลงกล่องงาน',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w800, fontSize: 15),
+              Expanded(
+                child: Text(
+                  'เลือกพนักงานเพื่อย้ายลงกล่องงาน',
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    height: 1.28,
+                  ),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 '${widget.pickedIds.length} คน',
                 style: GoogleFonts.kanit(
@@ -4275,7 +4608,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   children: available.map((e) {
                     final id = e.id;
                     final selected = widget.pickedIds.contains(id);
-                    final name = e.nickname.isNotEmpty ? e.nickname : e.name;
+                    final name = _employeeUiDisplayName(e);
                     return LongPressDraggable<String>(
                       data: id,
                       feedback: Material(
@@ -4406,22 +4739,32 @@ class _LaborBucketCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      category.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.kanit(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1F2B3A),
+                    child: Tooltip(
+                      message: category.label,
+                      child: Text(
+                        category.label,
+                        maxLines: 5,
+                        softWrap: true,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.kanit(
+                          fontSize: 11.5,
+                          height: 1.3,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1F2B3A),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    constraints: const BoxConstraints(minWidth: 52),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(999),
@@ -4429,16 +4772,17 @@ class _LaborBucketCard extends StatelessWidget {
                         color: category.color.withValues(alpha: 0.5),
                       ),
                     ),
+                    alignment: Alignment.center,
                     child: Text(
                       '${ids.length} คน',
+                      maxLines: 1,
                       style: GoogleFonts.kanit(
-                        fontSize: 12.5,
+                        fontSize: 11,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF314C6D),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 2),
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
@@ -4469,8 +4813,9 @@ class _LaborBucketCard extends StatelessWidget {
                         runSpacing: 6,
                         children: ids.map((empId) {
                           final emp = employeesById[empId];
-                          final label =
-                              emp == null ? empId : (emp.nickname.isNotEmpty ? emp.nickname : emp.name);
+                          final label = emp == null
+                              ? empId
+                              : _employeeUiDisplayName(emp);
                           return LongPressDraggable<String>(
                             data: empId,
                             feedback: Material(
@@ -4827,6 +5172,21 @@ class _VehicleTripDraft {
     tripMorningController.dispose();
     tripAfternoonController.dispose();
     cubicPerTripController.dispose();
+  }
+}
+
+/// กลุ่ม OT หนึ่งกลุ่ม (คน + ชม. แยกจากกลุ่มอื่น)
+class _OtGroupDraft {
+  _OtGroupDraft() : hoursController = TextEditingController();
+
+  factory _OtGroupDraft.empty() => _OtGroupDraft();
+
+  String? persistedId;
+  final Set<String> employeeIds = {};
+  final TextEditingController hoursController;
+
+  void dispose() {
+    hoursController.dispose();
   }
 }
 
