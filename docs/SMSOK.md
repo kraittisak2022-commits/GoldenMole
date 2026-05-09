@@ -132,3 +132,11 @@ npm run test:sms
 - **มือถือ:** `.env` — `SMS_ADVANCE_NOTIFY_EXTRA` (รูปแบบเดียวกัน)
 
 ถ้าไม่มีเบอร์ใน employee และไม่ตั้ง extra ระบบจะไม่ส่ง SMS (ไม่ error)
+
+### แอนดรอยด์ — ดู log เมื่อไม่มี SMS
+
+ฟังก์ชัน `notifyAdvanceSmsAfterSave` จะเขียน log แท็ก **`GoldenMole.advance_sms`** (ดูใน Android Studio / `adb logcat` หรือ DevTools) เช่น
+
+- `skip: no valid phone` → ต้องใส่เบอร์ในโปรไฟล์พนักงาน หรือ `SMS_ADVANCE_NOTIFY_EXTRA` ใน `mobile-flutter/.env`
+- `invoke failed status=503` → ยังไม่ตั้ง secrets SMSOK บน Supabase Edge
+- `invoke failed status=401` → เซสชันล็อกอินหมดอายุ ให้ล็อกอินใหม่

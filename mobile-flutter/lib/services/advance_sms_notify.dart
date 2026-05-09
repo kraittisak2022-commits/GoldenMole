@@ -1,9 +1,18 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../utils/thai_phone.dart';
+
+bool _isLaborAdvance(AppTransaction transaction) {
+  if (transaction.category != 'Labor') return false;
+  final sub = (transaction.subCategory ?? '').toLowerCase().trim();
+  final lab = (transaction.laborStatus ?? '').toLowerCase().trim();
+  return sub == 'advance' || lab == 'advance';
+}
 
 String _buildAdvanceSmsText(AppTransaction tx, List<Employee> employees) {
   final ids = tx.employeeIds;
@@ -34,8 +43,12 @@ Future<void> notifyAdvanceSmsAfterSave({
   required AppTransaction transaction,
   required List<Employee> employees,
 }) async {
-  if (transaction.category != 'Labor' ||
-      (transaction.subCategory ?? '').toLowerCase() != 'advance') {
+  if (!_isLaborAdvance(transaction)) {
+    developer.log(
+      'skip: not Labor/Advance (category=${transaction.category} '
+      'sub=${transaction.subCategory} labor=${transaction.laborStatus})',
+      name: 'GoldenMole.advance_sms',
+    );
     return;
   }
   final phones = <String>{};
@@ -55,18 +68,41 @@ Future<void> notifyAdvanceSmsAfterSave({
     final p = normalizeThaiPhone(part.trim());
     if (p != null) phones.add(p);
   }
-  if (phones.isEmpty) return;
+  if (phones.isEmpty) {
+    developer.log(
+      'skip: no valid phone — ใส่เบอร์ในโปรไฟล์พนักงานหรือตั้ง SMS_ADVANCE_NOTIFY_EXTRA ใน .env '
+      '(employees=${employees.length}, empIds=${transaction.employeeIds.length})',
+      name: 'GoldenMole.advance_sms',
+    );
+    return;
+  }
 
   try {
     final text = _buildAdvanceSmsText(transaction, employees);
-    await Supabase.instance.client.functions.invoke(
+    final res = await Supabase.instance.client.functions.invoke(
       'send-advance-sms',
       body: {
         'text': text,
         'destinations': phones.toList(),
       },
     );
-  } catch (_) {
-    // เงียบ — บันทึกธุรกรรมสำเร็จแล้ว
+    developer.log(
+      'ok status=${res.status} to=${phones.length} numbers',
+      name: 'GoldenMole.advance_sms',
+    );
+  } on FunctionException catch (e) {
+    developer.log(
+      'invoke failed status=${e.status} details=${e.details}',
+      name: 'GoldenMole.advance_sms',
+      level: 1000,
+    );
+  } catch (e, st) {
+    developer.log(
+      'invoke failed: $e',
+      name: 'GoldenMole.advance_sms',
+      error: e,
+      stackTrace: st,
+      level: 1000,
+    );
   }
 }
