@@ -189,8 +189,6 @@ bool transactionTouchesDailyModule(
       return leaveRecordTouches();
     case 'เบิกเงิน':
       return advanceRecordTouches();
-    case 'ทดสอบ SMS':
-      return false;
     case 'OT':
       return otTouches();
     default:
@@ -304,8 +302,6 @@ bool transactionMatchesDailyModule(
       return leaveLike();
     case 'เบิกเงิน':
       return advanceLike();
-    case 'ทดสอบ SMS':
-      return false;
     case 'OT':
       return otLike();
     default:

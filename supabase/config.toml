@@ -1,12 +1,2 @@
 # https://supabase.com/docs/guides/cli/config
-# Per-function JWT: DLR webhook is called by SMSOK (no Bearer token).
-
-[functions.send-advance-sms]
-verify_jwt = true
-
-[functions.smsok-dlr-webhook]
-verify_jwt = false
-
-# Test SMS from app without user login — optional SMS_TEST_INVOKE_SECRET + client header
-[functions.send-sms-test]
-verify_jwt = false
+# No Edge Functions in this repo currently.

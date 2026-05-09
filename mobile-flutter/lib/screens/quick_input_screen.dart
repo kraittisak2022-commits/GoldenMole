@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
-import '../services/advance_sms_notify.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/advance_work_details.dart';
@@ -1738,12 +1737,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
         await _persist(saved);
         _advanceWorkDetailsSeed = workDetails;
-        unawaited(
-          notifyAdvanceSmsAfterSave(
-            transaction: saved,
-            employees: _employees,
-          ),
-        );
       },
     );
   }

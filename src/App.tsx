@@ -50,7 +50,6 @@ import { isBackupDue, runBackup } from './services/backupService';
 
 // Supabase Services
 import * as db from './services/dataService';
-import { notifyAdvanceSaved } from './services/smsAdvanceNotify';
 
 // --- Default Admin Account (รหัสผ่านเก็บเป็น SHA-256 — ค่าเริ่มต้นเข้าได้ด้วย 1234) ---
 const DEFAULT_ADMINS: AdminUser[] = [
@@ -1037,10 +1036,6 @@ function App() {
         }
         if (offlineSync.queueSize > 0) {
             void syncOfflineQueue();
-        }
-
-        if (ok && txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
-            void notifyAdvanceSaved(txToSave, employees);
         }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
