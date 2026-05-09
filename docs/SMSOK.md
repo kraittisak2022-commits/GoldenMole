@@ -74,15 +74,20 @@ Base URL ฝั่งผู้ให้บริการ: `https://api.smsok.co
 
 ## Deploy
 
+รันจาก **รากโปรเจกต์** (`construction-management-app` — โฟลเดอร์ที่มี `supabase/config.toml`)  
+ถ้าเทอร์มินัลอยู่ที่ `...\construction-management-app\supabase` อยู่แล้ว **อย่า** `cd supabase` ซ้ำ (จะหา path `supabase\supabase` ไม่เจอ)
+
 ```bash
-cd supabase
-supabase functions deploy send-advance-sms
-supabase functions deploy smsok-dlr-webhook
-supabase secrets set SMSOK_API_USER=... SMSOK_API_PASSWORD=... SMSOK_SENDER_ID=...
+npx supabase login
+npx supabase functions deploy send-advance-sms
+npx supabase functions deploy smsok-dlr-webhook
+npx supabase secrets set SMSOK_API_USER=... SMSOK_API_PASSWORD=... SMSOK_SENDER_ID=...
 # ทางเลือก:
-supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
+npx supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 # หรือ URL ของ Edge smsok-dlr-webhook
 ```
+
+ถ้าติดตั้ง CLI แบบ global แล้ว ใช้คำสั่ง `supabase` แทน `npx supabase` ได้
 
 ## เบอร์ปลายทางส่ง SMS ระบุยังไง
 
@@ -101,7 +106,7 @@ supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 
 ## ตัวแปรแอป (เบอร์แจ้งเตือมเพิ่ม)
 
-- **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = เบอร์เพิ่ม (คั่นด้วย comma) นอกเหนือจากเบอร์ใน employee  
+- **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = 0996512409
 - **มือถือ:** `.env` — `SMS_ADVANCE_NOTIFY_EXTRA` (รูปแบบเดียวกัน)
 
 ถ้าไม่มีเบอร์ใน employee และไม่ตั้ง extra ระบบจะไม่ส่ง SMS (ไม่ error)
