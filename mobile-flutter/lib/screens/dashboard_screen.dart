@@ -20,6 +20,7 @@ import 'calendar_screen.dart';
 import 'employees_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
+import 'sms_test_screen.dart';
 import 'transactions_screen.dart';
 
 String _formatThaiDateFromYmd(String ymd) {
@@ -121,11 +122,20 @@ const List<_DailyModuleDef> _kDailyModules = [
     quickInputTitle: 'บันทึกเบิกเงิน',
     color: Color(0xFFFF6F00),
   ),
+  _DailyModuleDef(
+    title: 'ทดสอบส่ง SMS',
+    icon: Icons.sms_outlined,
+    category: 'ทดสอบ SMS',
+    quickInputTitle: 'ทดสอบส่ง SMS',
+    color: Color(0xFF00838F),
+  ),
 ];
 
-/// เมนูที่ไม่นับในชิป «บันทึกครบ X/Y เมนู» — ลางาน, เบิกเงิน (บันทึกแยก)
+/// เมนูที่ไม่นับในชิป «บันทึกครบ X/Y เมนู» — ลางาน, เบิกเงิน, ทดสอบ SMS
 bool _isExpandOnlyDailyModule(_DailyModuleDef m) =>
-    m.category == 'ลางาน' || m.category == 'เบิกเงิน';
+    m.category == 'ลางาน' ||
+    m.category == 'เบิกเงิน' ||
+    m.category == 'ทดสอบ SMS';
 
 /// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู» — ไม่รวม OT, ลางาน, เบิกเงิน (บันทึกแยก ไม่บังคับในสรุปวัน)
 bool _dailyModuleCountsTowardHeaderTotals(_DailyModuleDef m) =>
@@ -277,6 +287,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openQuickInput(_DailyModuleDef m) {
     HapticFeedback.lightImpact();
+    if (m.category == 'ทดสอบ SMS') {
+      _openWithAnimation(const SmsTestScreen()).then((_) => _refreshHome());
+      return;
+    }
     _openWithAnimation(
       QuickInputScreen(
         service: _txService,

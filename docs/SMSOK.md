@@ -101,7 +101,7 @@ npx supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 จากรากโปรเจกต์ ตั้งค่าชั่วคราวใน `.env` (อย่า commit):
 
 - `SMS_TEST_EMAIL`, `SMS_TEST_PASSWORD` — บัญชี Supabase Auth ที่ล็อกอินได้
-- `SMS_TEST_DEST` — เบอร์ทดสอบ (คั่นด้วย comma ได้)
+- `SMS_TEST_DEST` — 0996512409
 
 แล้วรัน:
 
@@ -130,6 +130,8 @@ npm run test:sms
 
 - **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = เบอร์เพิ่ม (คั่นด้วย comma) นอกเหนือจากเบอร์ใน employee
 - **มือถือ:** `.env` — `SMS_ADVANCE_NOTIFY_EXTRA` (รูปแบบเดียวกัน)
+
+บนแอปมือถือมีเมนูการ์ด **ทดสอบส่ง SMS** บนแดชบอร์ด — เปิดหน้าทดสอบเรียก `send-advance-sms` โดยตรง (ต้องล็อกอิน)
 
 ถ้าไม่มีเบอร์ใน employee และไม่ตั้ง extra ระบบจะไม่ส่ง SMS (ไม่ error)
 
