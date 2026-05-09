@@ -31,7 +31,13 @@ DailyModuleFillStatus resolveDailyModuleFillStatus(
     }
   }
   if (complete) return DailyModuleFillStatus.complete;
-  if (touch) return DailyModuleFillStatus.incomplete;
+  if (touch) {
+    // เมนู OT (ล่วงเวลา) ไม่ต้องผ่านสถานะ «กรอกไม่ครบ» — แสดงครบเหมือนเช็คถูก
+    final isOtMenu =
+        moduleCategory == 'OT' || moduleCategory.contains('ล่วงเวลา');
+    if (isOtMenu) return DailyModuleFillStatus.complete;
+    return DailyModuleFillStatus.incomplete;
+  }
   return DailyModuleFillStatus.pending;
 }
 

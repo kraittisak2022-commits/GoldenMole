@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -107,6 +108,10 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFFFF4D6D),
   ),
 ];
+
+/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู» — ไม่รวม OT (บันทึกแยก ไม่บังคับในสรุปวัน)
+bool _dailyModuleCountsTowardHeaderTotals(_DailyModuleDef m) =>
+    m.category != 'OT';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -241,6 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _openQuickInput(_DailyModuleDef m) {
+    HapticFeedback.lightImpact();
     _openWithAnimation(
       QuickInputScreen(
         service: _txService,
@@ -262,10 +268,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
         transitionDuration: isQuickInput
-            ? const Duration(milliseconds: 250)
+            ? const Duration(milliseconds: 340)
             : const Duration(milliseconds: 380),
         reverseTransitionDuration: isQuickInput
-            ? const Duration(milliseconds: 180)
+            ? const Duration(milliseconds: 260)
             : const Duration(milliseconds: 260),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
@@ -275,7 +281,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
           final slide = Tween<Offset>(
             begin: isQuickInput
-                ? const Offset(0.018, 0.006)
+                ? const Offset(0.012, 0.02)
                 : const Offset(0.03, 0.015),
             end: Offset.zero,
           ).animate(curved);
@@ -641,12 +647,24 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           widget.data.dayTransactions,
         ),
     };
-    final doneCount = menuStatusByCategory.values
-        .where((s) => s == DailyModuleFillStatus.complete)
+    final modulesForHeaderTotals = _kDailyModules
+        .where(_dailyModuleCountsTowardHeaderTotals)
+        .toList(growable: false);
+    final doneCount = modulesForHeaderTotals
+        .where(
+          (m) =>
+              menuStatusByCategory[m.category] ==
+              DailyModuleFillStatus.complete,
+        )
         .length;
-    final incompleteCount = menuStatusByCategory.values
-        .where((s) => s == DailyModuleFillStatus.incomplete)
+    final incompleteCount = modulesForHeaderTotals
+        .where(
+          (m) =>
+              menuStatusByCategory[m.category] ==
+              DailyModuleFillStatus.incomplete,
+        )
         .length;
+    final headerTotalMenuCount = modulesForHeaderTotals.length;
     final headerAnim = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
@@ -680,7 +698,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     ),
                     doneCount: doneCount,
                     incompleteMenuCount: incompleteCount,
-                    totalCount: _kDailyModules.length,
+                    totalCount: headerTotalMenuCount,
                     onPickDay: widget.onPickDay,
                     onRefresh: widget.onPullRefresh,
                   ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -194,6 +195,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<AppTransaction> _moduleDayTransactions = const [];
   bool _moduleDayLoading = false;
 
+  bool get _hasTrackedModuleCategory =>
+      (widget.initialCategory?.trim().isNotEmpty ?? false);
+
+  /// ระหว่างรอธุรกรรมของวันที่เลือก และ (ถ้าเป็นเมนูค่าแรง/OT) รายชื่อพนักงาน
+  bool get _blockingModuleBootstrap {
+    if (!_hasTrackedModuleCategory) return false;
+    if (_moduleDayLoading) return true;
+    if (_showsEmployeeLoadingUi && _employeesLoading) return true;
+    return false;
+  }
+
   /// แสดงรายการประวัติเฉพาะเมื่อผู้ใช้กด (ค่าเริ่มต้นซ่อน)
   bool _moduleHistoryVisible = false;
 
@@ -289,8 +301,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
     _otGroups.add(_OtGroupDraft.empty());
+    final cat = widget.initialCategory?.trim();
+    if (cat != null && cat.isNotEmpty) {
+      _moduleDayLoading = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future<void>.delayed(const Duration(milliseconds: 180));
       if (!mounted) return;
       await _loadModuleTransactions();
     });
@@ -450,6 +465,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (v == v.roundToDouble()) return '${v.round()}';
     final s = v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
     return s;
+  }
+
+  /// เลขเที่ยว/คิว: ตัดเลขนำหน้าเป็น 0 เช่น "03" → "3"
+  static String normalizeVehicleTripNumericText(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return '';
+    final n = double.tryParse(t);
+    if (n == null) return raw;
+    return _strNum(n);
   }
 
   String _stripRecorderSuffix(String raw) =>
@@ -1040,11 +1064,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _runSaveWithPopups({
     required Future<void> Function() body,
     required String successMessage,
+    bool requireSignature = true,
   }) async {
     if (!mounted) return;
-    final signature = await _requestSignatureBeforeSave();
-    if (signature == null) return;
-    _activeSignatureNote = signature.note;
+    if (requireSignature) {
+      final signature = await _requestSignatureBeforeSave();
+      if (signature == null) return;
+      _activeSignatureNote = signature.note;
+    } else {
+      _activeSignatureNote = null;
+    }
     setState(() => _saving = true);
     var savingDialogOpen = false;
     try {
@@ -1494,6 +1523,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveOtEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึก OT สำเร็จ',
+      requireSignature: false,
       body: () async {
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
@@ -1588,6 +1618,193 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final dd = d.day.toString().padLeft(2, '0');
     final mm = d.month.toString().padLeft(2, '0');
     return '$dd/$mm/$be';
+  }
+
+  Widget _moduleBootstrapOverlay(double keyboardInset, bool reduceMotion) {
+    final showEmployeesLine = _showsEmployeeLoadingUi && _employeesLoading;
+    final showTxnLine = _moduleDayLoading;
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !_blockingModuleBootstrap,
+        child: AnimatedOpacity(
+          duration: Duration(milliseconds: reduceMotion ? 1 : 360),
+          curve: Curves.easeOutCubic,
+          opacity: _blockingModuleBootstrap ? 1 : 0,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(10, 0, 10, 16 + keyboardInset),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: reduceMotion
+                  ? Container(
+                      color: Colors.white.withValues(alpha: 0.94),
+                      child: Center(
+                        child: _bootstrapLoaderColumn(
+                          showTxnLine: showTxnLine,
+                          showEmployeesLine: showEmployeesLine,
+                          reduceMotion: true,
+                        ),
+                      ),
+                    )
+                  : BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.86),
+                              const Color(0xFFF0FBFC).withValues(alpha: 0.92),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: const Color(0xFFCDECEF).withValues(alpha: 0.85),
+                          ),
+                        ),
+                        child: Center(
+                          child: _bootstrapLoaderColumn(
+                            showTxnLine: showTxnLine,
+                            showEmployeesLine: showEmployeesLine,
+                            reduceMotion: false,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bootstrapLoaderColumn({
+    required bool showTxnLine,
+    required bool showEmployeesLine,
+    required bool reduceMotion,
+  }) {
+    final dateLine = _formatDate(_selectedDate);
+    final employeeProgressFrac =
+        (_showsEmployeeLoadingUi && _employeesLoading)
+            ? _employeesLoadPercent.clamp(0, 100) / 100.0
+            : null;
+
+    return AnimatedSwitcher(
+      duration: Duration(milliseconds: reduceMotion ? 1 : 240),
+      child: Padding(
+        key: ValueKey(
+          '$showTxnLine-$showEmployeesLine-${employeeProgressFrac ?? -1}',
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0D98A5).withValues(alpha: 0.12),
+                    blurRadius: 28,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: SizedBox(
+                  width: 54,
+                  height: 54,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.2,
+                    color: const Color(0xFF0D98A5),
+                    backgroundColor: const Color(0xFFDDF3F5),
+                    value: employeeProgressFrac,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 26),
+            Text(
+              'กำลังโหลดข้อมูล',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w800,
+                fontSize: 20,
+                height: 1.2,
+                color: const Color(0xFF1A3440),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'วันที่ $dateLine · เก็บรายการที่บันทึกไว้ของเมนูนี้ให้ครบถ้ามี',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w500,
+                fontSize: 13.8,
+                height: 1.35,
+                color: const Color(0xFF5B7585),
+              ),
+            ),
+            if (showTxnLine || showEmployeesLine) ...[
+              const SizedBox(height: 18),
+              Column(
+                children: [
+                  if (showTxnLine)
+                    _bootstrapStatusRow(
+                      icon: Icons.cloud_download_rounded,
+                      label: 'ดึงธุรกรรมของวันที่เลือก',
+                      active: showTxnLine,
+                    ),
+                  if (showEmployeesLine && _showsEmployeeLoadingUi) ...[
+                    if (showTxnLine) const SizedBox(height: 8),
+                    _bootstrapStatusRow(
+                      icon: Icons.groups_rounded,
+                      label: 'โหลดรายชื่อพนักงาน${_employeesLoading ? ' (${_employeesLoadPercent.clamp(0, 100)}%)' : ''}',
+                      active: showEmployeesLine,
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bootstrapStatusRow({
+    required IconData icon,
+    required String label,
+    required bool active,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: active
+              ? const Color(0xFF0D98A5)
+              : const Color(0xFF9EB9C4),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: active
+                  ? const Color(0xFF295C6E)
+                  : const Color(0xFF8899A3),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildModuleHistorySection() {
@@ -2046,60 +2263,78 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         opacity: _contentFade,
                         child: SlideTransition(
                           position: _contentSlide,
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: contentMaxWidth),
-                              child: ListView(
-                                keyboardDismissBehavior:
-                                    ScrollViewKeyboardDismissBehavior.onDrag,
-                                cacheExtent: isLargeTablet ? 1200 : 700,
-                                padding: EdgeInsets.fromLTRB(
-                                  14,
-                                  0,
-                                  14,
-                                  28 + keyboardInset,
-                                ),
-                                children: [
-                                  _buildModuleHistorySection(),
-                                  RepaintBoundary(
-                                    child: Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(24),
-                                        border: Border.all(
-                                          color: const Color(0xFFE7EDF5),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.03),
-                                            blurRadius: isLargeTablet ? 14 : 18,
-                                            offset: const Offset(0, 6),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          (_isSandWashMode
-                                              ? _buildSandWashFormCard()
-                                              : _isVehicleTripMode
-                                              ? _buildVehicleTripFormCard()
-                                              : _isFuelMode
-                                              ? _buildFuelFormCard()
-                                              : _isHomeSandMode
-                                              ? _buildHomeSandFormCard()
-                                              : _isLaborMode
-                                              ? _buildLaborFormCard()
-                                              : _isOtMode
-                                              ? _buildOtFormCard()
-                                              : _buildFormCard()),
-                                        ],
-                                      ),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            clipBehavior: Clip.none,
+                            children: [
+                              Center(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                                  child: ListView(
+                                    keyboardDismissBehavior:
+                                        ScrollViewKeyboardDismissBehavior.onDrag,
+                                    cacheExtent: isLargeTablet ? 1200 : 700,
+                                    padding: EdgeInsets.fromLTRB(
+                                      14,
+                                      0,
+                                      14,
+                                      28 + keyboardInset,
                                     ),
+                                    physics: _blockingModuleBootstrap
+                                        ? const NeverScrollableScrollPhysics()
+                                        : const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      _buildModuleHistorySection(),
+                                      RepaintBoundary(
+                                        child: Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(24),
+                                            border: Border.all(
+                                              color: const Color(0xFFE7EDF5),
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.03),
+                                                blurRadius: isLargeTablet ? 14 : 18,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              (_isSandWashMode
+                                                  ? _buildSandWashFormCard()
+                                                  : _isVehicleTripMode
+                                                  ? _buildVehicleTripFormCard()
+                                                  : _isFuelMode
+                                                  ? _buildFuelFormCard()
+                                                  : _isHomeSandMode
+                                                  ? _buildHomeSandFormCard()
+                                                  : _isLaborMode
+                                                  ? _buildLaborFormCard()
+                                                  : _isOtMode
+                                                  ? _buildOtFormCard()
+                                                  : _buildFormCard()),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                              _moduleBootstrapOverlay(
+                                keyboardInset,
+                                WidgetsBinding
+                                    .instance
+                                    .platformDispatcher
+                                    .accessibilityFeatures
+                                    .disableAnimations,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -4501,7 +4736,13 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     controller: row.tripMorningController,
                     label: 'ช่วงเช้า (เที่ยว)',
                     onChanged: (v) {
-                      row.tripMorning = v;
+                      final n = _QuickInputScreenState.normalizeVehicleTripNumericText(
+                        v,
+                      );
+                      row.tripMorning = n;
+                      if (row.tripMorningController.text != n) {
+                        row.tripMorningController.text = n;
+                      }
                       widget.onChanged();
                       setState(() {});
                     },
@@ -4526,7 +4767,13 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     controller: row.tripAfternoonController,
                     label: 'ช่วงบ่าย (เที่ยว)',
                     onChanged: (v) {
-                      row.tripAfternoon = v;
+                      final n = _QuickInputScreenState.normalizeVehicleTripNumericText(
+                        v,
+                      );
+                      row.tripAfternoon = n;
+                      if (row.tripAfternoonController.text != n) {
+                        row.tripAfternoonController.text = n;
+                      }
                       widget.onChanged();
                       setState(() {});
                     },
@@ -4552,7 +4799,13 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               controller: row.cubicPerTripController,
               label: 'คิวต่อเที่ยว',
               onChanged: (v) {
-                row.cubicPerTrip = v;
+                final n = _QuickInputScreenState.normalizeVehicleTripNumericText(
+                  v,
+                );
+                row.cubicPerTrip = n;
+                if (row.cubicPerTripController.text != n) {
+                  row.cubicPerTripController.text = n;
+                }
                 widget.onChanged();
                 setState(() {});
               },

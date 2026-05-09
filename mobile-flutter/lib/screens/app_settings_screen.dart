@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/admin_user.dart';
@@ -27,24 +30,141 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool _smoothAnimations = true;
   bool _compactTiles = true;
   bool _saving = false;
+  bool _cacheLoading = false;
+  bool _cacheClearing = false;
+  int? _cacheBytes;
+  DateTime? _cacheNewestFileAt;
+  DateTime? _cacheMeasuredAt;
+  DateTime? _lastCacheClearedAt;
 
   static const _kNotifications = 'app_notifications_enabled';
   static const _kAnimations = 'app_smooth_animations';
   static const _kCompactTiles = 'app_compact_tiles';
+  static const _kLastCacheClearMillis = 'app_last_cache_clear_millis';
 
   @override
   void initState() {
     super.initState();
     _loadPrefs();
+    _refreshCacheInfo();
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes ไบต์';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(2)} MB';
+  }
+
+  String _formatDateTimeThai(DateTime? d) {
+    if (d == null) return '—';
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    final be = d.year + 543;
+    final hh = d.hour.toString().padLeft(2, '0');
+    final min = d.minute.toString().padLeft(2, '0');
+    return '$dd/$mm/$be $hh:$min น.';
+  }
+
+  Future<({int bytes, DateTime? newest})> _measureCacheDir(Directory dir) async {
+    if (!dir.existsSync()) return (bytes: 0, newest: null);
+    var total = 0;
+    DateTime? newest;
+    try {
+      await for (final entity in dir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        final len = await entity.length();
+        total += len;
+        final lm = await entity.lastModified();
+        if (newest == null || lm.isAfter(newest)) newest = lm;
+      }
+    } catch (_) {
+      return (bytes: total, newest: newest);
+    }
+    return (bytes: total, newest: newest);
+  }
+
+  Future<void> _refreshCacheInfo() async {
+    setState(() => _cacheLoading = true);
+    try {
+      final cacheRoot = await getApplicationCacheDirectory();
+      final measured = await _measureCacheDir(Directory(cacheRoot.path));
+      if (!mounted) return;
+      setState(() {
+        _cacheBytes = measured.bytes;
+        _cacheNewestFileAt = measured.newest;
+        _cacheMeasuredAt = DateTime.now();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _cacheBytes = null;
+        _cacheNewestFileAt = null;
+        _cacheMeasuredAt = DateTime.now();
+      });
+    } finally {
+      if (mounted) setState(() => _cacheLoading = false);
+    }
+  }
+
+  Future<void> _clearApplicationCache() async {
+    setState(() => _cacheClearing = true);
+    try {
+      final dir = await getApplicationCacheDirectory();
+      if (dir.existsSync()) {
+        for (final e in dir.listSync()) {
+          if (e is File) {
+            await e.delete();
+          } else if (e is Directory) {
+            await e.delete(recursive: true);
+          }
+        }
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kLastCacheClearMillis, DateTime.now().millisecondsSinceEpoch);
+      if (!mounted) return;
+      setState(() {
+        _lastCacheClearedAt = DateTime.now();
+      });
+      await _refreshCacheInfo();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ล้างแคชของแอปแล้ว',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ล้างแคชไม่สำเร็จ: $e',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _cacheClearing = false);
+    }
   }
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final clearMs = prefs.getInt(_kLastCacheClearMillis);
     if (!mounted) return;
     setState(() {
       _notifications = prefs.getBool(_kNotifications) ?? true;
       _smoothAnimations = prefs.getBool(_kAnimations) ?? true;
       _compactTiles = prefs.getBool(_kCompactTiles) ?? true;
+      _lastCacheClearedAt =
+          clearMs != null ? DateTime.fromMillisecondsSinceEpoch(clearMs) : null;
     });
   }
 
@@ -133,6 +253,78 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       _saving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า',
                       style: GoogleFonts.kanit(),
                     ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            _SectionCard(
+              title: 'แคชในเครื่อง',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'นับจากโฟลเดอร์แคชระบบของแอป (ภาพ/ไฟล์ชั่วคราวที่ระบบจัดเก็บ)',
+                    style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      color: Colors.black54,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _InfoRow(
+                    label: 'ขนาดประมาณ',
+                    value: _cacheLoading
+                        ? 'กำลังคำนวณ...'
+                        : (_cacheBytes != null ? _formatBytes(_cacheBytes!) : 'ไม่ทราบ'),
+                  ),
+                  _InfoRow(
+                    label: 'ไฟล์ล่าสุด',
+                    value: _cacheLoading
+                        ? '—'
+                        : _formatDateTimeThai(_cacheNewestFileAt),
+                  ),
+                  _InfoRow(
+                    label: 'วัดครั้งล่าสุด',
+                    value: _formatDateTimeThai(_cacheMeasuredAt),
+                  ),
+                  _InfoRow(
+                    label: 'ล้างล่าสุด',
+                    value: _formatDateTimeThai(_lastCacheClearedAt),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _cacheLoading ? null : _refreshCacheInfo,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: Text(
+                            'คำนวณใหม่',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: (_cacheLoading || _cacheClearing)
+                              ? null
+                              : _clearApplicationCache,
+                          icon: _cacheClearing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.delete_sweep_outlined, size: 18),
+                          label: Text(
+                            _cacheClearing ? 'กำลังล้าง...' : 'ล้างแคช',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -184,11 +184,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (day.holidays.isNotEmpty)
+              if (day.thaiPublicHolidayNames.isNotEmpty)
                 _infoBlock(
-                  title: 'วันหยุด',
+                  title:
+                      'นักขัตฤกษ์ (ประมาณการ — แจ้งเตือนทางปฏิทิน ไม่ได้หมายว่าองค์กรหยุดครบถ้วน)',
+                  color: const Color(0xFF5C7C9F),
+                  lines: day.thaiPublicHolidayNames,
+                ),
+              if (day.weeklyOffLine != null ||
+                  day.userHolidayDescriptions.isNotEmpty)
+                _infoBlock(
+                  title:
+                      '${day.weeklyOffLine != null ? 'หยุดรายสัปดาห์ / ' : ''}วันหยุด · กิจกรรมที่บันทึกไว้',
                   color: const Color(0xFFE57373),
-                  lines: day.holidays,
+                  lines: [
+                    if (day.weeklyOffLine != null) day.weeklyOffLine!,
+                    ...day.userHolidayDescriptions,
+                  ],
                 ),
               if (day.leaveNames.isNotEmpty)
                 _infoBlock(
@@ -196,10 +208,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: const Color(0xFFFFB74D),
                   lines: day.leaveNames,
                 ),
-              if (day.holidays.isEmpty && day.leaveNames.isEmpty)
-                Text(
-                  'ไม่มีข้อมูลวันหยุดหรือการลาในวันนี้',
-                  style: GoogleFonts.kanit(color: Colors.black54),
+              if (!day.hasAnyPlannerEntry)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'ไม่มีข้อมูลวันหยุด ลา หรือการแจ้งเตือนนักขัตฤกษ์ในวันนี้',
+                    style: GoogleFonts.kanit(color: Colors.black54),
+                  ),
                 ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
@@ -570,7 +585,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF0F4FA),
+        backgroundColor: const Color(0xFFF7F8FA),
         appBar: AppBar(
           title: Text(
             'ปฏิทิน',
@@ -603,10 +618,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               data.employees,
               data.weeklyOffByMonday,
             );
-            final monthHolidayCount = days
-                .whereType<_CalendarDay>()
-                .where((d) => d.holidays.isNotEmpty)
-                .length;
+            final monthStrongHolidayCount = days.whereType<_CalendarDay>().where(
+              (d) => d.hasWeeklyOff || d.userHolidayDescriptions.isNotEmpty,
+            ).length;
+            final monthThaiHintCount = days.whereType<_CalendarDay>().where(
+              (d) => d.thaiPublicHolidayNames.isNotEmpty,
+            ).length;
             final monthLeaveCount = days.whereType<_CalendarDay>().fold<int>(
               0,
               (sum, d) => sum + d.leaveNames.length,
@@ -617,12 +634,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 Container(
                   margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                  padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF203245), Color(0xFF2A415C)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                    border: Border.all(color: const Color(0xFFE8ECF0)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,9 +656,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             child: Text(
                               monthLabel,
                               style: GoogleFonts.kanit(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF1A1A1A),
                               ),
                             ),
                           ),
@@ -646,7 +669,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             }),
                             icon: const Icon(
                               Icons.chevron_left,
-                              color: Colors.white,
+                              color: Color(0xFF5C6470),
                             ),
                           ),
                           IconButton(
@@ -656,84 +679,41 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             }),
                             icon: const Icon(
                               Icons.chevron_right,
-                              color: Colors.white,
+                              color: Color(0xFF5C6470),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         'วันที่เลือก: $selectedLabel',
                         style: GoogleFonts.kanit(
-                          color: Colors.white.withValues(alpha: 0.85),
+                          color: Colors.black54,
                           fontSize: 13,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _showMoveWeeklyOffSheet,
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.22),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(
-                                Icons.event_repeat_outlined,
-                                size: 18,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'หยุดรายสัปดาห์: ทุกวันพุธ (แตะเพื่อย้ายเป็นวันอื่นในแต่ละสัปดาห์ได้)',
-                                      style: GoogleFonts.kanit(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.94,
-                                        ),
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12.8,
-                                        height: 1.25,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                Icons.chevron_right,
-                                color: Colors.white.withValues(alpha: 0.7),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
                           _miniStat(
-                            icon: Icons.celebration_outlined,
-                            label: 'วันหยุด',
-                            value: '$monthHolidayCount วัน',
+                            icon: Icons.event_busy_outlined,
+                            label: 'หยุดรายสัปดาห์ / ที่บันทึก',
+                            value: '$monthStrongHolidayCount วัน',
+                            iconColor: const Color(0xFFE57373),
+                          ),
+                          _miniStat(
+                            icon: Icons.public_outlined,
+                            label: 'นักขัตฤกษ์ไทย (แจ้ง)',
+                            value: '$monthThaiHintCount วัน',
+                            iconColor: const Color(0xFF5C7C9F),
                           ),
                           _miniStat(
                             icon: Icons.badge_outlined,
                             label: 'ลางาน',
                             value: '$monthLeaveCount คน',
+                            iconColor: const Color(0xFFFFB74D),
                           ),
                         ],
                       ),
@@ -741,24 +721,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                   child: Row(
                     children: [
-                      _legendChip(
-                        color: const Color(0xFFE57373),
-                        label: 'วันหยุด',
+                      Flexible(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _legendChip(
+                              color: const Color(0xFFE57373),
+                              label: 'หยุดรายสัปดาห์ · บันทึกวันหยุด',
+                            ),
+                            _legendChip(
+                              color: const Color(0xFF5C7C9F),
+                              label: 'นักขัตฤกษ์ (ประมาณการ)',
+                            ),
+                            _legendChip(
+                              color: const Color(0xFFFFB74D),
+                              label: 'ลางาน',
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      _legendChip(
-                        color: const Color(0xFF26A69A),
-                        label: 'หยุดรายสัปดาห์',
-                      ),
-                      const SizedBox(width: 8),
-                      _legendChip(
-                        color: const Color(0xFFFFB74D),
-                        label: 'ลางาน',
-                      ),
-                      const Spacer(),
                       TextButton.icon(
                         onPressed: _openCreateEntrySheet,
                         icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -767,65 +752,106 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      for (final d in const [
-                        'อา',
-                        'จ',
-                        'อ',
-                        'พ',
-                        'พฤ',
-                        'ศ',
-                        'ส',
-                      ])
-                        Expanded(
-                          child: Center(
-                            child: Text(
-                              d,
-                              style: GoogleFonts.kanit(
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black54,
-                              ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 16,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                        border: Border.all(color: const Color(0xFFE8ECF0)),
+                      ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
+                            child: Row(
+                              children: [
+                                for (final d in const [
+                                  'วันอาทิตย์',
+                                  'วันจันทร์',
+                                  'วันอังคาร',
+                                  'วันพุธ',
+                                  'วันพฤหัสบดี',
+                                  'วันศุกร์',
+                                  'วันเสาร์',
+                                ])
+                                  Expanded(
+                                    child: Center(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 1,
+                                          ),
+                                          child: Text(
+                                            d,
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            style: GoogleFonts.kanit(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 11,
+                                              color: const Color(0xFF6B7280),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 7,
-                          mainAxisSpacing: 6,
-                          crossAxisSpacing: 6,
-                          childAspectRatio: 0.75,
-                        ),
-                    itemCount: days.length,
-                    itemBuilder: (context, index) {
-                      final day = days[index];
-                      if (day == null) return const SizedBox.shrink();
-                      final d = _dateFromYmd(day.dateStr);
-                      final isSelected =
-                          d.year == _selectedDate.year &&
-                          d.month == _selectedDate.month &&
-                          d.day == _selectedDate.day;
-                      final now = DateTime.now();
-                      final isToday =
-                          d.year == now.year &&
-                          d.month == now.month &&
-                          d.day == now.day;
-                      return _DayCell(
-                        day: day,
-                        selected: isSelected,
-                        today: isToday,
-                        onTap: () => _pickDay(day),
-                      );
-                    },
+                          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+                          Expanded(
+                            child: GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                8,
+                                8,
+                                8,
+                                10,
+                              ),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 7,
+                                    mainAxisSpacing: 5,
+                                    crossAxisSpacing: 5,
+                                    childAspectRatio: 0.78,
+                                  ),
+                              itemCount: days.length,
+                              itemBuilder: (context, index) {
+                                final day = days[index];
+                                if (day == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                final d = _dateFromYmd(day.dateStr);
+                                final isSelected =
+                                    d.year == _selectedDate.year &&
+                                    d.month == _selectedDate.month &&
+                                    d.day == _selectedDate.day;
+                                final now = DateTime.now();
+                                final isToday =
+                                    d.year == now.year &&
+                                    d.month == now.month &&
+                                    d.day == now.day;
+                                return _DayCell(
+                                  day: day,
+                                  selected: isSelected,
+                                  today: isToday,
+                                  onTap: () => _pickDay(day),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -845,25 +871,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required IconData icon,
     required String label,
     required String value,
+    Color? iconColor,
   }) {
+    final tint = iconColor ?? Theme.of(context).colorScheme.primary;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: tint.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        border: Border.all(color: tint.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white),
+          Icon(icon, size: 14, color: tint),
           const SizedBox(width: 6),
           Text(
             '$label $value',
             style: GoogleFonts.kanit(
-              color: Colors.white,
+              color: const Color(0xFF2C333A),
               fontWeight: FontWeight.w700,
-              fontSize: 12.5,
+              fontSize: 12.2,
             ),
           ),
         ],
@@ -914,21 +942,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
           .where((t) => t.category == 'Calendar')
           .toList();
       final autoHoliday = holidayMap[dateStr];
-      final holidays = <String>[
+      final thaiPublicHolidayNames = <String>[
         if (autoHoliday != null) autoHoliday.name,
-        ...calendarRows
-            .where((t) => (t.subCategory ?? '').toLowerCase() == 'holiday')
-            .map((t) => t.description),
       ];
+      final userHolidayDescriptions = calendarRows
+          .where((t) => (t.subCategory ?? '').toLowerCase() == 'holiday')
+          .map((t) => t.description.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
 
       final dtPlain = DateTime(year, month, d);
       final monKey = WeeklyOffCalendarStore.mondayKeyOf(dtPlain);
       final offWd =
           weeklyOffByMonday[monKey] ??
           WeeklyOffCalendarStore.defaultOffWeekday;
-      if (dtPlain.weekday == offWd) {
-        holidays.add(_companyWeeklyHolidayLine(offWd));
-      }
+      final weeklyOffLine = dtPlain.weekday == offWd
+          ? _companyWeeklyHolidayLine(offWd)
+          : null;
 
       final leaveRows = dayTx.where((t) {
         final laborStatus = (t.laborStatus ?? '').toLowerCase();
@@ -954,7 +984,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _CalendarDay(
           day: d,
           dateStr: dateStr,
-          holidays: holidays,
+          thaiPublicHolidayNames: thaiPublicHolidayNames,
+          userHolidayDescriptions: userHolidayDescriptions,
+          weeklyOffLine: weeklyOffLine,
           leaveNames: leaveNames,
         ),
       );
@@ -1022,14 +1054,26 @@ class _CalendarDay {
   const _CalendarDay({
     required this.day,
     required this.dateStr,
-    required this.holidays,
+    required this.thaiPublicHolidayNames,
+    required this.userHolidayDescriptions,
     required this.leaveNames,
+    this.weeklyOffLine,
   });
 
   final int day;
   final String dateStr;
-  final List<String> holidays;
+  final List<String> thaiPublicHolidayNames;
+  final List<String> userHolidayDescriptions;
+  final String? weeklyOffLine;
   final List<String> leaveNames;
+
+  bool get hasWeeklyOff => weeklyOffLine != null;
+
+  bool get hasAnyPlannerEntry =>
+      thaiPublicHolidayNames.isNotEmpty ||
+      weeklyOffLine != null ||
+      userHolidayDescriptions.isNotEmpty ||
+      leaveNames.isNotEmpty;
 }
 
 class _DayCell extends StatelessWidget {
@@ -1044,89 +1088,187 @@ class _DayCell extends StatelessWidget {
   final bool today;
   final VoidCallback onTap;
 
-  static bool _isWeeklyHolidayLine(String s) =>
-      s.startsWith('หยุดรายสัปดาห์');
+  static const _strongRed = Color(0xFFE57373);
+  static const _thaiHint = Color(0xFF5C7C9F);
+  static const _leaveOrange = Color(0xFFFFB74D);
 
   @override
   Widget build(BuildContext context) {
-    final hasOtherHoliday =
-        day.holidays.any((h) => !_isWeeklyHolidayLine(h));
-    final hasWeeklyCompany =
-        day.holidays.any(_isWeeklyHolidayLine);
+    final strongOff =
+        day.hasWeeklyOff || day.userHolidayDescriptions.isNotEmpty;
+    final thaiOnly =
+        day.thaiPublicHolidayNames.isNotEmpty && !strongOff;
     final hasLeave = day.leaveNames.isNotEmpty;
-    final mutedBorder =
-        hasOtherHoliday
-            ? const Color(0xFFE57373)
-            : hasWeeklyCompany
-            ? const Color(0xFF26A69A)
-            : hasLeave
-            ? const Color(0xFFFFB74D)
-            : Colors.grey.shade300;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.all(7),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEAF4FF) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            width: selected ? 1.5 : 1,
-            color: selected
-                ? const Color(0xFF1E88E5)
-                : today
-                ? const Color(0xFF90CAF9)
-                : mutedBorder,
+
+    Color borderColor;
+    double borderW;
+    if (selected) {
+      borderColor = const Color(0xFF1E88E5);
+      borderW = 1.6;
+    } else if (strongOff) {
+      borderColor = _strongRed;
+      borderW = 1.3;
+    } else if (thaiOnly) {
+      borderColor = _thaiHint.withValues(alpha: 0.45);
+      borderW = 1;
+    } else if (hasLeave) {
+      borderColor = _leaveOrange.withValues(alpha: 0.75);
+      borderW = 1;
+    } else if (today) {
+      borderColor = const Color(0xFFE5E8ED);
+      borderW = 1;
+    } else {
+      borderColor = const Color(0xFFE8ECF0);
+      borderW = 1;
+    }
+
+    final cellBg =
+        selected
+            ? const Color(0xFFEFF6FF)
+            : strongOff
+            ? const Color(0xFFFFF5F5)
+            : thaiOnly
+            ? const Color(0xFFF7F9FC)
+            : Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(11),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(5, 5, 5, 4),
+          decoration: BoxDecoration(
+            color: cellBg,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(width: borderW, color: borderColor),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${day.day}',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-                color: selected ? const Color(0xFF1565C0) : Colors.black87,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (today)
+                    Container(
+                      width: 22,
+                      height: 22,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color:
+                            selected
+                                ? const Color(0xFF1565C0)
+                                : const Color(0xFF1A1A1A),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${day.day}',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.5,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      '${day.day}',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color:
+                            selected
+                                ? const Color(0xFF1565C0)
+                                : const Color(0xFF2C333A),
+                      ),
+                    ),
+                ],
               ),
-            ),
-            const SizedBox(height: 2),
-            if (hasOtherHoliday)
-              Text(
-                'วันหยุด',
-                style: GoogleFonts.kanit(
-                  fontSize: 10,
-                  color: Colors.red.shade600,
-                ),
-              ),
-            if (hasWeeklyCompany && !hasOtherHoliday)
-              Text(
-                'หยุดรายสัปดาห์',
-                style: GoogleFonts.kanit(
-                  fontSize: 10,
-                  color: const Color(0xFF00897B),
-                ),
-              ),
-            if (hasLeave)
-              Text(
-                'ลา ${day.leaveNames.length}',
-                style: GoogleFonts.kanit(
-                  fontSize: 10,
-                  color: Colors.orange.shade700,
-                ),
-              ),
-            const SizedBox(height: 2),
-            if (day.leaveNames.isNotEmpty)
-              Expanded(
-                child: Text(
-                  day.leaveNames.take(2).join(', '),
+              const SizedBox(height: 3),
+              if (strongOff) ...[
+                if (day.hasWeeklyOff)
+                  Text(
+                    'หยุดรายสัปดาห์',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red.shade700,
+                      height: 1.15,
+                    ),
+                  ),
+                if (day.userHolidayDescriptions.isNotEmpty)
+                  Text(
+                    day.userHolidayDescriptions.length > 1
+                        ? 'บันทึก ${day.userHolidayDescriptions.length} รายการ'
+                        : day.userHolidayDescriptions.first,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontSize: 9.5,
+                      color: Colors.red.shade700,
+                      height: 1.15,
+                    ),
+                  ),
+              ],
+              if (!strongOff && day.thaiPublicHolidayNames.isNotEmpty)
+                Text(
+                  day.thaiPublicHolidayNames.first,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.kanit(fontSize: 9, color: Colors.black54),
+                  style: GoogleFonts.kanit(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    color: _thaiHint,
+                    height: 1.2,
+                  ),
                 ),
-              ),
-          ],
+              if (strongOff && day.thaiPublicHolidayNames.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    day.thaiPublicHolidayNames.first,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontSize: 8.5,
+                      color: _thaiHint.withValues(alpha: 0.95),
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+              if (hasLeave)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'ลา ${day.leaveNames.length}',
+                    style: GoogleFonts.kanit(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.deepOrange.shade700,
+                    ),
+                  ),
+                ),
+              if (day.leaveNames.isNotEmpty)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      day.leaveNames.take(2).join(', '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(
+                        fontSize: 8.5,
+                        color: Colors.black54,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
