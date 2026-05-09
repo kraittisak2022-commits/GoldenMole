@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -124,7 +123,7 @@ const List<_DailyModuleDef> _kDailyModules = [
   ),
 ];
 
-/// เมนูที่ซ่อนในโหมดย่อ — กด «แสดงเมนูเพิ่ม» จึงจะเห็น
+/// เมนูที่ไม่นับในชิป «บันทึกครบ X/Y เมนู» — ลางาน, เบิกเงิน (บันทึกแยก)
 bool _isExpandOnlyDailyModule(_DailyModuleDef m) =>
     m.category == 'ลางาน' || m.category == 'เบิกเงิน';
 
@@ -630,49 +629,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
   late final bool _reduceMotion;
-  bool _dailyExtraMenusExpanded = false;
-  final ScrollController _menuGridScrollController = ScrollController();
   static const _kPanelShadowColor = Color(0x12000000);
-
-  /// หลังกด «แสดงเมนูเพิ่มเติม» เลื่อนกริดไปล่างสุดแบบนุ่มนวล (รองรับแนวนอน / เมนูยาว)
-  void _scheduleScrollMenuGridToBottom() {
-    var layoutPasses = 0;
-    void afterLayout() {
-      if (!mounted || !_dailyExtraMenusExpanded) return;
-      layoutPasses++;
-      // รอ 2 เฟรมหลังขยายเมนู เพื่อให้ AnimatedSwitcher + GridView คำนวณความสูงครบ
-      if (layoutPasses < 2) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => afterLayout());
-        return;
-      }
-      var attempts = 0;
-      void run() {
-        if (!mounted || !_dailyExtraMenusExpanded) return;
-        attempts++;
-        if (attempts > 12) return;
-        final c = _menuGridScrollController;
-        if (!c.hasClients) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => run());
-          return;
-        }
-        final target = c.position.maxScrollExtent;
-        if (target <= 0) return;
-        if (_reduceMotion) {
-          c.jumpTo(target);
-          return;
-        }
-        c.animateTo(
-          target,
-          duration: const Duration(milliseconds: 540),
-          curve: Curves.easeOutCubic,
-        );
-      }
-
-      run();
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => afterLayout());
-  }
 
   @override
   void initState() {
@@ -692,7 +649,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   void didUpdateWidget(covariant _DailyHomeContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedDay != widget.selectedDay) {
-      _dailyExtraMenusExpanded = false;
       _entranceController
         ..reset()
         ..forward();
@@ -701,7 +657,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
   @override
   void dispose() {
-    _menuGridScrollController.dispose();
     _entranceController.dispose();
     super.dispose();
   }
@@ -809,22 +764,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               FadeTransition(opacity: animation, child: child),
                           child: LayoutBuilder(
                             key: ValueKey(
-                              '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
-                              '$_dailyExtraMenusExpanded',
+                              widget.formatBuddhistDateButton(widget.selectedDay),
                             ),
                             builder: (context, constraints) {
-                              final visibleModules = _dailyExtraMenusExpanded
-                                  ? _kDailyModules
-                                  : _kDailyModules
-                                      .where((m) => !_isExpandOnlyDailyModule(m))
-                                      .toList(growable: false);
+                              final visibleModules = _kDailyModules;
                               const cross = 3;
                               const gap = 10.0;
                               const sideInset = 2.0;
-                              const expandBarReserve = 64.0;
-                              final availH =
-                                  (constraints.maxHeight - expandBarReserve)
-                                      .clamp(120.0, constraints.maxHeight);
+                              final availH = constraints.maxHeight
+                                  .clamp(120.0, constraints.maxHeight);
                               final rows =
                                   (visibleModules.length / cross).ceil().clamp(1, 12);
                               final w = constraints.maxWidth;
@@ -852,200 +800,48 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   ? 6.0
                                   : ((availH - contentHeight) / 2)
                                       .clamp(0.0, 24.0);
-                              return Column(
-                                children: [
-                                  Expanded(
-                                    child: GridView.builder(
-                                      controller: _menuGridScrollController,
-                                      padding: EdgeInsets.fromLTRB(
-                                        sideInset,
-                                        topInset,
-                                        sideInset,
-                                        menuScrolls ? 10 : 0,
-                                      ),
-                                      physics: menuScrolls
-                                          ? const ClampingScrollPhysics()
-                                          : const NeverScrollableScrollPhysics(),
-                                      addAutomaticKeepAlives: false,
-                                      addRepaintBoundaries: true,
-                                      itemCount: visibleModules.length,
-                                      gridDelegate:
-                                          SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: cross,
-                                        mainAxisSpacing: gap,
-                                        crossAxisSpacing: gap,
-                                        mainAxisExtent: cellHeight,
-                                      ),
-                                      itemBuilder: (context, index) {
-                                        final m = visibleModules[index];
-                                        final fill =
-                                            menuStatusByCategory[m.category] ??
-                                                DailyModuleFillStatus.pending;
-                                        final globalIndex =
-                                            _kDailyModules.indexOf(m);
-                                        return _StaggerMenuTile(
-                                          parent: _entranceController,
-                                          index:
-                                              globalIndex >= 0 ? globalIndex : index,
-                                          lite: useLiteAnimations,
-                                          child: RecordModuleCard(
-                                            title: m.title,
-                                            icon: m.icon,
-                                            tileColor: m.color,
-                                            showLightStyle: index.isOdd,
-                                            fillStatus: fill,
-                                            onTap: () => widget.onOpenModule(m),
-                                          ),
-                                        );
-                                      },
+                              return GridView.builder(
+                                padding: EdgeInsets.fromLTRB(
+                                  sideInset,
+                                  topInset,
+                                  sideInset,
+                                  menuScrolls ? 10 : 0,
+                                ),
+                                physics: menuScrolls
+                                    ? const ClampingScrollPhysics()
+                                    : const NeverScrollableScrollPhysics(),
+                                addAutomaticKeepAlives: false,
+                                addRepaintBoundaries: true,
+                                itemCount: visibleModules.length,
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: cross,
+                                  mainAxisSpacing: gap,
+                                  crossAxisSpacing: gap,
+                                  mainAxisExtent: cellHeight,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final m = visibleModules[index];
+                                  final fill =
+                                      menuStatusByCategory[m.category] ??
+                                          DailyModuleFillStatus.pending;
+                                  final globalIndex =
+                                      _kDailyModules.indexOf(m);
+                                  return _StaggerMenuTile(
+                                    parent: _entranceController,
+                                    index:
+                                        globalIndex >= 0 ? globalIndex : index,
+                                    lite: useLiteAnimations,
+                                    child: RecordModuleCard(
+                                      title: m.title,
+                                      icon: m.icon,
+                                      tileColor: m.color,
+                                      showLightStyle: index.isOdd,
+                                      fillStatus: fill,
+                                      onTap: () => widget.onOpenModule(m),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.fromLTRB(10, 6, 10, 8),
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(18),
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: _dailyExtraMenusExpanded
-                                              ? const [
-                                                  Color(0xFFF4F7FC),
-                                                  Color(0xFFE9EEF6),
-                                                ]
-                                              : const [
-                                                  Color(0xFFE5F4FF),
-                                                  Color(0xFFF7FBFF),
-                                                ],
-                                        ),
-                                        border: Border.all(
-                                          width: 1.1,
-                                          color: _dailyExtraMenusExpanded
-                                              ? const Color(0xFFC9D6E8)
-                                              : const Color(0xFFA8CDF0),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFF1A2836)
-                                                .withValues(alpha: 0.05),
-                                            blurRadius: 6,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                          BoxShadow(
-                                            color: const Color(0xFF1E4976)
-                                                .withValues(
-                                                  alpha: _dailyExtraMenusExpanded
-                                                      ? 0.09
-                                                      : 0.11,
-                                                ),
-                                            blurRadius: 20,
-                                            spreadRadius: -2,
-                                            offset: const Offset(0, 8),
-                                          ),
-                                          BoxShadow(
-                                            color: const Color(0xFF64B5F6)
-                                                .withValues(alpha: 0.12),
-                                            blurRadius: 18,
-                                            spreadRadius: -4,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        borderRadius: BorderRadius.circular(18),
-                                        clipBehavior: Clip.antiAlias,
-                                        child: InkWell(
-                                          onTap: () {
-                                            HapticFeedback.selectionClick();
-                                            final willExpand =
-                                                !_dailyExtraMenusExpanded;
-                                            setState(() {
-                                              _dailyExtraMenusExpanded =
-                                                  willExpand;
-                                            });
-                                            if (willExpand) {
-                                              _scheduleScrollMenuGridToBottom();
-                                            }
-                                          },
-                                          splashColor: const Color(0xFF1565C0)
-                                              .withValues(alpha: 0.09),
-                                          highlightColor: const Color(0xFF1565C0)
-                                              .withValues(alpha: 0.05),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 13,
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Container(
-                                                  padding: const EdgeInsets.all(
-                                                    8,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.85),
-                                                    shape: BoxShape.circle,
-                                                    border: Border.all(
-                                                      color: const Color(
-                                                        0xFFC5DAEF,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  child: AnimatedRotation(
-                                                    turns:
-                                                        _dailyExtraMenusExpanded
-                                                        ? 0.5
-                                                        : 0,
-                                                    duration: Duration(
-                                                      milliseconds:
-                                                          useLiteAnimations
-                                                          ? 120
-                                                          : 220,
-                                                    ),
-                                                    curve:
-                                                        Curves.easeOutCubic,
-                                                    child: Icon(
-                                                      Icons
-                                                          .unfold_more_rounded,
-                                                      size: 22,
-                                                      color:
-                                                          const Color(
-                                                            0xFF1565C0,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Flexible(
-                                                  child: Text(
-                                                    _dailyExtraMenusExpanded
-                                                        ? 'ซ่อนเมนูเพิ่มเติม'
-                                                        : 'แสดงเมนูเพิ่มเติม',
-                                                    textAlign: TextAlign.center,
-                                                    style: GoogleFonts.kanit(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      fontSize: 15,
-                                                      letterSpacing: 0.15,
-                                                      color: const Color(
-                                                        0xFF1F3A54,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                  );
+                                },
                               );
                             },
                           ),
