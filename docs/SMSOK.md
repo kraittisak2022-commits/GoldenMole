@@ -9,6 +9,14 @@ Base URL ฝั่งผู้ให้บริการ: `https://api.smsok.co
 2. **Supabase Edge Function `smsok-dlr-webhook`** — รับ callback สถานะการส่ง (DLR) ถ้าตั้ง `callback_url` ตอนส่ง SMS  
 3. **เว็บ + มือถือ** — หลังบันทึกรายการ **เบิกเงิน** (Labor / Advance) สำเร็จแบบออนไลน์ จะ `invoke` ฟังก์ชันข้อ 1 (ไม่บล็อก UX ถ้า SMS ล้ม)
 
+### เช็กลิสต์ให้ SMS ออกจริง
+
+1. ตั้ง **Supabase secrets** + **deploy** ฟังก์ชัน `send-advance-sms` (ดูด้านล่าง)  
+2. ใส่ **เบอร์ในโปรไฟล์พนักงาน** (`phone`) หรือตั้ง **`VITE_SMS_ADVANCE_NOTIFY_EXTRA` / `SMS_ADVANCE_NOTIFY_EXTRA`** ใน `.env`  
+3. บันทึกรายการ **Labor → Advance** แบบออนไลน์ — ระบบจะรวมเบอร์แล้วส่งให้ Edge แปลงเป็น JSON แบบ SMSOK (`destinations`) ให้เอง
+
+รายละเอียดว่าเบอร์มาจากไหน → ดูหัวข้อ **เบอร์ปลายทางส่ง SMS ระบุยังไง** ด้านล่าง
+
 ## Webhook URL (ให้ตั้งใน SMSOK / หรือส่งผ่าน API)
 
 | จุดประสงค์ | URL |
@@ -75,6 +83,21 @@ supabase secrets set SMSOK_API_USER=... SMSOK_API_PASSWORD=... SMSOK_SENDER_ID=.
 supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 # หรือ URL ของ Edge smsok-dlr-webhook
 ```
+
+## เบอร์ปลายทางส่ง SMS ระบุยังไง
+
+ระบบ GoldenMole **ไม่ให้คุณพิมพ์เบอร์ในโค้ดที่เรียก SMSOK โดยตรง** แต่รวบรวมเบอร์แล้วส่งเป็น `destinations` ไปที่ Edge `send-advance-sms` — ฝั่ง Edge จะแปลงเป็นรูปแบบ SMSOK คือ `destinations: [{ "destination": "0996512409" }, ...]` (เบอร์ไทยหลัง normalize เป็น `0xxxxxxxxx`)
+
+| แหล่งที่มา | รายละเอียด |
+|------------|------------|
+| **พนักงานในรายการเบิกเงิน** | หลังบันทึก **Labor → Advance (เบิกเงิน)** สำเร็จ ระบบดึงฟิลด์ **เบอร์โทร (`phone`)** ของพนักงานทุกคนที่เลือกในรายการนั้น มาเป็นปลายทาง (ซ้ำจะถูกรวมเป็นคนละเบอร์) |
+| **เบอร์เสริม (ทางเลือก)** | ตั้งใน `.env` ตามตารางด้านล่าง — ใช้เมื่ออยากแจ้งหัวหน้างาน / เลขา โดยไม่ต้องใส่เป็นพนักงานในรายการ |
+
+รูปแบบเบอร์: ใส่ `0812345678`, `+66812345678` หรือ `66812345678` ได้ — โค้ดจะ normalize เป็นเลขไทย 10 หลักขึ้นต้นด้วย `0` ก่อนส่ง
+
+**ขีดจำกัด:** ฟังก์ชัน `send-advance-sms` ส่งได้สูงสุด **25** เบอร์ต่อครั้ง (หลังตัดซ้ำแล้ว; ถ้าเกินจะเอาเฉพาะ 25 เบอร์แรกตามลำดับที่ส่งมา)
+
+**ไม่เรียก `https://api.smsok.co/s` จากเบราว์เซอร์หรือแอปมือถือโดยตรง** (จะเปิดรหัส API และโดเมน CORS) — แอปเรียก `supabase.functions.invoke('send-advance-sms', { body: { text, destinations } })` แล้วให้ Edge ใส่ **HTTP Basic** (username:password แปลง Base64) เรียก SMSOK แทน ตัวอย่างในเอกสาร SMSOK ที่ใช้ `Authorization: 'Basic username:password'` เป็นแนวคิดเท่านั้น ของจริงต้องเป็น `Basic <base64(user:pass)>`
 
 ## ตัวแปรแอป (เบอร์แจ้งเตือมเพิ่ม)
 
