@@ -89,6 +89,13 @@ npx supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 
 ถ้าติดตั้ง CLI แบบ global แล้ว ใช้คำสั่ง `supabase` แทน `npx supabase` ได้
 
+### ตั้ง Edge secrets (ถ้าไม่อยากใช้ CLI)
+
+ใน [Supabase Dashboard](https://supabase.com/dashboard) → โปรเจกต์ของคุณ → **Project Settings** → **Edge Functions** → **Secrets**  
+เพิ่มชื่อตามตาราง **Secrets ที่ต้องตั้งใน Supabase (Edge)** ด้านบน (อย่างน้อย `SMSOK_API_USER`, `SMSOK_API_PASSWORD`, `SMSOK_SENDER_ID`)
+
+ถ้าไม่ตั้ง SMSOK ฟังก์ชันจะตอบ `503` พร้อมข้อความว่า credentials ยังไม่ครบ
+
 ## ทดสอบส่ง SMS (สคริปต์)
 
 จากรากโปรเจกต์ ตั้งค่าชั่วคราวใน `.env` (อย่า commit):
