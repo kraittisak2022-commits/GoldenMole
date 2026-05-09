@@ -89,6 +89,21 @@ npx supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 
 ถ้าติดตั้ง CLI แบบ global แล้ว ใช้คำสั่ง `supabase` แทน `npx supabase` ได้
 
+## ทดสอบส่ง SMS (สคริปต์)
+
+จากรากโปรเจกต์ ตั้งค่าชั่วคราวใน `.env` (อย่า commit):
+
+- `SMS_TEST_EMAIL`, `SMS_TEST_PASSWORD` — บัญชี Supabase Auth ที่ล็อกอินได้
+- `SMS_TEST_DEST` — เบอร์ทดสอบ (คั่นด้วย comma ได้)
+
+แล้วรัน:
+
+```bash
+npm run test:sms
+```
+
+สคริปต์จะ `signInWithPassword` แล้ว `invoke('send-advance-sms')` เหมือนแอป ต้อง deploy ฟังก์ชัน + ตั้ง secrets SMSOK บนโปรเจกต์นั้นแล้ว ถึงจะส่งถึง SMSOK ได้จริง
+
 ## เบอร์ปลายทางส่ง SMS ระบุยังไง
 
 ระบบ GoldenMole **ไม่ให้คุณพิมพ์เบอร์ในโค้ดที่เรียก SMSOK โดยตรง** แต่รวบรวมเบอร์แล้วส่งเป็น `destinations` ไปที่ Edge `send-advance-sms` — ฝั่ง Edge จะแปลงเป็นรูปแบบ SMSOK คือ `destinations: [{ "destination": "0996512409" }, ...]` (เบอร์ไทยหลัง normalize เป็น `0xxxxxxxxx`)
@@ -106,7 +121,7 @@ npx supabase secrets set SMSOK_CALLBACK_URL=https://goldenmole.pro/sms/callback
 
 ## ตัวแปรแอป (เบอร์แจ้งเตือมเพิ่ม)
 
-- **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = 0996512409
+- **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = เบอร์เพิ่ม (คั่นด้วย comma) นอกเหนือจากเบอร์ใน employee
 - **มือถือ:** `.env` — `SMS_ADVANCE_NOTIFY_EXTRA` (รูปแบบเดียวกัน)
 
 ถ้าไม่มีเบอร์ใน employee และไม่ตั้ง extra ระบบจะไม่ส่ง SMS (ไม่ error)

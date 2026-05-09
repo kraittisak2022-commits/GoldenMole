@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:sms": "node scripts/test-send-advance-sms.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
