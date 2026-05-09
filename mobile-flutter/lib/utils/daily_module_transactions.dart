@@ -1,5 +1,55 @@
 import '../models/app_transaction.dart';
 
+/// ธุรกรรม «ลา» ที่ใช้ภาพรวมแคลน / ปฏิทิน — ต้องมีรายชื่อพนักงาน
+bool isLaborLeaveRecord(AppTransaction t) {
+  final cat = t.category.trim();
+  if (cat == 'Leave' || t.type.toLowerCase() == 'leave') {
+    return t.employeeIds.isNotEmpty;
+  }
+  final ls = (t.laborStatus ?? '').toLowerCase();
+  return t.category == 'Labor' &&
+      (ls == 'leave' || ls == 'sick' || ls == 'personal') &&
+      t.employeeIds.isNotEmpty;
+}
+
+DateTime? _parseTxnDateYmdUtc(String ymd) {
+  final parts = ymd.trim().split('-');
+  if (parts.length != 3) return null;
+  final y = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  final d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null) return null;
+  return DateTime.utc(y, m, d);
+}
+
+int leaveInclusiveDayCount(AppTransaction t) {
+  final raw = t.leaveDays;
+  final n = (raw == null || raw <= 0) ? 1.0 : raw;
+  return n.ceil();
+}
+
+/// วันที่ [dayKey] (YYYY-MM-DD) อยู่ในช่วงลาที่เริ่มจาก [t.date] ตาม [t.leave_days]
+bool laborLeaveCoversCalendarDay(AppTransaction t, String dayKey) {
+  if (!isLaborLeaveRecord(t)) return false;
+  final start = _parseTxnDateYmdUtc(t.date);
+  final needle = _parseTxnDateYmdUtc(dayKey.trim());
+  if (start == null || needle == null) return false;
+  final span = leaveInclusiveDayCount(t);
+  final end = start.add(Duration(days: span - 1));
+  return !needle.isBefore(start) && !needle.isAfter(end);
+}
+
+bool transactionAppliesToDashboardDay(
+  AppTransaction t,
+  String dayKey,
+  String moduleCategory,
+) {
+  if (moduleCategory == 'ลางาน') {
+    return laborLeaveCoversCalendarDay(t, dayKey);
+  }
+  return t.date.trim() == dayKey.trim();
+}
+
 /// สถานะการกรอกเมนูบันทึกประจำวันบนแดชบอร์ด
 enum DailyModuleFillStatus {
   /// ยังไม่มีข้อมูลที่เกี่ยวข้อง
@@ -21,7 +71,7 @@ DailyModuleFillStatus resolveDailyModuleFillStatus(
   var complete = false;
   var touch = false;
   for (final t in transactions) {
-    if (t.date != dayKey) continue;
+    if (!transactionAppliesToDashboardDay(t, dayKey, moduleCategory)) continue;
     if (transactionMatchesDailyModule(t, dayKey, moduleCategory)) {
       complete = true;
       break;
@@ -47,7 +97,9 @@ bool transactionTouchesDailyModule(
   String dayKey,
   String moduleCategory,
 ) {
-  if (t.date != dayKey) return false;
+  if (!transactionAppliesToDashboardDay(t, dayKey, moduleCategory)) {
+    return false;
+  }
 
   bool sandWashTouches() {
     if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
@@ -173,7 +225,9 @@ bool transactionMatchesDailyModule(
   String dayKey,
   String moduleCategory,
 ) {
-  if (t.date != dayKey) return false;
+  if (!transactionAppliesToDashboardDay(t, dayKey, moduleCategory)) {
+    return false;
+  }
 
   bool sandWashLike() {
     if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;

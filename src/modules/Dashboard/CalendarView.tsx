@@ -18,6 +18,7 @@ import FormatNumber from '../../components/ui/FormatNumber';
 import Button from '../../components/ui/Button';
 import { Transaction, Employee } from '../../types';
 import { getThaiPublicHolidayMap } from '../../utils';
+import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 
 /** บันทึกปฏิทิน — แยกจาก DailyLog เพื่อไม่ไปปนกับบันทึกงานประจำวัน */
 export const CALENDAR_CATEGORY = 'Calendar' as const;
@@ -117,9 +118,9 @@ const CalendarView = ({ transactions, employees, onSaveTransaction, onDeleteTran
             const workingEmpIds = new Set(
                 financeTrans.filter((t) => t.category === 'Labor' && (t.laborStatus === 'Work' || t.laborStatus === 'OT')).flatMap((t) => t.employeeIds || [])
             );
-            const leaveTrans = financeTrans.filter(
-                (t) => t.category === 'Labor' && (t.laborStatus === 'Leave' || t.laborStatus === 'Sick' || t.laborStatus === 'Personal')
-            );
+            const leaveTrans = transactions
+                .filter((t) => !isCalendarTx(t))
+                .filter((t) => leaveRecordCoversDay(t, dateStr));
             const leaveEmpIds = new Set(leaveTrans.flatMap((t) => t.employeeIds || []));
 
             const leaveNames = Array.from(leaveEmpIds).map((id) => {

@@ -11,6 +11,7 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
+import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 
 class QuickInputScreen extends StatefulWidget {
@@ -177,10 +178,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
   final _advanceAmountPerPersonController = TextEditingController();
+  final _advanceBankController = TextEditingController();
+  final _advanceAccountController = TextEditingController();
   final Set<String> _selectedLeaveEmpIds = {};
   final Set<String> _selectedAdvanceEmpIds = {};
   String? _laborLeaveTxId;
   String? _laborAdvanceTxId;
+  String? _advanceWorkDetailsSeed;
+  String _advancePayoutSlot = AdvanceGmMeta.midday;
+  String _advancePaymentMethod = AdvanceGmMeta.cash;
   /// Personal | Sick — สอดคล้องเว็บ (ลากิจ / ลาป่วย) เก็บใน sub_category
   String _leaveTypeChoice = 'Personal';
   List<Employee> _employees = const [];
@@ -192,6 +198,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<String> _cars = const [];
 
   late DateTime _selectedDate;
+  late DateTime _leaveStartDate;
   late final AnimationController _entranceController;
   late final Animation<double> _entranceFade;
   late final Animation<Offset> _entranceSlide;
@@ -301,6 +308,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _entranceController.forward();
     final d = widget.selectedDateForModule ?? DateTime.now();
     _selectedDate = DateTime(d.year, d.month, d.day);
+    _leaveStartDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
     _categoryController = TextEditingController(
       text: widget.initialCategory?.trim().isNotEmpty == true
           ? widget.initialCategory!.trim()
@@ -423,9 +431,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _leaveTypeChoice = 'Personal';
       _leaveReasonController.clear();
       _leaveDaysController.text = '1';
+      _leaveStartDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+      );
     } else if (_isLaborAdvanceMode) {
       _selectedAdvanceEmpIds.clear();
       _laborAdvanceTxId = null;
+      _advanceWorkDetailsSeed = null;
+      _advancePayoutSlot = AdvanceGmMeta.midday;
+      _advancePaymentMethod = AdvanceGmMeta.cash;
+      _advanceBankController.clear();
+      _advanceAccountController.clear();
       _advanceAmountPerPersonController.clear();
     } else if (_isOtMode) {
       for (final g in _otGroups) {
@@ -451,7 +469,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _clearModuleFormFields();
     try {
       final ymd = _quickYmd(_selectedDate);
-      final rows = await widget.service.fetchTransactionsForDate(ymd);
+      final rows = cat == 'ลางาน'
+          ? await widget.service.fetchTransactions(forceRefresh: false)
+          : await widget.service.fetchTransactionsForDate(ymd);
       final matched = rows
           .where((t) => transactionMatchesDailyModule(t, ymd, cat))
           .toList();
@@ -725,6 +745,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _selectedLeaveEmpIds
         ..clear()
         ..addAll(t.employeeIds);
+      final lp = t.date.split('-');
+      if (lp.length == 3) {
+        final y = int.tryParse(lp[0]);
+        final mo = int.tryParse(lp[1]);
+        final da = int.tryParse(lp[2]);
+        if (y != null && mo != null && da != null) {
+          _leaveStartDate = DateTime(y, mo, da);
+        }
+      }
       final sc = (t.subCategory ?? '').trim();
       _leaveTypeChoice = sc == 'Sick' ? 'Sick' : 'Personal';
       final lr = (t.leaveReason ?? '').trim();
@@ -750,6 +779,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (_isLaborAdvanceMode) {
       final t = txs.first;
       _laborAdvanceTxId = t.id;
+      _advanceWorkDetailsSeed = t.workDetails;
       _selectedAdvanceEmpIds
         ..clear()
         ..addAll(t.employeeIds);
@@ -758,6 +788,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           t.advanceAmount ?? (n > 0 ? t.amount / n : 0.0);
       _advanceAmountPerPersonController.text =
           per > 0 ? _strNum(per) : '';
+      final meta = AdvanceGmMeta.decode(t.workDetails);
+      _advancePayoutSlot = meta.payoutSlot;
+      _advancePaymentMethod = meta.paymentMethod;
+      _advanceBankController.text = meta.bank;
+      _advanceAccountController.text = meta.accountNumber;
       return;
     }
 
@@ -859,6 +894,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _leaveReasonController.dispose();
     _leaveDaysController.dispose();
     _advanceAmountPerPersonController.dispose();
+    _advanceBankController.dispose();
+    _advanceAccountController.dispose();
     for (final g in _otGroups) {
       g.dispose();
     }
@@ -1611,9 +1648,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (reason.isEmpty) throw 'กรุณากรอกเหตุผลการลา';
         final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
         if (days <= 0) throw 'กรุณากรอกจำนวนวันให้มากกว่า 0';
-        final y = _selectedDate.year.toString().padLeft(4, '0');
-        final m = _selectedDate.month.toString().padLeft(2, '0');
-        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final y = _leaveStartDate.year.toString().padLeft(4, '0');
+        final m = _leaveStartDate.month.toString().padLeft(2, '0');
+        final d = _leaveStartDate.day.toString().padLeft(2, '0');
         final ymd = '$y-$m-$d';
         final id =
             _laborLeaveTxId ??
@@ -1654,6 +1691,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (per <= 0) {
           throw 'กรุณากรอกจำนวนเงินเบิกต่อคนให้มากกว่า 0';
         }
+        if (_advancePaymentMethod == AdvanceGmMeta.transfer) {
+          final bank = _advanceBankController.text.trim();
+          final acct = _advanceAccountController.text.trim();
+          if (bank.isEmpty) throw 'กรุณาระบุธนาคาร';
+          if (acct.isEmpty) throw 'กรุณากรอกเลขบัญชี';
+        }
+        final meta = AdvanceGmMeta(
+          payoutSlot: _advancePayoutSlot,
+          paymentMethod: _advancePaymentMethod,
+          bank: _advanceBankController.text.trim(),
+          accountNumber: _advanceAccountController.text.trim(),
+        );
+        final workDetails = AdvanceGmMeta.encodeIntoWorkDetails(
+          existingWorkDetails: _advanceWorkDetailsSeed,
+          meta: meta,
+        );
+        final slotTh =
+            _advancePayoutSlot == AdvanceGmMeta.evening ? 'ช่วงเย็น' : 'ช่วงกลางวัน';
+        final payTh = _advancePaymentMethod == AdvanceGmMeta.transfer
+            ? 'เงินโอน'
+            : 'เงินสด';
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
@@ -1674,10 +1732,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             employeeIds: _selectedAdvanceEmpIds.toList(),
             amount: per * count,
             advanceAmount: per,
+            workDetails: workDetails,
             note: _activeSignatureNote,
-            description: _appendRecorder('เบิกล่วงหน้า'),
+            description: _appendRecorder('เบิกล่วงหน้า · $slotTh · $payTh'),
           ),
         );
+        _advanceWorkDetailsSeed = workDetails;
       },
     );
   }
@@ -1741,6 +1801,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _otDescController.clear();
       },
     );
+  }
+
+  Future<void> _pickLeaveStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _leaveStartDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(
+        () => _leaveStartDate = DateTime(picked.year, picked.month, picked.day),
+      );
+    }
   }
 
   Future<void> _pickDate() async {
@@ -4019,6 +4093,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 12),
           Text(
+            'วันเริ่มลา',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _pickLeaveStartDate,
+            icon: const Icon(Icons.calendar_month_outlined, size: 20),
+            label: Text(
+              _formatDate(_leaveStartDate),
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
             'เลือกพนักงาน',
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
@@ -4102,7 +4194,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: Padding(
                   padding: const EdgeInsets.all(10),
                   child: Text(
-                    'สรุป: ${_selectedLeaveEmpIds.length} คน · $days วัน',
+                    'สรุป: ${_selectedLeaveEmpIds.length} คน · เริ่ม ${_formatDate(_leaveStartDate)} · $days วัน',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
@@ -4238,6 +4330,95 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF1D2A3A),
             ),
           ),
+          const SizedBox(height: 12),
+          Text(
+            'รับเงิน',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(
+                  value: AdvanceGmMeta.midday,
+                  label: Text('กลางวัน'),
+                ),
+                ButtonSegment<String>(
+                  value: AdvanceGmMeta.evening,
+                  label: Text('เย็น'),
+                ),
+              ],
+              selected: {_advancePayoutSlot},
+              onSelectionChanged: (next) {
+                setState(() => _advancePayoutSlot = next.first);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'ได้รับเป็น',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(
+                  value: AdvanceGmMeta.cash,
+                  label: Text('เงินสด'),
+                ),
+                ButtonSegment<String>(
+                  value: AdvanceGmMeta.transfer,
+                  label: Text('เงินโอน'),
+                ),
+              ],
+              selected: {_advancePaymentMethod},
+              onSelectionChanged: (next) {
+                setState(() => _advancePaymentMethod = next.first);
+              },
+            ),
+          ),
+          if (_advancePaymentMethod == AdvanceGmMeta.transfer) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _advanceBankController,
+              decoration: InputDecoration(
+                labelText: 'ธนาคาร',
+                labelStyle: GoogleFonts.kanit(),
+                prefixIcon: const Icon(Icons.account_balance_outlined),
+              ),
+              style: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _advanceAccountController,
+              decoration: InputDecoration(
+                labelText: 'เลขบัญชี',
+                labelStyle: GoogleFonts.kanit(),
+                prefixIcon: const Icon(Icons.numbers_outlined),
+              ),
+              style: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
           if (n > 0 && per > 0)
             Padding(
               padding: const EdgeInsets.only(top: 12),

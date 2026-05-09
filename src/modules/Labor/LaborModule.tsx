@@ -5,6 +5,8 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
+import { decodeAdvanceGm, encodeAdvanceGm, type AdvancePayoutSlot, type AdvancePaymentMethod } from '../../utils/advanceGmWorkDetails';
+import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 import {
     LABOR_MENU_WORK_CATEGORY_ID,
     LABOR_MENU_WORK_CATEGORY_LABEL,
@@ -42,6 +44,10 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
     const [formOtHours, setFormOtHours] = useState('');
     const [formOtDesc, setFormOtDesc] = useState('');
     const [advanceAmount, setAdvanceAmount] = useState('');
+    const [advancePayoutSlot, setAdvancePayoutSlot] = useState<AdvancePayoutSlot>('midday');
+    const [advancePaymentMethod, setAdvancePaymentMethod] = useState<AdvancePaymentMethod>('cash');
+    const [advanceBank, setAdvanceBank] = useState('');
+    const [advanceAccount, setAdvanceAccount] = useState('');
     const [leaveType, setLeaveType] = useState('Personal');
     const [leaveReason, setLeaveReason] = useState('');
     const [leaveDays, setLeaveDays] = useState('1');
@@ -62,9 +68,9 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         dayTransactions.filter((t: Transaction) => t.category === 'Labor' && t.subCategory === 'OT'),
         [dayTransactions]
     );
-    const dayLeave = useMemo(() =>
-        dayTransactions.filter((t: Transaction) => t.category === 'Leave' || t.laborStatus === 'Leave'),
-        [dayTransactions]
+    const dayLeave = useMemo(
+        () => transactions.filter((t: Transaction) => leaveRecordCoversDay(t, normDate)),
+        [transactions, normDate]
     );
     const dayAdvance = useMemo(() =>
         dayTransactions.filter((t: Transaction) => t.category === 'Labor' && t.subCategory === 'Advance'),
@@ -82,7 +88,8 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         }
         if (activeTab === 'Leave' && dayLeave.length > 0 && !editingId) {
             const latest = dayLeave[dayLeave.length - 1] as any;
-            setLeaveType(latest.leaveType === 'Sick' ? 'Sick' : 'Personal');
+            const kind = latest.subCategory === 'Sick' || latest.leaveType === 'Sick' ? 'Sick' : 'Personal';
+            setLeaveType(kind);
             setLeaveReason(latest.leaveReason || '');
             setLeaveDays(latest.leaveDays != null ? String(latest.leaveDays) : '1');
         }
@@ -102,7 +109,7 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
     };
     const loadLeaveForEdit = (t: any) => {
         setSelectedIds(t.employeeIds?.length ? t.employeeIds : (t.employeeId ? [t.employeeId] : []));
-        setLeaveType(t.leaveType === 'Sick' ? 'Sick' : 'Personal');
+        setLeaveType(t.subCategory === 'Sick' || t.leaveType === 'Sick' ? 'Sick' : 'Personal');
         setLeaveReason(t.leaveReason || '');
         setLeaveDays(t.leaveDays != null ? String(t.leaveDays) : '1');
         setEditingId(t.id);
@@ -117,6 +124,11 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
     const loadAdvanceForEdit = (t: any) => {
         setSelectedIds(t.employeeIds || []);
         setAdvanceAmount(t.advanceAmount != null ? String(t.advanceAmount) : '');
+        const meta = decodeAdvanceGm(t.workDetails);
+        setAdvancePayoutSlot(meta.payoutSlot);
+        setAdvancePaymentMethod(meta.paymentMethod);
+        setAdvanceBank(meta.bank);
+        setAdvanceAccount(meta.accountNumber);
         setEditingId(t.id);
     };
 
@@ -156,6 +168,11 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         if (activeTab !== 'Attendance' && activeTab !== 'OT' && selectedIds.length === 0) return alert('เลือกพนักงาน');
 
         const base = { id: newId, date: formDate };
+
+        const existingAdvanceWorkDetails =
+            activeTab === 'Advance' && editingId
+                ? (transactions || []).find((x) => x.id === editingId)?.workDetails
+                : undefined;
 
         if (editingId && onDeleteTransaction) {
             onDeleteTransaction(editingId);
@@ -226,9 +243,43 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                 otDescription: formOtDesc,
             } as Transaction);
         } else if (activeTab === 'Advance') {
-            onSaveTransaction({ ...base, employeeIds: selectedIds, type: 'Expense', category: 'Labor', subCategory: 'Advance', laborStatus: 'Advance', description: `เบิกล่วงหน้า`, amount: Number(advanceAmount) * selectedIds.length, advanceAmount: Number(advanceAmount) });
+            if (advancePaymentMethod === 'transfer') {
+                if (!advanceBank.trim()) return alert('กรุณาระบุธนาคาร');
+                if (!advanceAccount.trim()) return alert('กรุณากรอกเลขบัญชี');
+            }
+            const slotTh = advancePayoutSlot === 'evening' ? 'ช่วงเย็น' : 'ช่วงกลางวัน';
+            const payTh = advancePaymentMethod === 'transfer' ? 'เงินโอน' : 'เงินสด';
+            const wd = encodeAdvanceGm(existingAdvanceWorkDetails, {
+                payoutSlot: advancePayoutSlot,
+                paymentMethod: advancePaymentMethod,
+                bank: advanceBank.trim(),
+                accountNumber: advanceAccount.trim(),
+            });
+            onSaveTransaction({
+                ...base,
+                employeeIds: selectedIds,
+                type: 'Expense',
+                category: 'Labor',
+                subCategory: 'Advance',
+                laborStatus: 'Advance',
+                description: `เบิกล่วงหน้า · ${slotTh} · ${payTh}`,
+                amount: Number(advanceAmount) * selectedIds.length,
+                advanceAmount: Number(advanceAmount),
+                workDetails: wd,
+            });
         } else if (activeTab === 'Leave') {
-            onSaveTransaction({ ...base, employeeIds: selectedIds, type: 'Leave', category: 'Leave', laborStatus: 'Leave', leaveType, description: `ลา${leaveType === 'Sick' ? 'ป่วย' : 'กิจ'}: ${leaveReason}`, amount: 0, leaveReason, leaveDays: Number(leaveDays) });
+            onSaveTransaction({
+                ...base,
+                employeeIds: selectedIds,
+                type: 'Leave',
+                category: 'Leave',
+                subCategory: leaveType,
+                laborStatus: 'Leave',
+                description: `ลา${leaveType === 'Sick' ? 'ป่วย' : 'กิจ'}: ${leaveReason}`,
+                amount: 0,
+                leaveReason,
+                leaveDays: Number(leaveDays),
+            });
         }
         triggerSuccess();
         setSelectedIds([]);
@@ -338,7 +389,43 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                             <Input value={formOtDesc} onChange={(e: any) => setFormOtDesc(e.target.value)} label="รายละเอียดงาน OT" placeholder="ทำอะไร..." />
                         </>
                     )}
-                    {activeTab === 'Advance' && <Input type="number" value={advanceAmount} onChange={(e: any) => setAdvanceAmount(e.target.value)} label="ยอดเบิก (บาท/คน)" className="input-highlight text-red-600 border-red-200" />}
+                    {activeTab === 'Advance' && (
+                        <>
+                            <Input type="number" value={advanceAmount} onChange={(e: any) => setAdvanceAmount(e.target.value)} label="ยอดเบิก (บาท/คน)" className="input-highlight text-red-600 border-red-200" />
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-slate-700">รับเงิน</p>
+                                <div className="flex flex-wrap gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                        <input type="radio" name="advSlot" className="accent-slate-800" checked={advancePayoutSlot === 'midday'} onChange={() => setAdvancePayoutSlot('midday')} />
+                                        ช่วงกลางวัน
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                        <input type="radio" name="advSlot" className="accent-slate-800" checked={advancePayoutSlot === 'evening'} onChange={() => setAdvancePayoutSlot('evening')} />
+                                        ช่วงเย็น
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-slate-700">ได้รับเป็น</p>
+                                <div className="flex flex-wrap gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                        <input type="radio" name="advPay" className="accent-slate-800" checked={advancePaymentMethod === 'cash'} onChange={() => setAdvancePaymentMethod('cash')} />
+                                        เงินสด
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                        <input type="radio" name="advPay" className="accent-slate-800" checked={advancePaymentMethod === 'transfer'} onChange={() => setAdvancePaymentMethod('transfer')} />
+                                        เงินโอน
+                                    </label>
+                                </div>
+                            </div>
+                            {advancePaymentMethod === 'transfer' && (
+                                <>
+                                    <Input value={advanceBank} onChange={(e: any) => setAdvanceBank(e.target.value)} label="ธนาคาร" />
+                                    <Input value={advanceAccount} onChange={(e: any) => setAdvanceAccount(e.target.value)} label="เลขบัญชี" />
+                                </>
+                            )}
+                        </>
+                    )}
                     {activeTab === 'Leave' && <><Select value={leaveType} onChange={(e: any) => setLeaveType(e.target.value)} label="ประเภท"><option value="Personal">ลากิจ</option><option value="Sick">ลาป่วย</option></Select><Input type="number" value={leaveDays} onChange={(e: any) => setLeaveDays(e.target.value)} label="จำนวนวัน" /><Input value={leaveReason} onChange={(e: any) => setLeaveReason(e.target.value)} label="เหตุผล" /></>}
                     <Button onClick={handleSave} className="w-full mt-4">บันทึก</Button>
                 </div>

@@ -6,6 +6,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../services/weekly_off_calendar_store.dart';
+import '../utils/daily_module_transactions.dart';
 import '../utils/thai_holidays.dart';
 import '../widgets/page_loading_view.dart';
 
@@ -960,15 +961,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ? _companyWeeklyHolidayLine(offWd)
           : null;
 
-      final leaveRows = dayTx.where((t) {
-        if (t.category == 'Leave' || t.type.toLowerCase() == 'leave') {
-          return true;
-        }
-        final laborStatus = (t.laborStatus ?? '').toLowerCase();
-        return t.category == 'Labor' &&
-            (laborStatus == 'leave' ||
-                laborStatus == 'sick' ||
-                laborStatus == 'personal');
+      final leaveRows = transactions.where((t) {
+        return isLaborLeaveRecord(t) &&
+            laborLeaveCoversCalendarDay(t, dateStr);
       }).toList();
       final leaveEmpIds = <String>{};
       for (final row in leaveRows) {

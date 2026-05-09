@@ -115,12 +115,31 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                             color: cardTint,
                             borderRadius: BorderRadius.circular(26),
                             border: Border.all(color: borderColor, width: 1.2),
+                            // เงาชั้นๆ ให้การ์ดดูลอยจากพื้นหลัง
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    Colors.black.withValues(alpha: _hovered ? 0.07 : 0.04),
-                                blurRadius: _hovered ? 16 : 10,
-                                offset: const Offset(0, 5),
+                                color: const Color(0xFF1A2836).withValues(
+                                  alpha: _hovered ? 0.07 : 0.045,
+                                ),
+                                blurRadius: _hovered ? 6 : 4,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 2),
+                              ),
+                              BoxShadow(
+                                color: const Color(0xFF1A2836).withValues(
+                                  alpha: _hovered ? 0.14 : 0.09,
+                                ),
+                                blurRadius: _hovered ? 26 : 18,
+                                spreadRadius: -3,
+                                offset: Offset(0, _hovered ? 10 : 7),
+                              ),
+                              BoxShadow(
+                                color: accent.withValues(
+                                  alpha: _hovered ? 0.14 : 0.08,
+                                ),
+                                blurRadius: _hovered ? 28 : 20,
+                                spreadRadius: -6,
+                                offset: Offset(0, _hovered ? 12 : 8),
                               ),
                             ],
                           ),
@@ -140,6 +159,14 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                                         color: const Color(0xFFE0E7F0),
                                         width: 1,
                                       ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF1A2836)
+                                              .withValues(alpha: 0.05),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
                                     ),
                                     child: Icon(
                                       widget.icon,
