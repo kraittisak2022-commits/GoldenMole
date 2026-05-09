@@ -11,6 +11,8 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
+import '../constants/thai_banks.dart';
+import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 
@@ -178,12 +180,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
   final _advanceAmountPerPersonController = TextEditingController();
-  final _advanceBankController = TextEditingController();
+  /// ชื่อธนาคารเต็มจากรายการ dropdown (โหมดโอน)
+  String _advanceBank = '';
   final _advanceAccountController = TextEditingController();
   final Set<String> _selectedLeaveEmpIds = {};
   final Set<String> _selectedAdvanceEmpIds = {};
   String? _laborLeaveTxId;
-  String? _laborAdvanceTxId;
   String? _advanceWorkDetailsSeed;
   String _advancePayoutSlot = AdvanceGmMeta.midday;
   String _advancePaymentMethod = AdvanceGmMeta.cash;
@@ -351,7 +353,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _sandRowIdsByKey.clear();
     _laborTxId = null;
     _laborLeaveTxId = null;
-    _laborAdvanceTxId = null;
     _homeSandTxId = null;
     _genericTxId = null;
   }
@@ -438,11 +439,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     } else if (_isLaborAdvanceMode) {
       _selectedAdvanceEmpIds.clear();
-      _laborAdvanceTxId = null;
       _advanceWorkDetailsSeed = null;
       _advancePayoutSlot = AdvanceGmMeta.midday;
       _advancePaymentMethod = AdvanceGmMeta.cash;
-      _advanceBankController.clear();
+      _advanceBank = '';
       _advanceAccountController.clear();
       _advanceAmountPerPersonController.clear();
     } else if (_isOtMode) {
@@ -778,7 +778,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     if (_isLaborAdvanceMode) {
       final t = txs.first;
-      _laborAdvanceTxId = t.id;
       _advanceWorkDetailsSeed = t.workDetails;
       _selectedAdvanceEmpIds
         ..clear()
@@ -791,7 +790,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final meta = AdvanceGmMeta.decode(t.workDetails);
       _advancePayoutSlot = meta.payoutSlot;
       _advancePaymentMethod = meta.paymentMethod;
-      _advanceBankController.text = meta.bank;
+      _advanceBank = meta.bank.trim();
       _advanceAccountController.text = meta.accountNumber;
       return;
     }
@@ -894,7 +893,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _leaveReasonController.dispose();
     _leaveDaysController.dispose();
     _advanceAmountPerPersonController.dispose();
-    _advanceBankController.dispose();
     _advanceAccountController.dispose();
     for (final g in _otGroups) {
       g.dispose();
@@ -1680,7 +1678,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveLaborAdvanceEntry() async {
     await _runSaveWithPopups(
-      successMessage: 'บันทึกเบิกเงินสำเร็จ',
+      successMessage: 'ส่งคำขอเบิกเงินแล้ว',
       body: () async {
         if (_selectedAdvanceEmpIds.isEmpty) {
           throw 'กรุณาเลือกพนักงาน';
@@ -1689,23 +1687,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             double.tryParse(_advanceAmountPerPersonController.text.trim()) ??
             0;
         if (per <= 0) {
-          throw 'กรุณากรอกจำนวนเงินเบิกต่อคนให้มากกว่า 0';
+          throw 'กรุณากรอกจำนวนเงินที่ขอเบิกต่อคนให้มากกว่า 0';
         }
         if (_advancePaymentMethod == AdvanceGmMeta.transfer) {
-          final bank = _advanceBankController.text.trim();
+          final bank = _advanceBank.trim();
           final acct = _advanceAccountController.text.trim();
-          if (bank.isEmpty) throw 'กรุณาระบุธนาคาร';
+          if (bank.isEmpty) throw 'กรุณาเลือกธนาคาร';
           if (acct.isEmpty) throw 'กรุณากรอกเลขบัญชี';
         }
         final meta = AdvanceGmMeta(
           payoutSlot: _advancePayoutSlot,
           paymentMethod: _advancePaymentMethod,
-          bank: _advanceBankController.text.trim(),
+          bank: _advanceBank.trim(),
           accountNumber: _advanceAccountController.text.trim(),
-        );
-        final workDetails = AdvanceGmMeta.encodeIntoWorkDetails(
-          existingWorkDetails: _advanceWorkDetailsSeed,
-          meta: meta,
         );
         final slotTh =
             _advancePayoutSlot == AdvanceGmMeta.evening ? 'ช่วงเย็น' : 'ช่วงกลางวัน';
@@ -1716,27 +1710,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final ymd = '$y-$m-$d';
-        final id =
-            _laborAdvanceTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_advance';
-        _laborAdvanceTxId = id;
-        final count = _selectedAdvanceEmpIds.length;
-        final saved = AppTransaction(
-          id: id,
-          date: ymd,
-          type: 'Expense',
-          category: 'Labor',
-          subCategory: 'Advance',
-          laborStatus: 'Advance',
-          employeeIds: _selectedAdvanceEmpIds.toList(),
-          amount: per * count,
-          advanceAmount: per,
-          workDetails: workDetails,
-          note: _activeSignatureNote,
-          description: _appendRecorder('เบิกล่วงหน้า · $slotTh · $payTh'),
-        );
-        await _persist(saved);
-        _advanceWorkDetailsSeed = workDetails;
+        final empIds = _selectedAdvanceEmpIds.toList();
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        for (var i = 0; i < empIds.length; i++) {
+          final empId = empIds[i];
+          final emp = _employeesById[empId];
+          final name =
+              emp != null ? _employeeUiDisplayName(emp) : empId;
+          final workDetails = AdvanceGmMeta.encodeIntoWorkDetails(
+            existingWorkDetails: i == 0 ? _advanceWorkDetailsSeed : null,
+            meta: meta,
+          );
+          final id = '${ts}_adv_${i}_$empId';
+          final saved = AppTransaction(
+            id: id,
+            date: ymd,
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Advance',
+            laborStatus: 'Advance',
+            employeeIds: [empId],
+            amount: per,
+            advanceAmount: per,
+            workDetails: workDetails,
+            note: _activeSignatureNote,
+            description: _appendRecorder('คำขอเบิกเงิน · $name · $slotTh · $payTh'),
+          );
+          await _persist(saved);
+          _advanceWorkDetailsSeed = workDetails;
+          unawaited(notifyAdvanceLineAfterSaved(saved, _employees));
+        }
       },
     );
   }
@@ -1840,7 +1843,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return ['ทำงานล่วงเวลา 2 ชม.', 'ซ่อมงานด่วน', 'กะกลางคืน'];
     }
     if (c.contains('ค่าแรง')) {
-      return ['ค่าแรงประจำวัน', 'ค่าแรงเสริม', 'เบิกล่วงหน้า'];
+      return ['ค่าแรงประจำวัน', 'ค่าแรงเสริม', 'คำขอเบิกเงิน'];
     }
     if (c.contains('ทราย')) {
       return ['ร่อนทรายเช้า', 'ร่อนทรายบ่าย', 'ล้างทราย'];
@@ -4222,12 +4225,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  List<DropdownMenuItem<String>> _advanceBankDropdownItems() {
+    final style = GoogleFonts.kanit(fontSize: 15);
+    final items = <DropdownMenuItem<String>>[];
+    final seen = <String>{};
+    for (final b in kThaiBankNames) {
+      if (seen.add(b)) {
+        items.add(DropdownMenuItem(value: b, child: Text(b, style: style)));
+      }
+    }
+    final cur = _advanceBank.trim();
+    if (cur.isNotEmpty && !kThaiBankNames.contains(cur)) {
+      items.add(
+        DropdownMenuItem(
+          value: cur,
+          child: Text('$cur (จากข้อมูลเดิม)', style: style),
+        ),
+      );
+    }
+    return items;
+  }
+
+  /// ค่าที่ตรงกับรายการใน dropdown หรือ null เมื่อยังไม่เลือก
+  String? _advanceBankDropdownValue() {
+    final cur = _advanceBank.trim();
+    if (cur.isEmpty) return null;
+    for (final it in _advanceBankDropdownItems()) {
+      if (it.value == cur) return cur;
+    }
+    return null;
+  }
+
   Widget _buildLaborAdvanceFormCard() {
     final employees = _sortedEmployeesForOt();
-    final per =
-        double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
-    final n = _selectedAdvanceEmpIds.length;
-    final total = per * n;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -4248,7 +4278,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'บันทึกเบิกเงิน',
+            'ส่งคำขอเบิกเงิน',
             style: GoogleFonts.kanit(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -4257,10 +4287,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → เบิก (เบิกล่วงหน้าต่อคน)',
+            'แต่ละคนที่เลือกจะถูกบันทึกเป็นคำขอแยกคนละรายการ และแจ้ง LINE ทีละคน — ไม่ดึงค่าแรงจากพนักงานมาแสดงหรือเติมอัตโนมัติ กรอกยอดที่ขอเบิกเอง',
             style: GoogleFonts.kanit(
               fontSize: 13,
               color: const Color(0xFF5B6D83),
+              height: 1.35,
             ),
           ),
           _employeeDataLoadProgressBanner(),
@@ -4311,14 +4342,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _AnimatedInputField(
             controller: _advanceAmountPerPersonController,
             decoration: const InputDecoration(
-              labelText: 'จำนวนเงินเบิกต่อคน (บาท)',
+              labelText: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
               prefixIcon: Icon(Icons.payments_outlined),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             readOnly: true,
             onTap: () => _openNumericPad(
               controller: _advanceAmountPerPersonController,
-              label: 'จำนวนเงินเบิกต่อคน (บาท)',
+              label: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
               allowDecimal: true,
               maxDecimalPlaces: 2,
               onChanged: (_) => setState(() {}),
@@ -4389,18 +4420,48 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           if (_advancePaymentMethod == AdvanceGmMeta.transfer) ...[
             const SizedBox(height: 10),
-            TextField(
-              controller: _advanceBankController,
+            InputDecorator(
               decoration: InputDecoration(
                 labelText: 'ธนาคาร',
                 labelStyle: GoogleFonts.kanit(),
                 prefixIcon: const Icon(Icons.account_balance_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFD9E4F1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF2D8CFF),
+                    width: 1.3,
+                  ),
+                ),
               ),
-              style: GoogleFonts.kanit(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _advanceBankDropdownValue(),
+                  hint: Text(
+                    'เลือกธนาคาร',
+                    style: GoogleFonts.kanit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF8A9BA8),
+                    ),
+                  ),
+                  items: _advanceBankDropdownItems(),
+                  onChanged: (v) =>
+                      setState(() => _advanceBank = (v ?? '').trim()),
+                  style: GoogleFonts.kanit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1D2A3A),
+                  ),
+                ),
               ),
-              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -4418,35 +4479,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onChanged: (_) => setState(() {}),
             ),
           ],
-          if (n > 0 && per > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3E8),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFFCC99)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Text(
-                    'ยอดรวมเข้าระบบ: ${total.toStringAsFixed(0)} บาท ($n คน × ${per.toStringAsFixed(per == per.roundToDouble() ? 0 : 2)} บาท)',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFFB05A00),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           const SizedBox(height: 12),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveQuickEntry,
-              icon: const Icon(Icons.save_outlined),
-              label: Text('บันทึกเบิกเงิน', style: GoogleFonts.kanit()),
+              icon: const Icon(Icons.send_rounded),
+              label: Text('ส่งคำขอเบิกเงิน', style: GoogleFonts.kanit()),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFE65100),
                 foregroundColor: Colors.white,

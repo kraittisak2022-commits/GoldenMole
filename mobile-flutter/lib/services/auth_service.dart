@@ -73,12 +73,12 @@ class AuthService {
     }
 
     if (matchedUser == null) {
-      throw const AuthException('ไม่พบ user จริง');
+      throw const AdminLoginException('ไม่พบ user จริง');
     }
 
     final ok = _verifyPassword(matchedUser.password, password);
     if (!ok) {
-      throw const AuthException('รหัสไม่ตรง');
+      throw const AdminLoginException('รหัสไม่ตรง');
     }
 
     await _client
@@ -90,8 +90,9 @@ class AuthService {
   }
 }
 
-class AuthException implements Exception {
-  const AuthException(this.message);
+/// ข้อผิดพลาดจากการตรวจ user/รหัส (ไม่ใช่คลาส AuthException ของ Supabase GoTrue)
+class AdminLoginException implements Exception {
+  const AdminLoginException(this.message);
 
   final String message;
 

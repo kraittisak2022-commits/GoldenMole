@@ -1,2 +1,5 @@
 # https://supabase.com/docs/guides/cli/config
-# No Edge Functions in this repo currently.
+
+[functions.notify-advance-line]
+# รองรับทั้ง JWT (เช่น Anonymous sign-in) และ header x-cm-notify-advance-secret (NOTIFY_ADVANCE_INVOKER_SECRET)
+verify_jwt = false

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock } from 'lucide-react';
-import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { AppSettings, AdminUser, AdminUiTheme, Employee, Transaction, LandProject, AdminLog } from '../../types';

@@ -24,6 +24,8 @@ export interface KPIEvaluation {
 
 export interface Employee {
     id: string; name: string; nickname: string; type: EmployeeType; baseWage?: number; phone?: string; startDate?: string;
+    /** LINE Messaging API userId (U...) — แจ้งเตือนเบิกเงิน ดู docs/LINE.md */
+    lineUserId?: string;
     inactive?: boolean;
     /** ตำแหน่งเดียว (เก่า) — ใช้ positions แทนได้ */
     position?: string;

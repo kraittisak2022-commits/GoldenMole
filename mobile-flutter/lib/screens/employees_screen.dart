@@ -117,7 +117,8 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
               if (q.isEmpty) return true;
               return e.name.toLowerCase().contains(q) ||
                   e.nickname.toLowerCase().contains(q) ||
-                  (e.phone ?? '').toLowerCase().contains(q);
+                  (e.phone ?? '').toLowerCase().contains(q) ||
+                  (e.lineUserId ?? '').toLowerCase().contains(q);
             }).toList();
 
             return Column(
@@ -136,7 +137,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                         onChanged: (_) => setState(() {}),
                         style: GoogleFonts.kanit(),
                         decoration: InputDecoration(
-                          hintText: 'ค้นหาชื่อ / ชื่อเล่น / เบอร์โทร',
+                          hintText: 'ค้นหาชื่อ / ชื่อเล่น / เบอร์โทร / LINE User ID',
                           hintStyle: GoogleFonts.kanit(),
                           prefixIcon: const Icon(Icons.search),
                           filled: true,
@@ -254,7 +255,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                                   ),
                                 ),
                                 subtitle: Text(
-                                  '${employee.nickname} • ${employee.type}${employee.baseWage != null ? ' • ${employee.baseWage!.toStringAsFixed(0)} บาท' : ''}',
+                                  '${employee.nickname} • ${employee.type}${employee.baseWage != null ? ' • ${employee.baseWage!.toStringAsFixed(0)} บาท' : ''}${employee.lineUserId != null && employee.lineUserId!.trim().isNotEmpty ? ' • LINE ✓' : ''}',
                                   style: GoogleFonts.kanit(),
                                 ),
                                 trailing: PopupMenuButton<String>(
@@ -325,6 +326,7 @@ class _EmployeeEditorSheetState extends State<_EmployeeEditorSheet> {
   late final TextEditingController _nicknameController;
   late final TextEditingController _wageController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _lineUserIdController;
   String _type = 'Daily';
 
   @override
@@ -342,6 +344,9 @@ class _EmployeeEditorSheetState extends State<_EmployeeEditorSheet> {
     _phoneController = TextEditingController(
       text: widget.existing?.phone ?? '',
     );
+    _lineUserIdController = TextEditingController(
+      text: widget.existing?.lineUserId ?? '',
+    );
     _type = widget.existing?.type ?? 'Daily';
   }
 
@@ -351,6 +356,7 @@ class _EmployeeEditorSheetState extends State<_EmployeeEditorSheet> {
     _nicknameController.dispose();
     _wageController.dispose();
     _phoneController.dispose();
+    _lineUserIdController.dispose();
     super.dispose();
   }
 
@@ -409,6 +415,14 @@ class _EmployeeEditorSheetState extends State<_EmployeeEditorSheet> {
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'เบอร์โทร'),
               ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _lineUserIdController,
+                decoration: const InputDecoration(
+                  labelText: 'LINE User ID (ไม่บังคับ)',
+                  helperText: 'แจ้งเตือนเมื่อมีการเบิกเงิน',
+                ),
+              ),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
@@ -425,10 +439,14 @@ class _EmployeeEditorSheetState extends State<_EmployeeEditorSheet> {
                     phone: _phoneController.text.trim().isEmpty
                         ? null
                         : _phoneController.text.trim(),
+                    lineUserId: _lineUserIdController.text.trim().isEmpty
+                        ? null
+                        : _lineUserIdController.text.trim(),
                     startDate:
                         widget.existing?.startDate ??
                         DateTime.now().toIso8601String().substring(0, 10),
                     position: widget.existing?.position,
+                    positions: widget.existing?.positions ?? const [],
                     inactive: widget.existing?.inactive ?? false,
                   );
                   Navigator.pop(context, employee);

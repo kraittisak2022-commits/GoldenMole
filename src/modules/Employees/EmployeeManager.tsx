@@ -91,6 +91,8 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
             updatedEmp.phone = phoneDigits || undefined;
             updatedEmp.name = name;
             updatedEmp.nickname = nickname;
+            const lineUid = String(editingEmp.lineUserId || '').trim();
+            updatedEmp.lineUserId = lineUid || undefined;
 
             if (oldEmp && (oldEmp.baseWage ?? 0) !== (newWage ?? 0) && newWage != null && newWage > 0) {
                 const historyItem: SalaryHistoryItem = {
@@ -118,7 +120,8 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
                 phone: phoneDigits || undefined,
                 positions: posList.length ? posList : undefined,
                 position: undefined,
-                salaryHistory: []
+                salaryHistory: [],
+                lineUserId: String(editingEmp.lineUserId || '').trim() || undefined,
             } as Employee]);
             setActionMsg('เพิ่มพนักงานใหม่แล้ว');
         }
@@ -213,6 +216,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
         const mergedTarget: Employee = {
             ...dst,
             phone: dst.phone || src.phone,
+            lineUserId: dst.lineUserId || src.lineUserId,
             positions: Array.from(new Set([...(dst.positions || (dst.position ? [dst.position] : [])), ...(src.positions || (src.position ? [src.position] : []))])),
             salaryHistory: [...(dst.salaryHistory || []), ...(src.salaryHistory || [])],
             kpiHistory: [...(dst.kpiHistory || []), ...(src.kpiHistory || [])],
@@ -364,7 +368,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">{(emp.nickname || emp.name || '—').charAt(0)}</div>
-                                <div><h4 className="font-bold">{emp.nickname || emp.name || '—'} {emp.inactive && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 ml-1">Inactive</span>}</h4><p className="text-xs text-slate-500">{emp.type}{(emp.positions?.length || emp.position) ? ` • ${(emp.positions || (emp.position ? [emp.position] : [])).join(', ')}` : ''} • {(emp.baseWage != null && emp.baseWage > 0) ? `฿${emp.baseWage}` : 'ยังไม่ระบุค่าแรง'} • 📞 {formatPhone(emp.phone) || '-'}</p></div>
+                                <div><h4 className="font-bold">{emp.nickname || emp.name || '—'} {emp.inactive && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 ml-1">Inactive</span>}</h4><p className="text-xs text-slate-500">{emp.type}{(emp.positions?.length || emp.position) ? ` • ${(emp.positions || (emp.position ? [emp.position] : [])).join(', ')}` : ''} • {(emp.baseWage != null && emp.baseWage > 0) ? `฿${emp.baseWage}` : 'ยังไม่ระบุค่าแรง'} • 📞 {formatPhone(emp.phone) || '-'}{emp.lineUserId ? ` • LINE: ${emp.lineUserId.slice(0, 8)}…` : ''}</p></div>
                             </div>
                             <div className="flex gap-1">
                                 <button onClick={() => { setEditingEmp(emp); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-amber-500"><Edit2 size={16} /></button>
@@ -463,6 +467,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
                                 </div>
                             </div>
                             <Input label="เบอร์ (ไม่บังคับ)" value={editingEmp.phone || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, phone: String(e.target.value || '').replace(/[^\d]/g, '') })} placeholder="หมายเลขโทรศัพท์ (ตัวเลข 9-10 หลัก)" />
+                            <Input label="LINE User ID (ไม่บังคับ — แจ้งเตือนเบิกเงิน)" value={editingEmp.lineUserId || ''} onChange={(e: any) => setEditingEmp({ ...editingEmp, lineUserId: e.target.value })} placeholder="Uxxxxxxxx… (จาก LINE Login / Messaging API)" />
                             <Select label="ประเภท" value={editingEmp.type || 'Daily'} onChange={(e: any) => setEditingEmp({ ...editingEmp, type: e.target.value })}>
                                 <option value="Daily">รายวัน</option>
                                 <option value="Monthly">รายเดือน</option>
@@ -510,7 +515,7 @@ const EmployeeManager = ({ employees, setEmployees, transactions, setTransaction
                                 <div className="w-16 h-16 rounded-full bg-slate-700 font-bold text-2xl flex items-center justify-center">{(viewingEmp.nickname || '?').charAt(0)}</div>
                                 <div>
                                     <h3 className="font-bold text-2xl">{viewingEmp.nickname || viewingEmp.name || viewingEmp.id}</h3>
-                                    <p className="text-slate-300">{viewingEmp.type === 'Daily' ? 'รายวัน' : 'รายเดือน'}{(viewingEmp.positions?.length || viewingEmp.position) ? ` • ${(viewingEmp.positions || (viewingEmp.position ? [viewingEmp.position] : [])).join(', ')}` : ''} • {(viewingEmp.baseWage != null && viewingEmp.baseWage > 0) ? `฿${viewingEmp.baseWage}` : 'ยังไม่ระบุค่าแรง'} • 📞 {formatPhone(viewingEmp.phone) || '-'}</p>
+                                    <p className="text-slate-300">{viewingEmp.type === 'Daily' ? 'รายวัน' : 'รายเดือน'}{(viewingEmp.positions?.length || viewingEmp.position) ? ` • ${(viewingEmp.positions || (viewingEmp.position ? [viewingEmp.position] : [])).join(', ')}` : ''} • {(viewingEmp.baseWage != null && viewingEmp.baseWage > 0) ? `฿${viewingEmp.baseWage}` : 'ยังไม่ระบุค่าแรง'} • 📞 {formatPhone(viewingEmp.phone) || '-'}{viewingEmp.lineUserId ? ` • LINE: ${viewingEmp.lineUserId}` : ''}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">

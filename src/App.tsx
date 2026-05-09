@@ -50,6 +50,9 @@ import { isBackupDue, runBackup } from './services/backupService';
 
 // Supabase Services
 import * as db from './services/dataService';
+import { notifyAdvanceLineSaved } from './services/lineAdvanceNotify';
+import { supabase } from './lib/supabase';
+import { ensureSupabaseSessionForEdgeFunctions } from './utils/supabaseFunctionSession';
 
 // --- Default Admin Account (รหัสผ่านเก็บเป็น SHA-256 — ค่าเริ่มต้นเข้าได้ด้วย 1234) ---
 const DEFAULT_ADMINS: AdminUser[] = [
@@ -610,6 +613,9 @@ function App() {
             .sort((a, b) => String(b.lastLogin || '').localeCompare(String(a.lastLogin || '')));
         const matchedAdmin = activeSessions[0];
         if (!matchedAdmin) return;
+        void ensureSupabaseSessionForEdgeFunctions().catch((e) =>
+            console.warn('ensureSupabaseSessionForEdgeFunctions on session restore:', e),
+        );
         setCurrentAdmin(matchedAdmin);
         setIsLoggedIn(true);
         // หลังล็อกอินให้ผู้ใช้เลือกโหมดก่อนทุกครั้ง
@@ -730,6 +736,11 @@ function App() {
         };
         setAdminLogs(prev => [log, ...prev]);
         db.saveAdminLog(log);
+        try {
+            await ensureSupabaseSessionForEdgeFunctions();
+        } catch (e) {
+            console.warn('ensureSupabaseSessionForEdgeFunctions after login:', e);
+        }
     }, [admins]);
 
     const handleLogin = async (admin: AdminUser, plainPassword: string) => {
@@ -769,6 +780,7 @@ function App() {
             addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
             void persistAdminSession(admin, false, 'select');
         }
+        void supabase.auth.signOut();
         setIsLoggedIn(false);
         setCurrentAdmin(null);
         currentAdminRef.current = null;
@@ -1036,6 +1048,10 @@ function App() {
         }
         if (offlineSync.queueSize > 0) {
             void syncOfflineQueue();
+        }
+
+        if (ok && txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
+            void notifyAdvanceLineSaved(txToSave, employees);
         }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)

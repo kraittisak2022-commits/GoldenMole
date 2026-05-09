@@ -89,10 +89,14 @@ class _LoginScreenState extends State<LoginScreen>
         _passwordController.text,
       );
       widget.onLoginSuccess(admin);
-    } on AuthException catch (e) {
+    } on AdminLoginException catch (e) {
       setState(() => _errorMessage = e.message);
-    } catch (_) {
-      setState(() => _errorMessage = 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่');
+    } catch (e) {
+      final raw = e.toString();
+      final detail = raw.contains('PostgrestException')
+          ? 'เชื่อมต่อฐานข้อมูล Supabase ไม่สำเร็จ — ตรวจ SUPABASE_URL / key ใน .env และสิทธิ์ RLS ตาราง admin_users'
+          : raw;
+      setState(() => _errorMessage = 'เข้าสู่ระบบไม่สำเร็จ: $detail');
     } finally {
       if (mounted) {
         setState(() => _submitting = false);

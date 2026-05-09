@@ -6,6 +6,7 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
 import { decodeAdvanceGm, encodeAdvanceGm, type AdvancePayoutSlot, type AdvancePaymentMethod } from '../../utils/advanceGmWorkDetails';
+import { THAI_BANK_NAMES } from '../../utils/thaiBanks';
 import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 import {
     LABOR_MENU_WORK_CATEGORY_ID,
@@ -244,28 +245,36 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
             } as Transaction);
         } else if (activeTab === 'Advance') {
             if (advancePaymentMethod === 'transfer') {
-                if (!advanceBank.trim()) return alert('กรุณาระบุธนาคาร');
+                if (!advanceBank.trim()) return alert('กรุณาเลือกธนาคาร');
                 if (!advanceAccount.trim()) return alert('กรุณากรอกเลขบัญชี');
             }
+            const perAmt = Number(advanceAmount);
+            if (!perAmt || perAmt <= 0) return alert('กรุณากรอกจำนวนเงินที่ขอเบิก (มากกว่า 0)');
             const slotTh = advancePayoutSlot === 'evening' ? 'ช่วงเย็น' : 'ช่วงกลางวัน';
             const payTh = advancePaymentMethod === 'transfer' ? 'เงินโอน' : 'เงินสด';
-            const wd = encodeAdvanceGm(existingAdvanceWorkDetails, {
+            const meta = {
                 payoutSlot: advancePayoutSlot,
                 paymentMethod: advancePaymentMethod,
                 bank: advanceBank.trim(),
                 accountNumber: advanceAccount.trim(),
-            });
-            onSaveTransaction({
-                ...base,
-                employeeIds: selectedIds,
-                type: 'Expense',
-                category: 'Labor',
-                subCategory: 'Advance',
-                laborStatus: 'Advance',
-                description: `เบิกล่วงหน้า · ${slotTh} · ${payTh}`,
-                amount: Number(advanceAmount) * selectedIds.length,
-                advanceAmount: Number(advanceAmount),
-                workDetails: wd,
+            };
+            const ts = Date.now();
+            selectedIds.forEach((empId, i) => {
+                const name = getEmployeeDisplayName(employees.find((e: Employee) => e.id === empId)) || empId;
+                const wd = encodeAdvanceGm(i === 0 ? existingAdvanceWorkDetails : undefined, meta);
+                onSaveTransaction({
+                    id: `${ts}_${i}_adv_${empId}`,
+                    date: formDate,
+                    employeeIds: [empId],
+                    type: 'Expense',
+                    category: 'Labor',
+                    subCategory: 'Advance',
+                    laborStatus: 'Advance',
+                    description: `คำขอเบิกเงิน · ${name} · ${slotTh} · ${payTh}`,
+                    amount: perAmt,
+                    advanceAmount: perAmt,
+                    workDetails: wd,
+                });
             });
         } else if (activeTab === 'Leave') {
             onSaveTransaction({
@@ -334,7 +343,7 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                 )}
                 {activeTab === 'Advance' && dayAdvance.length > 0 && (
                     <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <p className="text-sm font-semibold text-slate-700 mb-2">รายการเบิกในวันนี้ ({dayAdvance.length})</p>
+                        <p className="text-sm font-semibold text-slate-700 mb-2">รายการคำขอเบิกในวันนี้ ({dayAdvance.length})</p>
                         <div className="space-y-2 max-h-40 overflow-y-auto">
                             {dayAdvance.map((t: Transaction) => (
                                 <div key={t.id} className={`flex items-center justify-between p-2 rounded-lg border text-sm ${editingId === t.id ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'}`}>
@@ -391,7 +400,10 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                     )}
                     {activeTab === 'Advance' && (
                         <>
-                            <Input type="number" value={advanceAmount} onChange={(e: any) => setAdvanceAmount(e.target.value)} label="ยอดเบิก (บาท/คน)" className="input-highlight text-red-600 border-red-200" />
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                แต่ละคนที่เลือกจะถูกบันทึกเป็นคำขอแยกคนละรายการ และแจ้ง LINE ทีละคน — ไม่ดึงค่าแรงจากพนักงานมาแสดงหรือเติมอัตโนมัติ กรอกยอดที่ขอเบิกเอง
+                            </p>
+                            <Input type="number" value={advanceAmount} onChange={(e: any) => setAdvanceAmount(e.target.value)} label="จำนวนเงินที่ขอเบิก (บาทต่อคน)" className="input-highlight text-red-600 border-red-200" />
                             <div className="space-y-2">
                                 <p className="text-sm font-semibold text-slate-700">รับเงิน</p>
                                 <div className="flex flex-wrap gap-4">
@@ -420,14 +432,24 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                             </div>
                             {advancePaymentMethod === 'transfer' && (
                                 <>
-                                    <Input value={advanceBank} onChange={(e: any) => setAdvanceBank(e.target.value)} label="ธนาคาร" />
+                                    <Select value={advanceBank} onChange={(e: any) => setAdvanceBank(e.target.value)} label="ธนาคาร">
+                                        <option value="">เลือกธนาคาร</option>
+                                        {THAI_BANK_NAMES.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                        {advanceBank.trim() !== '' && !THAI_BANK_NAMES.includes(advanceBank.trim()) && (
+                                            <option value={advanceBank.trim()}>{advanceBank.trim()} (ข้อมูลเดิม)</option>
+                                        )}
+                                    </Select>
                                     <Input value={advanceAccount} onChange={(e: any) => setAdvanceAccount(e.target.value)} label="เลขบัญชี" />
                                 </>
                             )}
                         </>
                     )}
                     {activeTab === 'Leave' && <><Select value={leaveType} onChange={(e: any) => setLeaveType(e.target.value)} label="ประเภท"><option value="Personal">ลากิจ</option><option value="Sick">ลาป่วย</option></Select><Input type="number" value={leaveDays} onChange={(e: any) => setLeaveDays(e.target.value)} label="จำนวนวัน" /><Input value={leaveReason} onChange={(e: any) => setLeaveReason(e.target.value)} label="เหตุผล" /></>}
-                    <Button onClick={handleSave} className="w-full mt-4">บันทึก</Button>
+                    <Button onClick={handleSave} className="w-full mt-4">
+                        {activeTab === 'Advance' ? 'ส่งคำขอเบิกเงิน' : 'บันทึก'}
+                    </Button>
                 </div>
             </Card>
 

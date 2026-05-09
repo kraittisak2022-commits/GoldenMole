@@ -118,7 +118,7 @@ const List<_DailyModuleDef> _kDailyModules = [
     title: 'เบิกเงิน',
     icon: Icons.savings_outlined,
     category: 'เบิกเงิน',
-    quickInputTitle: 'บันทึกเบิกเงิน',
+    quickInputTitle: 'ส่งคำขอเบิกเงิน',
     color: Color(0xFFFF6F00),
   ),
 ];

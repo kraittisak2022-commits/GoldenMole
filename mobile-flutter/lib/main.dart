@@ -9,6 +9,7 @@ import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/session_service.dart';
+import 'utils/supabase_function_session.dart';
 import 'widgets/bootstrap_splash.dart';
 
 Future<void> _preloadKanitFonts() async {
@@ -86,6 +87,13 @@ class _MobileAppState extends State<MobileApp> {
   Future<void> _restoreSession() async {
     try {
       final admin = await _sessionService.getSavedAdmin();
+      if (admin != null) {
+        try {
+          await ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client);
+        } catch (e, st) {
+          debugPrint('ensureSupabaseSessionForEdgeFunctions: $e\n$st');
+        }
+      }
       if (!mounted) return;
       setState(() {
         _currentAdmin = admin;
@@ -179,6 +187,11 @@ class _MobileAppState extends State<MobileApp> {
               currentAdmin: _currentAdmin!,
               dashboardService: DashboardService(client),
               onLogout: () async {
+                try {
+                  await Supabase.instance.client.auth.signOut();
+                } catch (e, st) {
+                  debugPrint('Supabase signOut: $e\n$st');
+                }
                 await _sessionService.clear();
                 if (!mounted) return;
                 setState(() => _currentAdmin = null);
