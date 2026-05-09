@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/dashboard_summary.dart';
+import 'local_data_cache.dart';
 
 class DashboardService {
   DashboardService(this._client);
@@ -25,7 +26,13 @@ class DashboardService {
     return sum;
   }
 
-  Future<DashboardSummary> fetchSummary() async {
+  Future<DashboardSummary> fetchSummary({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached =
+          await LocalDataCache.readDashboard(LocalDataCache.dashboardSummaryTtl);
+      if (cached != null) return cached;
+    }
+
     final employeeCount = await _countRows('employees');
     final transactionCount = await _countRows('transactions');
     final projectCount = await _countRows('land_projects');
@@ -41,7 +48,7 @@ class DashboardService {
       }
     }
 
-    return DashboardSummary(
+    final summary = DashboardSummary(
       employeeCount: employeeCount,
       transactionCount: transactionCount,
       projectCount: projectCount,
@@ -49,5 +56,7 @@ class DashboardService {
       totalExpense: totalExpense,
       appName: appName,
     );
+    await LocalDataCache.writeDashboard(summary);
+    return summary;
   }
 }

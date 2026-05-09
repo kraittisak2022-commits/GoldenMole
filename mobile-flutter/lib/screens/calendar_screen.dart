@@ -5,6 +5,7 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
+import '../services/weekly_off_calendar_store.dart';
 import '../utils/thai_holidays.dart';
 import '../widgets/page_loading_view.dart';
 
@@ -39,6 +40,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String _entryMode = 'Holiday';
   String _leaveType = 'Leave';
 
+  final WeeklyOffCalendarStore _weeklyOffStore = WeeklyOffCalendarStore();
+
   @override
   void initState() {
     super.initState();
@@ -53,15 +56,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.dispose();
   }
 
-  Future<_CalendarPayload> _load() async {
-    final transactions = await widget.transactionService.fetchTransactions();
-    final employees = await widget.employeeService.fetchEmployees();
-    return _CalendarPayload(transactions: transactions, employees: employees);
+  Future<_CalendarPayload> _load({bool forceRefresh = false}) async {
+    final transactions = await widget.transactionService.fetchTransactions(
+      forceRefresh: forceRefresh,
+    );
+    final employees = await widget.employeeService.fetchEmployees(
+      forceRefresh: forceRefresh,
+    );
+    final weeklyOffByMonday = await _weeklyOffStore.load();
+    return _CalendarPayload(
+      transactions: transactions,
+      employees: employees,
+      weeklyOffByMonday: weeklyOffByMonday,
+    );
   }
 
   void _reload() {
     setState(() {
-      _future = _load();
+      _future = _load(forceRefresh: true);
     });
   }
 
@@ -190,6 +202,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   style: GoogleFonts.kanit(color: Colors.black54),
                 ),
               const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _showMoveWeeklyOffSheet();
+                },
+                icon: const Icon(Icons.swap_horiz_rounded),
+                label: Text(
+                  'ย้ายหยุดรายสัปดาห์ของสัปดาห์นี้',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 8),
               FilledButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -203,6 +227,133 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
       },
     );
+  }
+
+  Future<void> _showMoveWeeklyOffSheet() async {
+    final map = await _weeklyOffStore.load();
+    final mondayStr = WeeklyOffCalendarStore.mondayKeyOf(_selectedDate);
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        var sel =
+            map[mondayStr] ??
+            WeeklyOffCalendarStore.defaultOffWeekday;
+        return StatefulBuilder(
+          builder: (context, setSt) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                4,
+                16,
+                MediaQuery.paddingOf(context).bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'เลือกวันหยุดประจำสัปดาห์',
+                    style: GoogleFonts.kanit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    'ค่ามาตรฐาน: วันพุธของทุกสัปดาห์ • จันทร์แรกของสัปดาห์นี้: $mondayStr',
+                    style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      color: Colors.black54,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (var wd = 1; wd <= 7; wd++)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        sel == wd
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: sel == wd
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.black38,
+                      ),
+                      title: Text(
+                        _thaiWeekdayLongFixed(wd),
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: wd == WeeklyOffCalendarStore.defaultOffWeekday
+                          ? Text(
+                              'ค่าเริ่มต้น',
+                              style: GoogleFonts.kanit(
+                                fontSize: 11.5,
+                                color: Colors.black45,
+                              ),
+                            )
+                          : null,
+                      onTap: () => setSt(() => sel = wd),
+                    ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () async {
+                      await _weeklyOffStore.setWeekOffWeekday(
+                        _selectedDate,
+                        sel,
+                      );
+                      if (!ctx.mounted) return;
+                      Navigator.of(ctx).pop();
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            sel == WeeklyOffCalendarStore.defaultOffWeekday
+                                ? 'ใช้หยุดวันพุธตามมาตรฐานสำหรับสัปดาห์นี้แล้ว'
+                                : 'ย้ายหยุดเป็น${_thaiWeekdayLongFixed(sel)} สำหรับสัปดาห์นี้แล้ว',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      );
+                      _reload();
+                    },
+                    child: Text('บันทึก', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// ชื่อวัน (จันทร์=1 … อาทิตย์=7)
+  String _thaiWeekdayLongFixed(int weekday) {
+    const names = [
+      'วันจันทร์',
+      'วันอังคาร',
+      'วันพุธ',
+      'วันพฤหัสบดี',
+      'วันศุกร์',
+      'วันเสาร์',
+      'วันอาทิตย์',
+    ];
+    return names[weekday.clamp(1, 7) - 1];
+  }
+
+  /// ข้อความที่แสดงในปฏิทินสำหรับวันหยุดรายสัปดาห์
+  String _companyWeeklyHolidayLine(int offWeekday) {
+    if (offWeekday == WeeklyOffCalendarStore.defaultOffWeekday) {
+      return 'หยุดรายสัปดาห์ (ค่ามาตรฐานวันพุธ)';
+    }
+    return 'หยุดรายสัปดาห์ • ${_thaiWeekdayLongFixed(offWeekday)} (เลื่อนจากวันพุธในสัปดาห์นี้)';
   }
 
   void _openCreateEntrySheet() {
@@ -450,6 +601,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               m,
               data.transactions,
               data.employees,
+              data.weeklyOffByMonday,
             );
             final monthHolidayCount = days
                 .whereType<_CalendarDay>()
@@ -518,6 +670,57 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: _showMoveWeeklyOffSheet,
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.22),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.event_repeat_outlined,
+                                size: 18,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'หยุดรายสัปดาห์: ทุกวันพุธ (แตะเพื่อย้ายเป็นวันอื่นในแต่ละสัปดาห์ได้)',
+                                      style: GoogleFonts.kanit(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.94,
+                                        ),
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12.8,
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right,
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -544,6 +747,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       _legendChip(
                         color: const Color(0xFFE57373),
                         label: 'วันหยุด',
+                      ),
+                      const SizedBox(width: 8),
+                      _legendChip(
+                        color: const Color(0xFF26A69A),
+                        label: 'หยุดรายสัปดาห์',
                       ),
                       const SizedBox(width: 8),
                       _legendChip(
@@ -687,6 +895,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     int month,
     List<AppTransaction> transactions,
     List<Employee> employees,
+    Map<String, int> weeklyOffByMonday,
   ) {
     final firstWeekday = DateTime(year, month, 1).weekday % 7;
     final daysInMonth = DateTime(year, month + 1, 0).day;
@@ -711,6 +920,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .where((t) => (t.subCategory ?? '').toLowerCase() == 'holiday')
             .map((t) => t.description),
       ];
+
+      final dtPlain = DateTime(year, month, d);
+      final monKey = WeeklyOffCalendarStore.mondayKeyOf(dtPlain);
+      final offWd =
+          weeklyOffByMonday[monKey] ??
+          WeeklyOffCalendarStore.defaultOffWeekday;
+      if (dtPlain.weekday == offWd) {
+        holidays.add(_companyWeeklyHolidayLine(offWd));
+      }
 
       final leaveRows = dayTx.where((t) {
         final laborStatus = (t.laborStatus ?? '').toLowerCase();
@@ -790,9 +1008,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
 }
 
 class _CalendarPayload {
-  const _CalendarPayload({required this.transactions, required this.employees});
+  const _CalendarPayload({
+    required this.transactions,
+    required this.employees,
+    required this.weeklyOffByMonday,
+  });
   final List<AppTransaction> transactions;
   final List<Employee> employees;
+  final Map<String, int> weeklyOffByMonday;
 }
 
 class _CalendarDay {
@@ -821,10 +1044,24 @@ class _DayCell extends StatelessWidget {
   final bool today;
   final VoidCallback onTap;
 
+  static bool _isWeeklyHolidayLine(String s) =>
+      s.startsWith('หยุดรายสัปดาห์');
+
   @override
   Widget build(BuildContext context) {
-    final isHoliday = day.holidays.isNotEmpty;
+    final hasOtherHoliday =
+        day.holidays.any((h) => !_isWeeklyHolidayLine(h));
+    final hasWeeklyCompany =
+        day.holidays.any(_isWeeklyHolidayLine);
     final hasLeave = day.leaveNames.isNotEmpty;
+    final mutedBorder =
+        hasOtherHoliday
+            ? const Color(0xFFE57373)
+            : hasWeeklyCompany
+            ? const Color(0xFF26A69A)
+            : hasLeave
+            ? const Color(0xFFFFB74D)
+            : Colors.grey.shade300;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -840,11 +1077,7 @@ class _DayCell extends StatelessWidget {
                 ? const Color(0xFF1E88E5)
                 : today
                 ? const Color(0xFF90CAF9)
-                : isHoliday
-                ? const Color(0xFFE57373)
-                : hasLeave
-                ? const Color(0xFFFFB74D)
-                : Colors.grey.shade300,
+                : mutedBorder,
           ),
         ),
         child: Column(
@@ -859,12 +1092,20 @@ class _DayCell extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            if (isHoliday)
+            if (hasOtherHoliday)
               Text(
                 'วันหยุด',
                 style: GoogleFonts.kanit(
                   fontSize: 10,
                   color: Colors.red.shade600,
+                ),
+              ),
+            if (hasWeeklyCompany && !hasOtherHoliday)
+              Text(
+                'หยุดรายสัปดาห์',
+                style: GoogleFonts.kanit(
+                  fontSize: 10,
+                  color: const Color(0xFF00897B),
                 ),
               ),
             if (hasLeave)

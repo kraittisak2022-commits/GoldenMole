@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/daily_module_transactions.dart';
+
 /// ไอคอน outline บนพื้นขาว: คงโทนเมนูจาก [accent] แต่ผสมกับสีหมึกเข้มตามความสว่างเพื่อคอนทราสต์
 Color _readableMenuIconColor(Color accent) {
   const ink = Color(0xFF1C2834);
@@ -23,7 +25,7 @@ class RecordModuleCard extends StatefulWidget {
     super.key,
     required this.title,
     required this.icon,
-    required this.recordedForSelectedDay,
+    required this.fillStatus,
     required this.onTap,
     this.tileColor = const Color(0xFF4FC3F7),
     this.showLightStyle = false,
@@ -31,7 +33,7 @@ class RecordModuleCard extends StatefulWidget {
 
   final String title;
   final IconData icon;
-  final bool recordedForSelectedDay;
+  final DailyModuleFillStatus fillStatus;
   final VoidCallback onTap;
   final Color tileColor;
   final bool showLightStyle;
@@ -48,9 +50,34 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final titleColor = const Color(0xFF1A2A3C);
-    final recorded = widget.recordedForSelectedDay;
-    final statusColor =
-        recorded ? const Color(0xFF168A45) : const Color(0xFFC73E3E);
+    final status = widget.fillStatus;
+    final recorded = status == DailyModuleFillStatus.complete;
+    final partial = status == DailyModuleFillStatus.incomplete;
+
+    final statusLabel = recorded
+        ? 'บันทึกครบแล้ว'
+        : partial
+        ? 'กรอกข้อมูลไม่ครบ'
+        : 'แตะเพื่อบันทึก';
+
+    final statusColor = recorded
+        ? const Color(0xFF168A45)
+        : partial
+        ? const Color(0xFFD97706)
+        : const Color(0xFFC73E3E);
+
+    Color badgeBg() {
+      if (recorded) return const Color(0xFF18A352);
+      if (partial) return const Color(0xFFF59E0B);
+      return const Color(0xFFB0BACA);
+    }
+
+    IconData badgeIcon() {
+      if (recorded) return Icons.check_rounded;
+      if (partial) return Icons.more_horiz_rounded;
+      return Icons.remove_rounded;
+    }
+
     final accent = widget.tileColor;
     final isSandWashTitle = widget.title.contains('บันทึกการร่อนทราย');
     final cardTint = Colors.white;
@@ -90,7 +117,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                             border: Border.all(color: borderColor, width: 1.2),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: _hovered ? 0.07 : 0.04),
+                                color:
+                                    Colors.black.withValues(alpha: _hovered ? 0.07 : 0.04),
                                 blurRadius: _hovered ? 16 : 10,
                                 offset: const Offset(0, 5),
                               ),
@@ -132,12 +160,12 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                             width: 26,
                             height: 26,
                             decoration: BoxDecoration(
-                              color: recorded ? const Color(0xFF18A352) : const Color(0xFFB0BACA),
+                              color: badgeBg(),
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),
                             child: Icon(
-                              recorded ? Icons.check_rounded : Icons.remove_rounded,
+                              badgeIcon(),
                               size: 16,
                               color: Colors.white,
                             ),
@@ -161,11 +189,15 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    recorded ? 'บันทึกแล้ว' : 'แตะเพื่อบันทึก',
+                    statusLabel,
                     style: theme.textTheme.labelLarge?.copyWith(
-                      fontSize: 12.5,
+                      fontSize: 11.8,
                       fontWeight: FontWeight.w600,
-                      color: recorded ? statusColor : const Color(0xFF77859A),
+                      color: recorded
+                          ? statusColor
+                          : partial
+                          ? statusColor
+                          : const Color(0xFF77859A),
                     ),
                   ),
                 ],

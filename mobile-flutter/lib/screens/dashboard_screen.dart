@@ -130,22 +130,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime _selectedDay = DateTime.now();
   bool _serverOnline = true;
   late Future<_HomePayload> _homeFuture;
+  _HomePayload? _lastHomePayload;
 
   @override
   void initState() {
     super.initState();
     _txService = TransactionService(Supabase.instance.client);
-    _homeFuture = _loadHome();
+    _homeFuture = _futureWithSnapshot(_loadHome());
+  }
+
+  /// เก็บ payload ชุดล่าสุดเพื่อโชว์แบบไม่เป็นหน้าว่างตอนดึงรีเฟรช
+  Future<_HomePayload> _futureWithSnapshot(Future<_HomePayload> future) async {
+    try {
+      final next = await future;
+      if (mounted) setState(() => _lastHomePayload = next);
+      return next;
+    } catch (_) {
+      rethrow;
+    }
   }
 
   @override
   void dispose() => super.dispose();
 
-  Future<_HomePayload> _loadHome() async {
+  Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     try {
       final results = await Future.wait([
-        widget.dashboardService.fetchSummary(),
-        _txService.fetchTransactionsForDate(_dateKey(_selectedDay)),
+        widget.dashboardService.fetchSummary(forceRefresh: forceRefresh),
+        _txService.fetchTransactionsForDate(
+          _dateKey(_selectedDay),
+          forceRefresh: forceRefresh,
+        ),
       ]);
       final summary = results[0] as DashboardSummary;
       final dayTransactions = results[1] as List<AppTransaction>;
@@ -163,7 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _refreshHome() {
     setState(() {
-      _homeFuture = _loadHome();
+      _homeFuture = _futureWithSnapshot(_loadHome(forceRefresh: true));
     });
   }
 
@@ -220,7 +235,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           pickedDate.month,
           pickedDate.day,
         );
-        _homeFuture = _loadHome();
+        _homeFuture = _futureWithSnapshot(_loadHome(forceRefresh: false));
       });
     }
   }
@@ -265,10 +280,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             end: Offset.zero,
           ).animate(curved);
           final fade = Tween<double>(begin: 0, end: 1).animate(curved);
-          final scale = Tween<double>(
-            begin: isQuickInput ? 0.995 : 0.985,
-            end: 1,
-          ).animate(curved);
+          // หน้า Quick Input ไม่ย่อ/ขยาย — ลดงาน GPU บนเครื่องรุ่นเล็ก
+          if (isQuickInput) {
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(position: slide, child: child),
+            );
+          }
+          final scale = Tween<double>(begin: 0.985, end: 1).animate(curved);
           return FadeTransition(
             opacity: fade,
             child: SlideTransition(
@@ -327,15 +346,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: FutureBuilder<_HomePayload>(
                       future: _homeFuture,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            snapshot.data == null) {
+                        final merged = snapshot.data ?? _lastHomePayload;
+                        final waiting =
+                            snapshot.connectionState ==
+                            ConnectionState.waiting;
+                        if (waiting && merged == null) {
                           final loadingLabel = _bodyPage == 0
                               ? 'กำลังโหลดแดชบอร์ด'
                               : 'กำลังโหลดภาพรวม';
                           return PageLoadingView(label: loadingLabel);
                         }
-                        if (snapshot.hasError) {
+                        if (snapshot.hasError && merged == null) {
                           return Center(
                             child: Padding(
                               padding: const EdgeInsets.all(24),
@@ -357,30 +378,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           );
                         }
-                        final data = snapshot.data;
+                        final data = merged;
                         if (data == null) {
                           return const PageLoadingView(
                             label: 'กำลังโหลดข้อมูล',
                           );
                         }
-                        if (_bodyPage == 0) {
-                          return _DailyHomeContent(
-                            currentAdmin: widget.currentAdmin,
-                            data: data,
-                            serverOnline: _serverOnline,
-                            selectedDay: _selectedDay,
-                            onPullRefresh: _pullRefresh,
-                            onPickDay: _pickDay,
-                            dateKey: _dateKey,
-                            formatBuddhistDateButton:
-                                _formatBuddhistDateButton,
-                            onOpenModule: _openQuickInput,
-                          );
-                        }
-                        return _MetricsContent(
-                          data: data,
-                          currentAdmin: widget.currentAdmin,
-                          onRetry: _refreshHome,
+                        final showRefreshBar = waiting && merged != null;
+                        final shell = _bodyPage == 0
+                            ? _DailyHomeContent(
+                                currentAdmin: widget.currentAdmin,
+                                data: data,
+                                serverOnline: _serverOnline,
+                                selectedDay: _selectedDay,
+                                onPullRefresh: _pullRefresh,
+                                onPickDay: _pickDay,
+                                dateKey: _dateKey,
+                                formatBuddhistDateButton:
+                                    _formatBuddhistDateButton,
+                                onOpenModule: _openQuickInput,
+                              )
+                            : _MetricsContent(
+                                data: data,
+                                currentAdmin: widget.currentAdmin,
+                                onRetry: _refreshHome,
+                              );
+                        if (!showRefreshBar) return shell;
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            shell,
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  progressIndicatorTheme:
+                                      ProgressIndicatorThemeData(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                child: const LinearProgressIndicator(
+                                  minHeight: 2,
+                                ),
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -395,7 +440,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _pullRefresh() async {
-    setState(() => _homeFuture = _loadHome());
+    setState(
+      () => _homeFuture = _futureWithSnapshot(
+        _loadHome(forceRefresh: true),
+      ),
+    );
     await _homeFuture;
   }
 
@@ -584,14 +633,20 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ? _formatThaiDateFromYmd(widget.data.dayTransactions.first.date)
         : '—';
 
-    final recordedCategories = <String>{};
-    for (final module in _kDailyModules) {
-      final done = widget.data.dayTransactions.any(
-        (t) => transactionMatchesDailyModule(t, dayKey, module.category),
-      );
-      if (done) recordedCategories.add(module.category);
-    }
-    final doneCount = recordedCategories.length;
+    final menuStatusByCategory = <String, DailyModuleFillStatus>{
+      for (final m in _kDailyModules)
+        m.category: resolveDailyModuleFillStatus(
+          dayKey,
+          m.category,
+          widget.data.dayTransactions,
+        ),
+    };
+    final doneCount = menuStatusByCategory.values
+        .where((s) => s == DailyModuleFillStatus.complete)
+        .length;
+    final incompleteCount = menuStatusByCategory.values
+        .where((s) => s == DailyModuleFillStatus.incomplete)
+        .length;
     final headerAnim = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
@@ -624,6 +679,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       widget.selectedDay,
                     ),
                     doneCount: doneCount,
+                    incompleteMenuCount: incompleteCount,
                     totalCount: _kDailyModules.length,
                     onPickDay: widget.onPickDay,
                     onRefresh: widget.onPullRefresh,
@@ -705,9 +761,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 ),
                                 itemBuilder: (context, index) {
                                   final m = _kDailyModules[index];
-                                  final done = recordedCategories.contains(
-                                    m.category,
-                                  );
+                                  final fill = menuStatusByCategory[m.category] ??
+                                      DailyModuleFillStatus.pending;
                                   return _StaggerMenuTile(
                                     parent: _entranceController,
                                     index: index,
@@ -717,7 +772,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                       icon: m.icon,
                                       tileColor: m.color,
                                       showLightStyle: index.isOdd,
-                                      recordedForSelectedDay: done,
+                                      fillStatus: fill,
                                       onTap: () => widget.onOpenModule(m),
                                     ),
                                   );
@@ -783,6 +838,7 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.serverOnline,
     required this.selectedDateLabel,
     required this.doneCount,
+    required this.incompleteMenuCount,
     required this.totalCount,
     required this.onPickDay,
     required this.onRefresh,
@@ -793,6 +849,7 @@ class _HomeHeaderCompact extends StatelessWidget {
   final bool serverOnline;
   final String selectedDateLabel;
   final int doneCount;
+  final int incompleteMenuCount;
   final int totalCount;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
@@ -898,7 +955,11 @@ class _HomeHeaderCompact extends StatelessWidget {
             children: [
               _HeaderStatChip(
                 icon: Icons.today_rounded,
-                label: 'วันนี้บันทึกแล้ว $doneCount/$totalCount เมนู',
+                label: doneCount >= totalCount
+                    ? 'วันนี้บันทึกครบทุกเมนูแล้ว ($totalCount เมนู)'
+                    : incompleteMenuCount > 0
+                        ? 'วันนี้ครบ $doneCount · ไม่ครบ $incompleteMenuCount · รวม $totalCount เมนู'
+                        : 'วันนี้บันทึกครบ $doneCount/$totalCount เมนู',
               ),
               _HeaderStatChip(
                 icon: Icons.access_time_filled_rounded,

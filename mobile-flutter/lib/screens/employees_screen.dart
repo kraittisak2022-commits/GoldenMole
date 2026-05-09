@@ -33,7 +33,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
 
   void _reload() {
     setState(() {
-      _employeesFuture = widget.service.fetchEmployees();
+      _employeesFuture = widget.service.fetchEmployees(forceRefresh: true);
     });
   }
 

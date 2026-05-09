@@ -59,4 +59,21 @@ class Employee {
       'inactive': inactive,
     };
   }
+
+  /// เก็บลงแคชเครื่องให้ครบเหมือนแถวที่ `fromMap` อ่านได้
+  Map<String, dynamic> toPersistenceMap() {
+    return {
+      'id': id,
+      'name': name,
+      'nickname': nickname,
+      'type': type,
+      if (baseWage != null) 'base_wage': baseWage,
+      if (phone != null && phone!.isNotEmpty) 'phone': phone,
+      if (startDate != null && startDate!.isNotEmpty)
+        'start_date': startDate,
+      if (position != null && position!.isNotEmpty) 'position': position,
+      if (positions.isNotEmpty) 'positions': positions,
+      'inactive': inactive,
+    };
+  }
 }

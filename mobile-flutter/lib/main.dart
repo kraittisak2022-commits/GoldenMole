@@ -11,6 +11,19 @@ import 'services/dashboard_service.dart';
 import 'services/session_service.dart';
 import 'widgets/bootstrap_splash.dart';
 
+Future<void> _preloadKanitFonts() async {
+  try {
+    await GoogleFonts.pendingFonts([
+      GoogleFonts.kanit(),
+      GoogleFonts.kanit(fontWeight: FontWeight.w600),
+      GoogleFonts.kanit(fontWeight: FontWeight.w700),
+      GoogleFonts.kanit(fontWeight: FontWeight.w800),
+    ]);
+  } catch (e, st) {
+    debugPrint('Font preload skipped: $e\n$st');
+  }
+}
+
 Future<void> main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +40,8 @@ Future<void> main() async {
 
     // Initialize Supabase
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+
+    await _preloadKanitFonts();
 
     runApp(const MobileApp());
   } catch (e) {
@@ -146,6 +161,7 @@ class _MobileAppState extends State<MobileApp> {
       title: 'Construction Management Mobile',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
+      scrollBehavior: const _AppScrollBehavior(),
       theme: appTheme,
       darkTheme: appTheme,
       home: _bootstrapping
@@ -169,5 +185,24 @@ class _MobileAppState extends State<MobileApp> {
               },
             ),
     );
+  }
+}
+
+/// เลื่อนนิ่มบนมือถือเหมือน iOS และลด “กระด้าง” เวลา overscroll บน Android
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    switch (Theme.of(context).platform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.fuchsia:
+        return const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        );
+      default:
+        return super.getScrollPhysics(context);
+    }
   }
 }

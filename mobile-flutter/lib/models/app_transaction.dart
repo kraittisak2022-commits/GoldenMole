@@ -159,6 +159,66 @@ class AppTransaction {
     return DateTime.tryParse(v.toString());
   }
 
+  /// เก็บแคชเครื่องให้ครบฟิลด์ที่โหลดจาก Supabase
+  Map<String, dynamic> toPersistenceMap() {
+    return {
+      'id': id,
+      'date': date,
+      'type': type,
+      'category': category,
+      'description': description,
+      'amount': amount,
+      if (subCategory != null && subCategory!.isNotEmpty)
+        'sub_category': subCategory,
+      if (laborStatus != null && laborStatus!.isNotEmpty)
+        'labor_status': laborStatus,
+      if (employeeIds.isNotEmpty) 'employee_ids': employeeIds,
+      if (note != null && note!.isNotEmpty) 'note': note,
+      if (eventTime != null && eventTime!.isNotEmpty) 'event_time': eventTime,
+      if (sandMorning != null) 'sand_morning': sandMorning,
+      if (sandAfternoon != null) 'sand_afternoon': sandAfternoon,
+      if (sandMachineType != null && sandMachineType!.isNotEmpty)
+        'sand_machine_type': sandMachineType,
+      if (sandOperators.isNotEmpty) 'sand_operators': sandOperators,
+      if (drumsObtained != null) 'drums_obtained': drumsObtained,
+      if (drumsWashedAtHome != null) 'drums_washed_at_home': drumsWashedAtHome,
+      if (sandMorningStart != null && sandMorningStart!.isNotEmpty)
+        'sand_morning_start': sandMorningStart,
+      if (sandAfternoonStart != null && sandAfternoonStart!.isNotEmpty)
+        'sand_afternoon_start': sandAfternoonStart,
+      if (sandEveningEnd != null && sandEveningEnd!.isNotEmpty)
+        'sand_evening_end': sandEveningEnd,
+      if (vehicleId != null && vehicleId!.isNotEmpty) 'vehicle_id': vehicleId,
+      if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
+      if (driverWage != null) 'driver_wage': driverWage,
+      if (vehicleWage != null) 'vehicle_wage': vehicleWage,
+      if (workDetails != null && workDetails!.isNotEmpty)
+        'work_details': workDetails,
+      if (workType != null && workType!.isNotEmpty) 'work_type': workType,
+      if (workAssignments != null && workAssignments!.isNotEmpty)
+        'work_assignments': workAssignments,
+      if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
+        'custom_work_categories': customWorkCategories,
+      if (quantity != null) 'quantity': quantity,
+      if (unit != null && unit!.isNotEmpty) 'unit': unit,
+      if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
+      if (fuelMovement != null && fuelMovement!.isNotEmpty)
+        'fuel_movement': fuelMovement,
+      if (tripCount != null) 'trip_count': tripCount,
+      if (tripMorning != null) 'trip_morning': tripMorning,
+      if (tripAfternoon != null) 'trip_afternoon': tripAfternoon,
+      if (cubicPerTrip != null) 'cubic_per_trip': cubicPerTrip,
+      if (totalCubic != null) 'total_cubic': totalCubic,
+      if (perCarTrips != null) 'per_car_trips': perCarTrips,
+      if (perCarCubic != null) 'per_car_cubic': perCarCubic,
+      if (otAmount != null) 'ot_amount': otAmount,
+      if (otHours != null) 'ot_hours': otHours,
+      if (otDescription != null && otDescription!.isNotEmpty)
+        'ot_description': otDescription,
+      if (createdAt != null) 'created_at': createdAt!.toUtc().toIso8601String(),
+    };
+  }
+
   Map<String, dynamic> toInsertMap({bool omitCreatedAt = false}) {
     return {
       'id': id,

@@ -27,7 +27,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   void _reload() {
     setState(() {
-      _transactionsFuture = widget.service.fetchTransactions();
+      _transactionsFuture = widget.service.fetchTransactions(forceRefresh: true);
     });
   }
 

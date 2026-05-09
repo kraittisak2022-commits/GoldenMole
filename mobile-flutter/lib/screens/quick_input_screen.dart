@@ -36,11 +36,32 @@ class QuickInputScreen extends StatefulWidget {
   State<QuickInputScreen> createState() => _QuickInputScreenState();
 }
 
-/// ชื่อเล่น/ชื่อจริงที่แสดงใน UI (ตัดคำอย่าง `(นอน)` ที่ต่อท้ายในฐานข้อมูล)
+/// ชื่อเล่น/ชื่อจริงที่แสดงใน UI (แสดงตามที่บันทึกในฐานข้อมูล)
 String _employeeUiDisplayName(Employee e) {
-  final raw =
-      e.nickname.trim().isNotEmpty ? e.nickname.trim() : e.name.trim();
-  return raw.replaceAll(RegExp(r'\s*[\(（]\s*นอน\s*[\)）]'), '').trim();
+  return e.nickname.trim().isNotEmpty ? e.nickname.trim() : e.name.trim();
+}
+
+/// คิวต่อเที่ยวค่าเริ่มต้นตามชื่อรถในรายการ (`null` = ไม่จับคู่)
+double? defaultCubicPerTripForVehicleName(String vehicleName) {
+  final n = vehicleName.trim().toLowerCase();
+  if (n.isEmpty) return null;
+  if (n.contains('สิบล้อ') ||
+      n.contains('10ล้อ') ||
+      RegExp(r'10\s*ล้อ').hasMatch(n)) {
+    return 7;
+  }
+  if (n.contains('ดั๊ม') || n.contains('ดั้ม')) {
+    return 3;
+  }
+  return null;
+}
+
+void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
+  final def = defaultCubicPerTripForVehicleName(vehicleId);
+  if (def == null) return;
+  final s = def == def.roundToDouble() ? '${def.toInt()}' : '$def';
+  row.cubicPerTrip = s;
+  row.cubicPerTripController.text = s;
 }
 
 class _QuickInputScreenState extends State<QuickInputScreen>
@@ -584,9 +605,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final t in txs) {
         final key = (t.vehicleId ?? '').trim();
         final draft = ensureDraft(key);
-        if (t.subCategory == 'VehicleTrip' ||
-            (t.category == 'DailyLog' &&
-                (t.perCarTrips ?? t.tripCount ?? 0) > 0)) {
+        if (transactionCountsAsVehicleTripMenu(t)) {
           draft.tripTxId = t.id;
           draft.vehicleId = draft.vehicleId.isEmpty
               ? (t.vehicleId ?? '').trim()
@@ -882,10 +901,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final txs = await widget.service.fetchTransactions();
       final ranked = <String, int>{};
       for (final tx in txs) {
-        final isVehicle = tx.subCategory == 'VehicleTrip' ||
-            (tx.category == 'DailyLog' &&
-                (tx.perCarTrips ?? tx.tripCount ?? 0) > 0);
-        if (!isVehicle) continue;
+        if (!transactionCountsAsVehicleTripMenu(tx)) continue;
         final raw = (tx.workDetails ?? '').trim();
         if (raw.isEmpty) continue;
         ranked[raw] = (ranked[raw] ?? 0) + 1;
@@ -2728,196 +2744,293 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     right: 12,
                     bottom: MediaQuery.viewInsetsOf(dialogCtx).bottom + 14,
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: StatefulBuilder(
-                      builder: (context, setModalState) {
-                        Widget keyButton(String k) {
-                          return FilledButton(
-                            onPressed: () {
-                              if (k == '.' && !allowDecimal) return;
-                              if (k == '.') {
-                                if (value.contains('.')) return;
-                                value = value.isEmpty ? '0.' : '$value.';
-                                controller.text = value;
-                                onChanged?.call(value);
-                                setModalState(() {});
-                                return;
-                              }
-                              if (allowDecimal && value.contains('.')) {
-                                final idx = value.indexOf('.');
-                                final decimals = value.substring(idx + 1);
-                                if (decimals.length >= maxDecimalPlaces) {
-                                  return;
-                                }
-                              }
-                              value += k;
-                              controller.text = value;
-                              onChanged?.call(value);
-                              setModalState(() {});
-                            },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: const Color(0xFF1D2A3A),
-                              minimumSize: const Size.fromHeight(54),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              k,
-                              style: GoogleFonts.kanit(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          );
-                        }
+                  child: LayoutBuilder(
+                    builder: (layoutContext, _) {
+                      final mq = MediaQuery.of(layoutContext);
+                      final landscape =
+                          mq.orientation == Orientation.landscape;
+                      final padV = mq.viewPadding.vertical;
+                      final maxPanelH = (mq.size.height - padV - 20).clamp(
+                        120.0,
+                        mq.size.height,
+                      );
+                      final maxPanelW = landscape
+                          ? (mq.size.shortestSide * 0.92).clamp(
+                              220.0,
+                              mq.size.width - 28,
+                            )
+                          : (mq.size.width - 26).clamp(0.0, 520.0);
 
-                        return Container(
-                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF2F5FA),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: const Color(0xFFD8E2EE),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 18,
-                                offset: const Offset(0, -4),
-                              ),
-                            ],
+                      return Align(
+                        alignment: Alignment.bottomCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: maxPanelW,
+                            maxHeight: maxPanelH,
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      label,
-                                      style: GoogleFonts.kanit(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    value.isEmpty ? '0' : value,
-                                    style: GoogleFonts.kanit(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: const Color(0xFF1565C0),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              GridView.count(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 8,
-                                crossAxisSpacing: 8,
-                                shrinkWrap: true,
-                                physics:
-                                    const NeverScrollableScrollPhysics(),
-                                childAspectRatio: 1.75,
-                                children: [
-                                  keyButton('1'),
-                                  keyButton('2'),
-                                  keyButton('3'),
-                                  keyButton('4'),
-                                  keyButton('5'),
-                                  keyButton('6'),
-                                  keyButton('7'),
-                                  keyButton('8'),
-                                  keyButton('9'),
-                                  FilledButton(
+                          child: Material(
+                            color: Colors.transparent,
+                            clipBehavior: Clip.none,
+                            child: StatefulBuilder(
+                              builder: (context, setModalState) {
+                                final keyH = landscape ? 40.0 : 52.0;
+                                final keyFont = landscape ? 19.0 : 23.0;
+                                final aspect = landscape ? 2.85 : 1.75;
+
+                                Widget keyButton(String k) {
+                                  return FilledButton(
                                     onPressed: () {
-                                      value = '';
+                                      if (k == '.' && !allowDecimal) return;
+                                      if (k == '.') {
+                                        if (value.contains('.')) return;
+                                        value =
+                                            value.isEmpty ? '0.' : '$value.';
+                                        controller.text = value;
+                                        onChanged?.call(value);
+                                        setModalState(() {});
+                                        return;
+                                      }
+                                      if (allowDecimal &&
+                                          value.contains('.')) {
+                                        final idx = value.indexOf('.');
+                                        final decimals =
+                                            value.substring(idx + 1);
+                                        if (decimals.length >=
+                                            maxDecimalPlaces) {
+                                          return;
+                                        }
+                                      }
+                                      value += k;
                                       controller.text = value;
                                       onChanged?.call(value);
                                       setModalState(() {});
                                     },
                                     style: FilledButton.styleFrom(
-                                      backgroundColor:
-                                          const Color(0xFFFFEFEF),
+                                      backgroundColor: Colors.white,
                                       foregroundColor:
-                                          const Color(0xFFD64545),
+                                          const Color(0xFF1D2A3A),
                                       minimumSize:
-                                          const Size.fromHeight(54),
+                                          Size.fromHeight(keyH),
+                                      padding:
+                                          EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
                                     ),
                                     child: Text(
-                                      'ล้าง',
+                                      k,
                                       style: GoogleFonts.kanit(
+                                        fontSize: keyFont,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                  ),
-                                  keyButton('0'),
-                                  if (allowDecimal) keyButton('.'),
-                                  FilledButton(
-                                    onPressed: () {
-                                      if (value.isNotEmpty) {
-                                        value = value.substring(
-                                          0,
-                                          value.length - 1,
-                                        );
-                                        controller.text = value;
-                                        onChanged?.call(value);
-                                        setModalState(() {});
-                                      }
-                                    },
+                                  );
+                                }
+
+                                Widget auxButton({
+                                  required Widget child,
+                                  required Color fg,
+                                  required Color bg,
+                                  required VoidCallback? onTap,
+                                }) {
+                                  return FilledButton(
+                                    onPressed: onTap,
                                     style: FilledButton.styleFrom(
-                                      backgroundColor:
-                                          const Color(0xFFE9F1FF),
-                                      foregroundColor:
-                                          const Color(0xFF1565C0),
-                                      minimumSize:
-                                          const Size.fromHeight(54),
+                                      backgroundColor: bg,
+                                      foregroundColor: fg,
+                                      minimumSize: Size.fromHeight(keyH),
+                                      padding: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.backspace_outlined,
+                                    child: child,
+                                  );
+                                }
+
+                                return Container(
+                                  padding: EdgeInsets.fromLTRB(
+                                    landscape ? 10 : 12,
+                                    landscape ? 8 : 10,
+                                    landscape ? 10 : 12,
+                                    landscape ? 8 : 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF2F5FA),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xFFD8E2EE),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.08),
+                                        blurRadius: 18,
+                                        offset: const Offset(0, -4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: SingleChildScrollView(
+                                    physics:
+                                        const ClampingScrollPhysics(),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                label,
+                                                maxLines: landscape ? 2 : 3,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style:
+                                                    GoogleFonts.kanit(
+                                                  fontSize: landscape
+                                                      ? 14.5
+                                                      : 17,
+                                                  fontWeight:
+                                                      FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                value.isEmpty ? '0' : value,
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                textAlign: TextAlign.end,
+                                                style: GoogleFonts.kanit(
+                                                  fontSize: landscape
+                                                      ? 17
+                                                      : 21,
+                                                  fontWeight:
+                                                      FontWeight.w800,
+                                                  color:
+                                                      const Color(0xFF1565C0),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: landscape ? 6 : 10),
+                                        GridView.count(
+                                          crossAxisCount: 3,
+                                          mainAxisSpacing:
+                                              landscape ? 5 : 8,
+                                          crossAxisSpacing:
+                                              landscape ? 5 : 8,
+                                          shrinkWrap: true,
+                                          physics:
+                                              const NeverScrollableScrollPhysics(),
+                                          childAspectRatio: aspect,
+                                          children: [
+                                            keyButton('1'),
+                                            keyButton('2'),
+                                            keyButton('3'),
+                                            keyButton('4'),
+                                            keyButton('5'),
+                                            keyButton('6'),
+                                            keyButton('7'),
+                                            keyButton('8'),
+                                            keyButton('9'),
+                                            auxButton(
+                                              bg: const Color(0xFFFFEFEF),
+                                              fg: const Color(0xFFD64545),
+                                              onTap: () {
+                                                value = '';
+                                                controller.text = value;
+                                                onChanged?.call(value);
+                                                setModalState(() {});
+                                              },
+                                              child: Text(
+                                                'ล้าง',
+                                                style: GoogleFonts.kanit(
+                                                  fontWeight:
+                                                      FontWeight.w700,
+                                                  fontSize: landscape ? 13.0 : 14.5,
+                                                ),
+                                              ),
+                                            ),
+                                            keyButton('0'),
+                                            if (allowDecimal)
+                                              keyButton('.'),
+                                            auxButton(
+                                              bg: const Color(0xFFE9F1FF),
+                                              fg:
+                                                  const Color(0xFF1565C0),
+                                              onTap: () {
+                                                if (value.isNotEmpty) {
+                                                  value = value.substring(
+                                                    0,
+                                                    value.length - 1,
+                                                  );
+                                                  controller.text = value;
+                                                  onChanged?.call(value);
+                                                  setModalState(() {});
+                                                }
+                                              },
+                                              child: const Icon(
+                                                Icons.backspace_outlined,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: landscape ? 6 : 8),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: FilledButton.icon(
+                                            onPressed: () =>
+                                                Navigator.of(
+                                                  dialogCtx,
+                                                ).pop(),
+                                            icon: Icon(
+                                              Icons.check_circle_outline,
+                                              size: landscape ? 20 : 24,
+                                            ),
+                                            label: Text(
+                                              'เสร็จสิ้น',
+                                              style: GoogleFonts.kanit(
+                                                fontWeight:
+                                                    FontWeight.w800,
+                                                fontSize: landscape ? 15.5 : 19,
+                                              ),
+                                            ),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(
+                                                0xFF1565C0,
+                                              ),
+                                              foregroundColor:
+                                                  Colors.white,
+                                              minimumSize: Size.fromHeight(
+                                                landscape ? 44 : 54,
+                                              ),
+                                              shape:
+                                                  RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      14,
+                                                    ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.icon(
-                                  onPressed: () =>
-                                      Navigator.of(dialogCtx).pop(),
-                                  icon: const Icon(
-                                    Icons.check_circle_outline,
-                                    size: 24,
-                                  ),
-                                  label: Text(
-                                    'เสร็จสิ้น',
-                                    style: GoogleFonts.kanit(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 20,
-                                    ),
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor:
-                                        const Color(0xFF1565C0),
-                                    foregroundColor: Colors.white,
-                                    minimumSize:
-                                        const Size.fromHeight(58),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                                );
+                              },
+                            ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -4228,7 +4341,11 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                       )
                       .toList(),
                   onChanged: (v) {
-                    setState(() => row.vehicleId = v ?? '');
+                    final id = v ?? '';
+                    setState(() {
+                      row.vehicleId = id;
+                      _applyDefaultCubicForVehicleRow(row, id);
+                    });
                     widget.onChanged();
                   },
                 ),
