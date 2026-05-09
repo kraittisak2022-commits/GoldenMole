@@ -8,6 +8,11 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.mobile
+.env.web
+
+# Supabase CLI local cache
+supabase/.temp/
 
 # IDE
 .vscode/
