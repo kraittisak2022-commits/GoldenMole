@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/sms/callback",
+      "destination": "/api/sms/callback"
+    }
+  ]
+}

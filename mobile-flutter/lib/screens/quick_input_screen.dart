@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
+import '../services/advance_sms_notify.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/advance_work_details.dart';
@@ -1721,23 +1722,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             '${DateTime.now().millisecondsSinceEpoch}_advance';
         _laborAdvanceTxId = id;
         final count = _selectedAdvanceEmpIds.length;
-        await _persist(
-          AppTransaction(
-            id: id,
-            date: ymd,
-            type: 'Expense',
-            category: 'Labor',
-            subCategory: 'Advance',
-            laborStatus: 'Advance',
-            employeeIds: _selectedAdvanceEmpIds.toList(),
-            amount: per * count,
-            advanceAmount: per,
-            workDetails: workDetails,
-            note: _activeSignatureNote,
-            description: _appendRecorder('เบิกล่วงหน้า · $slotTh · $payTh'),
+        final saved = AppTransaction(
+          id: id,
+          date: ymd,
+          type: 'Expense',
+          category: 'Labor',
+          subCategory: 'Advance',
+          laborStatus: 'Advance',
+          employeeIds: _selectedAdvanceEmpIds.toList(),
+          amount: per * count,
+          advanceAmount: per,
+          workDetails: workDetails,
+          note: _activeSignatureNote,
+          description: _appendRecorder('เบิกล่วงหน้า · $slotTh · $payTh'),
+        );
+        await _persist(saved);
+        _advanceWorkDetailsSeed = workDetails;
+        unawaited(
+          notifyAdvanceSmsAfterSave(
+            transaction: saved,
+            employees: _employees,
           ),
         );
-        _advanceWorkDetailsSeed = workDetails;
       },
     );
   }

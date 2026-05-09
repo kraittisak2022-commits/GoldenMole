@@ -1,0 +1,8 @@
+# https://supabase.com/docs/guides/cli/config
+# Per-function JWT: DLR webhook is called by SMSOK (no Bearer token).
+
+[functions.send-advance-sms]
+verify_jwt = true
+
+[functions.smsok-dlr-webhook]
+verify_jwt = false
