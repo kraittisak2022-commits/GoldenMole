@@ -84,6 +84,56 @@ function buildAdvanceLineText(tx: Transaction, employees: Employee[]): string {
     return raw.length > 4800 ? raw.slice(0, 4800) : raw;
 }
 
+function leaveKindTh(sub: string | undefined): string {
+    const s = (sub || '').trim().toLowerCase();
+    if (s === 'sick') return 'ลาป่วย';
+    return 'ลากิจ';
+}
+
+function formatLeaveDays(d: number | undefined): string {
+    if (d == null || !Number.isFinite(d) || d <= 0) return '—';
+    if (Math.abs(d - Math.round(d)) < 1e-9) return `${Math.round(d)}`;
+    return String(d);
+}
+
+function buildLeaveLineText(tx: Transaction, employees: Employee[]): string {
+    const ids = tx.employeeIds || [];
+    const names = ids
+        .map((id) => {
+            const e = employees.find((x) => x.id === id);
+            return (e?.nickname || e?.name || id).trim();
+        })
+        .filter(Boolean)
+        .join(', ');
+    const reasonRaw = (tx.leaveReason || '').trim();
+    const reasonLine = reasonRaw || '—';
+    const daysStr = formatLeaveDays(tx.leaveDays != null ? Number(tx.leaveDays) : undefined);
+    const namesLine = names || '—';
+    const dateLine = `${formatDateThaiBE(tx.date)} (${tx.date})`;
+    const lines = [
+        '━━━━ GoldenMole ━━━━',
+        '',
+        'บันทึกลางาน',
+        '',
+        'ประเภท :',
+        leaveKindTh(tx.subCategory),
+        '',
+        'วันที่เริ่มลา :',
+        dateLine,
+        '',
+        'ชื่อ :',
+        namesLine,
+        '',
+        'จำนวนวัน :',
+        `${daysStr} วัน`,
+        '',
+        'เหตุผล :',
+        reasonLine,
+    ];
+    const raw = lines.join('\n').trim();
+    return raw.length > 4800 ? raw.slice(0, 4800) : raw;
+}
+
 export type AdvanceLineNotifyResult =
     | { kind: 'skipped' }
     | { kind: 'sent' }
@@ -133,6 +183,53 @@ export async function notifyAdvanceLineSaved(
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn('notifyAdvanceLineSaved invoke failed', e);
+        return { kind: 'failed', message: msg };
+    }
+}
+
+/** หลังบันทึกลางาน — เรียก Edge notify-advance-line (ผู้รับเดียวกับเบิกเงิน) */
+export async function notifyLeaveLineSaved(
+    tx: Transaction,
+    employees: Employee[],
+): Promise<AdvanceLineNotifyResult> {
+    if (!hasSupabaseConfig) return { kind: 'skipped' };
+    const cat = (tx.category || '').trim();
+    if (cat !== 'Leave') return { kind: 'skipped' };
+
+    const ids = tx.employeeIds || [];
+    const to = new Set<string>();
+    for (const id of ids) {
+        const e = employees.find((x) => x.id === id);
+        const u = normalizeLineUserId(e?.lineUserId || '');
+        if (u) to.add(u);
+    }
+    const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
+    for (const raw of extra) {
+        const u = normalizeLineUserId(raw);
+        if (u) to.add(u);
+    }
+    if (to.size === 0) return { kind: 'skipped' };
+
+    const text = buildLeaveLineText(tx, employees);
+    try {
+        const { data, error } = await invokeNotifyAdvanceLine({
+            text,
+            to: [...to],
+        });
+        if (error) {
+            console.warn('notifyLeaveLineSaved:', error.message);
+            return { kind: 'failed', message: error.message };
+        }
+        const d = data as { ok?: boolean; hint_th?: string; message?: string } | null;
+        if (d && d.ok === false) {
+            const hint = String(d.hint_th || d.message || d.error || 'แจ้ง LINE ไม่สำเร็จ');
+            console.warn('notifyLeaveLineSaved LINE:', hint, d);
+            return { kind: 'failed', message: hint };
+        }
+        return { kind: 'sent' };
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('notifyLeaveLineSaved invoke failed', e);
         return { kind: 'failed', message: msg };
     }
 }

@@ -12,6 +12,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
+import '../widgets/thai_bank_brand_icon.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
@@ -777,21 +778,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isLaborAdvanceMode) {
-      final t = txs.first;
-      _advanceWorkDetailsSeed = t.workDetails;
-      _selectedAdvanceEmpIds
-        ..clear()
-        ..addAll(t.employeeIds);
-      final n = t.employeeIds.length;
-      final per =
-          t.advanceAmount ?? (n > 0 ? t.amount / n : 0.0);
-      _advanceAmountPerPersonController.text =
-          per > 0 ? _strNum(per) : '';
-      final meta = AdvanceGmMeta.decode(t.workDetails);
-      _advancePayoutSlot = meta.payoutSlot;
-      _advancePaymentMethod = meta.paymentMethod;
-      _advanceBank = meta.bank.trim();
-      _advanceAccountController.text = meta.accountNumber;
+      // ไม่เติมฟอร์มจากคำขอเบิกที่บันทึกแล้ว — เปิดหน้ามาพร้อมส่งคำขอใหม่ทุกครั้ง
+      // (_moduleDayTransactions ยังโหลดไว้สำหรับส่วนประวัติรายวัน ถ้ามี)
       return;
     }
 
@@ -1654,24 +1642,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _laborLeaveTxId ??
             '${DateTime.now().millisecondsSinceEpoch}_leave';
         _laborLeaveTxId = id;
-        await _persist(
-          AppTransaction(
-            id: id,
-            date: ymd,
-            type: 'Leave',
-            category: 'Leave',
-            subCategory: _leaveTypeChoice,
-            laborStatus: 'Leave',
-            employeeIds: _selectedLeaveEmpIds.toList(),
-            amount: 0,
-            note: _activeSignatureNote,
-            description: _appendRecorder(
-              'ลา${_leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ'}: $reason',
-            ),
-            leaveReason: reason,
-            leaveDays: days,
+        final saved = AppTransaction(
+          id: id,
+          date: ymd,
+          type: 'Leave',
+          category: 'Leave',
+          subCategory: _leaveTypeChoice,
+          laborStatus: 'Leave',
+          employeeIds: _selectedLeaveEmpIds.toList(),
+          amount: 0,
+          note: _activeSignatureNote,
+          description: _appendRecorder(
+            'ลา${_leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ'}: $reason',
           ),
+          leaveReason: reason,
+          leaveDays: days,
         );
+        await _persist(saved);
+        unawaited(notifyLeaveLineAfterSaved(saved, _employees));
       },
     );
   }
@@ -2045,6 +2033,97 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  String _displayNamesForEmployeeIds(List<String> ids) {
+    final parts = <String>[];
+    for (final id in ids) {
+      final e = _employeesById[id];
+      parts.add(e != null ? _employeeUiDisplayName(e) : id);
+    }
+    return parts.where((s) => s.isNotEmpty).join(', ');
+  }
+
+  Widget _defaultModuleHistoryListTile(AppTransaction t) {
+    final sub = (t.subCategory ?? '').trim();
+    final meta = [
+      t.category,
+      if (sub.isNotEmpty) sub,
+    ].join(' · ');
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        t.description,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.kanit(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        '$meta\n${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
+        style: GoogleFonts.kanit(
+          fontSize: 11,
+          color: Colors.black54,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
+  Widget _advanceHistoryListTile(AppTransaction t) {
+    final names = _displayNamesForEmployeeIds(t.employeeIds);
+    final namesLine = names.isEmpty ? '—' : names;
+    final per = t.advanceAmount ?? t.amount;
+    final amtStr = per > 0 ? '฿${_strNum(per)}' : 'ยอด —';
+    final meta = AdvanceGmMeta.decode(t.workDetails);
+    final slotTh =
+        meta.payoutSlot == AdvanceGmMeta.evening ? 'รับช่วงเย็น' : 'รับช่วงกลางวัน';
+    final payTh =
+        meta.paymentMethod == AdvanceGmMeta.transfer ? 'เงินโอน' : 'เงินสด';
+    var bankLine = '';
+    if (meta.paymentMethod == AdvanceGmMeta.transfer) {
+      final b = meta.bank.trim();
+      final a = meta.accountNumber.trim();
+      if (b.isNotEmpty && a.isNotEmpty) {
+        bankLine = '\nธนาคาร: $b · เลขบัญชี $a';
+      } else if (b.isNotEmpty) {
+        bankLine = '\nธนาคาร: $b';
+      } else if (a.isNotEmpty) {
+        bankLine = '\nเลขบัญชี $a';
+      }
+    }
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+      title: Text(
+        namesLine,
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.kanit(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF1D2A3A),
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'ขอเบิก $amtStr · $slotTh · $payTh$bankLine\n'
+          '${t.description}\n'
+          '${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
+          style: GoogleFonts.kanit(
+            fontSize: 11.5,
+            color: Colors.black54,
+            height: 1.4,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildModuleHistorySection() {
     if (_moduleDayLoading) return const SizedBox.shrink();
 
@@ -2133,6 +2212,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             child: Text(
                               _moduleHistoryVisible
                                   ? 'ซ่อนประวัติ'
+                                  : _isLaborAdvanceMode
+                                  ? 'ดูประวัติการเบิกวันนี้ ($n รายการ)'
                                   : 'ดูประวัติในวันนี้ ($n รายการ)',
                               key: ValueKey(_moduleHistoryVisible),
                               overflow: TextOverflow.ellipsis,
@@ -2214,7 +2295,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
+                              _isLaborAdvanceMode
+                                  ? 'แต่ละรายการ = คนละคำขอ — แสดงชื่อผู้เบิกและยอดที่ขอ'
+                                  : 'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
                               style: GoogleFonts.kanit(
                                 fontSize: 12,
                                 color: Colors.black54,
@@ -2222,35 +2305,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               ),
                             ),
                             const SizedBox(height: 6),
-                            ..._moduleDayTransactions.map((t) {
-                              final sub = (t.subCategory ?? '').trim();
-                              final meta = [
-                                t.category,
-                                if (sub.isNotEmpty) sub,
-                              ].join(' · ');
-                              return ListTile(
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  t.description,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.kanit(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '$meta\n${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
-                                  style: GoogleFonts.kanit(
-                                    fontSize: 11,
-                                    color: Colors.black54,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              );
-                            }),
+                            ..._moduleDayTransactions.map(
+                              (t) => _isLaborAdvanceMode
+                                  ? _advanceHistoryListTile(t)
+                                  : _defaultModuleHistoryListTile(t),
+                            ),
                           ],
                         ),
                       ),
@@ -3185,20 +3244,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool allowDecimal = false,
     int maxDecimalPlaces = 2,
   }) async {
-    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
 
-    final rootContext = context;
-    if (!rootContext.mounted) return;
-
-    String value = controller.text;
-
-    await showGeneralDialog<void>(
-      context: rootContext,
+    final result = await showGeneralDialog<String>(
+      context: context,
       barrierDismissible: true,
       barrierLabel:
-          MaterialLocalizations.of(rootContext).modalBarrierDismissLabel,
+          MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: const Color(0x48000000),
-      transitionDuration: const Duration(milliseconds: 260),
+      transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (dialogCtx, animation, _) {
         final curve = CurvedAnimation(
           parent: animation,
@@ -3210,7 +3264,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             alignment: Alignment.bottomCenter,
             child: SlideTransition(
               position: Tween<Offset>(
-                begin: const Offset(0, 0.085),
+                begin: const Offset(0, 0.06),
                 end: Offset.zero,
               ).animate(curve),
               child: FadeTransition(
@@ -3248,261 +3302,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           child: Material(
                             color: Colors.transparent,
                             clipBehavior: Clip.none,
-                            child: StatefulBuilder(
-                              builder: (context, setModalState) {
-                                final keyH = landscape ? 40.0 : 52.0;
-                                final keyFont = landscape ? 19.0 : 23.0;
-                                final aspect = landscape ? 2.85 : 1.75;
-
-                                Widget keyButton(String k) {
-                                  return FilledButton(
-                                    onPressed: () {
-                                      if (k == '.' && !allowDecimal) return;
-                                      if (k == '.') {
-                                        if (value.contains('.')) return;
-                                        value =
-                                            value.isEmpty ? '0.' : '$value.';
-                                        controller.text = value;
-                                        onChanged?.call(value);
-                                        setModalState(() {});
-                                        return;
-                                      }
-                                      if (allowDecimal &&
-                                          value.contains('.')) {
-                                        final idx = value.indexOf('.');
-                                        final decimals =
-                                            value.substring(idx + 1);
-                                        if (decimals.length >=
-                                            maxDecimalPlaces) {
-                                          return;
-                                        }
-                                      }
-                                      value += k;
-                                      controller.text = value;
-                                      onChanged?.call(value);
-                                      setModalState(() {});
-                                    },
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      foregroundColor:
-                                          const Color(0xFF1D2A3A),
-                                      minimumSize:
-                                          Size.fromHeight(keyH),
-                                      padding:
-                                          EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      k,
-                                      style: GoogleFonts.kanit(
-                                        fontSize: keyFont,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                Widget auxButton({
-                                  required Widget child,
-                                  required Color fg,
-                                  required Color bg,
-                                  required VoidCallback? onTap,
-                                }) {
-                                  return FilledButton(
-                                    onPressed: onTap,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: bg,
-                                      foregroundColor: fg,
-                                      minimumSize: Size.fromHeight(keyH),
-                                      padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    child: child,
-                                  );
-                                }
-
-                                return Container(
-                                  padding: EdgeInsets.fromLTRB(
-                                    landscape ? 10 : 12,
-                                    landscape ? 8 : 10,
-                                    landscape ? 10 : 12,
-                                    landscape ? 8 : 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF2F5FA),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: const Color(0xFFD8E2EE),
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.08),
-                                        blurRadius: 18,
-                                        offset: const Offset(0, -4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: SingleChildScrollView(
-                                    physics:
-                                        const ClampingScrollPhysics(),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                label,
-                                                maxLines: landscape ? 2 : 3,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style:
-                                                    GoogleFonts.kanit(
-                                                  fontSize: landscape
-                                                      ? 14.5
-                                                      : 17,
-                                                  fontWeight:
-                                                      FontWeight.w800,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                value.isEmpty ? '0' : value,
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                textAlign: TextAlign.end,
-                                                style: GoogleFonts.kanit(
-                                                  fontSize: landscape
-                                                      ? 17
-                                                      : 21,
-                                                  fontWeight:
-                                                      FontWeight.w800,
-                                                  color:
-                                                      const Color(0xFF1565C0),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        SizedBox(height: landscape ? 6 : 10),
-                                        GridView.count(
-                                          crossAxisCount: 3,
-                                          mainAxisSpacing:
-                                              landscape ? 5 : 8,
-                                          crossAxisSpacing:
-                                              landscape ? 5 : 8,
-                                          shrinkWrap: true,
-                                          physics:
-                                              const NeverScrollableScrollPhysics(),
-                                          childAspectRatio: aspect,
-                                          children: [
-                                            keyButton('1'),
-                                            keyButton('2'),
-                                            keyButton('3'),
-                                            keyButton('4'),
-                                            keyButton('5'),
-                                            keyButton('6'),
-                                            keyButton('7'),
-                                            keyButton('8'),
-                                            keyButton('9'),
-                                            auxButton(
-                                              bg: const Color(0xFFFFEFEF),
-                                              fg: const Color(0xFFD64545),
-                                              onTap: () {
-                                                value = '';
-                                                controller.text = value;
-                                                onChanged?.call(value);
-                                                setModalState(() {});
-                                              },
-                                              child: Text(
-                                                'ล้าง',
-                                                style: GoogleFonts.kanit(
-                                                  fontWeight:
-                                                      FontWeight.w700,
-                                                  fontSize: landscape ? 13.0 : 14.5,
-                                                ),
-                                              ),
-                                            ),
-                                            keyButton('0'),
-                                            if (allowDecimal)
-                                              keyButton('.'),
-                                            auxButton(
-                                              bg: const Color(0xFFE9F1FF),
-                                              fg:
-                                                  const Color(0xFF1565C0),
-                                              onTap: () {
-                                                if (value.isNotEmpty) {
-                                                  value = value.substring(
-                                                    0,
-                                                    value.length - 1,
-                                                  );
-                                                  controller.text = value;
-                                                  onChanged?.call(value);
-                                                  setModalState(() {});
-                                                }
-                                              },
-                                              child: const Icon(
-                                                Icons.backspace_outlined,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        SizedBox(height: landscape ? 6 : 8),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: FilledButton.icon(
-                                            onPressed: () =>
-                                                Navigator.of(
-                                                  dialogCtx,
-                                                ).pop(),
-                                            icon: Icon(
-                                              Icons.check_circle_outline,
-                                              size: landscape ? 20 : 24,
-                                            ),
-                                            label: Text(
-                                              'เสร็จสิ้น',
-                                              style: GoogleFonts.kanit(
-                                                fontWeight:
-                                                    FontWeight.w800,
-                                                fontSize: landscape ? 15.5 : 19,
-                                              ),
-                                            ),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor:
-                                                  const Color(
-                                                0xFF1565C0,
-                                              ),
-                                              foregroundColor:
-                                                  Colors.white,
-                                              minimumSize: Size.fromHeight(
-                                                landscape ? 44 : 54,
-                                              ),
-                                              shape:
-                                                  RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      14,
-                                                    ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                            child: _CmNumericKeypadPanel(
+                              dialogContext: dialogCtx,
+                              label: label,
+                              initialText: controller.text,
+                              allowDecimal: allowDecimal,
+                              maxDecimalPlaces: maxDecimalPlaces,
+                              landscape: landscape,
                             ),
                           ),
                         ),
@@ -3516,6 +3322,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
       },
     );
+
+    if (!mounted || result == null) return;
+    if (controller.text != result) {
+      controller.text = result;
+    }
+    onChanged?.call(result);
   }
 
   Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
@@ -4183,6 +3995,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               labelText: 'เหตุผลการลา',
               prefixIcon: Icon(Icons.note_alt_outlined),
             ),
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            minLines: 2,
+            maxLines: 5,
+            onChanged: (_) => setState(() {}),
           ),
           if (days > 0 || _selectedLeaveEmpIds.isNotEmpty)
             Padding(
@@ -4231,15 +4048,44 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final seen = <String>{};
     for (final b in kThaiBankNames) {
       if (seen.add(b)) {
-        items.add(DropdownMenuItem(value: b, child: Text(b, style: style)));
+        items.add(
+          DropdownMenuItem<String>(
+            value: b,
+            child: Row(
+              children: [
+                ThaiBankBrandIcon(bankName: b, size: 28),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    b,
+                    style: style,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
     final cur = _advanceBank.trim();
     if (cur.isNotEmpty && !kThaiBankNames.contains(cur)) {
       items.add(
-        DropdownMenuItem(
+        DropdownMenuItem<String>(
           value: cur,
-          child: Text('$cur (จากข้อมูลเดิม)', style: style),
+          child: Row(
+            children: [
+              ThaiBankBrandIcon(bankName: cur, size: 28),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$cur (จากข้อมูลเดิม)',
+                  style: style,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -4352,7 +4198,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               label: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
               allowDecimal: true,
               maxDecimalPlaces: 2,
-              onChanged: (_) => setState(() {}),
             ),
             style: GoogleFonts.kanit(
               fontSize: 18,
@@ -4424,7 +4269,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               decoration: InputDecoration(
                 labelText: 'ธนาคาร',
                 labelStyle: GoogleFonts.kanit(),
-                prefixIcon: const Icon(Icons.account_balance_outlined),
+                prefixIcon: _advanceBank.trim().isEmpty
+                    ? const Icon(Icons.account_balance_outlined)
+                    : Padding(
+                        padding: const EdgeInsets.only(left: 10, right: 2),
+                        child: ThaiBankBrandIcon(
+                          bankName: _advanceBank.trim(),
+                          size: 28,
+                        ),
+                      ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -4443,6 +4296,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   isExpanded: true,
+                  itemHeight: 52,
                   value: _advanceBankDropdownValue(),
                   hint: Text(
                     'เลือกธนาคาร',
@@ -4754,6 +4608,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               labelText: 'รายละเอียดงาน OT (ใช้ร่วมทุกกลุ่ม)',
               prefixIcon: Icon(Icons.note_alt_outlined),
             ),
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            minLines: 2,
+            maxLines: 5,
+            onChanged: (_) => setState(() {}),
           ),
           if (_otDescSuggestions.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -4997,6 +4856,270 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 }
 
+/// แป้นตัวเลขลอย — state แยกจาก [QuickInputScreen] เพื่อลดการรีบิลด์และแลคเวลากดเลข
+class _CmNumericKeypadPanel extends StatefulWidget {
+  const _CmNumericKeypadPanel({
+    required this.dialogContext,
+    required this.label,
+    required this.initialText,
+    required this.allowDecimal,
+    required this.maxDecimalPlaces,
+    required this.landscape,
+  });
+
+  final BuildContext dialogContext;
+  final String label;
+  final String initialText;
+  final bool allowDecimal;
+  final int maxDecimalPlaces;
+  final bool landscape;
+
+  @override
+  State<_CmNumericKeypadPanel> createState() => _CmNumericKeypadPanelState();
+}
+
+class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
+  late String _digits;
+
+  @override
+  void initState() {
+    super.initState();
+    _digits = widget.initialText;
+  }
+
+  void _tapDigit(String k) {
+    if (k == '.' && !widget.allowDecimal) return;
+    if (k == '.') {
+      if (_digits.contains('.')) return;
+      HapticFeedback.selectionClick();
+      setState(() {
+        _digits = _digits.isEmpty ? '0.' : '$_digits.';
+      });
+      return;
+    }
+    if (widget.allowDecimal && _digits.contains('.')) {
+      final idx = _digits.indexOf('.');
+      final decimals = _digits.substring(idx + 1);
+      if (decimals.length >= widget.maxDecimalPlaces) return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _digits += k);
+  }
+
+  void _clear() {
+    HapticFeedback.selectionClick();
+    setState(() => _digits = '');
+  }
+
+  void _backspace() {
+    if (_digits.isEmpty) return;
+    HapticFeedback.selectionClick();
+    setState(() => _digits = _digits.substring(0, _digits.length - 1));
+  }
+
+  void _confirm() {
+    Navigator.of(widget.dialogContext).pop(_digits);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ls = widget.landscape;
+    final keyH = ls ? 42.0 : 52.0;
+    final gap = ls ? 6.0 : 8.0;
+    final keyStyle = GoogleFonts.kanit(
+      fontSize: ls ? 19.0 : 22.0,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF1D2A3A),
+    );
+    final labelStyle = GoogleFonts.kanit(
+      fontSize: ls ? 14.5 : 17,
+      fontWeight: FontWeight.w800,
+    );
+    final previewStyle = GoogleFonts.kanit(
+      fontSize: ls ? 17.0 : 21.0,
+      fontWeight: FontWeight.w800,
+      color: const Color(0xFF1565C0),
+    );
+
+    Widget cell(Widget child) => Expanded(child: child);
+
+    Widget digitKey(String d) => Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: () => _tapDigit(d),
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          height: keyH,
+          child: Center(child: Text(d, style: keyStyle)),
+        ),
+      ),
+    );
+
+    Widget auxKey({
+      required Color bg,
+      required Color fg,
+      required VoidCallback? onTap,
+      required Widget child,
+    }) {
+      return Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            height: keyH,
+            child: Center(child: child),
+          ),
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          ls ? 10 : 12,
+          ls ? 8 : 10,
+          ls ? 10 : 12,
+          ls ? 8 : 10,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F5FA),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFD8E2EE)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      maxLines: ls ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: labelStyle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      _digits.isEmpty ? '0' : _digits,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: previewStyle,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: ls ? 6 : 10),
+              Row(
+                children: [
+                  cell(digitKey('1')),
+                  SizedBox(width: gap),
+                  cell(digitKey('2')),
+                  SizedBox(width: gap),
+                  cell(digitKey('3')),
+                ],
+              ),
+              SizedBox(height: gap),
+              Row(
+                children: [
+                  cell(digitKey('4')),
+                  SizedBox(width: gap),
+                  cell(digitKey('5')),
+                  SizedBox(width: gap),
+                  cell(digitKey('6')),
+                ],
+              ),
+              SizedBox(height: gap),
+              Row(
+                children: [
+                  cell(digitKey('7')),
+                  SizedBox(width: gap),
+                  cell(digitKey('8')),
+                  SizedBox(width: gap),
+                  cell(digitKey('9')),
+                ],
+              ),
+              SizedBox(height: gap),
+              Row(
+                children: [
+                  cell(
+                    auxKey(
+                      bg: const Color(0xFFFFEFEF),
+                      fg: const Color(0xFFD64545),
+                      onTap: _clear,
+                      child: Text(
+                        'ล้าง',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: ls ? 13.0 : 14.5,
+                          color: const Color(0xFFD64545),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  cell(digitKey('0')),
+                  SizedBox(width: gap),
+                  if (widget.allowDecimal) cell(digitKey('.')),
+                  if (widget.allowDecimal) SizedBox(width: gap),
+                  cell(
+                    auxKey(
+                      bg: const Color(0xFFE9F1FF),
+                      fg: const Color(0xFF1565C0),
+                      onTap: _backspace,
+                      child: const Icon(Icons.backspace_outlined),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: ls ? 6 : 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _confirm,
+                  icon: Icon(
+                    Icons.check_circle_outline,
+                    size: ls ? 20 : 24,
+                  ),
+                  label: Text(
+                    'เสร็จสิ้น',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: ls ? 15.5 : 19,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF1565C0),
+                    foregroundColor: Colors.white,
+                    minimumSize: Size.fromHeight(ls ? 44 : 54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AnimatedInputField extends StatefulWidget {
   const _AnimatedInputField({
     required this.controller,
@@ -5008,6 +5131,8 @@ class _AnimatedInputField extends StatefulWidget {
     this.inputFormatters,
     this.readOnly = false,
     this.onTap,
+    this.minLines,
+    this.maxLines,
   });
 
   final TextEditingController controller;
@@ -5019,6 +5144,8 @@ class _AnimatedInputField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final bool readOnly;
   final VoidCallback? onTap;
+  final int? minLines;
+  final int? maxLines;
 
   @override
   State<_AnimatedInputField> createState() => _AnimatedInputFieldState();
@@ -6363,6 +6490,10 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
               controller: widget.controller,
               keyboardType: widget.keyboardType,
               onChanged: widget.onChanged,
+              enableSuggestions: true,
+              autocorrect: true,
+              minLines: widget.minLines,
+              maxLines: widget.maxLines,
               style:
                   widget.style ??
                   GoogleFonts.kanit(
@@ -6379,7 +6510,6 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
                 if (!_focusNode.hasFocus) {
                   _focusNode.requestFocus();
                 }
-                SystemChannels.textInput.invokeMethod<void>('TextInput.show');
               },
               decoration: widget.decoration,
             ),

@@ -277,12 +277,10 @@ bool transactionMatchesDailyModule(
   }
 
   bool advanceLike() {
-    final per = t.advanceAmount ?? 0;
     return t.category == 'Labor' &&
         (t.subCategory ?? '').trim().toLowerCase() == 'advance' &&
         (t.laborStatus ?? '').trim().toLowerCase() == 'advance' &&
-        t.employeeIds.isNotEmpty &&
-        (per > 0 || t.amount > 0);
+        t.employeeIds.isNotEmpty;
   }
 
   switch (moduleCategory) {

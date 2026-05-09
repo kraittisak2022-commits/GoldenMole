@@ -200,3 +200,116 @@ Future<AdvanceLineNotifyStatus> notifyAdvanceLineAfterSaved(
     return AdvanceLineNotifyStatus.failed(msg);
   }
 }
+
+String _leaveKindTh(String? subCategory) {
+  final s = (subCategory ?? '').trim().toLowerCase();
+  if (s == 'sick') return 'ลาป่วย';
+  return 'ลากิจ';
+}
+
+String _formatLeaveDays(double? value) {
+  if (value == null || value.isNaN || value <= 0) return '—';
+  final v = value;
+  if ((v - v.roundToDouble()).abs() < 1e-9) return '${v.round()}';
+  return v.toString();
+}
+
+/// ข้อความส่ง LINE หลังบันทึกลา — ใช้ Edge เดียวกับเบิกเงิน (`notify-advance-line`)
+String buildLeaveLineText(AppTransaction tx, List<Employee> employees) {
+  final ids = tx.employeeIds;
+  final names = ids
+      .map((id) {
+        Employee? found;
+        for (final e in employees) {
+          if (e.id == id) {
+            found = e;
+            break;
+          }
+        }
+        return (found?.nickname ?? found?.name ?? id).trim();
+      })
+      .where((s) => s.isNotEmpty)
+      .join(', ');
+  final reason = (tx.leaveReason ?? '').trim();
+  final reasonLine = reason.isNotEmpty ? reason : '—';
+  final daysStr = _formatLeaveDays(tx.leaveDays);
+  final namesLine = names.isEmpty ? '—' : names;
+  final dateLine = '${_formatDateThaiBE(tx.date)} (${tx.date})';
+  final lines = <String>[
+    '━━━━ GoldenMole ━━━━',
+    '',
+    'บันทึกลางาน',
+    '',
+    'ประเภท :',
+    _leaveKindTh(tx.subCategory),
+    '',
+    'วันที่เริ่มลา :',
+    dateLine,
+    '',
+    'ชื่อ :',
+    namesLine,
+    '',
+    'จำนวนวัน :',
+    '$daysStr วัน',
+    '',
+    'เหตุผล :',
+    reasonLine,
+  ];
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+/// หลังบันทึกลางาน — เรียก Edge `notify-advance-line` (ต้องมี LINE_CHANNEL_ACCESS_TOKEN ฝั่ง Supabase)
+Future<AdvanceLineNotifyStatus> notifyLeaveLineAfterSaved(
+  AppTransaction tx,
+  List<Employee> employees,
+) async {
+  if (tx.category.trim() != 'Leave') {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+
+  final to = <String>{};
+  for (final id in tx.employeeIds) {
+    Employee? e;
+    for (final x in employees) {
+      if (x.id == id) {
+        e = x;
+        break;
+      }
+    }
+    final u = normalizeLineUserId(e?.lineUserId ?? '');
+    if (u != null) to.add(u);
+  }
+  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
+  for (final part in extraRaw.split(',')) {
+    final u = normalizeLineUserId(part);
+    if (u != null) to.add(u);
+  }
+  if (to.isEmpty) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+
+  final text = buildLeaveLineText(tx, employees);
+  try {
+    final res = await invokeNotifyAdvanceLine(text: text, to: to.toList());
+    final body = res.data;
+    if (res.status >= 400) {
+      final msg =
+          'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
+      debugPrint('notifyLeaveLineAfterSaved: $msg');
+      return AdvanceLineNotifyStatus.failed(msg);
+    }
+    if (body is Map && body['ok'] == false) {
+      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
+      debugPrint('notifyLeaveLineAfterSaved: $hint $body');
+      return AdvanceLineNotifyStatus.failed(
+        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
+      );
+    }
+    return AdvanceLineNotifyStatus.sent();
+  } catch (e, st) {
+    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
+    debugPrint('notifyLeaveLineAfterSaved failed: $msg\n$st');
+    return AdvanceLineNotifyStatus.failed(msg);
+  }
+}

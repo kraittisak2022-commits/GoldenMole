@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -172,6 +173,15 @@ class _MobileAppState extends State<MobileApp> {
       scrollBehavior: const _AppScrollBehavior(),
       theme: appTheme,
       darkTheme: appTheme,
+      supportedLocales: const [
+        Locale('en'),
+        Locale('th'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: _bootstrapping
           ? const BootstrapSplash()
           : _currentAdmin == null

@@ -50,7 +50,7 @@ import { isBackupDue, runBackup } from './services/backupService';
 
 // Supabase Services
 import * as db from './services/dataService';
-import { notifyAdvanceLineSaved } from './services/lineAdvanceNotify';
+import { notifyAdvanceLineSaved, notifyLeaveLineSaved } from './services/lineAdvanceNotify';
 import { supabase } from './lib/supabase';
 import { ensureSupabaseSessionForEdgeFunctions } from './utils/supabaseFunctionSession';
 
@@ -1052,6 +1052,9 @@ function App() {
 
         if (ok && txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
             void notifyAdvanceLineSaved(txToSave, employees);
+        }
+        if (ok && (txToSave.category || '').trim() === 'Leave') {
+            void notifyLeaveLineSaved(txToSave, employees);
         }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
