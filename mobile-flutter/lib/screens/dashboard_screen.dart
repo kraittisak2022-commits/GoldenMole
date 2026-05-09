@@ -101,6 +101,20 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFF7E3FF2),
   ),
   _DailyModuleDef(
+    title: 'ลางาน',
+    icon: Icons.event_busy_outlined,
+    category: 'ลางาน',
+    quickInputTitle: 'บันทึกลางาน',
+    color: Color(0xFF00897B),
+  ),
+  _DailyModuleDef(
+    title: 'เบิกเงิน',
+    icon: Icons.savings_outlined,
+    category: 'เบิกเงิน',
+    quickInputTitle: 'บันทึกเบิกเงิน',
+    color: Color(0xFFFF6F00),
+  ),
+  _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
     icon: Icons.groups_2_outlined,
     category: 'OT',

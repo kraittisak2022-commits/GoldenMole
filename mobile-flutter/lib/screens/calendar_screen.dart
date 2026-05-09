@@ -961,6 +961,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           : null;
 
       final leaveRows = dayTx.where((t) {
+        if (t.category == 'Leave' || t.type.toLowerCase() == 'leave') {
+          return true;
+        }
         final laborStatus = (t.laborStatus ?? '').toLowerCase();
         return t.category == 'Labor' &&
             (laborStatus == 'leave' ||

@@ -174,6 +174,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelVehicleTimeController = TextEditingController();
   final _laborWorkDetailsController = TextEditingController();
   final _otDescController = TextEditingController();
+  final _leaveReasonController = TextEditingController();
+  final _leaveDaysController = TextEditingController(text: '1');
+  final _advanceAmountPerPersonController = TextEditingController();
+  final Set<String> _selectedLeaveEmpIds = {};
+  final Set<String> _selectedAdvanceEmpIds = {};
+  String? _laborLeaveTxId;
+  String? _laborAdvanceTxId;
+  /// Personal | Sick — สอดคล้องเว็บ (ลากิจ / ลาป่วย) เก็บใน sub_category
+  String _leaveTypeChoice = 'Personal';
   List<Employee> _employees = const [];
   bool _employeesLoading = false;
   int _employeesLoadPercent = 0;
@@ -251,6 +260,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       widget.initialCategory == 'ค่าแรง' ||
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
   bool get _isOtMode => (widget.initialCategory ?? '').contains('OT');
+  bool get _isLaborLeaveMode => widget.initialCategory == 'ลางาน';
+  bool get _isLaborAdvanceMode => widget.initialCategory == 'เบิกเงิน';
 
   @override
   void initState() {
@@ -331,6 +342,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _persistOmitCreatedSessionIds.clear();
     _sandRowIdsByKey.clear();
     _laborTxId = null;
+    _laborLeaveTxId = null;
+    _laborAdvanceTxId = null;
     _homeSandTxId = null;
     _genericTxId = null;
   }
@@ -404,6 +417,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _laborBucketExpanded[k] = false;
       }
       _laborWorkDetailsController.clear();
+    } else if (_isLaborLeaveMode) {
+      _selectedLeaveEmpIds.clear();
+      _laborLeaveTxId = null;
+      _leaveTypeChoice = 'Personal';
+      _leaveReasonController.clear();
+      _leaveDaysController.text = '1';
+    } else if (_isLaborAdvanceMode) {
+      _selectedAdvanceEmpIds.clear();
+      _laborAdvanceTxId = null;
+      _advanceAmountPerPersonController.clear();
     } else if (_isOtMode) {
       for (final g in _otGroups) {
         g.dispose();
@@ -696,6 +719,48 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return;
     }
 
+    if (_isLaborLeaveMode) {
+      final t = txs.first;
+      _laborLeaveTxId = t.id;
+      _selectedLeaveEmpIds
+        ..clear()
+        ..addAll(t.employeeIds);
+      final sc = (t.subCategory ?? '').trim();
+      _leaveTypeChoice = sc == 'Sick' ? 'Sick' : 'Personal';
+      final lr = (t.leaveReason ?? '').trim();
+      if (lr.isNotEmpty) {
+        _leaveReasonController.text = _stripRecorderSuffix(lr);
+      } else {
+        final d = _stripRecorderSuffix(t.description);
+        final idx = d.indexOf(':');
+        _leaveReasonController.text =
+            idx >= 0 ? d.substring(idx + 1).trim() : '';
+      }
+      final ld = t.leaveDays;
+      if (ld != null && ld > 0) {
+        _leaveDaysController.text = ld == ld.roundToDouble()
+            ? '${ld.round()}'
+            : '$ld';
+      } else {
+        _leaveDaysController.text = '1';
+      }
+      return;
+    }
+
+    if (_isLaborAdvanceMode) {
+      final t = txs.first;
+      _laborAdvanceTxId = t.id;
+      _selectedAdvanceEmpIds
+        ..clear()
+        ..addAll(t.employeeIds);
+      final n = t.employeeIds.length;
+      final per =
+          t.advanceAmount ?? (n > 0 ? t.amount / n : 0.0);
+      _advanceAmountPerPersonController.text =
+          per > 0 ? _strNum(per) : '';
+      return;
+    }
+
     if (_isLaborMode) {
       final t = txs.first;
       _laborTxId = t.id;
@@ -791,6 +856,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelVehicleLitersController.dispose();
     _fuelVehicleTimeController.dispose();
     _laborWorkDetailsController.dispose();
+    _leaveReasonController.dispose();
+    _leaveDaysController.dispose();
+    _advanceAmountPerPersonController.dispose();
     for (final g in _otGroups) {
       g.dispose();
     }
@@ -808,7 +876,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  bool get _showsEmployeeLoadingUi => _isLaborMode || _isOtMode;
+  bool get _showsEmployeeLoadingUi =>
+      _isLaborMode ||
+      _isOtMode ||
+      _isLaborLeaveMode ||
+      _isLaborAdvanceMode;
 
   Future<void> _loadEmployees() async {
     _employeesLoadProgressTimer?.cancel();
@@ -1116,6 +1188,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (_isLaborMode) {
       await _saveLaborEntry();
+      return;
+    }
+    if (_isLaborLeaveMode) {
+      await _saveLaborLeaveEntry();
+      return;
+    }
+    if (_isLaborAdvanceMode) {
+      await _saveLaborAdvanceEntry();
       return;
     }
     if (_isOtMode) {
@@ -1516,6 +1596,88 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _laborBucketExpanded[k] = false;
         }
         _laborWorkDetailsController.clear();
+      },
+    );
+  }
+
+  Future<void> _saveLaborLeaveEntry() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกลางานสำเร็จ',
+      body: () async {
+        if (_selectedLeaveEmpIds.isEmpty) {
+          throw 'กรุณาเลือกพนักงาน';
+        }
+        final reason = _leaveReasonController.text.trim();
+        if (reason.isEmpty) throw 'กรุณากรอกเหตุผลการลา';
+        final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
+        if (days <= 0) throw 'กรุณากรอกจำนวนวันให้มากกว่า 0';
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final ymd = '$y-$m-$d';
+        final id =
+            _laborLeaveTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_leave';
+        _laborLeaveTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: ymd,
+            type: 'Leave',
+            category: 'Leave',
+            subCategory: _leaveTypeChoice,
+            laborStatus: 'Leave',
+            employeeIds: _selectedLeaveEmpIds.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'ลา${_leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ'}: $reason',
+            ),
+            leaveReason: reason,
+            leaveDays: days,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _saveLaborAdvanceEntry() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกเบิกเงินสำเร็จ',
+      body: () async {
+        if (_selectedAdvanceEmpIds.isEmpty) {
+          throw 'กรุณาเลือกพนักงาน';
+        }
+        final per =
+            double.tryParse(_advanceAmountPerPersonController.text.trim()) ??
+            0;
+        if (per <= 0) {
+          throw 'กรุณากรอกจำนวนเงินเบิกต่อคนให้มากกว่า 0';
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final ymd = '$y-$m-$d';
+        final id =
+            _laborAdvanceTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_advance';
+        _laborAdvanceTxId = id;
+        final count = _selectedAdvanceEmpIds.length;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: ymd,
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Advance',
+            laborStatus: 'Advance',
+            employeeIds: _selectedAdvanceEmpIds.toList(),
+            amount: per * count,
+            advanceAmount: per,
+            note: _activeSignatureNote,
+            description: _appendRecorder('เบิกล่วงหน้า'),
+          ),
+        );
       },
     );
   }
@@ -2313,6 +2475,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                   ? _buildFuelFormCard()
                                                   : _isHomeSandMode
                                                   ? _buildHomeSandFormCard()
+                                                  : _isLaborLeaveMode
+                                                  ? _buildLaborLeaveFormCard()
+                                                  : _isLaborAdvanceMode
+                                                  ? _buildLaborAdvanceFormCard()
                                                   : _isLaborMode
                                                   ? _buildLaborFormCard()
                                                   : _isOtMode
@@ -3780,6 +3946,336 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       assignments: _laborAssignments,
       pickedIds: _laborPickedIds,
       bucketExpanded: _laborBucketExpanded,
+    );
+  }
+
+  Widget _buildLaborLeaveFormCard() {
+    final employees = _sortedEmployeesForOt();
+    final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF00897B).withValues(alpha: 0.07),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'บันทึกลางาน',
+            style: GoogleFonts.kanit(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF00695C),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → ลา',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              color: const Color(0xFF5B6D83),
+            ),
+          ),
+          _employeeDataLoadProgressBanner(),
+          const SizedBox(height: 8),
+          Text(
+            'ประเภทการลา',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(
+                  value: 'Personal',
+                  label: Text('ลากิจ'),
+                ),
+                ButtonSegment<String>(
+                  value: 'Sick',
+                  label: Text('ลาป่วย'),
+                ),
+              ],
+              selected: {_leaveTypeChoice},
+              onSelectionChanged: (next) {
+                setState(() => _leaveTypeChoice = next.first);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'เลือกพนักงาน',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          employees.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'ยังไม่มีรายการพนักงานในระบบ',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF8A6A2C),
+                    ),
+                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: employees.map((e) {
+                    final id = e.id;
+                    final selected = _selectedLeaveEmpIds.contains(id);
+                    final name = _employeeUiDisplayName(e);
+                    return FilterChip(
+                      label: Text(name, style: GoogleFonts.kanit(fontSize: 13)),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() {
+                          if (selected) {
+                            _selectedLeaveEmpIds.remove(id);
+                          } else {
+                            _selectedLeaveEmpIds.add(id);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+          const SizedBox(height: 10),
+          _AnimatedInputField(
+            controller: _leaveDaysController,
+            decoration: const InputDecoration(
+              labelText: 'จำนวนวัน',
+              prefixIcon: Icon(Icons.timelapse_outlined),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _leaveDaysController,
+              label: 'จำนวนวันลา',
+              allowDecimal: true,
+              maxDecimalPlaces: 1,
+              onChanged: (_) => setState(() {}),
+            ),
+            style: GoogleFonts.kanit(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1D2A3A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _AnimatedInputField(
+            controller: _leaveReasonController,
+            decoration: const InputDecoration(
+              labelText: 'เหตุผลการลา',
+              prefixIcon: Icon(Icons.note_alt_outlined),
+            ),
+          ),
+          if (days > 0 || _selectedLeaveEmpIds.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8EC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFF2D39D)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'สรุป: ${_selectedLeaveEmpIds.length} คน · $days วัน',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF7A6A4A),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveQuickEntry,
+              icon: const Icon(Icons.save_outlined),
+              label: Text('บันทึกลางาน', style: GoogleFonts.kanit()),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00897B),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLaborAdvanceFormCard() {
+    final employees = _sortedEmployeesForOt();
+    final per =
+        double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
+    final n = _selectedAdvanceEmpIds.length;
+    final total = per * n;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF6F00).withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'บันทึกเบิกเงิน',
+            style: GoogleFonts.kanit(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFE65100),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → เบิก (เบิกล่วงหน้าต่อคน)',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              color: const Color(0xFF5B6D83),
+            ),
+          ),
+          _employeeDataLoadProgressBanner(),
+          const SizedBox(height: 8),
+          Text(
+            'เลือกพนักงาน',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          employees.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'ยังไม่มีรายการพนักงานในระบบ',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF8A6A2C),
+                    ),
+                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: employees.map((e) {
+                    final id = e.id;
+                    final selected = _selectedAdvanceEmpIds.contains(id);
+                    final name = _employeeUiDisplayName(e);
+                    return FilterChip(
+                      label: Text(name, style: GoogleFonts.kanit(fontSize: 13)),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() {
+                          if (selected) {
+                            _selectedAdvanceEmpIds.remove(id);
+                          } else {
+                            _selectedAdvanceEmpIds.add(id);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+          const SizedBox(height: 10),
+          _AnimatedInputField(
+            controller: _advanceAmountPerPersonController,
+            decoration: const InputDecoration(
+              labelText: 'จำนวนเงินเบิกต่อคน (บาท)',
+              prefixIcon: Icon(Icons.payments_outlined),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _advanceAmountPerPersonController,
+              label: 'จำนวนเงินเบิกต่อคน (บาท)',
+              allowDecimal: true,
+              maxDecimalPlaces: 2,
+              onChanged: (_) => setState(() {}),
+            ),
+            style: GoogleFonts.kanit(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1D2A3A),
+            ),
+          ),
+          if (n > 0 && per > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFCC99)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'ยอดรวมเข้าระบบ: ${total.toStringAsFixed(0)} บาท ($n คน × ${per.toStringAsFixed(per == per.roundToDouble() ? 0 : 2)} บาท)',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFFB05A00),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveQuickEntry,
+              icon: const Icon(Icons.save_outlined),
+              label: Text('บันทึกเบิกเงิน', style: GoogleFonts.kanit()),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

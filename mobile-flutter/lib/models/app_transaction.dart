@@ -42,6 +42,9 @@ class AppTransaction {
     this.otAmount,
     this.otHours,
     this.otDescription,
+    this.advanceAmount,
+    this.leaveReason,
+    this.leaveDays,
     this.createdAt,
   });
 
@@ -87,6 +90,9 @@ class AppTransaction {
   final double? otAmount;
   final double? otHours;
   final String? otDescription;
+  final double? advanceAmount;
+  final String? leaveReason;
+  final double? leaveDays;
 
   /// จากคอลัมน์ created_at ของฐานข้อมูล (แสดงประวัติ / upsert ให้คงเวลาสร้าง)
   final DateTime? createdAt;
@@ -149,6 +155,9 @@ class AppTransaction {
       otAmount: _toDouble(row['ot_amount']),
       otHours: _toDouble(row['ot_hours']),
       otDescription: row['ot_description']?.toString(),
+      advanceAmount: _toDouble(row['advance_amount']),
+      leaveReason: row['leave_reason']?.toString(),
+      leaveDays: _toDouble(row['leave_days']),
       createdAt: _parseDateTime(row['created_at']),
     );
   }
@@ -215,6 +224,10 @@ class AppTransaction {
       if (otHours != null) 'ot_hours': otHours,
       if (otDescription != null && otDescription!.isNotEmpty)
         'ot_description': otDescription,
+      if (advanceAmount != null) 'advance_amount': advanceAmount,
+      if (leaveReason != null && leaveReason!.isNotEmpty)
+        'leave_reason': leaveReason,
+      if (leaveDays != null) 'leave_days': leaveDays,
       if (createdAt != null) 'created_at': createdAt!.toUtc().toIso8601String(),
     };
   }
@@ -274,6 +287,10 @@ class AppTransaction {
       if (otHours != null) 'ot_hours': otHours,
       if (otDescription != null && otDescription!.isNotEmpty)
         'ot_description': otDescription,
+      if (advanceAmount != null) 'advance_amount': advanceAmount,
+      if (leaveReason != null && leaveReason!.isNotEmpty)
+        'leave_reason': leaveReason,
+      if (leaveDays != null) 'leave_days': leaveDays,
       if (!omitCreatedAt)
         'created_at': DateTime.now().toUtc().toIso8601String(),
     };

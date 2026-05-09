@@ -87,9 +87,31 @@ bool transactionTouchesDailyModule(
   bool fuelTouches() => t.category == 'Fuel';
 
   bool laborTouches() {
+    if (t.category == 'Leave') return false;
+    if (t.category != 'Labor') return false;
+    final ls = (t.laborStatus ?? '').toLowerCase();
+    final sc = (t.subCategory ?? '').toLowerCase();
+    if (sc == 'ot' || ls == 'ot') return false;
+    if (sc == 'advance' || ls == 'advance') return false;
+    if (ls == 'leave' || ls == 'sick' || ls == 'personal') return false;
+    return true;
+  }
+
+  bool leaveRecordTouches() {
+    final cat = t.category.trim();
+    if (cat == 'Leave' || t.type.toLowerCase() == 'leave') {
+      return t.employeeIds.isNotEmpty;
+    }
+    final ls = (t.laborStatus ?? '').toLowerCase();
     return t.category == 'Labor' &&
-        (t.laborStatus ?? '').toLowerCase() != 'ot' &&
-        (t.subCategory ?? '').toLowerCase() != 'ot';
+        (ls == 'leave' || ls == 'sick' || ls == 'personal') &&
+        t.employeeIds.isNotEmpty;
+  }
+
+  bool advanceRecordTouches() {
+    return t.category == 'Labor' &&
+        (t.subCategory ?? '').trim().toLowerCase() == 'advance' &&
+        (t.laborStatus ?? '').trim().toLowerCase() == 'advance';
   }
 
   bool otTouches() {
@@ -111,6 +133,10 @@ bool transactionTouchesDailyModule(
       return t.category == 'ค่าแรง' || laborTouches();
     case 'บันทึกการทำงาน':
       return laborTouches() || t.category == 'ค่าแรง';
+    case 'ลางาน':
+      return leaveRecordTouches();
+    case 'เบิกเงิน':
+      return advanceRecordTouches();
     case 'OT':
       return otTouches();
     default:
@@ -171,15 +197,38 @@ bool transactionMatchesDailyModule(
   bool fuelLike() => t.category == 'Fuel';
 
   bool laborLike() {
-    return t.category == 'Labor' &&
-        (t.laborStatus ?? '').toLowerCase() != 'ot' &&
-        (t.subCategory ?? '').toLowerCase() != 'ot';
+    if (t.category != 'Labor') return false;
+    final ls = (t.laborStatus ?? '').toLowerCase();
+    final sc = (t.subCategory ?? '').toLowerCase();
+    if (sc == 'ot' || ls == 'ot') return false;
+    if (sc == 'advance' || ls == 'advance') return false;
+    if (ls == 'leave' || ls == 'sick' || ls == 'personal') return false;
+    return true;
   }
 
   bool otLike() {
     return t.category == 'Labor' &&
         ((t.laborStatus ?? '').toUpperCase() == 'OT' ||
             (t.subCategory ?? '').toLowerCase() == 'ot');
+  }
+
+  bool leaveLike() {
+    if (t.type.toLowerCase() == 'leave' || t.category == 'Leave') {
+      return t.employeeIds.isNotEmpty;
+    }
+    final ls = (t.laborStatus ?? '').toLowerCase();
+    return t.category == 'Labor' &&
+        (ls == 'leave' || ls == 'sick' || ls == 'personal') &&
+        t.employeeIds.isNotEmpty;
+  }
+
+  bool advanceLike() {
+    final per = t.advanceAmount ?? 0;
+    return t.category == 'Labor' &&
+        (t.subCategory ?? '').trim().toLowerCase() == 'advance' &&
+        (t.laborStatus ?? '').trim().toLowerCase() == 'advance' &&
+        t.employeeIds.isNotEmpty &&
+        (per > 0 || t.amount > 0);
   }
 
   switch (moduleCategory) {
@@ -195,6 +244,10 @@ bool transactionMatchesDailyModule(
       return t.category == 'ค่าแรง' || laborLike();
     case 'บันทึกการทำงาน':
       return laborLike() || t.category == 'ค่าแรง';
+    case 'ลางาน':
+      return leaveLike();
+    case 'เบิกเงิน':
+      return advanceLike();
     case 'OT':
       return otLike();
     default:
