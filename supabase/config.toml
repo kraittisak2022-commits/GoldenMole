@@ -6,3 +6,7 @@ verify_jwt = true
 
 [functions.smsok-dlr-webhook]
 verify_jwt = false
+
+# Test SMS from app without user login — optional SMS_TEST_INVOKE_SECRET + client header
+[functions.send-sms-test]
+verify_jwt = false

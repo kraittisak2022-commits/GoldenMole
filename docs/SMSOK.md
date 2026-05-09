@@ -6,12 +6,13 @@ Base URL ฝั่งผู้ให้บริการ: `https://api.smsok.co
 ## สิ่งที่โปรเจกต์นี้ทำ
 
 1. **Supabase Edge Function `send-advance-sms`** — รับ `{ text, destinations[] }` จากแอป (หลังล็อกอิน), เรียก `POST https://api.smsok.co/s` ด้วย **HTTP Basic** จาก secrets  
-2. **Supabase Edge Function `smsok-dlr-webhook`** — รับ callback สถานะการส่ง (DLR) ถ้าตั้ง `callback_url` ตอนส่ง SMS  
-3. **เว็บ + มือถือ** — หลังบันทึกรายการ **เบิกเงิน** (Labor / Advance) สำเร็จแบบออนไลน์ จะ `invoke` ฟังก์ชันข้อ 1 (ไม่บล็อก UX ถ้า SMS ล้ม)
+2. **Supabase Edge Function `send-sms-test`** — ทางเลือกสำหรับเมนู **ทดสอบส่ง SMS** บนมือถือ: **ไม่ต้องล็อกอิน** (gateway ไม่บังคับ JWT) จำกัดสูงสุด **5** เบอร์ต่อครั้ง — แนะนำตั้ง `SMS_TEST_INVOKE_SECRET` บน Edge + ส่ง header จากแอป (`SMS_TEST_INVOKE_KEY` ใน `.env`) ให้ตรงกัน  
+3. **Supabase Edge Function `smsok-dlr-webhook`** — รับ callback สถานะการส่ง (DLR) ถ้าตั้ง `callback_url` ตอนส่ง SMS  
+4. **เว็บ + มือถือ** — หลังบันทึกรายการ **เบิกเงิน** (Labor / Advance) สำเร็จแบบออนไลน์ จะ `invoke` ฟังก์ชันข้อ 1 (ไม่บล็อก UX ถ้า SMS ล้ม)
 
 ### เช็กลิสต์ให้ SMS ออกจริง
 
-1. ตั้ง **Supabase secrets** + **deploy** ฟังก์ชัน `send-advance-sms` (ดูด้านล่าง)  
+1. ตั้ง **Supabase secrets** + **deploy** ฟังก์ชัน `send-advance-sms` และ (ถ้าใช้เมนูทดสอบมือถือ) `send-sms-test` (ดูด้านล่าง)  
 2. ใส่ **เบอร์ในโปรไฟล์พนักงาน** (`phone`) หรือตั้ง **`VITE_SMS_ADVANCE_NOTIFY_EXTRA` / `SMS_ADVANCE_NOTIFY_EXTRA`** ใน `.env`  
 3. บันทึกรายการ **Labor → Advance** แบบออนไลน์ — ระบบจะรวมเบอร์แล้วส่งให้ Edge แปลงเป็น JSON แบบ SMSOK (`destinations`) ให้เอง
 
@@ -60,6 +61,7 @@ Base URL ฝั่งผู้ให้บริการ: `https://api.smsok.co
 | `SMSOK_SENDER_ID` | Sender ID ที่ลงทะเบียนกับ SMSOK แล้ว (case-sensitive) |
 | `SMSOK_CALLBACK_URL` | (ทางเลือก) เช่น `https://goldenmole.pro/sms/callback` |
 | `SMSOK_WEBHOOK_SECRET` | (ทางเลือก) ถ้าตั้ง ให้ SMSOK ส่ง header `x-smsok-webhook-secret` ตรงกับค่านี้ (ตั้งคู่กับ Vercel ได้) |
+| `SMS_TEST_INVOKE_SECRET` | (แนะนำเมื่อ deploy `send-sms-test`) ถ้าตั้งแล้ว แอปต้องส่ง header **`x-goldenmole-sms-test-secret`** ตรงกับค่านี้ (คู่กับ `SMS_TEST_INVOKE_KEY` ใน `mobile-flutter/.env`) — ถ้าไม่ตั้ง secret นี้ ใครที่มี **anon key** ก็เรียกทดสอบส่ง SMS ได้ (เสี่ยงสูง) |
 
 ค่า `SUPABASE_URL` และ `SUPABASE_ANON_KEY` มีให้ใน runtime ของ Edge อยู่แล้ว
 
@@ -80,6 +82,7 @@ Base URL ฝั่งผู้ให้บริการ: `https://api.smsok.co
 ```bash
 npx supabase login
 npx supabase functions deploy send-advance-sms
+npx supabase functions deploy send-sms-test
 npx supabase functions deploy smsok-dlr-webhook
 npx supabase secrets set SMSOK_API_USER=... SMSOK_API_PASSWORD=... SMSOK_SENDER_ID=...
 # ทางเลือก:
@@ -131,7 +134,7 @@ npm run test:sms
 - **เว็บ (Vite):** `.env` — `VITE_SMS_ADVANCE_NOTIFY_EXTRA` = เบอร์เพิ่ม (คั่นด้วย comma) นอกเหนือจากเบอร์ใน employee
 - **มือถือ:** `.env` — `SMS_ADVANCE_NOTIFY_EXTRA` (รูปแบบเดียวกัน)
 
-บนแอปมือถือมีเมนูการ์ด **ทดสอบส่ง SMS** บนแดชบอร์ด — เปิดหน้าทดสอบเรียก `send-advance-sms` โดยตรง (ต้องล็อกอิน)
+บนแอปมือถือมีเมนูการ์ด **ทดสอบส่ง SMS** บนแดชบอร์ด — เปิดหน้าทดสอบเรียก Edge **`send-sms-test`** (ไม่ต้องล็อกอิน; แนะนำตั้ง `SMS_TEST_INVOKE_SECRET` / `SMS_TEST_INVOKE_KEY` คู่กัน)
 
 ถ้าไม่มีเบอร์ใน employee และไม่ตั้ง extra ระบบจะไม่ส่ง SMS (ไม่ error)
 

@@ -5,7 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/thai_phone.dart';
 
-/// หน้าทดสอบเรียก Edge `send-advance-sms` โดยตรง (ต้องล็อกอิน + ตั้ง secrets SMSOK บน Supabase)
+/// ทดสอบ SMS ผ่าน Edge `send-sms-test` (ไม่ต้องล็อกอิน — ใช้ anon key ของโปรเจกต์)
+/// แนะนำตั้ง Edge secret `SMS_TEST_INVOKE_SECRET` และในแอป `SMS_TEST_INVOKE_KEY` ให้ตรงกัน
 class SmsTestScreen extends StatefulWidget {
   const SmsTestScreen({super.key});
 
@@ -40,6 +41,12 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
     return '';
   }
 
+  Map<String, String> _invokeHeaders() {
+    final key = (dotenv.env['SMS_TEST_INVOKE_KEY'] ?? '').trim();
+    if (key.isEmpty) return {};
+    return {'x-goldenmole-sms-test-secret': key};
+  }
+
   @override
   void dispose() {
     _phoneController.dispose();
@@ -47,20 +54,6 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
   }
 
   Future<void> _sendTest() async {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'กรุณาล็อกอินก่อน',
-            style: GoogleFonts.kanit(),
-          ),
-        ),
-      );
-      return;
-    }
-
     final normalized = normalizeThaiPhone(_phoneController.text.trim());
     if (normalized == null) {
       if (!mounted) return;
@@ -78,7 +71,8 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
     setState(() => _sending = true);
     try {
       final res = await Supabase.instance.client.functions.invoke(
-        'send-advance-sms',
+        'send-sms-test',
+        headers: _invokeHeaders(),
         body: {
           'text':
               'GoldenMole ทดสอบ SMS ${DateTime.now().toIso8601String().substring(0, 19)}',
@@ -124,7 +118,7 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasSession = Supabase.instance.client.auth.currentSession != null;
+    final hasInvokeKey = (dotenv.env['SMS_TEST_INVOKE_KEY'] ?? '').trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3FBFC),
@@ -137,26 +131,25 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           Text(
-            'เรียกฟังก์ชัน send-advance-sms บน Supabase (เหมือนหลังบันทึกเบิกเงิน)',
+            'เรียกฟังก์ชัน send-sms-test บน Supabase (ไม่ต้องล็อกอิน — สูงสุด 5 เบอร์ต่อครั้ง)',
             style: GoogleFonts.kanit(
               fontSize: 14,
               color: const Color(0xFF314C6D),
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 16),
-          if (!hasSession)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'สถานะ: ยังไม่ล็อกอิน — ต้องล็อกอินก่อนจึงจะ invoke ได้',
-                style: GoogleFonts.kanit(
-                  fontSize: 13,
-                  color: const Color(0xFFC73E3E),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+          const SizedBox(height: 10),
+          Text(
+            hasInvokeKey
+                ? 'ส่งหัวข้อ x-goldenmole-sms-test-secret จาก SMS_TEST_INVOKE_KEY ใน .env'
+                : 'แนะนำ: ตั้ง SMS_TEST_INVOKE_KEY ใน .env และ SMS_TEST_INVOKE_SECRET บน Edge ให้ตรงกัน (กันยิงปลอม)',
+            style: GoogleFonts.kanit(
+              fontSize: 12,
+              color: const Color(0xFF5B6D83),
+              height: 1.35,
             ),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
@@ -176,7 +169,7 @@ class _SmsTestScreenState extends State<SmsTestScreen> {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: _sending || !hasSession ? null : _sendTest,
+            onPressed: _sending ? null : _sendTest,
             icon: _sending
                 ? const SizedBox(
                     width: 20,
