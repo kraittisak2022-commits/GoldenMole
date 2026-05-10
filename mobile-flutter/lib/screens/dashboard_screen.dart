@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -20,6 +21,7 @@ import '../widgets/record_module_card.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
 import 'employees_screen.dart';
+import 'mobile_error_report_hub_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
 import 'transactions_screen.dart';
@@ -214,18 +216,36 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  static const _kNavRailExpandedPrefKey = 'dashboard_nav_rail_expanded_v1';
+  static const _kNavRailWidth = 72.0;
+
   late final TransactionService _txService;
   int _bodyPage = 0;
   DateTime _selectedDay = DateTime.now();
   bool _serverOnline = true;
   late Future<_HomePayload> _homeFuture;
   _HomePayload? _lastHomePayload;
+  /// แถบเมนูซ้าย (ไอคอนสควอร์เคิล): true = แสดง, false = ซ่อน — ปัดจากซ้ายไปขวาที่ขอบจอเพื่อเปิด
+  bool _navRailOpen = true;
+  double _edgeSwipeAccum = 0;
 
   @override
   void initState() {
     super.initState();
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome());
+  }
+
+  Future<void> _persistNavRailOpen(bool value) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_kNavRailExpandedPrefKey, value);
+    } catch (_) {}
+  }
+
+  void _toggleNavRail() {
+    setState(() => _navRailOpen = !_navRailOpen);
+    _persistNavRailOpen(_navRailOpen);
   }
 
   /// เก็บ payload ชุดล่าสุดเพื่อโชว์แบบไม่เป็นหน้าว่างตอนดึงรีเฟรช
@@ -347,6 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       QuickInputScreen(
         service: _txService,
         employeeService: EmployeeService(Supabase.instance.client),
+        currentAdmin: widget.currentAdmin,
         initialCategory: m.category,
         appBarTitle: m.quickInputTitle,
         selectedDateForModule: DateTime(
@@ -414,6 +435,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         onOpenProjects: () =>
             _openWithAnimation(ProjectsScreen(service: ProjectService(client))),
+        onOpenMobileAndroidHub: () => _openWithAnimation(
+          MobileErrorReportHubScreen(currentAdmin: widget.currentAdmin),
+        ),
       ),
     );
   }
@@ -430,113 +454,197 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final client = Supabase.instance.client;
-    final wide = MediaQuery.sizeOf(context).width >= 640;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3FBFC),
-      body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (wide) _sideNavBar(client: client),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (!wide) _mobileTopBar(client: client),
-                  Expanded(
-                    child: FutureBuilder<_HomePayload>(
-                      future: _homeFuture,
-                      builder: (context, snapshot) {
-                        final merged = snapshot.data ?? _lastHomePayload;
-                        final waiting =
-                            snapshot.connectionState ==
-                            ConnectionState.waiting;
-                        if (waiting && merged == null) {
-                          final loadingLabel = _bodyPage == 0
-                              ? 'กำลังโหลดแดชบอร์ด'
-                              : 'กำลังโหลดภาพรวม';
-                          return PageLoadingView(label: loadingLabel);
-                        }
-                        if (snapshot.hasError && merged == null) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'โหลดข้อมูลไม่สำเร็จ\n${snapshot.error}',
-                                    textAlign: TextAlign.center,
-                                    style: Theme.of(context).textTheme.bodyLarge,
+      body: LayoutBuilder(
+        builder: (context, bodyConstraints) {
+          final rawBody = bodyConstraints.maxWidth.isFinite &&
+                  bodyConstraints.maxWidth > 0
+              ? bodyConstraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+          final mqW = MediaQuery.sizeOf(context).width;
+          final safeMq =
+              (mqW.isFinite && mqW > 0) ? mqW : 360.0;
+          final bodyW =
+              rawBody > safeMq ? safeMq : rawBody;
+          return SafeArea(
+            child: SizedBox(
+              width: bodyW,
+              child: ClipRect(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      width: _navRailOpen ? _kNavRailWidth : 0,
+                      child: _navRailOpen
+                          ? ClipRect(
+                              child: _squircleNavRail(client: client),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Positioned.fill(
+                            child: FutureBuilder<_HomePayload>(
+                              future: _homeFuture,
+                              builder: (context, snapshot) {
+                              final merged = snapshot.data ?? _lastHomePayload;
+                              final waiting =
+                                  snapshot.connectionState ==
+                                  ConnectionState.waiting;
+                              if (waiting && merged == null) {
+                                final loadingLabel = _bodyPage == 0
+                                    ? 'กำลังโหลดแดชบอร์ด'
+                                    : 'กำลังโหลดภาพรวม';
+                                return PageLoadingView(label: loadingLabel);
+                              }
+                              if (snapshot.hasError && merged == null) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'โหลดข้อมูลไม่สำเร็จ\n${snapshot.error}',
+                                          textAlign: TextAlign.center,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyLarge,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        FilledButton(
+                                          onPressed: _refreshHome,
+                                          child: const Text('ลองอีกครั้ง'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  FilledButton(
-                                    onPressed: _refreshHome,
-                                    child: const Text('ลองอีกครั้ง'),
+                                );
+                              }
+                              final data = merged;
+                              if (data == null) {
+                                return const PageLoadingView(
+                                  label: 'กำลังโหลดข้อมูล',
+                                );
+                              }
+                              final showRefreshBar =
+                                  waiting && merged != null;
+                              final shell = _bodyPage == 0
+                                  ? _DailyHomeContent(
+                                      currentAdmin: widget.currentAdmin,
+                                      data: data,
+                                      serverOnline: _serverOnline,
+                                      selectedDay: _selectedDay,
+                                      onPullRefresh: _pullRefresh,
+                                      onPickDay: _pickDay,
+                                      dateKey: _dateKey,
+                                      formatBuddhistDateButton:
+                                          _formatBuddhistDateButton,
+                                      onOpenModule: _openQuickInput,
+                                    )
+                                  : _MetricsContent(
+                                      data: data,
+                                      currentAdmin: widget.currentAdmin,
+                                      onRetry: _refreshHome,
+                                    );
+                              if (!showRefreshBar) return shell;
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  shell,
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: Theme(
+                                      data: Theme.of(context).copyWith(
+                                        progressIndicatorTheme:
+                                            ProgressIndicatorThemeData(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                      ),
+                                      child: const LinearProgressIndicator(
+                                        minHeight: 2,
+                                      ),
+                                    ),
                                   ),
                                 ],
-                              ),
-                            ),
-                          );
-                        }
-                        final data = merged;
-                        if (data == null) {
-                          return const PageLoadingView(
-                            label: 'กำลังโหลดข้อมูล',
-                          );
-                        }
-                        final showRefreshBar = waiting && merged != null;
-                        final shell = _bodyPage == 0
-                            ? _DailyHomeContent(
-                                currentAdmin: widget.currentAdmin,
-                                data: data,
-                                serverOnline: _serverOnline,
-                                selectedDay: _selectedDay,
-                                onPullRefresh: _pullRefresh,
-                                onPickDay: _pickDay,
-                                dateKey: _dateKey,
-                                formatBuddhistDateButton:
-                                    _formatBuddhistDateButton,
-                                onOpenModule: _openQuickInput,
-                              )
-                            : _MetricsContent(
-                                data: data,
-                                currentAdmin: widget.currentAdmin,
-                                onRetry: _refreshHome,
                               );
-                        if (!showRefreshBar) return shell;
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            shell,
+                            },
+                          ),
+                        ),
+                          if (!_navRailOpen)
                             Positioned(
-                              top: 0,
                               left: 0,
-                              right: 0,
-                              child: Theme(
-                                data: Theme.of(context).copyWith(
-                                  progressIndicatorTheme:
-                                      ProgressIndicatorThemeData(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
+                              top: 0,
+                              bottom: 0,
+                              width: 36,
+                              child: Listener(
+                                behavior: HitTestBehavior.translucent,
+                                onPointerDown: (_) => _edgeSwipeAccum = 0,
+                                onPointerMove: (e) {
+                                  if (e.delta.dx > 0) {
+                                    _edgeSwipeAccum += e.delta.dx;
+                                    if (_edgeSwipeAccum >= 56) {
+                                      _edgeSwipeAccum = 0;
+                                      HapticFeedback.lightImpact();
+                                      _toggleNavRail();
+                                    }
+                                  }
+                                },
+                                onPointerUp: (_) => _edgeSwipeAccum = 0,
+                                onPointerCancel: (_) =>
+                                    _edgeSwipeAccum = 0,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Material(
+                                    elevation: 4,
+                                    shadowColor: Colors.black26,
+                                    borderRadius: const BorderRadius.horizontal(
+                                      right: Radius.circular(16),
+                                    ),
+                                    color: Colors.white,
+                                    child: InkWell(
+                                      borderRadius:
+                                          const BorderRadius.horizontal(
+                                        right: Radius.circular(16),
+                                      ),
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        _toggleNavRail();
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 16,
+                                          horizontal: 6,
+                                        ),
+                                        child: Icon(
+                                          Icons.chevron_right,
+                                          color: Color(0xFF546E7A),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                child: const LinearProgressIndicator(
-                                  minHeight: 2,
-                                ),
                               ),
                             ),
-                          ],
-                        );
-                      },
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -550,110 +658,125 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _homeFuture;
   }
 
-  Widget _sideNavBar({required SupabaseClient client}) {
+  Widget _squircleNavRail({required SupabaseClient client}) {
     return Material(
       color: Colors.white,
-      child: SizedBox(
-        width: 64,
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            _SideIcon(
-              icon: Icons.home_outlined,
-              selected: _bodyPage == 0,
-              onTap: () => setState(() => _bodyPage = 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 10),
+          _SquircleNavIcon(
+            icon: Icons.home_outlined,
+            selected: _bodyPage == 0,
+            tooltip: 'หน้าแรก',
+            onTap: () => setState(() => _bodyPage = 0),
+          ),
+          const SizedBox(height: 8),
+          _SquircleNavIcon(
+            icon: Icons.calendar_month_outlined,
+            selected: false,
+            tooltip: 'ปฏิทิน',
+            onTap: () => _openCalendarScreen(client),
+          ),
+          const SizedBox(height: 8),
+          _SquircleNavIcon(
+            icon: Icons.settings_outlined,
+            selected: false,
+            tooltip: 'ตั้งค่า',
+            onTap: () => _openAppSettingsScreen(client),
+          ),
+          Expanded(
+            child: Center(
+              child: Tooltip(
+                message: 'ซ่อนเมนู',
+                child: Material(
+                  color: const Color(0xFFF5F5F5),
+                  borderRadius: BorderRadius.circular(22),
+                  elevation: 0,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      _toggleNavRail();
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      child: Icon(
+                        Icons.chevron_left,
+                        size: 22,
+                        color: Color(0xFF546E7A),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            _SideIcon(
-              icon: Icons.calendar_month_outlined,
-              selected: false,
-              onTap: () => _openCalendarScreen(client),
-            ),
-            _SideIcon(
-              icon: Icons.settings_outlined,
-              selected: false,
-              onTap: () => _openAppSettingsScreen(client),
-            ),
-            const Spacer(),
-            _SideIcon(
-              icon: Icons.logout,
-              selected: false,
-              onTap: widget.onLogout,
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mobileTopBar({required SupabaseClient client}) {
-    return Material(
-      color: Colors.white,
-      elevation: 1,
-      child: SizedBox(
-        height: 52,
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'หน้าแรก',
-              onPressed: () => setState(() => _bodyPage = 0),
-              icon: const Icon(Icons.home_outlined),
-            ),
-            IconButton(
-              tooltip: 'ปฏิทิน',
-              onPressed: () => _openCalendarScreen(client),
-              icon: const Icon(Icons.calendar_month_outlined),
-            ),
-            const Spacer(),
-            IconButton(
-              tooltip: 'ตั้งค่าแอพ',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => _openAppSettingsScreen(client),
-            ),
-            IconButton(
-              tooltip: 'ออกจากระบบ',
-              icon: const Icon(Icons.logout),
-              onPressed: widget.onLogout,
-            ),
-          ],
-        ),
+          ),
+          _SquircleNavIcon(
+            icon: Icons.logout,
+            selected: false,
+            tooltip: 'ออกจากระบบ',
+            onTap: widget.onLogout,
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
 }
 
-class _SideIcon extends StatelessWidget {
-  const _SideIcon({
+class _SquircleNavIcon extends StatelessWidget {
+  const _SquircleNavIcon({
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.tooltip,
   });
 
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
+  final String? tooltip;
 
-  /// ให้ตรง seed ธีมแอป (main.dart)
-  static const Color _accent = Color(0xFF11A8BA);
+  static const Color _teal = Color(0xFF00897B);
+  static const Color _inactiveBorder = Color(0xFFE0E0E0);
+  static const Color _inactiveIcon = Color(0xFF9E9E9E);
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: IconButton(
-        onPressed: onTap,
-        style: IconButton.styleFrom(
-          foregroundColor: selected ? _accent : Colors.black54,
-          side: BorderSide(
-            color: selected ? _accent : _accent.withValues(alpha: 0.35),
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    final borderColor = selected ? _teal : _inactiveBorder;
+    final iconColor = selected ? _teal : _inactiveIcon;
+    final core = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          child: Container(
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: borderColor,
+                width: selected ? 2 : 1.2,
+              ),
+            ),
+            child: Icon(icon, size: 22, color: iconColor),
           ),
         ),
-        icon:  Icon(icon, size: 22),
       ),
     );
+    if (tooltip != null && tooltip!.isNotEmpty) {
+      return Tooltip(message: tooltip!, child: core);
+    }
+    return core;
   }
 }
 
@@ -820,11 +943,20 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               const cross = 3;
               const gap = 10.0;
               const sideInset = 2.0;
+              final mqW = MediaQuery.sizeOf(context).width;
+              final safeMq =
+                  (mqW.isFinite && mqW > 0) ? mqW : 360.0;
+              final rawW = constraints.maxWidth;
+              final layoutW = rawW.isFinite && rawW > 0
+                  ? rawW
+                  : safeMq;
+              // Defensive: some ancestors can report an absurd finite maxWidth.
+              final w =
+                  layoutW > safeMq ? safeMq : layoutW;
               final availH =
                   constraints.maxHeight.clamp(120.0, constraints.maxHeight);
               final rows =
                   (visibleModules.length / cross).ceil().clamp(1, 12);
-              final w = constraints.maxWidth;
               final usableWidth = w - (sideInset * 2);
               final cellWidth =
                   (usableWidth - (gap * (cross - 1))) / cross;
@@ -1048,13 +1180,16 @@ class _HomeHeaderCompact extends StatelessWidget {
           Row(
             children: [
               const AppLogo(size: 40),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
+                flex: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'บันทึกประจำวัน',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF1A2433),
@@ -1062,57 +1197,87 @@ class _HomeHeaderCompact extends StatelessWidget {
                     ),
                     Text(
                       appName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Color(0xFF6B7788), fontSize: 14),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              _PressScaleButton(
-                child: InkWell(
-                  onTap: onPickDay,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Ink(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F8FC),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFFD9E1EC),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.calendar_today,
-                          color: Color(0xFF0D7284),
-                          size: 14,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          selectedDateLabel,
-                          style: const TextStyle(
-                            color: Color(0xFF0D7284),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: LayoutBuilder(
+                  builder: (context, dateConstraints) {
+                    final raw = dateConstraints.maxWidth;
+                    final slot = (raw.isFinite && raw > 0)
+                        ? raw
+                        : (MediaQuery.sizeOf(context).width * 0.35)
+                            .clamp(96.0, 280.0);
+                    return Align(
+                      alignment: Alignment.centerRight,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: slot),
+                        child: _PressScaleButton(
+                          child: InkWell(
+                            onTap: onPickDay,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Ink(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: slot < 200 ? 8 : 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F8FC),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFFD9E1EC),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_today,
+                                    color: Color(0xFF0D7284),
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      selectedDateLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.end,
+                                      style: const TextStyle(
+                                        color: Color(0xFF0D7284),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
               _PressScaleButton(
                 child: IconButton(
+                  style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(6),
+                    minimumSize: Size.zero,
+                  ),
                   onPressed: () => onRefresh(),
                   icon: const Icon(
                     Icons.refresh_rounded,
                     color: Color(0xFF3A4A5E),
-                    size: 24,
+                    size: 22,
                   ),
                 ),
               ),
@@ -1205,30 +1370,44 @@ class _HeaderStatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7FAFD),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFDCE4EF)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: iconColor, size: 15),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF415268),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+    return LayoutBuilder(
+      builder: (context, c) {
+        final mqW = MediaQuery.sizeOf(context).width;
+        final cap = c.maxWidth.isFinite && c.maxWidth > 0
+            ? c.maxWidth
+            : (mqW.isFinite && mqW > 0 ? mqW : 360.0);
+        final labelMax = (cap - 44).clamp(48.0, 260.0);
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7FAFD),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFDCE4EF)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: iconColor, size: 15),
+                const SizedBox(width: 5),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: labelMax),
+                  child: Text(
+                    label,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF415268),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1282,14 +1461,26 @@ class _MetricsContent extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              'สรุปภาพรวม',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: Text(
+                'สรุปภาพรวม',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            const Spacer(),
-            IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
+            IconButton(
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(6),
+                minimumSize: Size.zero,
+              ),
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 22),
+            ),
           ],
         ),
         const SizedBox(height: 8),

@@ -13,12 +13,14 @@ class AppSettingsScreen extends StatefulWidget {
     required this.onOpenEmployees,
     required this.onOpenTransactions,
     required this.onOpenProjects,
+    required this.onOpenMobileAndroidHub,
     required this.currentAdmin,
   });
 
   final VoidCallback onOpenEmployees;
   final VoidCallback onOpenTransactions;
   final VoidCallback onOpenProjects;
+  final VoidCallback onOpenMobileAndroidHub;
   final AdminUser currentAdmin;
 
   @override
@@ -331,6 +333,32 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ),
             const SizedBox(height: 10),
             _SectionCard(
+              title: 'แอป Android',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    isThreeLine: true,
+                    leading: const Icon(Icons.smartphone_outlined, color: Color(0xFF00897B)),
+                    title: Text(
+                      'รายงานข้อผิดพลาด / บั๊ค',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      'ส่งเข้าเว็บ ดูประวัติ และแจ้งปัญหาด้วยตนเอง',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: widget.onOpenMobileAndroidHub,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            _SectionCard(
               title: 'บัญชีผู้ใช้',
               child: Column(
                 children: [
@@ -410,6 +438,8 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
             ),
           ),

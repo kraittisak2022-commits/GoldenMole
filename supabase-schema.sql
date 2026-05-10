@@ -273,6 +273,31 @@ CREATE TABLE IF NOT EXISTS admin_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 7. Mobile error reports (แอป Android → ดูในเว็บ ตั้งค่า > แอป Android)
+CREATE TABLE IF NOT EXISTS mobile_error_reports (
+    id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    platform TEXT NOT NULL DEFAULT 'android',
+    reported_by_username TEXT,
+    reported_by_name TEXT,
+    app_version TEXT,
+    device_info TEXT,
+    error_summary TEXT NOT NULL,
+    error_detail TEXT,
+    user_note TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_error_reports_created_at
+    ON mobile_error_reports (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_error_reports_unreviewed
+    ON mobile_error_reports (reviewed)
+    WHERE reviewed = FALSE;
+
 -- ============================================
 -- Row Level Security (RLS) - Allow all for anon key
 -- (For production, you should configure proper RLS policies)
@@ -284,6 +309,7 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mobile_error_reports ENABLE ROW LEVEL SECURITY;
 
 -- Allow full access for authenticated and anon users (DROP ก่อนเพื่อให้รันสคริปต์ซ้ำได้)
 DROP POLICY IF EXISTS "Allow all on employees" ON employees;
@@ -293,6 +319,7 @@ DROP POLICY IF EXISTS "Allow all on app_settings" ON app_settings;
 DROP POLICY IF EXISTS "Allow all on work_plans" ON work_plans;
 DROP POLICY IF EXISTS "Allow all on admin_users" ON admin_users;
 DROP POLICY IF EXISTS "Allow all on admin_logs" ON admin_logs;
+DROP POLICY IF EXISTS "Allow all on mobile_error_reports" ON mobile_error_reports;
 
 CREATE POLICY "Allow all on employees" ON employees FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
@@ -301,6 +328,7 @@ CREATE POLICY "Allow all on app_settings" ON app_settings FOR ALL USING (true) W
 CREATE POLICY "Allow all on work_plans" ON work_plans FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on admin_users" ON admin_users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on admin_logs" ON admin_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on mobile_error_reports" ON mobile_error_reports FOR ALL USING (true) WITH CHECK (true);
 
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);

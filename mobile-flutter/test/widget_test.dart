@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_flutter/main.dart';
@@ -21,7 +22,8 @@ void main() {
   });
 
   testWidgets('app bootstraps to login', (WidgetTester tester) async {
-    await tester.pumpWidget(const MobileApp());
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MobileApp(navigatorKey: navKey));
     await tester.pump();
     // BootstrapSplash uses a repeating animation — never "settles".
     const tick = Duration(milliseconds: 50);

@@ -10,6 +10,7 @@ import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/session_service.dart';
+import 'utils/app_error_binding.dart';
 import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
 import 'widgets/bootstrap_splash.dart';
@@ -28,9 +29,10 @@ Future<void> _preloadKanitFonts() async {
 }
 
 Future<void> main() async {
-  try {
-    WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
+  final appRootNavigatorKey = GlobalKey<NavigatorState>();
 
+  try {
     await DevicePerf.init();
 
     // Load environment variables
@@ -46,9 +48,11 @@ Future<void> main() async {
     // Initialize Supabase
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
+    AppErrorBinding.install(appRootNavigatorKey);
+
     await _preloadKanitFonts();
 
-    runApp(const MobileApp());
+    runApp(MobileApp(navigatorKey: appRootNavigatorKey));
   } catch (e) {
     debugPrint('Error during initialization: $e');
     runApp(
@@ -72,7 +76,9 @@ Future<void> main() async {
 }
 
 class MobileApp extends StatefulWidget {
-  const MobileApp({super.key});
+  const MobileApp({super.key, required this.navigatorKey});
+
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   State<MobileApp> createState() => _MobileAppState();
@@ -190,6 +196,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
     );
 
     return MaterialApp(
+      navigatorKey: widget.navigatorKey,
       title: 'GoldenMole for Users',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,

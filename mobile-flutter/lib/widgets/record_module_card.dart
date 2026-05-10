@@ -95,34 +95,45 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final iconBg = const Color(0xFFF5F8FC);
     final iconColor = _readableMenuIconColor(accent);
 
-    final iconSquare = Container(
-      width: 104,
-      height: 104,
-      decoration: BoxDecoration(
-        color: iconBg,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: const Color(0xFFE0E7F0),
-          width: 1,
-        ),
-        boxShadow: useLiteChrome
-            ? null
-            : [
-                BoxShadow(
-                  color: const Color(0xFF1A2836).withValues(alpha: 0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-      ),
-      child: Icon(
-        widget.icon,
-        size: 58,
-        color: iconColor,
-      ),
-    );
+    return LayoutBuilder(
+      builder: (context, cellConstraints) {
+        final cellW = cellConstraints.maxWidth.isFinite &&
+                cellConstraints.maxWidth > 0
+            ? cellConstraints.maxWidth
+            : 104.0;
+        // Column horizontal padding is 8 + 8; keep icon within the grid cell.
+        final iconSide = (cellW - 16).clamp(56.0, 104.0);
+        final iconGlyphSize = (iconSide * 0.556).clamp(36.0, 58.0);
+        final corner = (iconSide * 0.269).clamp(18.0, 28.0);
 
-    final mainPlate = useLiteChrome
+        final iconSquare = Container(
+          width: iconSide,
+          height: iconSide,
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(corner),
+            border: Border.all(
+              color: const Color(0xFFE0E7F0),
+              width: 1,
+            ),
+            boxShadow: useLiteChrome
+                ? null
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF1A2836).withValues(alpha: 0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+          ),
+          child: Icon(
+            widget.icon,
+            size: iconGlyphSize,
+            color: iconColor,
+          ),
+        );
+
+        final mainPlate = useLiteChrome
         ? Container(
             decoration: BoxDecoration(
               color: cardTint,
@@ -259,6 +270,9 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
           const SizedBox(height: 6),
           Text(
             statusLabel,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: theme.textTheme.labelLarge?.copyWith(
               fontSize: 11.8,
               fontWeight: FontWeight.w600,
@@ -273,7 +287,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
       ),
     );
 
-    final ink = Material(
+        final ink = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: widget.onTap,
@@ -285,22 +299,24 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
       ),
     );
 
-    final scaled = AnimatedScale(
-      scale: _pressed
-          ? 0.96
-          : (useLiteChrome ? 1.0 : (_hovered ? 1.02 : 1)),
-      duration: Duration(milliseconds: useLiteChrome ? 100 : 150),
-      curve: Curves.easeOutCubic,
-      child: ink,
-    );
+        final scaled = AnimatedScale(
+          scale: _pressed
+              ? 0.96
+              : (useLiteChrome ? 1.0 : (_hovered ? 1.02 : 1)),
+          duration: Duration(milliseconds: useLiteChrome ? 100 : 150),
+          curve: Curves.easeOutCubic,
+          child: ink,
+        );
 
-    if (useLiteChrome) {
-      return scaled;
-    }
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: scaled,
+        if (useLiteChrome) {
+          return scaled;
+        }
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: scaled,
+        );
+      },
     );
   }
 }

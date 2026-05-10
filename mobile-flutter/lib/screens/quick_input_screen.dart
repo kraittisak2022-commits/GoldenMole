@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
@@ -23,6 +24,7 @@ class QuickInputScreen extends StatefulWidget {
     super.key,
     required this.service,
     required this.employeeService,
+    this.currentAdmin,
     this.initialCategory,
     this.appBarTitle,
 
@@ -32,6 +34,7 @@ class QuickInputScreen extends StatefulWidget {
 
   final TransactionService service;
   final EmployeeService employeeService;
+  final AdminUser? currentAdmin;
 
   /// ตั้งหมวดหมู่เริ่มต้นเมื่อเปิดจากการ์ดหน้าแรก
   final String? initialCategory;
@@ -310,6 +313,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _isDailyEventMode => widget.initialCategory == 'เหตุการณ์';
   bool get _isLaborLeaveMode => widget.initialCategory == 'ลางาน';
   bool get _isLaborAdvanceMode => widget.initialCategory == 'เบิกเงิน';
+  bool get _isSuperAdmin =>
+      (widget.currentAdmin?.role.trim() == 'SuperAdmin');
+
+  /// SuperAdmin แก้ไข/ลบประวัติได้เฉพาะรายการที่ตรงกับเมนูและวันที่ปัจจุบัน
+  bool _superAdminMayManageHistoryRow(AppTransaction t) {
+    if (!_isSuperAdmin) return false;
+    if (_isIncomeUtilitiesEntryMode) {
+      final ymd = _quickYmd(_selectedDate);
+      if (t.date.trim() != ymd.trim()) return false;
+      return transactionIsUtilitiesExpense(t) ||
+          transactionIsWizardDailyIncome(t);
+    }
+    final cat = widget.initialCategory?.trim() ?? '';
+    if (cat.isEmpty) return false;
+    return transactionMatchesDailyModule(t, _quickYmd(_selectedDate), cat);
+  }
 
   /// สรุปรายจ่ายสาธารณูปโภค + รายรับประจำวันจากเว็บ (อ่านอย่างเดียว)
   bool get _isIncomeUtilitiesEntryMode =>
@@ -542,6 +561,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _loadModuleTransactions({
     bool preserveIncomeUtilitiesForm = false,
+    bool forceRefresh = false,
   }) async {
     final cat = widget.initialCategory?.trim();
     if (!mounted || cat == null || cat.isEmpty) return;
@@ -555,7 +575,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     try {
       final ymd = _quickYmd(_selectedDate);
-      final forceServer = cat == 'ลางาน' || cat.toUpperCase().contains('OT');
+      final forceServer = forceRefresh ||
+          cat == 'ลางาน' ||
+          cat.toUpperCase().contains('OT');
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: forceServer)
           : await widget.service.fetchTransactionsForDate(
@@ -2566,25 +2588,994 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : 'จ่ายแล้ว';
       detail = 'รับเงิน: $pay · $detail';
     }
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        t.description,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.kanit(fontSize: 13.5, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        '$meta\n$detail',
-        style: GoogleFonts.kanit(
-          fontSize: 11,
-          color: Colors.black54,
-          height: 1.35,
+    final textBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          t.description,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.kanit(fontSize: 13.5, fontWeight: FontWeight.w600),
         ),
+        const SizedBox(height: 2),
+        Text(
+          '$meta\n$detail',
+          style: GoogleFonts.kanit(
+            fontSize: 11,
+            color: Colors.black54,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: textBlock),
+          if (_superAdminMayManageHistoryRow(t))
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'แก้ไข (SuperAdmin)',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  onPressed: () => _openSuperAdminHistoryEditor(t),
+                ),
+                IconButton(
+                  tooltip: 'ลบจากฐานข้อมูล',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                  onPressed: () => _confirmSuperAdminHardDelete(t),
+                ),
+              ],
+            ),
+        ],
       ),
     );
+  }
+
+  Future<void> _confirmSuperAdminHardDelete(AppTransaction t) async {
+    if (!_superAdminMayManageHistoryRow(t)) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('ลบจากฐานข้อมูล', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+        content: Text(
+          'ลบรายการนี้ออกจากฐานข้อมูลถาวร ไม่สามารถกู้คืนได้',
+          style: GoogleFonts.kanit(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('ยกเลิก', style: GoogleFonts.kanit()),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('ลบ', style: GoogleFonts.kanit(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await widget.service.deleteTransaction(t.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit())),
+      );
+      await _loadModuleTransactions(
+        preserveIncomeUtilitiesForm: _isIncomeUtilitiesEntryMode,
+        forceRefresh: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+      );
+    }
+  }
+
+  Future<void> _openSuperAdminHistoryEditor(AppTransaction t) async {
+    if (!_superAdminMayManageHistoryRow(t)) return;
+    if (_isLaborAdvanceMode) {
+      await _openSuperAdminAdvanceEditor(t);
+      return;
+    }
+    if (_isIncomeUtilitiesEntryMode) {
+      if (transactionIsUtilitiesExpense(t)) {
+        await _openSuperAdminUtilitiesExpenseEditor(t);
+      } else {
+        await _openSuperAdminWizardIncomeEditor(t);
+      }
+      return;
+    }
+    if (_isDailyEventMode) {
+      await _openSuperAdminDailyEventEditor(t);
+      return;
+    }
+    if (_isLaborLeaveMode) {
+      await _openSuperAdminLeaveEditor(t);
+      return;
+    }
+    if (_isOtMode) {
+      await _openSuperAdminOtEditor(t);
+      return;
+    }
+  }
+
+  Future<void> _openSuperAdminDailyEventEditor(AppTransaction t) async {
+    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
+    var evType = (t.eventType ?? 'info').trim().isEmpty ? 'info' : t.eventType!.trim();
+    var evPri =
+        (t.eventPriority ?? 'normal').trim().isEmpty ? 'normal' : t.eventPriority!.trim();
+    const typeOpts = <({String v, String label})>[
+      (v: 'info', label: 'ℹ️ ข้อมูล'),
+      (v: 'warning', label: '⚠️ เตือน'),
+      (v: 'problem', label: '🚨 ปัญหา'),
+      (v: 'success', label: '✅ สำเร็จ'),
+      (v: 'complaint', label: '📢 ข้อร้องเรียน'),
+      (v: 'request', label: '📋 ความต้องการ'),
+    ];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setModal) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'แก้ไขเหตุการณ์ (SuperAdmin)',
+                    style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final o in typeOpts)
+                        ChoiceChip(
+                          label: Text(o.label, style: GoogleFonts.kanit(fontSize: 12.5)),
+                          selected: evType == o.v,
+                          onSelected: (sel) {
+                            if (sel) setModal(() => evType = o.v);
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'normal', label: Text('ปกติ')),
+                      ButtonSegment(value: 'urgent', label: Text('ด่วน')),
+                    ],
+                    selected: {evPri},
+                    onSelectionChanged: (s) {
+                      if (s.isEmpty) return;
+                      setModal(() => evPri = s.first);
+                    },
+                    style: ButtonStyle(
+                      textStyle: WidgetStatePropertyAll(
+                        GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descCtrl,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: InputDecoration(
+                      labelText: 'รายละเอียด',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () async {
+                      final text = descCtrl.text.trim();
+                      if (text.isEmpty) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('กรุณากรอกรายละเอียด', style: GoogleFonts.kanit())),
+                        );
+                        return;
+                      }
+                      final saved = t.copyWith(
+                        description: _appendRecorder(text),
+                        eventType: evType,
+                        eventPriority: evPri,
+                      );
+                      try {
+                        await _persist(saved);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                        );
+                        await _loadModuleTransactions(forceRefresh: true);
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                          );
+                        }
+                      }
+                    },
+                    child: Text('บันทึก', style: GoogleFonts.kanit()),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    ).whenComplete(descCtrl.dispose);
+  }
+
+  Future<void> _openSuperAdminLeaveEditor(AppTransaction t) async {
+    final reasonCtrl = TextEditingController(text: (t.leaveReason ?? '').trim());
+    final daysCtrl = TextEditingController(
+      text: t.leaveDays != null ? _strNum(t.leaveDays) : '1',
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'แก้ไขลางาน (SuperAdmin)',
+                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'ผู้ลา: ${_displayNamesForEmployeeIds(t.employeeIds)}',
+                style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonCtrl,
+                decoration: InputDecoration(
+                  labelText: 'เหตุผล',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: daysCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'จำนวนวัน',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () async {
+                  final reason = reasonCtrl.text.trim();
+                  final days = double.tryParse(daysCtrl.text.trim()) ?? 0;
+                  if (reason.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('กรุณากรอกเหตุผล', style: GoogleFonts.kanit())),
+                    );
+                    return;
+                  }
+                  if (days <= 0) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('จำนวนวันต้องมากกว่า 0', style: GoogleFonts.kanit())),
+                    );
+                    return;
+                  }
+                  final sub = (t.subCategory ?? 'Personal').trim();
+                  final typeTh = sub == 'Sick' ? 'ป่วย' : 'กิจ';
+                  final saved = t.copyWith(
+                    leaveReason: reason,
+                    leaveDays: days,
+                    description: _appendRecorder('ลา$typeTh: $reason'),
+                  );
+                  try {
+                    await _persist(saved);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                    );
+                    await _loadModuleTransactions(forceRefresh: true);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                      );
+                    }
+                  }
+                },
+                child: Text('บันทึก', style: GoogleFonts.kanit()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      reasonCtrl.dispose();
+      daysCtrl.dispose();
+    });
+  }
+
+  Future<void> _openSuperAdminOtEditor(AppTransaction t) async {
+    final hoursCtrl = TextEditingController(
+      text: t.otHours != null ? _strNum(t.otHours) : '',
+    );
+    final descCtrl = TextEditingController(text: (t.otDescription ?? '').trim());
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'แก้ไข OT (SuperAdmin)',
+                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'พนักงาน: ${_displayNamesForEmployeeIds(t.employeeIds)}',
+                style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: hoursCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'ชั่วโมง OT',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descCtrl,
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: 'รายละเอียด OT',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () async {
+                  final hours = double.tryParse(hoursCtrl.text.trim()) ?? 0;
+                  final desc = descCtrl.text.trim();
+                  if (hours <= 0) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('กรุณาระบุชั่วโมง OT', style: GoogleFonts.kanit())),
+                    );
+                    return;
+                  }
+                  if (desc.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('กรุณาระบุรายละเอียด', style: GoogleFonts.kanit())),
+                    );
+                    return;
+                  }
+                  final saved = t.copyWith(
+                    otHours: hours,
+                    otDescription: desc,
+                    description: _appendRecorder(
+                      'OT $desc (${hours.toStringAsFixed(1)}ชม.) กลุ่ม (${t.employeeIds.length} คน)',
+                    ),
+                  );
+                  try {
+                    await _persist(saved);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                    );
+                    await _loadModuleTransactions(forceRefresh: true);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                      );
+                    }
+                  }
+                },
+                child: Text('บันทึก', style: GoogleFonts.kanit()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      hoursCtrl.dispose();
+      descCtrl.dispose();
+    });
+  }
+
+  Future<void> _openSuperAdminUtilitiesExpenseEditor(AppTransaction t) async {
+    final amtCtrl = TextEditingController(text: _strNum(t.amount));
+    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
+    final subCtrl = TextEditingController(text: (t.subCategory ?? '').trim());
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'แก้ไขรายจ่ายสาธารณูปโภค (SuperAdmin)',
+                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: subCtrl,
+                decoration: InputDecoration(
+                  labelText: 'ประเภทย่อย (sub_category)',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descCtrl,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'คำอธิบาย',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: amtCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'จำนวนเงิน (บาท)',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () async {
+                  final sub = subCtrl.text.trim();
+                  final desc = descCtrl.text.trim();
+                  final amt = double.tryParse(amtCtrl.text.trim()) ?? 0;
+                  if (sub.isEmpty || desc.isEmpty || amt <= 0) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'กรุณากรอกประเภทย่อย คำอธิบาย และจำนวนเงิน',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  final saved = t.copyWith(
+                    subCategory: sub,
+                    description: _appendRecorder(desc),
+                    amount: amt,
+                  );
+                  try {
+                    await _persist(saved);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                    );
+                    await _loadModuleTransactions(
+                      preserveIncomeUtilitiesForm: true,
+                      forceRefresh: true,
+                    );
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                      );
+                    }
+                  }
+                },
+                child: Text('บันทึก', style: GoogleFonts.kanit()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      amtCtrl.dispose();
+      descCtrl.dispose();
+      subCtrl.dispose();
+    });
+  }
+
+  Future<void> _openSuperAdminWizardIncomeEditor(AppTransaction t) async {
+    final amtCtrl = TextEditingController(text: _strNum(t.amount));
+    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
+    final qtyCtrl = TextEditingController(
+      text: t.quantity != null ? _strNum(t.quantity) : '',
+    );
+    final priceCtrl = TextEditingController(
+      text: t.unitPrice != null ? _strNum(t.unitPrice) : '',
+    );
+    var payStatus = (t.incomePaymentStatus ?? 'Paid').trim().isEmpty
+        ? 'Paid'
+        : t.incomePaymentStatus!.trim();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setModal) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'แก้ไขรายรับประจำวัน (SuperAdmin)',
+                    style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'ประเภทรายรับ / คำอธิบาย',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amtCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'ยอดรวม (บาท)',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: qtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'จำนวน (ว่างได้)',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'ราคาต่อหน่วย (ว่างได้)',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('สถานะรับเงิน', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: Text('จ่ายแล้ว', style: GoogleFonts.kanit()),
+                        selected: payStatus == 'Paid',
+                        onSelected: (_) => setModal(() => payStatus = 'Paid'),
+                      ),
+                      ChoiceChip(
+                        label: Text('ยังไม่ได้จ่าย', style: GoogleFonts.kanit()),
+                        selected: payStatus == 'Unpaid',
+                        onSelected: (_) => setModal(() => payStatus = 'Unpaid'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () async {
+                      final desc = descCtrl.text.trim();
+                      final total = double.tryParse(amtCtrl.text.trim()) ?? 0;
+                      final qty = double.tryParse(qtyCtrl.text.trim());
+                      final unitPrice = double.tryParse(priceCtrl.text.trim());
+                      if (desc.isEmpty || total <= 0) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'กรุณากรอกประเภทรายรับและยอดรวม',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      final saved = t.copyWith(
+                        description: _appendRecorder(desc),
+                        amount: total,
+                        quantity: (qty != null && qty > 0) ? qty : null,
+                        unitPrice: (unitPrice != null && unitPrice > 0) ? unitPrice : null,
+                        incomePaymentStatus: payStatus,
+                      );
+                      try {
+                        await _persist(saved);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                        );
+                        await _loadModuleTransactions(
+                          preserveIncomeUtilitiesForm: true,
+                          forceRefresh: true,
+                        );
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                          );
+                        }
+                      }
+                    },
+                    child: Text('บันทึก', style: GoogleFonts.kanit()),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    ).whenComplete(() {
+      amtCtrl.dispose();
+      descCtrl.dispose();
+      qtyCtrl.dispose();
+      priceCtrl.dispose();
+    });
+  }
+
+  Widget _iuHistoryListRow(AppTransaction t) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _stripRecorderSuffix(t.description),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  transactionIsUtilitiesExpense(t)
+                      ? 'รายจ่าย · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}'
+                      : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          if (_superAdminMayManageHistoryRow(t))
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'แก้ไข (SuperAdmin)',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  onPressed: () => _openSuperAdminHistoryEditor(t),
+                ),
+                IconButton(
+                  tooltip: 'ลบจากฐานข้อมูล',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                  onPressed: () => _confirmSuperAdminHardDelete(t),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openSuperAdminAdvanceEditor(AppTransaction t) async {
+    if (!_superAdminMayManageHistoryRow(t) || !_isLaborAdvanceMode) return;
+    final base = AdvanceGmMeta.decode(t.workDetails);
+    final amtCtrl = TextEditingController(
+      text: _strNum(t.advanceAmount ?? t.amount),
+    );
+    final acctCtrl = TextEditingController(text: base.accountNumber);
+    var payout = base.payoutSlot;
+    var payM = base.paymentMethod;
+    var bank = base.bank;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setModal) {
+              Future<void> submit() async {
+                final per = double.tryParse(amtCtrl.text.trim()) ?? 0;
+                if (per <= 0) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'กรุณากรอกจำนวนเงินให้มากกว่า 0',
+                        style: GoogleFonts.kanit(),
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                if (payM == AdvanceGmMeta.transfer) {
+                  final b = bank.trim();
+                  final a = acctCtrl.text.trim();
+                  if (b.isEmpty || a.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'โอนเงิน: กรุณาเลือกธนาคารและเลขบัญชี',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                }
+                final meta = AdvanceGmMeta(
+                  payoutSlot: payout,
+                  paymentMethod: payM,
+                  bank: bank.trim(),
+                  accountNumber: acctCtrl.text.trim(),
+                );
+                final workDetails = AdvanceGmMeta.encodeIntoWorkDetails(
+                  existingWorkDetails: t.workDetails,
+                  meta: meta,
+                );
+                final namesLine = _displayNamesForEmployeeIds(t.employeeIds);
+                final slotTh = payout == AdvanceGmMeta.evening
+                    ? 'ช่วงเย็น'
+                    : 'ช่วงกลางวัน';
+                final payTh = payM == AdvanceGmMeta.transfer
+                    ? 'เงินโอน'
+                    : 'เงินสด';
+                final saved = t.copyWith(
+                  amount: per,
+                  advanceAmount: per,
+                  workDetails: workDetails,
+                  description: _appendRecorder(
+                    'คำขอเบิกเงิน · $namesLine · $slotTh · $payTh',
+                  ),
+                );
+                try {
+                  await _persist(saved);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit()),
+                    ),
+                  );
+                  await _loadModuleTransactions(forceRefresh: true);
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+                      ),
+                    );
+                  }
+                }
+              }
+
+              final bankItems = <DropdownMenuItem<String>>[];
+              final seen = <String>{};
+              for (final bn in kThaiBankNames) {
+                if (seen.add(bn)) {
+                  bankItems.add(
+                    DropdownMenuItem(
+                      value: bn,
+                      child: Text(bn, style: GoogleFonts.kanit(fontSize: 14)),
+                    ),
+                  );
+                }
+              }
+              final bTrim = bank.trim();
+              if (bTrim.isNotEmpty && !kThaiBankNames.contains(bTrim)) {
+                bankItems.add(
+                  DropdownMenuItem(
+                    value: bTrim,
+                    child: Text(
+                      '$bTrim (จากข้อมูลเดิม)',
+                      style: GoogleFonts.kanit(fontSize: 14),
+                    ),
+                  ),
+                );
+              }
+
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'แก้ไขคำขอเบิก (SuperAdmin)',
+                      style: GoogleFonts.kanit(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amtCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'จำนวนเงิน (บาท)',
+                        labelStyle: GoogleFonts.kanit(),
+                      ),
+                      style: GoogleFonts.kanit(fontSize: 16),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('รับเงิน', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: Text('ช่วงกลางวัน', style: GoogleFonts.kanit()),
+                          selected: payout == AdvanceGmMeta.midday,
+                          onSelected: (_) =>
+                              setModal(() => payout = AdvanceGmMeta.midday),
+                        ),
+                        ChoiceChip(
+                          label: Text('ช่วงเย็น', style: GoogleFonts.kanit()),
+                          selected: payout == AdvanceGmMeta.evening,
+                          onSelected: (_) =>
+                              setModal(() => payout = AdvanceGmMeta.evening),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text('วิธีรับ', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: Text('เงินสด', style: GoogleFonts.kanit()),
+                          selected: payM == AdvanceGmMeta.cash,
+                          onSelected: (_) =>
+                              setModal(() => payM = AdvanceGmMeta.cash),
+                        ),
+                        ChoiceChip(
+                          label: Text('โอน', style: GoogleFonts.kanit()),
+                          selected: payM == AdvanceGmMeta.transfer,
+                          onSelected: (_) =>
+                              setModal(() => payM = AdvanceGmMeta.transfer),
+                        ),
+                      ],
+                    ),
+                    if (payM == AdvanceGmMeta.transfer) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'ธนาคาร',
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          hint: Text('เลือกธนาคาร', style: GoogleFonts.kanit()),
+                          value: bankItems.any((it) => it.value == bTrim)
+                              ? bTrim
+                              : null,
+                          items: bankItems,
+                          onChanged: (v) => setModal(() => bank = v ?? ''),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: acctCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'เลขบัญชี',
+                          labelStyle: GoogleFonts.kanit(),
+                        ),
+                        style: GoogleFonts.kanit(fontSize: 15),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: () async => submit(),
+                      child: Text('บันทึก', style: GoogleFonts.kanit()),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    ).whenComplete(() {
+      amtCtrl.dispose();
+      acctCtrl.dispose();
+    });
   }
 
   Widget _advanceHistoryListTile(AppTransaction t) {
@@ -2697,6 +3688,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ],
                   ),
                 ),
+                if (_superAdminMayManageHistoryRow(t))
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'แก้ไข (SuperAdmin)',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 40,
+                        ),
+                        icon: const Icon(
+                          Icons.edit_outlined,
+                          color: Color(0xFFE65100),
+                        ),
+                        onPressed: () => _openSuperAdminHistoryEditor(t),
+                      ),
+                      IconButton(
+                        tooltip: 'ลบจากฐานข้อมูล',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 40,
+                        ),
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: Colors.red.shade700,
+                        ),
+                        onPressed: () => _confirmSuperAdminHardDelete(t),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -3641,25 +4664,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       return [
         for (final t in list.take(14)) ...[
-          ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            title: Text(
-              _stripRecorderSuffix(t.description),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-              ),
-            ),
-            subtitle: Text(
-              transactionIsUtilitiesExpense(t)
-                  ? 'รายจ่าย · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}'
-                  : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
-              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
-            ),
-          ),
+          _iuHistoryListRow(t),
           const Divider(height: 1),
         ],
         if (list.length > 14)

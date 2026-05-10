@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock, Smartphone } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
@@ -39,10 +39,28 @@ const TAB_HELP: Record<string, string> = {
     versionNotes: 'สรุปการเปลี่ยนแปลงเวอร์ชันแบบสั้นๆ เพื่อแสดงในหน้าโลโก้และตั้งค่า',
     laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
     aiLogs: 'ประวัติการเรียกใช้งาน AI จากเมนูวางแผนงาน รวมผลลัพธ์สำเร็จ/ผิดพลาด',
+    mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป',
 };
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
+
+type MobileErrorReportRow = {
+    id: string;
+    created_at: string;
+    platform?: string | null;
+    reported_by_username?: string | null;
+    reported_by_name?: string | null;
+    app_version?: string | null;
+    device_info?: string | null;
+    error_summary: string;
+    error_detail?: string | null;
+    user_note?: string | null;
+    source?: string | null;
+    reviewed?: boolean | null;
+    reviewed_at?: string | null;
+    reviewed_by?: string | null;
+};
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 type TableDiagnostic = { table: string; read: StatusState; write: StatusState; note?: string };
@@ -136,6 +154,68 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         folderId: settings.appDefaults?.backupConfig?.googleDrive?.folderId || '',
         accessToken: settings.appDefaults?.backupConfig?.googleDrive?.accessToken || '',
     });
+
+    const [mobileErrors, setMobileErrors] = useState<MobileErrorReportRow[]>([]);
+    const [mobileLoading, setMobileLoading] = useState(false);
+    const [mobileLoadErr, setMobileLoadErr] = useState<string | null>(null);
+    const [mobileUnreadCount, setMobileUnreadCount] = useState<number | null>(null);
+
+    const refreshMobileUnreadCount = async () => {
+        try {
+            const { count, error } = await supabase
+                .from('mobile_error_reports')
+                .select('id', { count: 'exact', head: true })
+                .eq('reviewed', false);
+            if (error) throw error;
+            setMobileUnreadCount(count ?? 0);
+        } catch {
+            setMobileUnreadCount(null);
+        }
+    };
+
+    const loadMobileAndroidErrors = async () => {
+        setMobileLoading(true);
+        setMobileLoadErr(null);
+        try {
+            const { data, error } = await supabase
+                .from('mobile_error_reports')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            const rows = (data || []) as MobileErrorReportRow[];
+            setMobileErrors(rows);
+            setMobileUnreadCount(rows.filter((r) => !r.reviewed).length);
+        } catch (err: any) {
+            setMobileLoadErr(err?.message || 'โหลดไม่สำเร็จ');
+            setMobileErrors([]);
+        } finally {
+            setMobileLoading(false);
+        }
+    };
+
+    const markMobileErrorReviewed = async (id: string) => {
+        try {
+            const { error } = await supabase.from('mobile_error_reports').update({
+                reviewed: true,
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: currentAdmin?.username || 'web',
+            }).eq('id', id);
+            if (error) throw error;
+            await loadMobileAndroidErrors();
+            await refreshMobileUnreadCount();
+        } catch (err: any) {
+            alert(err?.message || 'อัปเดตไม่สำเร็จ');
+        }
+    };
+
+    useEffect(() => {
+        void refreshMobileUnreadCount();
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'mobileAndroid') void loadMobileAndroidErrors();
+    }, [activeTab]);
 
     useEffect(() => {
         if (!currentAdmin) return;
@@ -733,6 +813,13 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         { key: 'laborWorkCategories', l: 'ประเภทงานค่าแรง' },
         { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
+        {
+            key: 'mobileAndroid',
+            l:
+                mobileUnreadCount != null && mobileUnreadCount > 0
+                    ? `แอป Android · ${mobileUnreadCount} ยังไม่อ่าน`
+                    : 'แอป Android',
+        },
         { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
     ];
 
@@ -1172,6 +1259,125 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                     })}
                                 </div>
                             </Card>
+                        </div>
+                    ) : activeTab === 'mobileAndroid' ? (
+                        <div className="space-y-5">
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Smartphone className="text-slate-600" size={22} />
+                                        <h3 className="font-bold text-lg">รายงานจากแอป Android</h3>
+                                    </div>
+                                    {TAB_HELP.mobileAndroid && (
+                                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-2 max-w-2xl">
+                                            <Info size={15} className="shrink-0 mt-0.5 opacity-70" />
+                                            {TAB_HELP.mobileAndroid}
+                                        </p>
+                                    )}
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="flex items-center gap-2 shrink-0"
+                                    disabled={mobileLoading}
+                                    onClick={() => void loadMobileAndroidErrors()}
+                                >
+                                    <RefreshCw size={16} className={mobileLoading ? 'animate-spin' : ''} />
+                                    {mobileLoading ? 'กำลังโหลด...' : 'รีเฟรช'}
+                                </Button>
+                            </div>
+
+                            {mobileLoadErr && (
+                                <div className="rounded-xl px-4 py-3 text-sm border bg-red-50 border-red-200 text-red-800 dark:bg-red-500/10 dark:border-red-500/30 dark:text-red-200">
+                                    {mobileLoadErr}
+                                </div>
+                            )}
+
+                            {mobileLoading && mobileErrors.length === 0 ? (
+                                <p className="text-sm text-slate-500">กำลังโหลดรายการ...</p>
+                            ) : mobileErrors.length === 0 ? (
+                                <p className="text-sm text-slate-500">ยังไม่มีรายงาน — เมื่อแอปส่ง error หรือรายงานด้วยตนเอง รายการจะแสดงที่นี่</p>
+                            ) : (
+                                <div className="space-y-3 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
+                                    {mobileErrors.map((row) => {
+                                        const unread = !row.reviewed;
+                                        const when = row.created_at
+                                            ? new Date(row.created_at).toLocaleString('th-TH')
+                                            : '—';
+                                        return (
+                                            <Card
+                                                key={row.id}
+                                                className={`p-4 border ${unread ? 'border-amber-300 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5' : 'border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/40'}`}
+                                            >
+                                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            {unread ? (
+                                                                <span className="text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 dark:bg-amber-500/30 dark:text-amber-100">
+                                                                    ยังไม่อ่าน
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-100">
+                                                                    อ่านแล้ว
+                                                                </span>
+                                                            )}
+                                                            <span className="text-xs text-slate-500">{when}</span>
+                                                            {row.source && (
+                                                                <span className="text-xs font-mono text-slate-500 truncate max-w-[12rem]" title={row.source}>
+                                                                    {row.source}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
+                                                            {row.error_summary}
+                                                        </p>
+                                                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                                                            {(row.reported_by_username || row.reported_by_name) && (
+                                                                <>
+                                                                    ผู้รายงาน: {row.reported_by_name || row.reported_by_username}
+                                                                    {row.reported_by_username && row.reported_by_name ? ` (@${row.reported_by_username})` : ''}
+                                                                    {' · '}
+                                                                </>
+                                                            )}
+                                                            {row.app_version && <>เวอร์ชันแอป: {row.app_version} · </>}
+                                                            {row.device_info && <span className="break-words">{row.device_info}</span>}
+                                                        </p>
+                                                    </div>
+                                                    {unread && (
+                                                        <Button
+                                                            variant="outline"
+                                                            className="h-8 text-xs shrink-0"
+                                                            onClick={() => void markMobileErrorReviewed(row.id)}
+                                                        >
+                                                            ทำเครื่องหมายอ่านแล้ว
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                {row.user_note && (
+                                                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-200 dark:border-white/10 pt-2">
+                                                        <span className="font-medium">หมายเหตุผู้ใช้:</span> {row.user_note}
+                                                    </p>
+                                                )}
+                                                {row.error_detail && (
+                                                    <details className="mt-2 text-xs">
+                                                        <summary className="cursor-pointer text-slate-600 dark:text-slate-400 font-medium">
+                                                            รายละเอียด / stack
+                                                        </summary>
+                                                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-100 dark:bg-black/30 p-2 text-[11px] text-slate-800 dark:text-slate-200">
+                                                            {row.error_detail}
+                                                        </pre>
+                                                    </details>
+                                                )}
+                                                {!unread && row.reviewed_at && (
+                                                    <p className="mt-2 text-[11px] text-slate-500">
+                                                        อ่านเมื่อ {new Date(row.reviewed_at).toLocaleString('th-TH')}
+                                                        {row.reviewed_by ? ` โดย ${row.reviewed_by}` : ''}
+                                                    </p>
+                                                )}
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     ) : activeTab === 'positionsLocal' ? (
                         <div className="space-y-6 max-w-lg">
