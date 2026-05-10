@@ -282,11 +282,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     _entranceController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: reduceMotion ? 320 : 440),
+      duration: Duration(milliseconds: reduceMotion ? 115 : 195),
     );
     _entranceFade = CurvedAnimation(
       parent: _entranceController,
-      curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+      curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
     );
     _entranceSlide = Tween<Offset>(
       begin: const Offset(0, 0.035),
@@ -294,12 +294,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ).animate(
       CurvedAnimation(
         parent: _entranceController,
-        curve: const Interval(0.0, 0.62, curve: Curves.easeOutCubic),
+        curve: const Interval(0.0, 0.56, curve: Curves.easeOutCubic),
       ),
     );
     _contentFade = CurvedAnimation(
       parent: _entranceController,
-      curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+      curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic),
     );
     _contentSlide = Tween<Offset>(
       begin: const Offset(0, 0.05),
@@ -307,7 +307,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ).animate(
       CurvedAnimation(
         parent: _entranceController,
-        curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+        curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic),
       ),
     );
     _entranceController.forward();
@@ -970,7 +970,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     super.dispose();
   }
 
-  void _scheduleUiRefresh({Duration delay = const Duration(milliseconds: 110)}) {
+  void _scheduleUiRefresh({Duration delay = const Duration(milliseconds: 22)}) {
     _uiRebuildDebounce?.cancel();
     _uiRebuildDebounce = Timer(delay, () {
       if (!mounted) return;
@@ -1019,7 +1019,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!mounted) return;
       if (showPct && _employeesLoading) {
         setState(() => _employeesLoadPercent = 100);
-        await Future<void>.delayed(const Duration(milliseconds: 240));
+        await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       if (!mounted) return;
       setState(() {
@@ -1937,7 +1937,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: IgnorePointer(
         ignoring: !_blockingModuleBootstrap,
         child: AnimatedOpacity(
-          duration: Duration(milliseconds: reduceMotion ? 1 : 360),
+          duration: Duration(milliseconds: reduceMotion ? 1 : 220),
           curve: Curves.easeOutCubic,
           opacity: _blockingModuleBootstrap ? 1 : 0,
           child: Padding(
@@ -1999,7 +1999,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             : null;
 
     return AnimatedSwitcher(
-      duration: Duration(milliseconds: reduceMotion ? 1 : 240),
+      duration: Duration(milliseconds: reduceMotion ? 1 : 150),
       child: Padding(
         key: ValueKey(
           '$showTxnLine-$showEmployeesLine-${employeeProgressFrac ?? -1}',
@@ -3414,7 +3414,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       barrierLabel:
           MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: const Color(0x48000000),
-      transitionDuration: const Duration(milliseconds: 200),
+      transitionDuration: const Duration(milliseconds: 80),
       pageBuilder: (dialogCtx, animation, _) {
         final curve = CurvedAnimation(
           parent: animation,

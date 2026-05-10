@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -298,11 +299,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
         transitionDuration: isQuickInput
-            ? const Duration(milliseconds: 340)
-            : const Duration(milliseconds: 380),
+            ? const Duration(milliseconds: 135)
+            : const Duration(milliseconds: 175),
         reverseTransitionDuration: isQuickInput
-            ? const Duration(milliseconds: 260)
-            : const Duration(milliseconds: 260),
+            ? const Duration(milliseconds: 95)
+            : const Duration(milliseconds: 115),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
@@ -651,7 +652,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         .disableAnimations;
     _entranceController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: _reduceMotion ? 340 : 760),
+      duration: Duration(milliseconds: _reduceMotion ? 165 : 340),
     );
     _entranceController.addStatusListener(_onEntranceStatus);
     _entranceController.forward();
@@ -717,6 +718,124 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       parent: _entranceController,
       curve: const Interval(0.16, 0.78, curve: Curves.easeOutCubic),
     );
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+
+    final dailyMenuPanel = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE7ECF3)),
+        boxShadow: [
+          BoxShadow(
+            color: _kPanelShadowColor,
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        child: AnimatedSwitcher(
+          duration: Duration(milliseconds: useLiteAnimations ? 70 : 115),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          child: LayoutBuilder(
+            key: ValueKey(
+              widget.formatBuddhistDateButton(widget.selectedDay),
+            ),
+            builder: (context, constraints) {
+              final visibleModules = _kDailyModules;
+              const cross = 3;
+              const gap = 10.0;
+              const sideInset = 2.0;
+              final availH =
+                  constraints.maxHeight.clamp(120.0, constraints.maxHeight);
+              final rows =
+                  (visibleModules.length / cross).ceil().clamp(1, 12);
+              final w = constraints.maxWidth;
+              final usableWidth = w - (sideInset * 2);
+              final cellWidth =
+                  (usableWidth - (gap * (cross - 1))) / cross;
+              final fitCellHeight =
+                  (availH - (gap * (rows - 1))) / rows;
+              final preferredCellHeight = (cellWidth / 0.76).clamp(
+                150.0,
+                220.0,
+              );
+              final totalNeeded =
+                  (preferredCellHeight * rows) + (gap * (rows - 1));
+              final menuScrolls = totalNeeded > availH + 0.5;
+              final cellHeight = menuScrolls
+                  ? preferredCellHeight
+                  : (preferredCellHeight > fitCellHeight
+                      ? fitCellHeight
+                      : preferredCellHeight);
+              final contentHeight =
+                  (cellHeight * rows) + (gap * (rows - 1));
+              final topInset = menuScrolls
+                  ? 6.0
+                  : ((availH - contentHeight) / 2).clamp(0.0, 24.0);
+              final cacheRows = isAndroid ? 3.5 : 2.0;
+              return RepaintBoundary(
+                child: GridView.builder(
+                  padding: EdgeInsets.fromLTRB(
+                    sideInset,
+                    topInset,
+                    sideInset,
+                    menuScrolls ? 10 : 0,
+                  ),
+                  physics: menuScrolls
+                      ? const AlwaysScrollableScrollPhysics(
+                          parent: ClampingScrollPhysics(),
+                        )
+                      : const NeverScrollableScrollPhysics(),
+                  addAutomaticKeepAlives: true,
+                  addRepaintBoundaries: true,
+                  cacheExtent:
+                      menuScrolls ? (cellHeight * cacheRows + gap * 2) : 0,
+                  itemCount: visibleModules.length,
+                  gridDelegate:
+                      SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cross,
+                    mainAxisSpacing: gap,
+                    crossAxisSpacing: gap,
+                    mainAxisExtent: cellHeight,
+                  ),
+                  itemBuilder: (context, index) {
+                    final m = visibleModules[index];
+                    final fill =
+                        menuStatusByCategory[m.category] ??
+                            DailyModuleFillStatus.pending;
+                    final globalIndex = _kDailyModules.indexOf(m);
+                    final card = RecordModuleCard(
+                      title: m.title,
+                      icon: m.icon,
+                      tileColor: m.color,
+                      showLightStyle: index.isOdd,
+                      fillStatus: fill,
+                      onTap: () => widget.onOpenModule(m),
+                    );
+                    if (_gridEntranceCompleted) {
+                      return RepaintBoundary(
+                        key: ValueKey('mod_${m.category}'),
+                        child: card,
+                      );
+                    }
+                    return _StaggerMenuTile(
+                      parent: _entranceController,
+                      index:
+                          globalIndex >= 0 ? globalIndex : index,
+                      lite: useLiteAnimations,
+                      child: card,
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
 
     return Stack(
       children: [
@@ -750,137 +869,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: FadeTransition(
-                  opacity: panelAnim,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.05),
-                      end: Offset.zero,
-                    ).animate(panelAnim),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: const Color(0xFFE7ECF3)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _kPanelShadowColor,
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                        child: AnimatedSwitcher(
-                          duration: Duration(milliseconds: useLiteAnimations ? 140 : 260),
-                          transitionBuilder: (child, animation) =>
-                              FadeTransition(opacity: animation, child: child),
-                          child: LayoutBuilder(
-                            key: ValueKey(
-                              widget.formatBuddhistDateButton(widget.selectedDay),
-                            ),
-                            builder: (context, constraints) {
-                              final visibleModules = _kDailyModules;
-                              const cross = 3;
-                              const gap = 10.0;
-                              const sideInset = 2.0;
-                              final availH = constraints.maxHeight
-                                  .clamp(120.0, constraints.maxHeight);
-                              final rows =
-                                  (visibleModules.length / cross).ceil().clamp(1, 12);
-                              final w = constraints.maxWidth;
-                              final usableWidth = w - (sideInset * 2);
-                              final cellWidth =
-                                  (usableWidth - (gap * (cross - 1))) / cross;
-                              final fitCellHeight =
-                                  (availH - (gap * (rows - 1))) / rows;
-                              final preferredCellHeight = (cellWidth / 0.76).clamp(
-                                150.0,
-                                220.0,
-                              );
-                              final totalNeeded =
-                                  (preferredCellHeight * rows) +
-                                  (gap * (rows - 1));
-                              final menuScrolls = totalNeeded > availH + 0.5;
-                              final cellHeight = menuScrolls
-                                  ? preferredCellHeight
-                                  : (preferredCellHeight > fitCellHeight
-                                      ? fitCellHeight
-                                      : preferredCellHeight);
-                              final contentHeight =
-                                  (cellHeight * rows) + (gap * (rows - 1));
-                              final topInset = menuScrolls
-                                  ? 6.0
-                                  : ((availH - contentHeight) / 2)
-                                      .clamp(0.0, 24.0);
-                              return RepaintBoundary(
-                                child: GridView.builder(
-                                  padding: EdgeInsets.fromLTRB(
-                                    sideInset,
-                                    topInset,
-                                    sideInset,
-                                    menuScrolls ? 10 : 0,
-                                  ),
-                                  physics: menuScrolls
-                                      ? const AlwaysScrollableScrollPhysics(
-                                          parent: ClampingScrollPhysics(),
-                                        )
-                                      : const NeverScrollableScrollPhysics(),
-                                  // Keep cells alive while scrolling — cards are
-                                  // heavy (shadows, animations); rebuilding them
-                                  // causes visible jank.
-                                  addAutomaticKeepAlives: true,
-                                  addRepaintBoundaries: true,
-                                  cacheExtent:
-                                      menuScrolls ? (cellHeight * 2 + gap) : 0,
-                                  itemCount: visibleModules.length,
-                                  gridDelegate:
-                                      SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: cross,
-                                    mainAxisSpacing: gap,
-                                    crossAxisSpacing: gap,
-                                    mainAxisExtent: cellHeight,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final m = visibleModules[index];
-                                    final fill =
-                                        menuStatusByCategory[m.category] ??
-                                            DailyModuleFillStatus.pending;
-                                    final globalIndex =
-                                        _kDailyModules.indexOf(m);
-                                    final card = RecordModuleCard(
-                                      title: m.title,
-                                      icon: m.icon,
-                                      tileColor: m.color,
-                                      showLightStyle: index.isOdd,
-                                      fillStatus: fill,
-                                      onTap: () => widget.onOpenModule(m),
-                                    );
-                                    if (_gridEntranceCompleted) {
-                                      return RepaintBoundary(
-                                        key: ValueKey('mod_${m.category}'),
-                                        child: card,
-                                      );
-                                    }
-                                    return _StaggerMenuTile(
-                                      parent: _entranceController,
-                                      index: globalIndex >= 0
-                                          ? globalIndex
-                                          : index,
-                                      lite: useLiteAnimations,
-                                      child: card,
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
+                child: _gridEntranceCompleted
+                    ? dailyMenuPanel
+                    : FadeTransition(
+                        opacity: panelAnim,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.05),
+                            end: Offset.zero,
+                          ).animate(panelAnim),
+                          child: dailyMenuPanel,
                         ),
                       ),
-                    ),
-                  ),
-                ),
               ),
             ],
           ),
@@ -1178,7 +1178,7 @@ class _PressScaleButtonState extends State<_PressScaleButton> {
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedScale(
-        duration: const Duration(milliseconds: 130),
+        duration: const Duration(milliseconds: 48),
         curve: Curves.easeOutCubic,
         scale: _pressed ? 0.96 : 1,
         child: widget.child,
