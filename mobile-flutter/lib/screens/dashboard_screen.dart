@@ -629,7 +629,17 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
   late final bool _reduceMotion;
+  /// After the grid entrance animation finishes, drop stagger transforms so
+  /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
+  bool _gridEntranceCompleted = false;
   static const _kPanelShadowColor = Color(0x12000000);
+
+  void _onEntranceStatus(AnimationStatus status) {
+    if (!mounted) return;
+    if (status == AnimationStatus.completed && !_gridEntranceCompleted) {
+      setState(() => _gridEntranceCompleted = true);
+    }
+  }
 
   @override
   void initState() {
@@ -642,13 +652,16 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     _entranceController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: _reduceMotion ? 340 : 760),
-    )..forward();
+    );
+    _entranceController.addStatusListener(_onEntranceStatus);
+    _entranceController.forward();
   }
 
   @override
   void didUpdateWidget(covariant _DailyHomeContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedDay != widget.selectedDay) {
+      _gridEntranceCompleted = false;
       _entranceController
         ..reset()
         ..forward();
@@ -657,6 +670,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
   @override
   void dispose() {
+    _entranceController.removeStatusListener(_onEntranceStatus);
     _entranceController.dispose();
     super.dispose();
   }
@@ -800,48 +814,65 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   ? 6.0
                                   : ((availH - contentHeight) / 2)
                                       .clamp(0.0, 24.0);
-                              return GridView.builder(
-                                padding: EdgeInsets.fromLTRB(
-                                  sideInset,
-                                  topInset,
-                                  sideInset,
-                                  menuScrolls ? 10 : 0,
-                                ),
-                                physics: menuScrolls
-                                    ? const ClampingScrollPhysics()
-                                    : const NeverScrollableScrollPhysics(),
-                                addAutomaticKeepAlives: false,
-                                addRepaintBoundaries: true,
-                                itemCount: visibleModules.length,
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: cross,
-                                  mainAxisSpacing: gap,
-                                  crossAxisSpacing: gap,
-                                  mainAxisExtent: cellHeight,
-                                ),
-                                itemBuilder: (context, index) {
-                                  final m = visibleModules[index];
-                                  final fill =
-                                      menuStatusByCategory[m.category] ??
-                                          DailyModuleFillStatus.pending;
-                                  final globalIndex =
-                                      _kDailyModules.indexOf(m);
-                                  return _StaggerMenuTile(
-                                    parent: _entranceController,
-                                    index:
-                                        globalIndex >= 0 ? globalIndex : index,
-                                    lite: useLiteAnimations,
-                                    child: RecordModuleCard(
+                              return RepaintBoundary(
+                                child: GridView.builder(
+                                  padding: EdgeInsets.fromLTRB(
+                                    sideInset,
+                                    topInset,
+                                    sideInset,
+                                    menuScrolls ? 10 : 0,
+                                  ),
+                                  physics: menuScrolls
+                                      ? const AlwaysScrollableScrollPhysics(
+                                          parent: ClampingScrollPhysics(),
+                                        )
+                                      : const NeverScrollableScrollPhysics(),
+                                  // Keep cells alive while scrolling — cards are
+                                  // heavy (shadows, animations); rebuilding them
+                                  // causes visible jank.
+                                  addAutomaticKeepAlives: true,
+                                  addRepaintBoundaries: true,
+                                  cacheExtent:
+                                      menuScrolls ? (cellHeight * 2 + gap) : 0,
+                                  itemCount: visibleModules.length,
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: cross,
+                                    mainAxisSpacing: gap,
+                                    crossAxisSpacing: gap,
+                                    mainAxisExtent: cellHeight,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final m = visibleModules[index];
+                                    final fill =
+                                        menuStatusByCategory[m.category] ??
+                                            DailyModuleFillStatus.pending;
+                                    final globalIndex =
+                                        _kDailyModules.indexOf(m);
+                                    final card = RecordModuleCard(
                                       title: m.title,
                                       icon: m.icon,
                                       tileColor: m.color,
                                       showLightStyle: index.isOdd,
                                       fillStatus: fill,
                                       onTap: () => widget.onOpenModule(m),
-                                    ),
-                                  );
-                                },
+                                    );
+                                    if (_gridEntranceCompleted) {
+                                      return RepaintBoundary(
+                                        key: ValueKey('mod_${m.category}'),
+                                        child: card,
+                                      );
+                                    }
+                                    return _StaggerMenuTile(
+                                      parent: _entranceController,
+                                      index: globalIndex >= 0
+                                          ? globalIndex
+                                          : index,
+                                      lite: useLiteAnimations,
+                                      child: card,
+                                    );
+                                  },
+                                ),
                               );
                             },
                           ),
@@ -1050,27 +1081,39 @@ class _HomeHeaderCompact extends StatelessWidget {
   }
 }
 
-class _LiveClockChip extends StatelessWidget {
+class _LiveClockChip extends StatefulWidget {
   const _LiveClockChip();
 
   @override
+  State<_LiveClockChip> createState() => _LiveClockChipState();
+}
+
+class _LiveClockChipState extends State<_LiveClockChip> {
+  late DateTime _now;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final stream = Stream<DateTime>.periodic(
-      const Duration(seconds: 30),
-      (_) => DateTime.now(),
-    );
-    return StreamBuilder<DateTime>(
-      stream: stream,
-      initialData: DateTime.now(),
-      builder: (context, snapshot) {
-        final now = snapshot.data ?? DateTime.now();
-        final hh = now.hour.toString().padLeft(2, '0');
-        final mm = now.minute.toString().padLeft(2, '0');
-        return _HeaderStatChip(
-          icon: Icons.schedule_rounded,
-          label: 'เวลา $hh:$mm น.',
-        );
-      },
+    final hh = _now.hour.toString().padLeft(2, '0');
+    final mm = _now.minute.toString().padLeft(2, '0');
+    return _HeaderStatChip(
+      icon: Icons.schedule_rounded,
+      label: 'เวลา $hh:$mm น.',
     );
   }
 }
