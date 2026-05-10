@@ -6,18 +6,27 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/admin_user.dart';
 import '../services/auth_service.dart';
+import '../services/session_service.dart';
 import '../widgets/app_logo.dart';
+
+/// หลังล็อกอินสำเร็จ — [persistSession] คือจะบันทึก session ลงเครื่องหรือไม่
+typedef LoginSuccessCallback = Future<void> Function(
+  AdminUser admin,
+  bool persistSession,
+);
 
 /// โทนสีและเลย์เอาต์อ้างอิงจาก `src/modules/Auth/LoginPage.tsx` (เว็บ)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
     required this.authService,
+    required this.sessionService,
     required this.onLoginSuccess,
   });
 
   final AuthService authService;
-  final ValueChanged<AdminUser> onLoginSuccess;
+  final SessionService sessionService;
+  final LoginSuccessCallback onLoginSuccess;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -37,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _submitting = false;
   bool _darkMode = true;
   bool _obscurePassword = true;
+  bool _rememberSession = true;
   String? _errorMessage;
   late AnimationController _shimmerController;
   late AnimationController _entranceController;
@@ -61,6 +71,24 @@ class _LoginScreenState extends State<LoginScreen>
     _logoEntranceScale = Tween<double>(begin: 0.82, end: 1.0).animate(
       CurvedAnimation(parent: _entranceController, curve: Curves.easeOutBack),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLoginPrefs());
+  }
+
+  Future<void> _loadLoginPrefs() async {
+    try {
+      final remember =
+          await widget.sessionService.getRememberSessionPreference();
+      final lastUser = await widget.sessionService.getLastLoginUsername();
+      if (!mounted) return;
+      setState(() {
+        _rememberSession = remember;
+        if (lastUser != null && lastUser.isNotEmpty) {
+          _usernameController.text = lastUser;
+        }
+      });
+    } catch (_) {
+      // ไม่บล็อกหน้าเข้าสู่ระบบ
+    }
   }
 
   @override
@@ -88,7 +116,13 @@ class _LoginScreenState extends State<LoginScreen>
         _usernameController.text.trim(),
         _passwordController.text,
       );
-      widget.onLoginSuccess(admin);
+      await widget.sessionService.setRememberSessionPreference(
+        _rememberSession,
+      );
+      await widget.sessionService.setLastLoginUsername(
+        _usernameController.text.trim(),
+      );
+      await widget.onLoginSuccess(admin, _rememberSession);
     } on AdminLoginException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
@@ -412,6 +446,89 @@ class _LoginScreenState extends State<LoginScreen>
                                             }
                                             return null;
                                           },
+                                        ),
+                                        const SizedBox(height: 10),
+                                        InkWell(
+                                          onTap: () => setState(
+                                            () => _rememberSession =
+                                                !_rememberSession,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 4,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                SizedBox(
+                                                  width: 28,
+                                                  height: 28,
+                                                  child: Checkbox(
+                                                    value: _rememberSession,
+                                                    onChanged: (v) => setState(
+                                                      () => _rememberSession =
+                                                          v ?? false,
+                                                    ),
+                                                    checkColor: Colors.white,
+                                                    fillColor:
+                                                        WidgetStateProperty
+                                                            .resolveWith((
+                                                      states,
+                                                    ) {
+                                                      if (states.contains(
+                                                        WidgetState.selected,
+                                                      )) {
+                                                        return _darkMode
+                                                            ? const Color(
+                                                                0xFF0080FF,
+                                                              )
+                                                            : _goldDark;
+                                                      }
+                                                      return _darkMode
+                                                          ? Colors.white
+                                                                .withValues(
+                                                                  alpha: 0.1,
+                                                                )
+                                                          : Colors.black
+                                                                .withValues(
+                                                                  alpha: 0.06,
+                                                                );
+                                                    }),
+                                                    side: BorderSide(
+                                                      color: _darkMode
+                                                          ? Colors.white38
+                                                          : Colors.brown
+                                                                .shade200,
+                                                    ),
+                                                    materialTapTargetSize:
+                                                        MaterialTapTargetSize
+                                                            .shrinkWrap,
+                                                    visualDensity:
+                                                        VisualDensity.compact,
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Text(
+                                                    'คงอยู่ในระบบ — ไม่ต้องล็อกอินบ่อย (เปิดแอปครั้งถัดไปเข้าได้เลย)',
+                                                    style: GoogleFonts.kanit(
+                                                      fontSize: 13,
+                                                      height: 1.35,
+                                                      color: textPrimary
+                                                          .withValues(
+                                                        alpha: 0.92,
+                                                      ),
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         ),
                                         if (_errorMessage != null) ...[
                                           const SizedBox(height: 14),

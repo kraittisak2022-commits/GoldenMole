@@ -78,7 +78,7 @@ class MobileApp extends StatefulWidget {
   State<MobileApp> createState() => _MobileAppState();
 }
 
-class _MobileAppState extends State<MobileApp> {
+class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   AdminUser? _currentAdmin;
   bool _bootstrapping = true;
   final SessionService _sessionService = SessionService();
@@ -86,7 +86,26 @@ class _MobileAppState extends State<MobileApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restoreSession();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || _currentAdmin == null) {
+      return;
+    }
+    ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client).catchError(
+      (Object e, StackTrace st) {
+        debugPrint('ensureSupabaseSession on resume: $e\n$st');
+      },
+    );
   }
 
   Future<void> _restoreSession() async {
@@ -193,8 +212,20 @@ class _MobileAppState extends State<MobileApp> {
           : _currentAdmin == null
           ? LoginScreen(
               authService: AuthService(client),
-              onLoginSuccess: (admin) async {
-                await _sessionService.saveAdmin(admin);
+              sessionService: _sessionService,
+              onLoginSuccess: (admin, persistSession) async {
+                if (persistSession) {
+                  await _sessionService.saveAdmin(admin);
+                } else {
+                  await _sessionService.clear();
+                }
+                try {
+                  await ensureSupabaseSessionForEdgeFunctions(
+                    Supabase.instance.client,
+                  );
+                } catch (e, st) {
+                  debugPrint('ensureSupabaseSession after login: $e\n$st');
+                }
                 if (!mounted) return;
                 setState(() => _currentAdmin = admin);
               },
