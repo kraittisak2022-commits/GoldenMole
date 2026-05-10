@@ -31,6 +31,8 @@ class RecordModuleCard extends StatefulWidget {
     required this.onTap,
     this.tileColor = const Color(0xFF4FC3F7),
     this.showLightStyle = false,
+    /// แทนที่ข้อความ «บันทึกครบแล้ว» เมื่อสถานะครบ (เช่น เมนูลางาน → ลา N คน)
+    this.completeStatusLabelOverride,
   });
 
   final String title;
@@ -39,6 +41,7 @@ class RecordModuleCard extends StatefulWidget {
   final VoidCallback onTap;
   final Color tileColor;
   final bool showLightStyle;
+  final String? completeStatusLabelOverride;
 
   @override
   State<RecordModuleCard> createState() => _RecordModuleCardState();
@@ -58,8 +61,11 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final recorded = status == DailyModuleFillStatus.complete;
     final partial = status == DailyModuleFillStatus.incomplete;
 
+    final overrideComplete = widget.completeStatusLabelOverride?.trim();
     final statusLabel = recorded
-        ? 'บันทึกครบแล้ว'
+        ? (overrideComplete != null && overrideComplete.isNotEmpty
+            ? overrideComplete
+            : 'บันทึกครบแล้ว')
         : partial
         ? 'กรอกข้อมูลไม่ครบ'
         : 'แตะเพื่อบันทึก';

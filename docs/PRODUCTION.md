@@ -4,14 +4,19 @@ This document summarizes how the repo is wired today and what to do before treat
 
 ## What CI already enforces
 
-| Check | Scope |
-|--------|--------|
-| `npm run lint` | Web (React + TS) |
-| `npm test` (Vitest) | Web unit tests |
-| `dart analyze` | Flutter app under `mobile-flutter/` |
-| `flutter test` | Flutter widget/unit tests (e.g. `test/widget_test.dart`) |
+| Check | Scope | Workflow |
+|--------|--------|----------|
+| `npm run lint` | Web (React + TS) | `ci.yml` |
+| `npm test` (Vitest) | Web unit tests | `ci.yml` |
+| `dart analyze` | Flutter app under `mobile-flutter/` | `ci.yml` |
+| `flutter test` | Flutter widget/unit tests | `ci.yml` |
+| `npm run test:e2e` (Playwright) | Web flows via `/?e2e=harness` (local Vite in config) | `e2e.yml` |
 
-End-to-end tests (`npm run test:e2e` / Playwright) are **not** run in CI by default (they need a running app + often real or mocked backend). Run them locally or add a separate workflow with secrets and a fixed URL when you are ready.
+The **E2E** workflow (`.github/workflows/e2e.yml`) runs on `workflow_dispatch`, on **push to `main`**, and on **pull requests** when paths touch `e2e/`, `playwright.config.ts`, `src/`, or lockfiles. It does **not** need Supabase secrets for the current harness tests.
+
+On failure, CI uploads the `playwright-report/` artifact when present.
+
+**Local:** if `npm run test:e2e` fails with “Executable doesn't exist”, run `npx playwright install` once (or `npx playwright install chromium`).
 
 ## Data access model (important)
 

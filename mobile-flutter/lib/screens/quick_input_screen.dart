@@ -70,6 +70,19 @@ void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
   row.cubicPerTripController.text = s;
 }
 
+/// รวมคีย์งานที่บ้านจากรูปแบบเก่า (หลายกล่องบนมือถือ) เป็น `washHome` ให้สอดคล้องเว็บ
+String _normalizeLaborWashHomeKey(String key) {
+  switch (key) {
+    case 'wash_home':
+    case 'wash_yard_house':
+    case 'sift_home':
+    case 'washHome':
+      return 'washHome';
+    default:
+      return key;
+  }
+}
+
 class _QuickInputScreenState extends State<QuickInputScreen>
     with SingleTickerProviderStateMixin {
   static const List<_LaborWorkCategory> _laborCategories = [
@@ -84,7 +97,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF24A7B8),
     ),
     _LaborWorkCategory(
-      id: 'wash_home',
+      id: 'washHome',
       label: 'ล้างทรายที่บ้าน',
       color: Color(0xFF2CB67D),
     ),
@@ -124,18 +137,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF7B5AE6),
     ),
     _LaborWorkCategory(
-      id: 'wash_yard_house',
-      label: 'ล้างทรายบ้าน',
-      color: Color(0xFF7A66E3),
-    ),
-    _LaborWorkCategory(
-      id: 'sift_home',
-      label: 'ร่อนทรายบ้าน',
-      color: Color(0xFFE14897),
-    ),
-    _LaborWorkCategory(
       id: 'house_team',
-      label: 'ทำบ้านแม่มะงาน',
+      label: 'ทำบ้านแม่ขะจาน',
       color: Color(0xFFE64CA0),
     ),
     _LaborWorkCategory(
@@ -145,7 +148,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ),
     _LaborWorkCategory(
       id: 'sand_watch',
-      label: 'เฝ้าทำทราย',
+      label: 'เฝ้าท่าทราย',
       color: Color(0xFFE64A9E),
     ),
   ];
@@ -179,12 +182,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelVehicleTimeController = TextEditingController();
   final _laborWorkDetailsController = TextEditingController();
   final _otDescController = TextEditingController();
+  final _dailyEventDescController = TextEditingController();
+  String _dailyEventType = 'info';
+  String _dailyEventPriority = 'normal';
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
   final _advanceAmountPerPersonController = TextEditingController();
   /// ชื่อธนาคารเต็มจากรายการ dropdown (โหมดโอน)
   String _advanceBank = '';
   final _advanceAccountController = TextEditingController();
+  final _utilitiesTypeController = TextEditingController();
+  final _utilitiesExtraController = TextEditingController();
+  final _utilitiesAmountController = TextEditingController();
+  final _incomeTypeController = TextEditingController();
+  final _incomeQtyController = TextEditingController();
+  final _incomeUnitPriceController = TextEditingController();
+  final _incomeTotalController = TextEditingController();
   final Set<String> _selectedLeaveEmpIds = {};
   final Set<String> _selectedAdvanceEmpIds = {};
   String? _laborLeaveTxId;
@@ -247,10 +260,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _isVehicleTripMode =>
       (widget.initialCategory ?? '').contains('เที่ยวรถ');
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
+  bool get _isMacroVehicleMode =>
+      widget.initialCategory == 'การใช้รถแม็คโคร';
   bool get _isHomeSandMode =>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [
     _FuelVehicleDraft.empty(),
+  ];
+  final List<_MacroVehicleDraft> _macroVehicleDrafts = [
+    _MacroVehicleDraft.empty(),
   ];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
@@ -269,12 +287,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   };
   final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
+  /// รายละเอียดงานจากประวัติธุรกรรมรถแม็คโคร (เมนูแม็คโคร)
+  List<String> _macroWorkSuggestions = const [];
   bool get _isLaborMode =>
       widget.initialCategory == 'ค่าแรง' ||
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
   bool get _isOtMode => (widget.initialCategory ?? '').contains('OT');
+  bool get _isDailyEventMode => widget.initialCategory == 'เหตุการณ์';
   bool get _isLaborLeaveMode => widget.initialCategory == 'ลางาน';
   bool get _isLaborAdvanceMode => widget.initialCategory == 'เบิกเงิน';
+  /// สรุปรายจ่ายสาธารณูปโภค + รายรับประจำวันจากเว็บ (อ่านอย่างเดียว)
+  bool get _isIncomeUtilitiesEntryMode =>
+      widget.initialCategory?.trim() == 'รายจ่ายรายรับ';
 
   @override
   void initState() {
@@ -329,6 +353,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadAppCars();
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
+    _loadMacroWorkSuggestions();
     _refreshHomeSandStock();
     _otGroups.add(_OtGroupDraft.empty());
     final cat = widget.initialCategory?.trim();
@@ -392,6 +417,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       ..addAll(nextRows.isEmpty ? [_FuelVehicleDraft.empty()] : nextRows);
   }
 
+  void _disposeMacroVehicleDrafts() {
+    for (final row in _macroVehicleDrafts) {
+      row.dispose();
+    }
+  }
+
+  void _replaceMacroVehicleDrafts(List<_MacroVehicleDraft> nextRows) {
+    _disposeMacroVehicleDrafts();
+    _macroVehicleDrafts
+      ..clear()
+      ..addAll(nextRows.isEmpty ? [_MacroVehicleDraft.empty()] : nextRows);
+  }
+
   /// ล้างฟอร์มก่อนโหลดวันใหม่ เพื่อไม่ให้เหลือค่าจากวันก่อนหน้า
   void _clearModuleFormFields() {
     if (_isSandWashMode) {
@@ -425,6 +463,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
       _replaceFuelVehicleDrafts(const []);
+    } else if (_isMacroVehicleMode) {
+      _replaceMacroVehicleDrafts(const []);
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
       _laborPickedIds.clear();
@@ -461,6 +501,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _otGroups.clear();
       _otGroups.add(_OtGroupDraft.empty());
       _otDescController.clear();
+    } else if (_isDailyEventMode) {
+      _dailyEventDescController.clear();
+      _dailyEventType = 'info';
+      _dailyEventPriority = 'normal';
+    } else if (_isIncomeUtilitiesEntryMode) {
+      _utilitiesTypeController.clear();
+      _utilitiesExtraController.clear();
+      _utilitiesAmountController.clear();
+      _incomeTypeController.clear();
+      _incomeQtyController.clear();
+      _incomeUnitPriceController.clear();
+      _incomeTotalController.clear();
     } else {
       _amountController.clear();
       _descriptionController.clear();
@@ -499,7 +551,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _moduleDayLoading = false;
         _moduleHistoryVisible = false;
       });
-      await _refreshHomeSandStock();
+      if (cat != 'รายจ่ายรายรับ') {
+        await _refreshHomeSandStock();
+      }
       _hydrateFormsFromTransactions(
         matched,
         dayTransactions: rows,
@@ -542,14 +596,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return v;
   }
 
-  bool _isMacroCarName(String raw) {
-    final s = raw.trim().toLowerCase();
-    if (s.isEmpty) return false;
-    return s.contains('แม็คโคร') ||
-        s.contains('แมคโคร') ||
-        s.contains('excavator') ||
-        s.contains('backhoe');
-  }
+  bool _isMacroCarName(String raw) => isMacroVehicleId(raw);
 
   List<String> _fuelMacroCars() {
     final seen = <String>{};
@@ -561,12 +608,35 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
-  bool _isDriverEmployee(Employee e) {
-    final positions = e.positions.isNotEmpty
-        ? e.positions
-        : ((e.position ?? '').trim().isEmpty ? const <String>[] : <String>[e.position!.trim()]);
-    return positions.contains('คนขับรถ');
+  Iterable<String> _employeePositionTokens(Employee e) sync* {
+    if (e.positions.isNotEmpty) {
+      for (final p in e.positions) {
+        final t = p.trim();
+        if (t.isNotEmpty) yield t;
+      }
+      return;
+    }
+    final single = (e.position ?? '').trim();
+    if (single.isNotEmpty) yield single;
   }
+
+  bool _isDriverEmployee(Employee e) {
+    return _employeePositionTokens(e).contains('คนขับรถ');
+  }
+
+  /// คนขับในเมนูแม็คโคร — เฉพาะตำแหน่ง «คนขับรถแม็คโคร» (รองรับสะกด แมค/แม็ค)
+  bool _isMacroExcavatorDriverEmployee(Employee e) {
+    const titles = {'คนขับรถแม็คโคร', 'คนขับรถแมคโคร'};
+    for (final p in _employeePositionTokens(e)) {
+      if (titles.contains(p)) return true;
+    }
+    return false;
+  }
+
+  List<Employee> get _macroDriverEmployees => _employees
+      .where((e) => !e.inactive)
+      .where(_isMacroExcavatorDriverEmployee)
+      .toList();
 
   String _driverLabelFromId(String driverId) {
     final id = driverId.trim();
@@ -728,11 +798,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     List<AppTransaction> txs, {
     List<AppTransaction>? dayTransactions,
   }) {
+    if (_isIncomeUtilitiesEntryMode) return;
     if (_isSandWashMode) {
       _hydrateSandWashModule(txs, dayTransactions ?? txs);
       return;
     }
     if (txs.isEmpty) return;
+    if (_isDailyEventMode) return;
     void setIfEmpty(TextEditingController c, String val) {
       if (val.isEmpty) return;
       if (c.text.trim().isEmpty) c.text = val;
@@ -799,6 +871,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             d.cubicPerTrip.isNotEmpty;
       }).toList();
       _replaceVehicleDrafts(loaded);
+      return;
+    }
+
+    if (_isMacroVehicleMode) {
+      final drafts = <_MacroVehicleDraft>[];
+      for (final t in txs) {
+        if (!isMacroVehicleTransaction(t)) continue;
+        final draft = _MacroVehicleDraft.empty();
+        draft.txId = t.id;
+        draft.vehicleId = (t.vehicleId ?? '').trim();
+        draft.driverId = (t.driverId ?? '').trim();
+        final wt = (t.workType ?? '').trim();
+        draft.workType = wt == 'HalfDay' ? 'HalfDay' : 'FullDay';
+        draft.workDetailsController.text =
+            _stripRecorderSuffix(t.workDetails ?? '');
+        drafts.add(draft);
+      }
+      _replaceMacroVehicleDrafts(drafts);
       return;
     }
 
@@ -885,10 +975,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           t.workAssignments ?? const <String, List<String>>{};
       if (loadedAssignments.isNotEmpty) {
         loadedAssignments.forEach((key, ids) {
-          if (!_laborAssignments.containsKey(key)) return;
-          _laborAssignments[key]?.addAll(ids);
-          if ((_laborAssignments[key]?.isNotEmpty ?? false)) {
-            _laborBucketExpanded[key] = true;
+          final canon = _normalizeLaborWashHomeKey(key);
+          if (!_laborAssignments.containsKey(canon)) return;
+          _laborAssignments[canon]?.addAll(ids);
+          if ((_laborAssignments[canon]?.isNotEmpty ?? false)) {
+            _laborBucketExpanded[canon] = true;
           }
         });
       } else {
@@ -967,12 +1058,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _leaveDaysController.dispose();
     _advanceAmountPerPersonController.dispose();
     _advanceAccountController.dispose();
+    _utilitiesTypeController.dispose();
+    _utilitiesExtraController.dispose();
+    _utilitiesAmountController.dispose();
+    _incomeTypeController.dispose();
+    _incomeQtyController.dispose();
+    _incomeUnitPriceController.dispose();
+    _incomeTotalController.dispose();
     for (final g in _otGroups) {
       g.dispose();
     }
     _otDescController.dispose();
+    _dailyEventDescController.dispose();
     _disposeVehicleDrafts();
     _disposeFuelVehicleDrafts();
+    _disposeMacroVehicleDrafts();
     super.dispose();
   }
 
@@ -988,7 +1088,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _isLaborMode ||
       _isOtMode ||
       _isLaborLeaveMode ||
-      _isLaborAdvanceMode;
+      _isLaborAdvanceMode ||
+      _isMacroVehicleMode;
 
   Future<void> _loadEmployees() async {
     _employeesLoadProgressTimer?.cancel();
@@ -1126,6 +1227,120 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _vehicleWorkSuggestions = sorted.map((e) => e.key).take(10).toList();
       });
     } catch (_) {}
+  }
+
+  Future<void> _loadMacroWorkSuggestions() async {
+    try {
+      final txs = await widget.service.fetchTransactions();
+      final ranked = <String, int>{};
+      for (final tx in txs) {
+        if (!isMacroVehicleTransaction(tx)) continue;
+        final raw = _stripRecorderSuffix(tx.workDetails ?? '').trim();
+        if (raw.isEmpty) continue;
+        ranked[raw] = (ranked[raw] ?? 0) + 1;
+      }
+      final sorted = ranked.entries.toList()
+        ..sort((a, b) {
+          final byCount = b.value.compareTo(a.value);
+          if (byCount != 0) return byCount;
+          return a.key.compareTo(b.key);
+        });
+      if (!mounted) return;
+      setState(() {
+        _macroWorkSuggestions = sorted.map((e) => e.key).take(15).toList();
+      });
+    } catch (_) {}
+  }
+
+  static const List<String> _kMacroWorkQuickPhrases = [
+    'ขุด/ตักดิน',
+    'ปรับพื้นที่ เกลี่ยดิน',
+    'บดอัด/ตีแตกหิน',
+    'เทคอนกรีต/ขนวัสดุ',
+    'ตัดหญ้า เก็บกวาด',
+    'ซ่อมท่อ/วางท่อ',
+    'รื้อโครงสร้าง',
+    'ย้ายอุปกรณ์/จัดเก็บ',
+  ];
+
+  void _applyMacroWorkPhrase(_MacroVehicleDraft row, String phrase) {
+    final cur = row.workDetailsController.text.trim();
+    final next = cur.isEmpty ? phrase : '$cur, $phrase';
+    setState(() {
+      row.workDetailsController.text = next;
+      row.workDetailsController.selection = TextSelection.collapsed(
+        offset: row.workDetailsController.text.length,
+      );
+    });
+  }
+
+  Future<void> _openMacroWorkAssistSheet(_MacroVehicleDraft row) async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+          shrinkWrap: true,
+          children: [
+            Text(
+              'ช่วยกรอกรายละเอียดงาน',
+              style: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'ข้อความยอดใช้บ่อย',
+              style: GoogleFonts.kanit(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in _kMacroWorkQuickPhrases)
+                  ActionChip(
+                    label: Text(s, style: GoogleFonts.kanit(fontSize: 13)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _applyMacroWorkPhrase(row, s);
+                    },
+                  ),
+              ],
+            ),
+            if (_macroWorkSuggestions.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text(
+                'จากประวัติการบันทึก (รถแม็คโคร)',
+                style: GoogleFonts.kanit(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ..._macroWorkSuggestions.map(
+                (s) => ListTile(
+                  title: Text(s, style: GoogleFonts.kanit()),
+                  dense: true,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() => row.workDetailsController.text = s);
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _refreshHomeSandStock() async {
@@ -1291,6 +1506,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       await _saveVehicleTripEntry();
       return;
     }
+    if (_isMacroVehicleMode) {
+      await _saveMacroVehicleUsageEntries();
+      return;
+    }
     if (_isFuelMode) {
       await _saveFuelVehicleUsageEntries();
       return;
@@ -1313,6 +1532,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (_isOtMode) {
       await _saveOtEntry();
+      return;
+    }
+    if (_isDailyEventMode) {
+      await _saveDailyEventEntry();
       return;
     }
     if (!_formKey.currentState!.validate()) return;
@@ -1506,7 +1729,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveVehicleTripEntry() async {
     await _runSaveWithPopups(
-      successMessage: 'บันทึกรถและเที่ยวรถสำเร็จ',
+      successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           return row.vehicleId.trim().isNotEmpty ||
@@ -1584,6 +1807,70 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
         }
         _replaceVehicleDrafts(const []);
+      },
+    );
+  }
+
+  Future<void> _saveMacroVehicleUsageEntries() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกการใช้รถแม็คโครสำเร็จ',
+      body: () async {
+        final macroCars = _fuelMacroCars();
+        if (macroCars.isEmpty) {
+          throw 'ยังไม่พบรถแม็คโครในตั้งค่าแอพ';
+        }
+        final activeRows = _macroVehicleDrafts.where((row) {
+          return row.vehicleId.trim().isNotEmpty ||
+              row.driverId.trim().isNotEmpty ||
+              row.workDetailsController.text.trim().isNotEmpty;
+        }).toList();
+        if (activeRows.isEmpty) {
+          throw 'กรุณาระบุข้อมูลอย่างน้อย 1 คัน';
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+
+        for (var i = 0; i < activeRows.length; i++) {
+          final row = activeRows[i];
+          final vehicle = row.vehicleId.trim();
+          final driver = row.driverId.trim();
+          final details = row.workDetailsController.text.trim();
+          if (vehicle.isEmpty || driver.isEmpty) {
+            throw 'กรุณาระบุรถแม็คโครและคนขับให้ครบทุกคัน';
+          }
+          if (!_macroDriverEmployees.any((e) => e.id == driver)) {
+            throw 'เลือกคนขับจากรายชื่อตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น (คัน ${i + 1})';
+          }
+          if (!macroCars.contains(vehicle)) {
+            throw 'เลือกรถได้เฉพาะรถแม็คโคร (คัน ${i + 1})';
+          }
+          final dayLabel = row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+          final txId =
+              row.txId ??
+              '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle_$i';
+          row.txId = txId;
+          await _persist(
+            AppTransaction(
+              id: txId,
+              date: date,
+              type: 'Expense',
+              category: 'Vehicle',
+              description: _appendRecorder(
+                'รถ: $vehicle (${details.isEmpty ? '—' : details}) [$dayLabel]',
+              ),
+              amount: 0,
+              note: _activeSignatureNote,
+              vehicleId: vehicle,
+              driverId: driver,
+              workDetails: details.isEmpty ? null : _appendRecorder(details),
+              workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+            ),
+          );
+        }
+        await _loadMacroWorkSuggestions();
+        _replaceMacroVehicleDrafts(const []);
       },
     );
   }
@@ -1879,6 +2166,44 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _otGroups.clear();
         _otGroups.add(_OtGroupDraft.empty());
         _otDescController.clear();
+      },
+    );
+  }
+
+  Future<void> _saveDailyEventEntry() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกเหตุการณ์สำเร็จ',
+      body: () async {
+        final text = _dailyEventDescController.text.trim();
+        if (text.isEmpty) {
+          throw 'กรุณาระบุรายละเอียดเหตุการณ์';
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final id = '${DateTime.now().millisecondsSinceEpoch}_event';
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'Event',
+            description: _appendRecorder(text),
+            amount: 0,
+            note: _activeSignatureNote,
+            eventType: _dailyEventType.trim().isEmpty ? 'info' : _dailyEventType,
+            eventPriority:
+                _dailyEventPriority.trim().isEmpty ? 'normal' : _dailyEventPriority,
+          ),
+        );
+        if (!mounted) return;
+        setState(() {
+          _dailyEventDescController.clear();
+          _dailyEventType = 'info';
+          _dailyEventPriority = 'normal';
+        });
       },
     );
   }
@@ -2610,6 +2935,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             Color(0xFFE65100),
                             Color(0xFFBF360C),
                           ]
+                        : _isIncomeUtilitiesEntryMode
+                        ? const [
+                            Color(0xFF5C6BC0),
+                            Color(0xFF3949AB),
+                          ]
                         : const [
                             Color(0xFF0D98A5),
                             Color(0xFF1BB7C0),
@@ -2703,10 +3033,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                           ),
                                           child: Column(
                                             children: [
-                                              (_isSandWashMode
+                                              (_isIncomeUtilitiesEntryMode
+                                                  ? _buildIncomeUtilitiesEntryCard()
+                                                  : _isSandWashMode
                                                   ? _buildSandWashFormCard()
                                                   : _isVehicleTripMode
                                                   ? _buildVehicleTripFormCard()
+                                                  : _isMacroVehicleMode
+                                                  ? _buildMacroVehicleFormCard()
                                                   : _isFuelMode
                                                   ? _buildFuelFormCard()
                                                   : _isHomeSandMode
@@ -2719,6 +3053,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                   ? _buildLaborFormCard()
                                                   : _isOtMode
                                                   ? _buildOtFormCard()
+                                                  : _isDailyEventMode
+                                                  ? _buildDailyEventFormCard()
                                                   : _buildFormCard()),
                                             ],
                                           ),
@@ -2761,6 +3097,400 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ),
       ),
+    );
+  }
+
+  void _syncIncomeTotalFromQtyPrice() {
+    final q = double.tryParse(_incomeQtyController.text.trim()) ?? 0;
+    final p = double.tryParse(_incomeUnitPriceController.text.trim()) ?? 0;
+    if (q > 0 && p > 0) {
+      _incomeTotalController.text = _strNum(q * p);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveUtilitiesExpense() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกสาธารณูปโภคสำเร็จ',
+      body: () async {
+        final sub = _utilitiesTypeController.text.trim();
+        final extra = _utilitiesExtraController.text.trim();
+        final amt =
+            double.tryParse(_utilitiesAmountController.text.trim()) ?? 0;
+        if (sub.isEmpty) {
+          throw 'กรุณาระบุประเภทค่าใช้จ่าย (เช่น ไฟฟ้า น้ำ)';
+        }
+        if (amt <= 0) {
+          throw 'กรุณาระบุจำนวนเงินให้ถูกต้อง';
+        }
+        final desc = extra.isEmpty ? sub : '$sub: $extra';
+        final ymd = _quickYmd(_selectedDate);
+        final id = '${DateTime.now().millisecondsSinceEpoch}_utils';
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: ymd,
+            type: 'Expense',
+            category: 'Utilities',
+            subCategory: sub,
+            description: _appendRecorder(desc),
+            amount: amt,
+            note: _activeSignatureNote,
+          ),
+        );
+        if (!mounted) return;
+        setState(() {
+          _utilitiesTypeController.clear();
+          _utilitiesExtraController.clear();
+          _utilitiesAmountController.clear();
+        });
+      },
+    );
+  }
+
+  Future<void> _saveWizardIncomeEntry() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกรายรับสำเร็จ',
+      body: () async {
+        final incomeType = _incomeTypeController.text.trim();
+        final total =
+            double.tryParse(_incomeTotalController.text.trim()) ?? 0;
+        final qtyRaw = _incomeQtyController.text.trim();
+        final priceRaw = _incomeUnitPriceController.text.trim();
+        final qty = double.tryParse(qtyRaw);
+        final unitPrice = double.tryParse(priceRaw);
+        if (incomeType.isEmpty) {
+          throw 'กรุณาระบุประเภทรายรับ';
+        }
+        if (total <= 0) {
+          throw 'กรุณาระบุยอดรวม (บาท) ให้ถูกต้อง';
+        }
+        final ymd = _quickYmd(_selectedDate);
+        final id = '${DateTime.now().millisecondsSinceEpoch}_income';
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: ymd,
+            type: 'Income',
+            category: 'Income',
+            description: _appendRecorder(incomeType),
+            amount: total,
+            quantity: (qty != null && qty > 0) ? qty : null,
+            unitPrice: (unitPrice != null && unitPrice > 0) ? unitPrice : null,
+            note: _activeSignatureNote,
+          ),
+        );
+        if (!mounted) return;
+        setState(() {
+          _incomeTypeController.clear();
+          _incomeQtyController.clear();
+          _incomeUnitPriceController.clear();
+          _incomeTotalController.clear();
+        });
+      },
+    );
+  }
+
+  Widget _buildIncomeUtilitiesEntryCard() {
+    const indigo = Color(0xFF3949AB);
+    const teal = Color(0xFF00897B);
+    const green = Color(0xFF2E7D32);
+
+    Widget dateRow() {
+      return Material(
+        color: const Color(0xFFF3F4FB),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: _pickDate,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 20, color: indigo),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'วันที่ ${_formatDate(_selectedDate)} · แตะเพื่อเปลี่ยนวัน',
+                    style: GoogleFonts.kanit(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1D2736),
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    InputDecoration deco(String label, IconData icon) {
+      return InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.kanit(color: Colors.black54),
+        prefixIcon: Icon(icon, color: indigo.withValues(alpha: 0.85)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFD7E3F0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: indigo, width: 1.2),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'บันทึกรายจ่าย-รายรับ',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1A237E),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'ตรงกับเว็บแอป: Utilities (รายจ่าย) และ Daily Wizard รายรับประจำวัน',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 12.5,
+            height: 1.35,
+            color: Colors.black54,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 14),
+        dateRow(),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Icon(Icons.bolt_outlined, color: teal, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'สาธารณูปโภค (รายจ่าย)',
+              style: GoogleFonts.kanit(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A237E),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _utilitiesTypeController,
+          decoration: deco('ประเภทค่าใช้จ่าย', Icons.category_outlined),
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1D2A3A),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _utilitiesExtraController,
+          decoration: deco('รายละเอียดเพิ่ม (ไม่บังคับ)', Icons.notes_outlined),
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1D2A3A),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _utilitiesAmountController,
+          decoration: deco('จำนวนเงิน (บาท)', Icons.attach_money_outlined),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1D2A3A),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _SmoothPressable(
+          enabled: !_saving,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: [teal.withValues(alpha: 0.92), const Color(0xFF00695C)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: teal.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveUtilitiesExpense,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save_alt_rounded, color: Colors.white),
+              label: Text(
+                _saving ? 'กำลังบันทึก...' : 'บันทึกสาธารณูปโภค',
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                minimumSize: const Size.fromHeight(52),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Icon(Icons.trending_up_rounded, color: green, size: 26),
+            const SizedBox(width: 8),
+            Text(
+              'รายรับประจำวัน (รายรับ)',
+              style: GoogleFonts.kanit(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A237E),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _incomeTypeController,
+          decoration: deco('ประเภทรายรับ', Icons.label_outline_rounded),
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1D2A3A),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _incomeQtyController,
+                decoration: deco('จำนวน (ไม่บังคับ)', Icons.numbers_outlined),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: GoogleFonts.kanit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1D2A3A),
+                ),
+                onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _incomeUnitPriceController,
+                decoration: deco(
+                  'ราคาต่อหน่วย (ไม่บังคับ)',
+                  Icons.price_change_outlined,
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: GoogleFonts.kanit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1D2A3A),
+                ),
+                onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _incomeTotalController,
+          decoration: deco('ยอดรวม (บาท)', Icons.payments_outlined),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1D2A3A),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _SmoothPressable(
+          enabled: !_saving,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: [
+                  green.withValues(alpha: 0.95),
+                  const Color(0xFF1B5E20),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: green.withValues(alpha: 0.32),
+                  blurRadius: 16,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveWizardIncomeEntry,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.savings_outlined, color: Colors.white),
+              label: Text(
+                _saving ? 'กำลังบันทึก...' : 'บันทึกรายรับประจำวัน',
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                minimumSize: const Size.fromHeight(52),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -3551,7 +4281,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'บันทึกการใช้รถ',
+            'บันทึกรถดรัมและจำนวนเที่ยว',
             style: GoogleFonts.kanit(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -3575,7 +4305,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onPressed: _saving ? null : _saveQuickEntry,
               icon: const Icon(Icons.save_outlined),
               label: Text(
-                _saving ? 'กำลังบันทึก...' : 'บันทึกรถและเที่ยวรถ',
+                _saving ? 'กำลังบันทึก...' : 'บันทึกรถดรัมและจำนวนเที่ยว',
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
               style: FilledButton.styleFrom(
@@ -3585,6 +4315,250 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMacroVehicleFormCard() {
+    final macroCars = _fuelMacroCars();
+    if (_macroVehicleDrafts.isEmpty) {
+      _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
+    }
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE65100).withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'บันทึกการใช้รถแม็คโคร',
+            style: GoogleFonts.kanit(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFFE65100),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(_macroVehicleDrafts.length, (index) {
+            final row = _macroVehicleDrafts[index];
+            return Container(
+              margin: EdgeInsets.only(
+                bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
+              ),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8F0),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFFE0B2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'คันที่ ${index + 1}',
+                        style: GoogleFonts.kanit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFE65100),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_macroVehicleDrafts.length > 1)
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              final removed = _macroVehicleDrafts.removeAt(
+                                index,
+                              );
+                              removed.dispose();
+                            });
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: const Color(0xFFD14343),
+                          tooltip: 'ลบคันนี้',
+                        ),
+                    ],
+                  ),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('macro_vehicle_${index}_${row.vehicleId}'),
+                    isExpanded: true,
+                    initialValue:
+                        row.vehicleId.isEmpty ||
+                            !macroCars.contains(row.vehicleId)
+                        ? null
+                        : row.vehicleId,
+                    decoration: const InputDecoration(
+                      labelText: 'รถแม็คโคร',
+                      prefixIcon: Icon(Icons.construction_outlined),
+                    ),
+                    items: macroCars
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c,
+                            child: Text(
+                              c,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.kanit(fontSize: 18),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      row.vehicleId = v ?? '';
+                      _scheduleUiRefresh();
+                    },
+                  ),
+                  if (macroCars.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFFD14343),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('macro_driver_${index}_${row.driverId}'),
+                    isExpanded: true,
+                    initialValue: row.driverId.isEmpty ||
+                            !_macroDriverEmployees.any((e) => e.id == row.driverId)
+                        ? null
+                        : row.driverId,
+                    decoration: const InputDecoration(
+                      labelText: 'คนขับ (ตำแหน่งคนขับรถแม็คโคร)',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                    items: _macroDriverEmployees
+                        .map(
+                          (e) => DropdownMenuItem<String>(
+                            value: e.id,
+                            child: Text(
+                              e.nickname.isNotEmpty ? e.nickname : e.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.kanit(fontSize: 18),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      row.driverId = v ?? '';
+                      _scheduleUiRefresh();
+                    },
+                  ),
+                  if (_macroDriverEmployees.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFFD14343),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(
+                        value: 'FullDay',
+                        label: Text('เต็มวัน'),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'HalfDay',
+                        label: Text('ครึ่งวัน'),
+                      ),
+                    ],
+                    selected: {row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay'},
+                    onSelectionChanged: (selection) {
+                      if (selection.isEmpty) return;
+                      setState(() => row.workType = selection.first);
+                    },
+                    style: ButtonStyle(
+                      textStyle: WidgetStatePropertyAll(
+                        GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: row.workDetailsController,
+                    minLines: 2,
+                    maxLines: 4,
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'รายละเอียดงาน',
+                      hintText: 'ขนดิน, ปรับพื้นที่...',
+                      prefixIcon: const Icon(Icons.notes_outlined),
+                      suffixIcon: IconButton(
+                        tooltip: 'ช่วยกรอก',
+                        icon: const Icon(Icons.tips_and_updates_outlined),
+                        onPressed: () => _openMacroWorkAssistSheet(row),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: macroCars.isEmpty
+                ? null
+                : () => setState(
+                      () =>
+                          _macroVehicleDrafts.add(_MacroVehicleDraft.empty()),
+                    ),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'เพิ่มรถอีกคัน',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveQuickEntry,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(
+                _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 19,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFFFF8F00),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3678,7 +4652,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         : row.vehicleId,
                     decoration: const InputDecoration(
                       labelText: 'เลือกรถแม็คโคร',
-                      prefixIcon: Icon(Icons.local_shipping_outlined),
+                      prefixIcon: Icon(Icons.fire_truck_outlined),
                     ),
                     items: fuelCars
                         .map(
@@ -4931,6 +5905,231 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  List<String> _eventDescSuggestionsFromDay() {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final t in _moduleDayAllTransactions) {
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim() != 'Event') continue;
+      final s = _stripRecorderSuffix(t.description).trim();
+      if (s.isEmpty || !seen.add(s)) continue;
+      out.add(s);
+      if (out.length >= 10) break;
+    }
+    return out;
+  }
+
+  Widget _buildDailyEventFormCard() {
+    const quickPhrases = <String>[
+      'ฝนตก หยุดงาน',
+      'เครื่องจักรเสีย',
+      'ทรายไม่ครบ',
+      'คนงานมาสาย',
+      'งานเสร็จตามแผน',
+      'ไฟฟ้าดับ',
+      'อุบัติเหตุเล็กน้อย',
+    ];
+    final typeOpts = <({String v, String label})>[
+      (v: 'info', label: 'ℹ️ ข้อมูล'),
+      (v: 'warning', label: '⚠️ เตือน'),
+      (v: 'problem', label: '🚨 ปัญหา'),
+      (v: 'success', label: '✅ สำเร็จ'),
+      (v: 'complaint', label: '📢 ข้อร้องเรียน'),
+      (v: 'request', label: '📋 ความต้องการ'),
+    ];
+    final suggestions = _eventDescSuggestionsFromDay();
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF6D00).withValues(alpha: 0.07),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'เหตุการณ์สำคัญประจำวัน',
+                  style: GoogleFonts.kanit(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFE65100),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'ประเภท',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final o in typeOpts)
+                ChoiceChip(
+                  label: Text(
+                    o.label,
+                    style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  selected: _dailyEventType == o.v,
+                  onSelected: (sel) {
+                    if (sel) setState(() => _dailyEventType = o.v);
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'ความสำคัญ',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment<String>(value: 'normal', label: Text('ปกติ')),
+              ButtonSegment<String>(value: 'urgent', label: Text('ด่วน')),
+            ],
+            selected: {_dailyEventPriority},
+            onSelectionChanged: (s) {
+              if (s.isEmpty) return;
+              setState(() => _dailyEventPriority = s.first);
+            },
+            style: ButtonStyle(
+              textStyle: WidgetStatePropertyAll(
+                GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _dailyEventDescController,
+            minLines: 3,
+            maxLines: 6,
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1D2A3A),
+            ),
+            decoration: InputDecoration(
+              labelText: 'รายละเอียดเหตุการณ์',
+              hintText:
+                  'เช่น ฝนตกหนักต้องหยุดงาน, เครื่องจักรเสีย, ทรายถูกส่งมาไม่ครบ...',
+              alignLabelWithHint: true,
+            ),
+            onChanged: (_) => _scheduleUiRefresh(),
+          ),
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'จากประวัติ',
+              style: GoogleFonts.kanit(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final s in suggestions)
+                  ActionChip(
+                    label: Text(
+                      s,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(fontSize: 12),
+                    ),
+                    onPressed: () {
+                      setState(() => _dailyEventDescController.text = s);
+                    },
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            'วลีด่วน',
+            style: GoogleFonts.kanit(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final tmpl in quickPhrases)
+                ActionChip(
+                  label: Text(
+                    tmpl,
+                    style: GoogleFonts.kanit(fontSize: 12),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      final prev = _dailyEventDescController.text.trim();
+                      _dailyEventDescController.text =
+                          prev.isEmpty ? tmpl : '$prev, $tmpl';
+                    });
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveQuickEntry,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(
+                _saving ? 'กำลังบันทึก...' : 'บันทึกเหตุการณ์',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: const Color(0xFFFF9800),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFormCard() {
         return Container(
       decoration: BoxDecoration(
@@ -5762,7 +6961,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                   initialValue: row.vehicleId.isEmpty ? null : row.vehicleId,
                   decoration: const InputDecoration(
                     labelText: 'รถ/เครื่องจักร',
-                    prefixIcon: Icon(Icons.local_shipping_outlined),
+                    prefixIcon: Icon(Icons.fire_truck_outlined),
                   ),
                   items: widget.cars
                       .map(
@@ -6711,6 +7910,22 @@ class _SignaturePainter extends CustomPainter {
 class _CapturedSignature {
   const _CapturedSignature({required this.note});
   final String note;
+}
+
+class _MacroVehicleDraft {
+  _MacroVehicleDraft() : workDetailsController = TextEditingController();
+
+  factory _MacroVehicleDraft.empty() => _MacroVehicleDraft();
+
+  String? txId;
+  String vehicleId = '';
+  String driverId = '';
+  String workType = 'FullDay';
+  final TextEditingController workDetailsController;
+
+  void dispose() {
+    workDetailsController.dispose();
+  }
 }
 
 class _VehicleTripDraft {

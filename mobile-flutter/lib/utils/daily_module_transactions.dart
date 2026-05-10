@@ -1,5 +1,18 @@
 import '../models/app_transaction.dart';
 
+/// รถแม็คโคร (เมนูแยกจากรถดรัม/เที่ยว) — สอดคล้องกับชื่อรถในการตั้งค่า
+bool isMacroVehicleId(String? raw) {
+  final s = (raw ?? '').trim().toLowerCase();
+  if (s.isEmpty) return false;
+  return s.contains('แม็คโคร') ||
+      s.contains('แมคโคร') ||
+      s.contains('excavator') ||
+      s.contains('backhoe');
+}
+
+bool isMacroVehicleTransaction(AppTransaction t) =>
+    t.category == 'Vehicle' && isMacroVehicleId(t.vehicleId);
+
 /// ธุรกรรม «ลา» ที่ใช้ภาพรวมแคลน / ปฏิทิน — ต้องมีรายชื่อพนักงาน
 bool isLaborLeaveRecord(AppTransaction t) {
   final cat = t.category.trim();
@@ -50,6 +63,33 @@ bool transactionAppliesToDashboardDay(
   return t.date.trim() == dayKey.trim();
 }
 
+/// สาธารณูปโภค (เว็บเมนูสาธารณูปโภค)
+bool transactionIsUtilitiesExpense(AppTransaction t) {
+  return t.category == 'Utilities' &&
+      t.type.trim().toLowerCase() == 'expense';
+}
+
+/// รายรับประจำวัน (เว็บ Daily Wizard → รายรับ → บันทึกรายรับประจำวัน)
+bool transactionIsWizardDailyIncome(AppTransaction t) {
+  return t.category == 'Income' && t.type.trim().toLowerCase() == 'income';
+}
+
+DailyModuleFillStatus resolveIncomeUtilitiesFillStatus(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var hasUtilities = false;
+  var hasIncome = false;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (transactionIsUtilitiesExpense(t)) hasUtilities = true;
+    if (transactionIsWizardDailyIncome(t)) hasIncome = true;
+  }
+  if (hasUtilities && hasIncome) return DailyModuleFillStatus.complete;
+  if (hasUtilities || hasIncome) return DailyModuleFillStatus.incomplete;
+  return DailyModuleFillStatus.pending;
+}
+
 /// สถานะการกรอกเมนูบันทึกประจำวันบนแดชบอร์ด
 enum DailyModuleFillStatus {
   /// ยังไม่มีข้อมูลที่เกี่ยวข้อง
@@ -68,6 +108,9 @@ DailyModuleFillStatus resolveDailyModuleFillStatus(
   String moduleCategory,
   Iterable<AppTransaction> transactions,
 ) {
+  if (moduleCategory == 'รายจ่ายรายรับ') {
+    return resolveIncomeUtilitiesFillStatus(dayKey, transactions);
+  }
   var complete = false;
   var touch = false;
   for (final t in transactions) {
@@ -119,7 +162,7 @@ bool transactionTouchesDailyModule(
   /// มีสัญญาณรถ/เที่ยว แต่อาจยังไม่ผ่านเกณฑ์ [transactionCountsAsVehicleTripMenu]
   bool vehicleTouches() {
     if (transactionCountsAsVehicleTripMenu(t)) return true;
-    if (t.category == 'Vehicle') return true;
+    if (t.category == 'Vehicle' && !isMacroVehicleTransaction(t)) return true;
     final subRaw = (t.subCategory ?? '').trim();
     if (subRaw.toLowerCase() == 'vehicletrip') return true;
     if (t.category != 'DailyLog') return false;
@@ -137,6 +180,19 @@ bool transactionTouchesDailyModule(
   }
 
   bool fuelTouches() => t.category == 'Fuel';
+
+  bool dailyEventTouches() {
+    if (t.category != 'DailyLog') return false;
+    return (t.subCategory ?? '').trim() == 'Event';
+  }
+
+  bool macroVehicleTouches() {
+    return t.category == 'Vehicle' &&
+        isMacroVehicleTransaction(t) &&
+        ((t.vehicleId ?? '').trim().isNotEmpty ||
+            (t.driverId ?? '').trim().isNotEmpty ||
+            (t.workDetails ?? '').trim().isNotEmpty);
+  }
 
   bool laborTouches() {
     if (t.category == 'Leave') return false;
@@ -179,8 +235,12 @@ bool transactionTouchesDailyModule(
       return homeSandTouches();
     case 'จำนวนเที่ยวรถ':
       return vehicleTouches();
+    case 'การใช้รถแม็คโคร':
+      return macroVehicleTouches();
     case 'น้ำมัน':
       return fuelTouches();
+    case 'เหตุการณ์':
+      return dailyEventTouches();
     case 'ค่าแรง':
       return t.category == 'ค่าแรง' || laborTouches();
     case 'บันทึกการทำงาน':
@@ -191,6 +251,8 @@ bool transactionTouchesDailyModule(
       return advanceRecordTouches();
     case 'OT':
       return otTouches();
+    case 'รายจ่ายรายรับ':
+      return transactionIsUtilitiesExpense(t) || transactionIsWizardDailyIncome(t);
     default:
       if (moduleCategory.contains('ล่วงเวลา')) return otTouches();
       return t.category == moduleCategory;
@@ -203,7 +265,10 @@ bool transactionTouchesDailyModule(
 /// เพื่อกันการขึ้นเช็คทั้งที่ผู้ใช้ยังไม่กรอกรถจริง
 bool transactionCountsAsVehicleTripMenu(AppTransaction t) {
   final subRaw = (t.subCategory ?? '').trim();
-  if (t.category == 'Vehicle') return true;
+  if (t.category == 'Vehicle') {
+    // แม็คโครอยู่เมนู «การใช้รถแม็คโคร» — ไม่นับเป็นเที่ยวดรัม
+    return !isMacroVehicleTransaction(t);
+  }
   if (subRaw.toLowerCase() == 'vehicletrip') return true;
   if (t.category != 'DailyLog') return false;
   if (subRaw.toLowerCase() == 'sand') return false;
@@ -248,7 +313,20 @@ bool transactionMatchesDailyModule(
 
   bool vehicleLike() => transactionCountsAsVehicleTripMenu(t);
 
+  bool macroVehicleLike() {
+    return t.category == 'Vehicle' &&
+        isMacroVehicleTransaction(t) &&
+        (t.vehicleId ?? '').trim().isNotEmpty &&
+        (t.driverId ?? '').trim().isNotEmpty;
+  }
+
   bool fuelLike() => t.category == 'Fuel';
+
+  bool dailyEventLike() {
+    if (t.category != 'DailyLog') return false;
+    if ((t.subCategory ?? '').trim() != 'Event') return false;
+    return t.description.trim().isNotEmpty;
+  }
 
   bool laborLike() {
     if (t.category != 'Labor') return false;
@@ -290,8 +368,12 @@ bool transactionMatchesDailyModule(
       return homeSandLike();
     case 'จำนวนเที่ยวรถ':
       return vehicleLike();
+    case 'การใช้รถแม็คโคร':
+      return macroVehicleLike();
     case 'น้ำมัน':
       return fuelLike();
+    case 'เหตุการณ์':
+      return dailyEventLike();
     case 'ค่าแรง':
       return t.category == 'ค่าแรง' || laborLike();
     case 'บันทึกการทำงาน':
@@ -302,6 +384,9 @@ bool transactionMatchesDailyModule(
       return advanceLike();
     case 'OT':
       return otLike();
+    case 'รายจ่ายรายรับ':
+      return transactionIsUtilitiesExpense(t) ||
+          transactionIsWizardDailyIncome(t);
     default:
       if (moduleCategory.contains('ล่วงเวลา')) return otLike();
       return t.category == moduleCategory;

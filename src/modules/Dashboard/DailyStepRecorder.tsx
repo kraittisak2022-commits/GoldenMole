@@ -222,6 +222,26 @@ const sanitizeWorkAssignments = (raw: Record<string, string[]> | undefined | nul
         Object.entries(raw).filter(([catId]) => !HIDDEN_WORK_CATEGORY_IDS.has(catId))
     );
 };
+
+/** คีย์งานที่บ้าน (รวมรูปแบบเก่าจากมือถือหลายกล่อง) */
+const HOME_WASH_ASSIGNMENT_KEYS = ['washHome', 'wash_home', 'wash_yard_house', 'sift_home'] as const;
+
+function countWashHomeAssignedWorkers(wa: Record<string, string[] | undefined>): number {
+    const ids = new Set<string>();
+    for (const k of HOME_WASH_ASSIGNMENT_KEYS) {
+        const list = wa[k];
+        if (!Array.isArray(list)) continue;
+        for (const id of list) {
+            const s = String(id || '').trim();
+            if (s) ids.add(s);
+        }
+    }
+    return ids.size;
+}
+
+function hasWashHomeAssignment(wa: Record<string, string[] | undefined>): boolean {
+    return countWashHomeAssignedWorkers(wa) > 0;
+}
 const getEmployeeDisplayName = (emp?: Employee) => {
     if (!emp) return '';
     const nickname = String(emp.nickname || '').trim();
@@ -290,8 +310,7 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     let washHomeWorkers = 0;
     for (const t of labor) {
         const wa = sanitizeWorkAssignments((t as any).workAssignments);
-        const homeIds = wa['washHome'];
-        const n = Array.isArray(homeIds) ? homeIds.length : 0;
+        const n = countWashHomeAssignedWorkers(wa);
         washHomeWorkers = Math.max(washHomeWorkers, n);
     }
     const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
@@ -703,7 +722,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             if (totalAssignedWorkers === 0) {
                 items.push({ level: 'warning', message: 'ยังไม่ได้จัดคนลงกล่องงาน', fix: 'เลือกพนักงานแล้วกดย้ายลงประเภทงานอย่างน้อย 1 กล่อง' });
             }
-            if ((workAssignments.washHome?.length ?? 0) > 0 && (Number(drumsWashedAtHome) || 0) <= 0) {
+            if (hasWashHomeAssignment(workAssignments) && (Number(drumsWashedAtHome) || 0) <= 0) {
                 items.push({ level: 'warning', message: 'มีคนล้างทรายที่บ้าน แต่ยังไม่ระบุจำนวนถัง', fix: 'กรอกจำนวนถังล้างที่บ้านเพื่อให้สรุปถังสุทธิถูกต้อง' });
             }
         }
@@ -713,7 +732,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             if ((Number(otHours) || 0) <= 0) items.push({ level: 'info', message: 'OT ชั่วโมงยังว่าง', fix: 'ใส่จำนวนชั่วโมงเพื่อคำนวณยอดถูกต้อง' });
         }
         return items;
-    }, [step, laborStatus, totalAssignedWorkers, workAssignments.washHome, drumsWashedAtHome, selectedEmps.length, otDesc, otHours]);
+    }, [step, laborStatus, totalAssignedWorkers, workAssignments, drumsWashedAtHome, selectedEmps.length, otDesc, otHours]);
     const sortedDayTransactions = useMemo(() => {
         return [...dayTransactions].sort((a, b) => {
             const scoreA = getTransactionRecencyScore(a, dayTransactions, dayTransactions.findIndex(x => x.id === a.id));
@@ -2708,7 +2727,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
 
                                         {/* เมนูย่อย ล้างทรายที่บ้าน — เมื่อมีพนักงานในประเภทนี้ */}
-                                        {(workAssignments['washHome']?.length ?? 0) > 0 && (() => {
+                                        {(hasWashHomeAssignment(workAssignments)) && (() => {
                                             const sandTxToday = dayTransactions.filter((t: Transaction) => t.category === 'DailyLog' && t.subCategory === 'Sand');
                                             const totalDrumsFromSand = sandTxToday.length > 0 ? Math.max(0, ...sandTxToday.map((t: Transaction) => (t as any).drumsObtained ?? 0)) : 0;
                                             const homeDrums = Number(drumsWashedAtHome) || 0;
@@ -2803,8 +2822,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
-                                                const drumsHome = (workAssignments['washHome']?.length ?? 0) > 0 ? (Number(drumsWashedAtHome) || 0) : undefined;
-                                                const hasWashHomeAssigned = (workAssignments['washHome']?.length ?? 0) > 0;
+                                                const drumsHome = hasWashHomeAssignment(workAssignments) ? (Number(drumsWashedAtHome) || 0) : undefined;
+                                                const hasWashHomeAssigned = hasWashHomeAssignment(workAssignments);
                                                 const rawHomeDrums = Number(drumsWashedAtHome) || 0;
                                                 if (rawHomeDrums > 0 && !hasWashHomeAssigned) {
                                                     await sessionAlert('พบจำนวนถังล้างที่บ้าน แต่ยังไม่ได้ assign พนักงานในงาน "ล้างทรายที่บ้าน"');
@@ -3610,7 +3629,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
                                         const totalAllocatedHome = homeBatchUsages.reduce((s, u) => s + Math.max(0, Number(u.drums || 0)), 0);
-                                        const hasWashHomeAssigned = (workAssignments['washHome']?.length ?? 0) > 0;
+                                        const hasWashHomeAssigned = hasWashHomeAssignment(workAssignments);
                                         if (sandGrandTotal === 0 && drumsToday === 0) {
                                             await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
                                             return;

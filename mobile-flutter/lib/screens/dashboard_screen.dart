@@ -75,11 +75,18 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFFFF4FA3),
   ),
   _DailyModuleDef(
-    title: 'บันทึกรถและจำนวนเที่ยวรถ',
-    icon: Icons.local_shipping_outlined,
+    title: 'บันทึกรถดรัมและจำนวนเที่ยว',
+    icon: Icons.fire_truck_outlined,
     category: 'จำนวนเที่ยวรถ',
-    quickInputTitle: 'บันทึกรถและเที่ยว',
+    quickInputTitle: 'บันทึกรถดรัมและจำนวนเที่ยว',
     color: Color(0xFF00B8D9),
+  ),
+  _DailyModuleDef(
+    title: 'การใช้รถแม็คโคร',
+    icon: Icons.construction_outlined,
+    category: 'การใช้รถแม็คโคร',
+    quickInputTitle: 'บันทึกการใช้รถแม็คโคร',
+    color: Color(0xFFFF8F00),
   ),
   _DailyModuleDef(
     title: 'น้ำมัน',
@@ -94,6 +101,13 @@ const List<_DailyModuleDef> _kDailyModules = [
     category: 'ทรายที่ล้างที่บ้าน',
     quickInputTitle: 'ทรายที่ล้างที่บ้าน',
     color: Color(0xFF4A6FFF),
+  ),
+  _DailyModuleDef(
+    title: 'เหตุการณ์',
+    icon: Icons.warning_amber_rounded,
+    category: 'เหตุการณ์',
+    quickInputTitle: 'เหตุการณ์สำคัญประจำวัน',
+    color: Color(0xFFFF6D00),
   ),
   _DailyModuleDef(
     title: 'บันทึกการทำงาน',
@@ -123,15 +137,65 @@ const List<_DailyModuleDef> _kDailyModules = [
     quickInputTitle: 'ส่งคำขอเบิกเงิน',
     color: Color(0xFFFF6F00),
   ),
+  _DailyModuleDef(
+    title: 'รายจ่าย-รายรับ',
+    icon: Icons.account_balance_wallet_outlined,
+    category: 'รายจ่ายรายรับ',
+    quickInputTitle: 'รายจ่าย-รายรับ',
+    color: Color(0xFF5C6BC0),
+  ),
 ];
 
-/// เมนูที่ไม่นับในชิป «บันทึกครบ X/Y เมนู» — ลางาน, เบิกเงิน (บันทึกแยก)
-bool _isExpandOnlyDailyModule(_DailyModuleDef m) =>
-    m.category == 'ลางาน' || m.category == 'เบิกเงิน';
+/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู» — บันทึกการร่อนทราย, น้ำมัน, ค่าแรง, เหตุการณ์, การใช้รถแม็คโคร
+/// และเมนู **ทรายที่ล้างที่บ้าน** เมื่อวันนั้นในบันทึกการทำงานมีคนในกล่อง canvas งานที่บ้าน (`washHome` และคีย์รวมย้อนหลัง)
+bool _laborWorkRecordAssignsWashHome(Iterable<AppTransaction> dayTransactions) {
+  for (final t in dayTransactions) {
+    if (t.category != 'Labor') continue;
+    final wa = t.workAssignments;
+    if (wa == null || wa.isEmpty) continue;
+    for (final key in [
+      'washHome',
+      'wash_home',
+      'wash_yard_house',
+      'sift_home',
+    ]) {
+      final ids = wa[key];
+      if (ids != null && ids.isNotEmpty) return true;
+    }
+  }
+  return false;
+}
 
-/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู» — ไม่รวม OT, ลางาน, เบิกเงิน (บันทึกแยก ไม่บังคับในสรุปวัน)
-bool _dailyModuleCountsTowardHeaderTotals(_DailyModuleDef m) =>
-    m.category != 'OT' && !_isExpandOnlyDailyModule(m);
+List<_DailyModuleDef> _dailyHeaderCountedModules(
+  List<AppTransaction> dayTransactions,
+) {
+  const core = {
+    'บันทึกการร่อนทราย',
+    'น้ำมัน',
+    'ค่าแรง',
+    'เหตุการณ์',
+    'การใช้รถแม็คโคร',
+  };
+  final needHomeSand = _laborWorkRecordAssignsWashHome(dayTransactions);
+  return _kDailyModules.where((m) {
+    if (core.contains(m.category)) return true;
+    if (m.category == 'ทรายที่ล้างที่บ้าน' && needHomeSand) return true;
+    return false;
+  }).toList(growable: false);
+}
+
+/// จำนวนคนที่ลาในวันปฏิทิน [dayKey] — นับรหัสพนักงานไม่ซ้ำจากทุกแถวลาที่ครอบคลุมวันนั้น
+int _leaveHeadcountOnCalendarDay(String dayKey, List<AppTransaction> txs) {
+  final ids = <String>{};
+  for (final t in txs) {
+    if (!laborLeaveCoversCalendarDay(t, dayKey)) continue;
+    for (final id in t.employeeIds) {
+      final s = id.trim();
+      if (s.isNotEmpty) ids.add(s);
+    }
+  }
+  return ids.length;
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -698,9 +762,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           widget.data.dayTransactions,
         ),
     };
-    final modulesForHeaderTotals = _kDailyModules
-        .where(_dailyModuleCountsTowardHeaderTotals)
-        .toList(growable: false);
+    final modulesForHeaderTotals = _dailyHeaderCountedModules(
+      widget.data.dayTransactions,
+    );
     final doneCount = modulesForHeaderTotals
         .where(
           (m) =>
@@ -820,6 +884,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       tileColor: m.color,
                       showLightStyle: index.isOdd,
                       fillStatus: fill,
+                      completeStatusLabelOverride: m.category == 'ลางาน'
+                          ? 'ลา ${_leaveHeadcountOnCalendarDay(dayKey, widget.data.dayTransactions)} คน'
+                          : null,
                       onTap: () => widget.onOpenModule(m),
                     );
                     if (_gridEntranceCompleted) {

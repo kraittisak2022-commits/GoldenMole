@@ -12,7 +12,7 @@ void main() {
       app.main();
       await tester.pumpAndSettle(const Duration(seconds: 6));
 
-      final dashboardMarker = find.text('บันทึกรถและจำนวนเที่ยวรถ');
+      final dashboardMarker = find.text('บันทึกรถดรัมและจำนวนเที่ยว');
       if (dashboardMarker.evaluate().isEmpty) {
         fail(
           'Dashboard not visible. Ensure you are logged in on device, then rerun.',
@@ -23,7 +23,7 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 3));
 
       // Ensure Vehicle Trip section is present (route landed correctly).
-      expect(find.textContaining('บันทึกรถและเที่ยวรถ'), findsWidgets);
+      expect(find.textContaining('บันทึกรถดรัมและจำนวนเที่ยว'), findsWidgets);
 
       // Move to labor section on the same page.
       final laborSaveButton = find.text('บันทึกการทำงาน');

@@ -11,6 +11,8 @@ class AppTransaction {
     this.employeeIds = const [],
     this.note,
     this.eventTime,
+    this.eventType,
+    this.eventPriority,
     this.sandMorning,
     this.sandAfternoon,
     this.sandMachineType,
@@ -29,6 +31,7 @@ class AppTransaction {
     this.workAssignments,
     this.customWorkCategories,
     this.quantity,
+    this.unitPrice,
     this.unit,
     this.fuelType,
     this.fuelMovement,
@@ -59,6 +62,10 @@ class AppTransaction {
   final List<String> employeeIds;
   final String? note;
   final String? eventTime;
+  /// ประเภทเหตุการณ์ (Daily Wizard) — info | warning | problem | success | complaint | request
+  final String? eventType;
+  /// ความสำคัญ — normal | urgent
+  final String? eventPriority;
   final double? sandMorning;
   final double? sandAfternoon;
   final String? sandMachineType;
@@ -77,6 +84,7 @@ class AppTransaction {
   final Map<String, List<String>>? workAssignments;
   final List<Map<String, String>>? customWorkCategories;
   final double? quantity;
+  final double? unitPrice;
   final String? unit;
   final String? fuelType;
   final String? fuelMovement;
@@ -119,6 +127,8 @@ class AppTransaction {
       employeeIds: employeeIds,
       note: row['note']?.toString(),
       eventTime: row['event_time']?.toString(),
+      eventType: row['event_type']?.toString(),
+      eventPriority: row['event_priority']?.toString(),
       sandMorning: _toDouble(row['sand_morning']),
       sandAfternoon: _toDouble(row['sand_afternoon']),
       sandMachineType: row['sand_machine_type']?.toString(),
@@ -142,6 +152,7 @@ class AppTransaction {
       workAssignments: _toStringListMap(row['work_assignments']),
       customWorkCategories: _toStringMapList(row['custom_work_categories']),
       quantity: _toDouble(row['quantity']),
+      unitPrice: _toDouble(row['unit_price']),
       unit: row['unit']?.toString(),
       fuelType: row['fuel_type']?.toString(),
       fuelMovement: row['fuel_movement']?.toString(),
@@ -184,6 +195,9 @@ class AppTransaction {
       if (employeeIds.isNotEmpty) 'employee_ids': employeeIds,
       if (note != null && note!.isNotEmpty) 'note': note,
       if (eventTime != null && eventTime!.isNotEmpty) 'event_time': eventTime,
+      if (eventType != null && eventType!.isNotEmpty) 'event_type': eventType,
+      if (eventPriority != null && eventPriority!.isNotEmpty)
+        'event_priority': eventPriority,
       if (sandMorning != null) 'sand_morning': sandMorning,
       if (sandAfternoon != null) 'sand_afternoon': sandAfternoon,
       if (sandMachineType != null && sandMachineType!.isNotEmpty)
@@ -209,6 +223,7 @@ class AppTransaction {
       if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
         'custom_work_categories': customWorkCategories,
       if (quantity != null) 'quantity': quantity,
+      if (unitPrice != null) 'unit_price': unitPrice,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)
@@ -247,6 +262,9 @@ class AppTransaction {
       if (employeeIds.isNotEmpty) 'employee_ids': employeeIds,
       if (note != null && note!.isNotEmpty) 'note': note,
       if (eventTime != null && eventTime!.isNotEmpty) 'event_time': eventTime,
+      if (eventType != null && eventType!.isNotEmpty) 'event_type': eventType,
+      if (eventPriority != null && eventPriority!.isNotEmpty)
+        'event_priority': eventPriority,
       if (sandMorning != null) 'sand_morning': sandMorning,
       if (sandAfternoon != null) 'sand_afternoon': sandAfternoon,
       if (sandMachineType != null && sandMachineType!.isNotEmpty)
@@ -272,6 +290,7 @@ class AppTransaction {
       if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
         'custom_work_categories': customWorkCategories,
       if (quantity != null) 'quantity': quantity,
+      if (unitPrice != null) 'unit_price': unitPrice,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)

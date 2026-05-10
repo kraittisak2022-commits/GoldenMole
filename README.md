@@ -41,6 +41,17 @@ npm run dev
 npm run build
 ```
 
+## E2E (Playwright)
+
+ครั้งแรกบนเครื่องพัฒนาให้ติดตั้งเบราว์เซอร์ของ Playwright ก่อน:
+
+```bash
+npx playwright install
+npm run test:e2e
+```
+
+บน GitHub Actions งาน **E2E** (`.github/workflows/e2e.yml`) จะรันเมื่อแก้ `e2e/`, `src/`, `playwright.config.ts` หรือ lockfile — ดูรายละเอียดใน [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
+
 ## คำเตือนความปลอดภัย
 
 ⚠️ **ก่อนใช้งานจริง:**
