@@ -28,6 +28,7 @@ import {
     signatureSourceLabel,
 } from '../../utils/signatureNote';
 import { SignatureAttachmentPreview } from '../../components/SignatureAttachmentPreview';
+import { visibleIncomeTypes } from '../../utils/incomeTypes';
 
 const normalizeTimeInputValue = (raw?: string | null) => {
     const value = String(raw || '').trim();
@@ -195,6 +196,52 @@ const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
     if (name.includes('10ล้อ') || name.includes('สิบล้อ')) return 6;
     if (name.includes('6ล้อ') || name.includes('หกล้อ')) return 3;
     return fallback;
+};
+
+type WizardTripEntry = {
+    id: string;
+    vehicle: string;
+    driver: string;
+    work: string;
+    cubicPerTrip: string;
+    billingMode: 'PerTrip' | 'LumpSum';
+    lumpSumCubic: string;
+};
+
+const emptyWizardTripEntry = (): WizardTripEntry => ({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    vehicle: '',
+    driver: '',
+    work: '',
+    cubicPerTrip: '',
+    billingMode: 'PerTrip',
+    lumpSumCubic: '',
+});
+
+/** คิวรวมจากฟอร์ม: แยกคิดเป็นเที่ยว (ใช้เที่ยวรวม ÷ รถที่โหมดเที่ยว) + รวมจากเหมา */
+const computeWizardTripFormCubic = (
+    tripEntries: WizardTripEntry[],
+    tripMorning: string,
+    tripAfternoon: string,
+): number => {
+    const totalTrips = (Number(tripMorning) || 0) + (Number(tripAfternoon) || 0);
+    const active = tripEntries.filter(e => e.vehicle);
+    let lumpSum = 0;
+    const perTripCars: WizardTripEntry[] = [];
+    active.forEach(e => {
+        if (e.billingMode === 'LumpSum') lumpSum += Number(e.lumpSumCubic) || 0;
+        else perTripCars.push(e);
+    });
+    if (perTripCars.length === 0 || totalTrips <= 0) return lumpSum;
+    const tripsPerCar = Math.floor(totalTrips / perTripCars.length);
+    const remainder = totalTrips % perTripCars.length;
+    let perTripCubic = 0;
+    perTripCars.forEach((entry, idx) => {
+        const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
+        const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
+        perTripCubic += carTrips * carCubicPerTrip;
+    });
+    return lumpSum + perTripCubic;
 };
 const buildSmartSuggestions = (rawValues: Array<string | undefined>, limit = 8) => {
     const seen = new Set<string>();
@@ -500,6 +547,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             (t.employeeIds || []).slice().sort().join(','),
             String((t as any).tripMorning || 0),
             String((t as any).tripAfternoon || 0),
+            String((t as any).tripBillingMode || ''),
             String((t as any).drumsObtained || 0),
             String((t as any).drumsWashedAtHome || 0),
         ].join('|');
@@ -809,13 +857,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     }, [date]);
 
     // Daily Log State (Vehicle Trips - Multi-card Canvas)
-    const [tripEntries, setTripEntries] = useState<Array<{ id: string; vehicle: string; driver: string; work: string; cubicPerTrip: string }>>([
-        { id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }
-    ]);
+    const [tripEntries, setTripEntries] = useState<WizardTripEntry[]>([emptyWizardTripEntry()]);
     const [tripMorning, setTripMorning] = useState('');
     const [tripAfternoon, setTripAfternoon] = useState('');
     const totalTrips = (Number(tripMorning) || 0) + (Number(tripAfternoon) || 0);
-    const addTripCard = () => setTripEntries(prev => [...prev, { id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
+    const addTripCard = () => setTripEntries(prev => [...prev, emptyWizardTripEntry()]);
     const removeTripCard = (id: string) => setTripEntries(prev => prev.length > 1 ? prev.filter(e => e.id !== id) : prev);
     const updateTripCard = (id: string, field: string, value: string) => setTripEntries(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
 
@@ -953,6 +999,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [incomeTotal, setIncomeTotal] = useState('');
     const [newIncomeType, setNewIncomeType] = useState('');
     const [incomeTypeAddOpen, setIncomeTypeAddOpen] = useState(false);
+    const [incomePaymentStatus, setIncomePaymentStatus] = useState<'Paid' | 'Unpaid'>('Paid');
     const incomeAddInputRef = useRef<HTMLInputElement>(null);
     const handleIncomeCalc = (field: 'qty' | 'price' | 'total', value: string) => {
         if (field === 'qty') {
@@ -973,6 +1020,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const handleAddIncomeType = () => {
         const label = newIncomeType.trim();
         if (!label) return;
+        if (label === 'ขายแร่') {
+            void sessionAlert('ประเภท "ขายแร่" ไม่ใช้ในระบบแล้ว');
+            return;
+        }
         const exists = (settings.incomeTypes || []).some(v => String(v).trim().toLowerCase() === label.toLowerCase());
         if (exists) {
             void sessionAlert('มีประเภทนี้อยู่แล้ว');
@@ -1061,7 +1112,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setEditingVehicleTxId(p.editingVehicleTxId);
         }
         if (pick('trip')) {
-            setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
+            setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [emptyWizardTripEntry()]);
             setTripMorning(p.tripMorning);
             setTripAfternoon(p.tripAfternoon);
         }
@@ -1095,6 +1146,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setIncomeTotal(p.incomeTotal);
             setNewIncomeType(p.newIncomeType);
             setIncomeTypeAddOpen(p.incomeTypeAddOpen);
+            setIncomePaymentStatus(p.incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid');
         }
         if (pick('event')) {
             setEventDesc(p.eventDesc);
@@ -1152,6 +1204,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             incomeTotal,
             newIncomeType,
             incomeTypeAddOpen,
+            incomePaymentStatus,
             eventDesc,
             eventType,
             eventPriority,
@@ -1204,6 +1257,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             incomeTotal,
             newIncomeType,
             incomeTypeAddOpen,
+            incomePaymentStatus,
             eventDesc,
             eventType,
             eventPriority,
@@ -3008,18 +3062,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             const savedTotalTrips = savedTrips.reduce((sum, t) => sum + ((t as any).perCarTrips || 0), 0);
                                             const savedTotalCubic = savedTrips.reduce((sum, t) => sum + ((t as any).perCarCubic || 0), 0);
                                             const displayTrips = totalTrips > 0 ? totalTrips : savedTotalTrips;
-                                            const displayCubic = (() => {
-                                                if (totalTrips <= 0) return savedTotalCubic;
-                                                const activeCars = tripEntries.filter(e => e.vehicle);
-                                                if (activeCars.length === 0) return 0;
-                                                const tripsPerCar = Math.floor(totalTrips / activeCars.length);
-                                                const remainder = totalTrips % activeCars.length;
-                                                return activeCars.reduce((sum, entry, idx) => {
-                                                    const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
-                                                    const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
-                                                    return sum + (carTrips * carCubicPerTrip);
-                                                }, 0);
-                                            })();
+                                            const draftCubic = computeWizardTripFormCubic(tripEntries, tripMorning, tripAfternoon);
+                                            const displayCubic = draftCubic > 0 || totalTrips > 0 ? draftCubic : savedTotalCubic;
                                             return (
                                                 <div className="flex gap-2">
                                                     <div className={`${displayTrips > 0 ? 'bg-amber-700' : 'bg-slate-400'} text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md`}>
@@ -3069,18 +3113,47 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             />
                                         </div>
                                     </div>
-                                    {totalTrips > 0 && (() => {
-                                        const validCount = tripEntries.filter(e => e.vehicle).length || 1;
-                                        const tripsPerCar = Math.floor(totalTrips / validCount);
-                                        const remainder = totalTrips % validCount;
-                                        // Calculate total cubic from each car's own cubic-per-trip setting
-                                        let displayTotalCubic = 0;
-                                        tripEntries.filter(e => e.vehicle).forEach((entry, idx) => {
-                                            const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
-                                            const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
-                                            displayTotalCubic += carTrips * carCubicPerTrip;
-                                        });
-                                        if (validCount <= 1) displayTotalCubic = totalTrips * (Number(tripEntries[0]?.cubicPerTrip) || detectDefaultCubicPerTrip(tripEntries[0]?.vehicle || '', 3));
+                                    {(() => {
+                                        const withVeh = tripEntries.filter(e => e.vehicle);
+                                        const perTripCars = withVeh.filter(e => e.billingMode !== 'LumpSum');
+                                        const lumpTotal = withVeh
+                                            .filter(e => e.billingMode === 'LumpSum')
+                                            .reduce((s, e) => s + (Number(e.lumpSumCubic) || 0), 0);
+                                        if (totalTrips <= 0 && lumpTotal <= 0) return null;
+                                        let displayTotalCubic = lumpTotal;
+                                        let tripsPerCar = 0;
+                                        let remainder = 0;
+                                        const validCount = perTripCars.length;
+                                        if (perTripCars.length > 0 && totalTrips > 0) {
+                                            tripsPerCar = Math.floor(totalTrips / perTripCars.length);
+                                            remainder = totalTrips % perTripCars.length;
+                                            perTripCars.forEach((entry, idx) => {
+                                                const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
+                                                const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
+                                                displayTotalCubic += carTrips * carCubicPerTrip;
+                                            });
+                                        }
+                                        if (validCount <= 0) {
+                                            return (
+                                                <div className="mt-3 p-3 bg-white/80 dark:bg-white/[0.04] rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 space-y-1 border border-amber-100/80 dark:border-white/10">
+                                                    <div className="text-center">
+                                                        รวมทราย <span className="font-bold text-lg text-amber-800 dark:text-amber-200">{displayTotalCubic} คิว</span>
+                                                        <span className="text-xs text-slate-400 ml-1">(เหมา)</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        if (totalTrips <= 0) {
+                                            return (
+                                                <div className="mt-3 p-3 bg-white/80 dark:bg-white/[0.04] rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 space-y-1 border border-amber-100/80 dark:border-white/10">
+                                                    <div className="text-center text-xs text-slate-500 dark:text-slate-400">ระบุเที่ยวรวมด้านบนเพื่อคำนวณคิวแบบคิดเป็นเที่ยว</div>
+                                                    <div className="text-center">
+                                                        รวมทราย <span className="font-bold text-lg text-amber-800 dark:text-amber-200">{displayTotalCubic} คิว</span>
+                                                        <span className="text-xs text-slate-400 ml-1">(เหมาเท่านั้นจนกว่าจะมีเที่ยวรวม)</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
                                         return (
                                             <div className="mt-3 p-3 bg-white/80 dark:bg-white/[0.04] rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 space-y-1 border border-amber-100/80 dark:border-white/10">
                                                 <div className="text-center">
@@ -3088,7 +3161,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 </div>
                                                 <div className="text-center">
                                                     รวมทราย <span className="font-bold text-lg text-amber-800 dark:text-amber-200">{displayTotalCubic} คิว</span>
-                                                    <span className="text-xs text-slate-400 ml-1">(คำนวณตามคิว/เที่ยวรายคัน)</span>
+                                                    <span className="text-xs text-slate-400 ml-1">(คิดเป็นเที่ยว + เหมา)</span>
                                                 </div>
                                             </div>
                                         );
@@ -3103,7 +3176,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             return (
                                                 <div key={t.id} className="min-w-[200px] p-2.5 bg-amber-50/90 border border-amber-200/90 rounded-lg text-xs dark:bg-amber-950/25 dark:border-amber-500/25">
                                                     <div className="font-bold text-amber-950 dark:text-amber-100">✅ {t.vehicleId}</div>
-                                                    <div className="text-amber-900/95 dark:text-amber-200 font-semibold">{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic || (t as any).totalCubic || 0} คิว</div>
+                                                    <div className="text-amber-900/95 dark:text-amber-200 font-semibold">
+                                                        {(t as any).tripBillingMode === 'LumpSum' ? (
+                                                            <>เหมา {(t as any).perCarCubic ?? (t as any).totalCubic ?? 0} คิว</>
+                                                        ) : (
+                                                            <>{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic ?? (t as any).totalCubic ?? 0} คิว</>
+                                                        )}
+                                                    </div>
                                                     <div className="text-amber-800/90 dark:text-amber-300/90 mt-0.5">{t.workDetails || '-'}</div>
                                                     <div className="text-amber-700/70 dark:text-amber-400/80 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
                                                     {mobileSignature && (
@@ -3153,6 +3232,37 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     {driverEmployees.map(e => <option key={e.id} value={e.id}>{e.nickname || e.name}</option>)}
                                                 </Select>
                                             </div>
+                                            <div className="mb-2 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateTripCard(entry.id, 'billingMode', 'PerTrip')}
+                                                    className={`touch-manipulation rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${entry.billingMode === 'PerTrip' ? 'border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                                                >
+                                                    คิดเป็นเที่ยว
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateTripCard(entry.id, 'billingMode', 'LumpSum')}
+                                                    className={`touch-manipulation rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${entry.billingMode === 'LumpSum' ? 'border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                                                >
+                                                    เหมา
+                                                </button>
+                                            </div>
+                                            {entry.billingMode === 'LumpSum' ? (
+                                                <div className="mb-2 space-y-2">
+                                                    <label className="mb-1 block text-xs font-medium text-amber-900 dark:text-amber-200">รวมคิว (เหมา)</label>
+                                                    <NumberPickerInput
+                                                        value={entry.lumpSumCubic}
+                                                        onChange={(v) => updateTripCard(entry.id, 'lumpSumCubic', v)}
+                                                        listMin={1}
+                                                        listMax={200}
+                                                        scrollAnchor={30}
+                                                        min={0}
+                                                        placeholder="0"
+                                                        className="w-full px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-white dark:bg-white/5 text-center text-lg font-bold text-amber-900 dark:text-amber-100"
+                                                    />
+                                                </div>
+                                            ) : (
                                             <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
                                                 <div className="space-y-2">
                                                     <NumberPickerInput
@@ -3182,6 +3292,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     ค่าแนะนำ: 6 ล้อ = 3, 10 ล้อ = 6 (แก้เองได้รายวัน)
                                                 </div>
                                             </div>
+                                            )}
                                             <Input label="รายละเอียดงาน" value={entry.work} onChange={(e: any) => updateTripCard(entry.id, 'work', e.target.value)} placeholder="ขนดิน, ขนทราย..." />
                                             {['ขนดิน', 'ขนหิน', 'ขนทราย', 'ซื้อของ'].length > 0 && (
                                                 <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar md:flex-wrap md:gap-2 md:overflow-x-visible md:pb-0">
@@ -3213,17 +3324,41 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             await sessionAlert('กรุณาเลือกรถอย่างน้อย 1 คัน');
                                             return;
                                         }
+                                        const lumpEntries = valid.filter(e => e.billingMode === 'LumpSum');
+                                        const perTripEntries = valid.filter(e => e.billingMode !== 'LumpSum');
+                                        for (const e of lumpEntries) {
+                                            if ((Number(e.lumpSumCubic) || 0) <= 0) {
+                                                await sessionAlert('กรุณาระบุรวมคิว (เหมา) ให้มากกว่า 0 สำหรับทุกคันที่เลือกเหมา');
+                                                return;
+                                            }
+                                        }
+                                        if (perTripEntries.length > 0 && totalTrips <= 0) {
+                                            await sessionAlert('มีรถที่โหมดคิดเป็นเที่ยว — กรุณาระบุเที่ยวรวม (เช้า + บ่าย)');
+                                            return;
+                                        }
                                         const tripWarnings: string[] = [];
                                         const duplicatedVehicleInForm = valid.length !== new Set(valid.map(v => v.vehicle)).size;
                                         if (duplicatedVehicleInForm) tripWarnings.push('มีการเลือกรถคันเดิมซ้ำในฟอร์มเดียวกัน');
-                                        if (totalTrips <= 0) tripWarnings.push('จำนวนเที่ยวรวมเป็น 0');
-                                        if (totalTrips > 300) tripWarnings.push('จำนวนเที่ยวรวมสูงกว่าปกติมาก');
+                                        if (perTripEntries.length > 0 && totalTrips > 300) tripWarnings.push('จำนวนเที่ยวรวมสูงกว่าปกติมาก');
                                         const hasExistingTripToday = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                                         if (hasExistingTripToday) tripWarnings.push('วันนี้มีรายการเที่ยวรถอยู่แล้ว อาจเป็นการบันทึกซ้ำ');
                                         if (!(await shouldContinueWithWarning(tripWarnings, 'ตรวจพบรายการเที่ยวรถที่อาจซ้ำ/ผิดปกติ'))) return;
-                                        const tripsPerCar = Math.floor(totalTrips / valid.length);
-                                        const remainder = totalTrips % valid.length;
-                                        valid.forEach((entry, idx) => {
+                                        const nPer = perTripEntries.length;
+                                        const tripsPerCar = nPer > 0 ? Math.floor(totalTrips / nPer) : 0;
+                                        const remainder = nPer > 0 ? totalTrips % nPer : 0;
+                                        lumpEntries.forEach((entry) => {
+                                            const driverName = employees.find(e => e.id === entry.driver)?.nickname || employees.find(e => e.id === entry.driver)?.name || '';
+                                            const cubic = Number(entry.lumpSumCubic) || 0;
+                                            onSaveTransaction({
+                                                id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
+                                                description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: เหมา ${cubic} คิว - ${entry.work}`, amount: 0,
+                                                vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'LumpSum',
+                                                tripCount: 0, tripMorning: 0, tripAfternoon: 0, cubicPerTrip: 0, totalCubic: cubic,
+                                                perCarTrips: 0, perCarCubic: cubic,
+                                                workDetails: entry.work
+                                            } as Transaction);
+                                        });
+                                        perTripEntries.forEach((entry, idx) => {
                                             const driverName = employees.find(e => e.id === entry.driver)?.nickname || '';
                                             const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
                                             const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
@@ -3231,14 +3366,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             onSaveTransaction({
                                                 id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
                                                 description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: ${carTrips} เที่ยว × ${carCubicPerTrip} คิว = ${carCubic} คิว - ${entry.work}`, amount: 0,
-                                                vehicleId: entry.vehicle, driverId: entry.driver, tripCount: totalTrips,
+                                                vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'PerTrip', tripCount: totalTrips,
                                                 tripMorning: Number(tripMorning) || 0, tripAfternoon: Number(tripAfternoon) || 0,
                                                 cubicPerTrip: carCubicPerTrip, totalCubic: carCubic,
                                                 perCarTrips: carTrips, perCarCubic: carCubic,
                                                 workDetails: entry.work
                                             } as Transaction);
                                         });
-                                        setTripEntries([{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
+                                        setTripEntries([emptyWizardTripEntry()]);
                                         setTripMorning(''); setTripAfternoon('');
                                     }} className="w-full bg-amber-600 hover:bg-amber-700 py-3 text-base">
                                         <CheckCircle2 size={18} className="mr-2" /> บันทึกทั้งหมด ({tripEntries.filter(e => e.vehicle).length} คัน, {totalTrips} เที่ยวรวม)
@@ -3975,6 +4110,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 })()}
                                                 <div className="font-bold text-lime-800">{t.description || 'รายรับ'}</div>
                                                 <div className="text-lime-700 font-semibold mt-1">฿{(t.amount || 0).toLocaleString()}</div>
+                                                {(t as any).incomePaymentStatus === 'Unpaid' ? (
+                                                    <div className="mt-1 inline-flex rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-100">ยังไม่ได้จ่ายเงิน</div>
+                                                ) : (
+                                                    <div className="mt-1 inline-flex rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-900 dark:border-emerald-600/50 dark:bg-emerald-950/40 dark:text-emerald-100">จ่ายเงินแล้ว</div>
+                                                )}
                                                 {t.quantity != null && <div className="text-lime-600 mt-0.5">ปริมาณ: {t.quantity} {t.unit || ''}</div>}
                                                 {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-2 right-2 p-0.5 text-lime-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                             </div>
@@ -3993,12 +4133,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-800 transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                         />
                                         <datalist id="income-type-suggestions">
-                                            {(settings.incomeTypes || []).map((t) => (
+                                            {visibleIncomeTypes(settings.incomeTypes).map((t) => (
                                                 <option key={t} value={t} />
                                             ))}
                                         </datalist>
                                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                            {(settings.incomeTypes || []).map((t) => (
+                                            {visibleIncomeTypes(settings.incomeTypes).map((t) => (
                                                 <span
                                                     key={`quick-income-${t}`}
                                                     className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
@@ -4082,9 +4222,28 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     เพิ่ม
                                                 </button>
                                             )}
-                                            {(settings.incomeTypes || []).length === 0 && !incomeTypeAddOpen && (
+                                            {visibleIncomeTypes(settings.incomeTypes).length === 0 && !incomeTypeAddOpen && (
                                                 <span className="text-[11px] text-slate-500">ยังไม่มีประเภทรายรับ — กด + เพิ่ม</span>
                                             )}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-lime-200/80 bg-lime-50/60 dark:border-lime-500/25 dark:bg-lime-950/20 p-3 space-y-2">
+                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">สถานะรับเงิน</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIncomePaymentStatus('Unpaid')}
+                                                className={`touch-manipulation rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${incomePaymentStatus === 'Unpaid' ? 'border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                                            >
+                                                ยังไม่ได้จ่ายเงิน
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIncomePaymentStatus('Paid')}
+                                                className={`touch-manipulation rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${incomePaymentStatus === 'Paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                                            >
+                                                จ่ายเงินแล้ว
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4106,8 +4265,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             amount: Number(incomeTotal) || 0,
                                             quantity: incomeQty ? Number(incomeQty) : undefined,
                                             unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
+                                            incomePaymentStatus: incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
                                         } as Transaction);
-                                        setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal('');
+                                        setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal(''); setIncomePaymentStatus('Paid');
                                     }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <Wallet size={16} className="mr-1" /> บันทึกรายรับ
                                     </Button>

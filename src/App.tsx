@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, MoreHorizontal, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone } from 'lucide-react';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme, AdminDataAccess } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
@@ -143,7 +143,7 @@ const MOCK_SETTINGS: AppSettings = {
     appName: 'Goldenmole Dashboard', appSubtext: 'ระบบจัดการ', appIcon: '/icons/icon-192.png', appIconDark: '/icons/icon-192.png',
     cars: ['รถแม็คโคร SK200-8 (น้องโกลเด้น)', 'รถแม็คโคร SK200-8 (พี่ยักษ์ใหญ่)', 'รถดรัมโอเว่น', 'รถดรัมนายก', 'รถดรัมนายกนิต'],
     jobDescriptions: ['ล้างทรายที่ท่าทราย', 'ล้างทรายที่บ้าน', 'งานทั่วไป'],
-    incomeTypes: ['ขายทราย', 'ขายหิน', 'ขายแร่'],
+    incomeTypes: ['ขายทราย', 'ขายหิน'],
     expenseTypes: ['ค่าไฟ', 'ค่าน้ำ', 'ค่ากับแกล้ม', 'ค่าอุปกรณ์'],
     maintenanceTypes: ['เปลี่ยนถ่ายน้ำมันเครื่อง', 'ปะยาง', 'ซ่อมเครื่องยนต์', 'อะไหล่สิ้นเปลือง'],
     locations: ['หน้างาน A', 'บ่อทราย B', 'ออฟฟิศใหญ่'],
@@ -1273,33 +1273,38 @@ function App() {
             };
             addLog('soft_delete_transaction', `ซ่อนรายการ: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | snapshot=${JSON.stringify(snap)}`);
         }
-        const prevHidden = settings.appDefaults?.hiddenTransactionIds || [];
-        setSettings(prev => ({
-            ...prev,
-            appDefaults: {
-                ...(prev.appDefaults || {}),
-                hiddenTransactionIds: Array.from(new Set([...(prev.appDefaults?.hiddenTransactionIds || []), id])),
-            },
-        }));
+        setSettings(prev => {
+            const next: AppSettings = {
+                ...prev,
+                appDefaults: {
+                    ...(prev.appDefaults || {}),
+                    hiddenTransactionIds: Array.from(new Set([...(prev.appDefaults?.hiddenTransactionIds || []), id])),
+                },
+            };
+            void db.saveSettings(next);
+            return next;
+        });
         const expiresAt = Date.now() + 20000;
         setUndoAction({
             message: 'ซ่อนรายการแล้ว',
             expiresAt,
             onUndo: () => {
-                setSettings(prev => ({
-                    ...prev,
-                    appDefaults: {
-                        ...(prev.appDefaults || {}),
-                        hiddenTransactionIds: (prev.appDefaults?.hiddenTransactionIds || []).filter(x => x !== id),
-                    },
-                }));
+                setSettings(prev => {
+                    const next: AppSettings = {
+                        ...prev,
+                        appDefaults: {
+                            ...(prev.appDefaults || {}),
+                            hiddenTransactionIds: (prev.appDefaults?.hiddenTransactionIds || []).filter(x => x !== id),
+                        },
+                    };
+                    void db.saveSettings(next);
+                    return next;
+                });
                 setToast('กู้คืนรายการแล้ว');
                 setTimeout(() => setToast(null), 2500);
                 setUndoAction(null);
             },
         });
-        // keep a no-op read to bind previous hidden list for stale closures
-        void prevHidden;
     }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
     useEffect(() => {
@@ -1888,7 +1893,7 @@ function App() {
 
             {/* Sidebar */}
             <aside className={`
-                fixed top-0 left-0 h-[100dvh] z-50 flex flex-col
+                fixed top-0 left-0 h-[100dvh] z-50 flex flex-col relative
                 transition-all duration-300 ease-in-out border-r
                 ${darkMode ? 'bg-[#0a0a0f]/40 backdrop-blur-xl border-white/[0.05]' : 'bg-white border-stone-100'}
                 ${isMobile
@@ -1945,6 +1950,22 @@ function App() {
                     ))}
                 </nav>
 
+                {!isMobile && (
+                    <button
+                        type="button"
+                        aria-label={isSidebarOpen ? 'ย่อเมนูด้านซ้าย' : 'ขยายเมนูด้านซ้าย'}
+                        title={isSidebarOpen ? 'ย่อเมนู (แสดงเฉพาะไอคอน)' : 'ขยายเมนู'}
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        className={`absolute right-0 top-1/2 z-[60] flex h-[72px] w-5 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-r-xl border shadow-md transition-colors duration-300 ease-out touch-manipulation ${
+                            darkMode
+                                ? 'border-white/12 bg-[#0f0f16]/95 text-slate-200 backdrop-blur-md hover:bg-white/[0.08]'
+                                : 'border-stone-200/90 bg-white text-slate-600 shadow-stone-200/50 hover:bg-stone-50'
+                        }`}
+                    >
+                        {isSidebarOpen ? <ChevronLeft size={18} strokeWidth={2.25} /> : <ChevronRight size={18} strokeWidth={2.25} />}
+                    </button>
+                )}
+
                 {/* Sidebar Footer — Logout (Desktop) */}
                 {!isMobile && (
                     <div className={`p-4 border-t space-y-2 ${darkMode ? 'border-gray-800' : ''}`}>
@@ -1969,8 +1990,14 @@ function App() {
                             </button>
                         )}
                         <div className="flex gap-2">
-                            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`flex-1 flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-500' : 'hover:bg-stone-50 text-stone-400'}`}>
-                                <MoreHorizontal size={18} />
+                            <button
+                                type="button"
+                                aria-label={isSidebarOpen ? 'ย่อเมนูด้านซ้าย' : 'ขยายเมนูด้านซ้าย'}
+                                title={isSidebarOpen ? 'ย่อเมนู' : 'ขยายเมนู'}
+                                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                                className={`flex-1 flex items-center justify-center p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-slate-300' : 'hover:bg-stone-50 text-stone-500'}`}
+                            >
+                                {isSidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
                             </button>
                             <button type="button" onClick={() => changeClientSurface('mobile')} className={`flex items-center justify-center p-2 rounded-lg ${darkMode ? 'hover:bg-emerald-500/10 text-emerald-400' : 'hover:bg-emerald-50 text-emerald-700'}`} title="โหมดมือถือ (กรอกข้อมูลง่าย)">
                                 <Smartphone size={18} />

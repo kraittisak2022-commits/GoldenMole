@@ -269,19 +269,28 @@ bool transactionCountsAsVehicleTripMenu(AppTransaction t) {
     // แม็คโครอยู่เมนู «การใช้รถแม็คโคร» — ไม่นับเป็นเที่ยวดรัม
     return !isMacroVehicleTransaction(t);
   }
-  if (subRaw.toLowerCase() == 'vehicletrip') return true;
   if (t.category != 'DailyLog') return false;
   if (subRaw.toLowerCase() == 'sand') return false;
 
   final desc = t.description;
   if (desc.contains('ทรายที่ล้างที่บ้าน')) return false;
 
-  final trips = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
-  if (trips <= 0) return false;
+  if (subRaw.toLowerCase() != 'vehicletrip') return false;
 
   final hasVid = (t.vehicleId ?? '').trim().isNotEmpty ||
       (t.driverId ?? '').trim().isNotEmpty;
-  return hasVid;
+  if (!hasVid) return false;
+
+  final mode = (t.tripBillingMode ?? '').trim();
+  final isLumpSum =
+      mode.toLowerCase() == 'lumpsum' || mode == 'เหมา';
+  if (isLumpSum) {
+    final cubic = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
+    return cubic > 0;
+  }
+
+  final trips = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+  return trips > 0;
 }
 
 /// จับคู่แถว [transactions] กับเมนูบันทึกประจำวันที่เลือก (หมวดจากแดชบอร์ด)

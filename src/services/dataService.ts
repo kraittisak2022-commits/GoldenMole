@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan } from '../types';
+import { visibleIncomeTypes } from '../utils/incomeTypes';
 
 // ============================================
 // Helper: camelCase <-> snake_case conversion
@@ -160,7 +161,7 @@ export const fetchSettings = async (): Promise<AppSettings | null> => {
         appIconDark: data.app_icon_dark,
         cars: data.cars || [],
         jobDescriptions: data.job_descriptions || [],
-        incomeTypes: data.income_types || [],
+        incomeTypes: visibleIncomeTypes(data.income_types || []),
         expenseTypes: data.expense_types || [],
         maintenanceTypes: data.maintenance_types || [],
         locations: data.locations || [],

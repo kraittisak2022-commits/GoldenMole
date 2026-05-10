@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { getToday, formatDateBE, normalizeDate } from '../utils';
 import { Transaction, AppSettings } from '../types';
+import { visibleIncomeTypes } from '../utils/incomeTypes';
 
 const MONTH_NAMES_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -23,7 +24,14 @@ interface IncomeEntryProps {
 }
 
 const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: IncomeEntryProps) => {
-    const [form, setForm] = useState({ date: getToday(), qty: '', price: '', total: '', type: '' });
+    const [form, setForm] = useState({
+        date: getToday(),
+        qty: '',
+        price: '',
+        total: '',
+        type: '',
+        paymentStatus: 'Paid' as 'Paid' | 'Unpaid',
+    });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [newIncomeType, setNewIncomeType] = useState('');
     const [incomeTypeAddOpen, setIncomeTypeAddOpen] = useState(false);
@@ -41,6 +49,10 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
     const handleAddIncomeType = () => {
         const label = newIncomeType.trim();
         if (!label) return;
+        if (label === 'ขายแร่') {
+            alert('ประเภท "ขายแร่" ไม่ใช้ในระบบแล้ว');
+            return;
+        }
         const exists = (settings.incomeTypes || []).some((v) => String(v).trim().toLowerCase() === label.toLowerCase());
         if (exists) {
             alert('มีประเภทนี้อยู่แล้ว');
@@ -114,6 +126,7 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
             total: t.amount != null ? String(t.amount) : '',
             qty: t.quantity != null ? String(t.quantity) : '',
             price: t.unitPrice != null ? String(t.unitPrice) : '',
+            paymentStatus: t.incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
         });
         setEditingId(t.id);
     };
@@ -133,8 +146,9 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
             amount: Number(form.total),
             quantity: form.qty ? Number(form.qty) : undefined,
             unitPrice: form.price ? Number(form.price) : undefined,
+            incomePaymentStatus: form.paymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
         } as Transaction);
-        setForm({ date: getToday(), qty: '', price: '', total: '', type: '' });
+        setForm({ date: getToday(), qty: '', price: '', total: '', type: '', paymentStatus: 'Paid' });
     };
 
     return (
@@ -229,13 +243,13 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
                             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-800 dark:border-white/15 dark:bg-white/5 dark:text-slate-100"
                         />
                         <datalist id="income-type-suggestions-menu">
-                            {(settings.incomeTypes || []).map((t) => (
+                            {visibleIncomeTypes(settings.incomeTypes).map((t) => (
                                 <option key={t} value={t} />
                             ))}
                         </datalist>
                         {setSettings && (
                             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                {(settings.incomeTypes || []).map((t) => (
+                                {visibleIncomeTypes(settings.incomeTypes).map((t) => (
                                     <span
                                         key={`inc-chip-${t}`}
                                         className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
@@ -316,6 +330,25 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
                             </div>
                         )}
                     </div>
+                    <div className="rounded-xl border border-lime-200/80 bg-lime-50/60 dark:border-lime-500/25 dark:bg-lime-950/20 p-3 space-y-2">
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">สถานะรับเงิน</p>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setForm((f) => ({ ...f, paymentStatus: 'Unpaid' }))}
+                                className={`rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${form.paymentStatus === 'Unpaid' ? 'border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                            >
+                                ยังไม่ได้จ่ายเงิน
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setForm((f) => ({ ...f, paymentStatus: 'Paid' }))}
+                                className={`rounded-xl border-2 px-3 py-2 text-xs font-bold transition ${form.paymentStatus === 'Paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-100' : 'border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'}`}
+                            >
+                                จ่ายเงินแล้ว
+                            </button>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         <Input label="ปริมาณ" type="number" value={form.qty} onChange={(e: any) => handleCalc('qty', e.target.value)} />
                         <Input label="ราคา/หน่วย" type="number" value={form.price} onChange={(e: any) => handleCalc('price', e.target.value)} />
@@ -367,7 +400,14 @@ const IncomeEntry = ({ settings, setSettings, onSave, onDelete, transactions }: 
                             history.map(t => (
                                 <div key={t.id} className={`p-4 flex justify-between items-center gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors group ${editingId === t.id ? 'bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-200 dark:ring-emerald-700' : ''}`}>
                                     <div className="min-w-0 flex-1">
-                                        <div className="font-medium text-emerald-800 dark:text-emerald-200">{t.description}</div>
+                                        <div className="font-medium text-emerald-800 dark:text-emerald-200 flex flex-wrap items-center gap-2">
+                                            <span>{t.description}</span>
+                                            <span
+                                                className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${t.incomePaymentStatus === 'Unpaid' ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200' : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200'}`}
+                                            >
+                                                {t.incomePaymentStatus === 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'}
+                                            </span>
+                                        </div>
                                         <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{formatDateBE(t.date)}</div>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">

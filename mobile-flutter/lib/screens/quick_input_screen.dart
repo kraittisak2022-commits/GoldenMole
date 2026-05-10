@@ -206,6 +206,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   _IuEntryKind? _iuEntryKind;
   String? _iuExpenseChoice;
   String? _iuIncomeChoice;
+  /// รายรับประจำวัน: Paid | Unpaid — ตรงกับคอลัมน์ income_payment_status
+  String _wizardIncomePaymentStatus = 'Paid';
   List<String> _appExpenseTypes = const [];
   List<String> _appIncomeTypes = const [];
   final Set<String> _selectedLeaveEmpIds = {};
@@ -524,6 +526,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _iuEntryKind = null;
       _iuExpenseChoice = null;
       _iuIncomeChoice = null;
+      _wizardIncomePaymentStatus = 'Paid';
       _utilitiesTypeController.clear();
       _utilitiesExtraController.clear();
       _utilitiesAmountController.clear();
@@ -892,6 +895,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               draft.hourlyHoursController.text = draft.hourlyHours;
             }
           }
+          final bm = (t.tripBillingMode ?? '').trim();
+          if (bm.toLowerCase() == 'lumpsum' || bm == 'เหมา') {
+            draft.tripBillingMode = 'LumpSum';
+            final c = t.perCarCubic ?? t.totalCubic;
+            draft.lumpSumTotalCubic = _strNum(c);
+            draft.lumpSumTotalCubicController.text = draft.lumpSumTotalCubic;
+          } else {
+            draft.tripBillingMode = 'PerTrip';
+          }
         }
       }
 
@@ -901,7 +913,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             d.workDetails.isNotEmpty ||
             d.tripMorning.isNotEmpty ||
             d.tripAfternoon.isNotEmpty ||
-            d.cubicPerTrip.isNotEmpty;
+            d.cubicPerTrip.isNotEmpty ||
+            (d.tripBillingMode == 'LumpSum' &&
+                d.lumpSumTotalCubic.trim().isNotEmpty);
       }).toList();
       _replaceVehicleDrafts(loaded);
       return;
@@ -1191,7 +1205,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ...inc
               .map((e) => '$e')
               .map((s) => s.trim())
-              .where((s) => s.isNotEmpty),
+              .where((s) => s.isNotEmpty && s != 'ขายแร่'),
       ];
       if (!mounted) return;
       setState(() {
@@ -1773,13 +1787,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
+          final lumpFilled = row.tripBillingMode == 'LumpSum' &&
+              row.lumpSumTotalCubic.trim().isNotEmpty;
           return row.vehicleId.trim().isNotEmpty ||
               row.driverId.trim().isNotEmpty ||
               row.workDetails.trim().isNotEmpty ||
               row.hourlyHours.trim().isNotEmpty ||
               row.tripMorning.trim().isNotEmpty ||
               row.tripAfternoon.trim().isNotEmpty ||
-              row.cubicPerTrip.trim().isNotEmpty;
+              row.cubicPerTrip.trim().isNotEmpty ||
+              lumpFilled;
         }).toList();
         if (activeRows.isEmpty) {
           throw 'กรุณาระบุข้อมูลรถอย่างน้อย 1 คัน';
@@ -1813,12 +1830,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     : '$details (${_strNum(hourlyHours)} ชม.)')
               : details;
 
-          if (totalTrips <= 0) continue;
-          final totalCubic = totalTrips * cubicPerTrip;
           final tripId =
               row.tripTxId ??
               '${DateTime.now().millisecondsSinceEpoch}_trip_$i';
           row.tripTxId = tripId;
+
+          if (row.tripBillingMode == 'LumpSum') {
+            final lumpCubic =
+                double.tryParse(row.lumpSumTotalCubic.trim()) ?? 0;
+            if (lumpCubic <= 0) {
+              throw 'กรุณาระบุรวมคิว (เหมา) ให้มากกว่า 0 สำหรับรถที่เลือกเหมา';
+            }
+            await _persist(
+              AppTransaction(
+                id: tripId,
+                date: date,
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'VehicleTrip',
+                description: _appendRecorder(
+                  '$vehicle: เหมา ${lumpCubic.toStringAsFixed(0)} คิว',
+                ),
+                amount: 0,
+                note: _activeSignatureNote,
+                vehicleId: vehicle,
+                driverId: driver,
+                tripBillingMode: 'LumpSum',
+                tripCount: 0,
+                tripMorning: 0,
+                tripAfternoon: 0,
+                cubicPerTrip: 0,
+                totalCubic: lumpCubic,
+                perCarTrips: 0,
+                perCarCubic: lumpCubic,
+                workDetails: _appendRecorder(detailsWithHours),
+                workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
+                    ? row.workType
+                    : 'FullDay',
+              ),
+            );
+            continue;
+          }
+
+          if (totalTrips <= 0) continue;
+          final totalCubic = totalTrips * cubicPerTrip;
           await _persist(
             AppTransaction(
               id: tripId,
@@ -1833,6 +1888,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               note: _activeSignatureNote,
               vehicleId: vehicle,
               driverId: driver,
+              tripBillingMode: 'PerTrip',
               tripCount: totalTrips,
               tripMorning: tripMorning,
               tripAfternoon: tripAfternoon,
@@ -2503,6 +2559,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _defaultModuleHistoryListTile(AppTransaction t) {
     final sub = (t.subCategory ?? '').trim();
     final meta = [t.category, if (sub.isNotEmpty) sub].join(' · ');
+    var detail = '${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}';
+    if (transactionIsWizardDailyIncome(t)) {
+      final pay = (t.incomePaymentStatus ?? '').trim() == 'Unpaid'
+          ? 'ยังไม่ได้จ่าย'
+          : 'จ่ายแล้ว';
+      detail = 'รับเงิน: $pay · $detail';
+    }
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
@@ -2514,7 +2577,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         style: GoogleFonts.kanit(fontSize: 13.5, fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
-        '$meta\n${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
+        '$meta\n$detail',
         style: GoogleFonts.kanit(
           fontSize: 11,
           color: Colors.black54,
@@ -2541,39 +2604,128 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final b = meta.bank.trim();
       final a = meta.accountNumber.trim();
       if (b.isNotEmpty && a.isNotEmpty) {
-        bankLine = '\nธนาคาร: $b · เลขบัญชี $a';
+        bankLine = ' · $b · $a';
       } else if (b.isNotEmpty) {
-        bankLine = '\nธนาคาร: $b';
+        bankLine = ' · $b';
       } else if (a.isNotEmpty) {
-        bankLine = '\nเลขบัญชี $a';
+        bankLine = ' · เลข $a';
       }
     }
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-      title: Text(
-        namesLine,
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.kanit(
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-          color: const Color(0xFF1D2A3A),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: const Color(0xFFFFFBF7),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFFFE0B2)),
         ),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          'ขอเบิก $amtStr · $slotTh · $payTh$bankLine\n'
-          '${t.description}\n'
-          '${formatTxnHistoryTime(t.createdAt)} · id: ${t.id}',
-          style: GoogleFonts.kanit(
-            fontSize: 11.5,
-            color: Colors.black54,
-            height: 1.4,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE0B2).withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.request_quote_rounded,
+                    color: Color(0xFFE65100),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        namesLine,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.kanit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1A237E),
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _advanceMetaChip(amtStr, Icons.payments_rounded),
+                          _advanceMetaChip(slotTh, Icons.schedule_rounded),
+                          _advanceMetaChip(payTh, Icons.account_balance_wallet_rounded),
+                        ],
+                      ),
+                      if (bankLine.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          bankLine.trimLeft(),
+                          style: GoogleFonts.kanit(
+                            fontSize: 11.5,
+                            color: const Color(0xFF5C6BC0),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Text(
+                        t.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.kanit(
+                          fontSize: 12,
+                          color: Colors.black87,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${formatTxnHistoryTime(t.createdAt)} · ${t.id}',
+                        style: GoogleFonts.kanit(
+                          fontSize: 10.5,
+                          color: Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+    );
+  }
+
+  Widget _advanceMetaChip(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFFFE0B2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFFE65100)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: GoogleFonts.kanit(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF37474F),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2619,7 +2771,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       backgroundColor: Colors.white,
                       side: BorderSide(
                         color: _moduleHistoryVisible
-                            ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                            ? (_isLaborAdvanceMode
+                                  ? const Color(0xFFE65100)
+                                      .withValues(alpha: 0.55)
+                                  : theme.colorScheme.primary
+                                        .withValues(alpha: 0.45))
                             : const Color(0xFFD9E4F1),
                       ),
                       padding: const EdgeInsets.symmetric(
@@ -2647,7 +2803,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 ? Icons.expand_less_rounded
                                 : Icons.history_rounded,
                             size: 22,
-                            color: theme.colorScheme.primary,
+                            color: _isLaborAdvanceMode
+                                ? const Color(0xFFE65100)
+                                : theme.colorScheme.primary,
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -2736,7 +2894,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFE7EDF5)),
+                        border: Border.all(
+                          color: _isLaborAdvanceMode
+                              ? const Color(0xFFFFE0B2)
+                              : const Color(0xFFE7EDF5),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.04),
@@ -2971,7 +3133,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: _isLaborAdvanceMode
-                        ? const [Color(0xFFE65100), Color(0xFFBF360C)]
+                        ? const [
+                            Color(0xFFFF8A65),
+                            Color(0xFFE64A19),
+                            Color(0xFFBF360C),
+                          ]
                         : _isIncomeUtilitiesEntryMode
                         ? const [Color(0xFF5C6BC0), Color(0xFF3949AB)]
                         : const [Color(0xFF0D98A5), Color(0xFF1BB7C0)],
@@ -3000,14 +3166,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   ),
                                 ),
                               Expanded(
-                                child: Text(
-                                  heading,
-                                  textAlign: TextAlign.center,
-                                  style: GoogleFonts.kanit(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      heading,
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.kanit(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (_isLaborAdvanceMode) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'ลงลายเซ็นเพื่อยืนยัน · แจ้งผู้ดูแลผ่าน LINE อัตโนมัติ',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.kanit(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xE6FFFFFF),
+                                          height: 1.25,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                               const SizedBox(width: 44),
@@ -3158,6 +3342,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     setState(() {
       _iuExpenseChoice = null;
       _iuIncomeChoice = null;
+      _wizardIncomePaymentStatus = 'Paid';
       _utilitiesTypeController.clear();
       _utilitiesExtraController.clear();
       _utilitiesAmountController.clear();
@@ -3178,15 +3363,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   List<String> _incomeTypeDropdownOptions() {
+    const removed = 'ขายแร่';
+    bool keep(String t) {
+      final s = t.trim();
+      return s.isNotEmpty && s != removed;
+    }
     final seen = <String>{};
     final out = <String>[];
     for (final t in _appIncomeTypes) {
+      if (!keep(t)) continue;
       if (seen.add(t)) out.add(t);
     }
     for (final tx in _moduleDayTransactions) {
       if (!transactionIsWizardDailyIncome(tx)) continue;
       final d = _stripRecorderSuffix(tx.description).trim();
-      if (d.isEmpty || !seen.add(d)) continue;
+      if (d.isEmpty || !keep(d) || !seen.add(d)) continue;
       out.add(d);
     }
     out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
@@ -3258,6 +3449,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (incomeType.isEmpty) {
           throw 'กรุณาระบุประเภทรายรับ (เลือกจากรายการหรือพิมพ์เมื่อเลือกอื่นๆ)';
         }
+        if (incomeType.trim() == 'ขายแร่') {
+          throw 'ประเภท "ขายแร่" ไม่ใช้ในระบบแล้ว';
+        }
         if (total <= 0) {
           throw 'กรุณาระบุยอดรวม (บาท) ให้ถูกต้อง';
         }
@@ -3273,6 +3467,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             amount: total,
             quantity: (qty != null && qty > 0) ? qty : null,
             unitPrice: (unitPrice != null && unitPrice > 0) ? unitPrice : null,
+            incomePaymentStatus: _wizardIncomePaymentStatus,
             note: _activeSignatureNote,
           ),
         );
@@ -3459,7 +3654,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
             subtitle: Text(
-              '${transactionIsUtilitiesExpense(t) ? 'รายจ่าย' : 'รายรับ'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
+              transactionIsUtilitiesExpense(t)
+                  ? 'รายจ่าย · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}'
+                  : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
               style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
             ),
           ),
@@ -3747,6 +3944,58 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onChanged: (_) => setState(() {}),
             ),
           ],
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'สถานะรับเงิน',
+                  style: GoogleFonts.kanit(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF37474F),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilterChip(
+                        label: Text(
+                          'ยังไม่ได้จ่ายเงิน',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        selected: _wizardIncomePaymentStatus == 'Unpaid',
+                        onSelected: (_) =>
+                            setState(() => _wizardIncomePaymentStatus = 'Unpaid'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilterChip(
+                        label: Text(
+                          'จ่ายเงินแล้ว',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        selected: _wizardIncomePaymentStatus == 'Paid',
+                        onSelected: (_) =>
+                            setState(() => _wizardIncomePaymentStatus = 'Paid'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -4694,6 +4943,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(color: const Color(0xFFE3ECF7)),
           boxShadow: [
             BoxShadow(
@@ -4703,252 +4953,218 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ],
         ),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              color: const Color(0xFFFF8F00),
-              child: Text(
-                'บันทึกการใช้รถแม็คโคร',
-                style: GoogleFonts.kanit(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.2,
+            ...List.generate(_macroVehicleDrafts.length, (index) {
+              final row = _macroVehicleDrafts[index];
+              return Container(
+                margin: EdgeInsets.only(
+                  bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ...List.generate(_macroVehicleDrafts.length, (index) {
-                    final row = _macroVehicleDrafts[index];
-                    return Container(
-                      margin: EdgeInsets.only(
-                        bottom: index == _macroVehicleDrafts.length - 1
-                            ? 0
-                            : 12,
-                      ),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF8F0),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFFFE0B2)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'คันที่ ${index + 1}',
-                                style: GoogleFonts.kanit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFFE65100),
-                                ),
-                              ),
-                              const Spacer(),
-                              if (_macroVehicleDrafts.length > 1)
-                                IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      final removed = _macroVehicleDrafts
-                                          .removeAt(index);
-                                      removed.dispose();
-                                    });
-                                  },
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                  ),
-                                  color: const Color(0xFFD14343),
-                                  tooltip: 'ลบคันนี้',
-                                ),
-                            ],
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8F0),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFFE0B2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'คันที่ ${index + 1}',
+                          style: GoogleFonts.kanit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFFE65100),
                           ),
-                          DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              'macro_vehicle_${index}_${row.vehicleId}',
-                            ),
-                            isExpanded: true,
-                            initialValue:
-                                row.vehicleId.isEmpty ||
-                                    !macroCars.contains(row.vehicleId)
-                                ? null
-                                : row.vehicleId,
-                            decoration: const InputDecoration(
-                              labelText: 'รถแม็คโคร',
-                              prefixIcon: Icon(Icons.construction_outlined),
-                            ),
-                            items: macroCars
-                                .map(
-                                  (c) => DropdownMenuItem<String>(
-                                    value: c,
-                                    child: Text(
-                                      c,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.kanit(fontSize: 18),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              row.vehicleId = v ?? '';
-                              _scheduleUiRefresh();
+                        ),
+                        const Spacer(),
+                        if (_macroVehicleDrafts.length > 1)
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                final removed = _macroVehicleDrafts.removeAt(
+                                  index,
+                                );
+                                removed.dispose();
+                              });
                             },
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            color: const Color(0xFFD14343),
+                            tooltip: 'ลบคันนี้',
                           ),
-                          if (macroCars.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
-                                style: GoogleFonts.kanit(
-                                  color: const Color(0xFFD14343),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              'macro_driver_${index}_${row.driverId}',
-                            ),
-                            isExpanded: true,
-                            initialValue:
-                                row.driverId.isEmpty ||
-                                    !_macroDriverEmployees.any(
-                                      (e) => e.id == row.driverId,
-                                    )
-                                ? null
-                                : row.driverId,
-                            decoration: const InputDecoration(
-                              labelText: 'คนขับ (ตำแหน่งคนขับรถแม็คโคร)',
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
-                            items: _macroDriverEmployees
-                                .map(
-                                  (e) => DropdownMenuItem<String>(
-                                    value: e.id,
-                                    child: Text(
-                                      e.nickname.isNotEmpty
-                                          ? e.nickname
-                                          : e.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.kanit(fontSize: 18),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              row.driverId = v ?? '';
-                              _scheduleUiRefresh();
-                            },
-                          ),
-                          if (_macroDriverEmployees.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
-                                style: GoogleFonts.kanit(
-                                  color: const Color(0xFFD14343),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 10),
-                          SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment<String>(
-                                value: 'FullDay',
-                                label: Text('เต็มวัน'),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'HalfDay',
-                                label: Text('ครึ่งวัน'),
-                              ),
-                            ],
-                            selected: {
-                              row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
-                            },
-                            onSelectionChanged: (selection) {
-                              if (selection.isEmpty) return;
-                              setState(() => row.workType = selection.first);
-                            },
-                            style: ButtonStyle(
-                              textStyle: WidgetStatePropertyAll(
-                                GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextFormField(
-                            controller: row.workDetailsController,
-                            minLines: 2,
-                            maxLines: 4,
-                            style: GoogleFonts.kanit(
-                              color: const Color(0xFF1D2A3A),
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: 'รายละเอียดงาน',
-                              hintText: 'ขนดิน, ปรับพื้นที่...',
-                              prefixIcon: const Icon(Icons.notes_outlined),
-                              suffixIcon: IconButton(
-                                tooltip: 'ช่วยกรอก',
-                                icon: const Icon(
-                                  Icons.tips_and_updates_outlined,
-                                ),
-                                onPressed: () => _openMacroWorkAssistSheet(row),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: macroCars.isEmpty
-                        ? null
-                        : () => setState(
-                            () => _macroVehicleDrafts.add(
-                              _MacroVehicleDraft.empty(),
-                            ),
-                          ),
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text(
-                      'เพิ่มรถอีกคัน',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  _SmoothPressable(
-                    enabled: !_saving,
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : _saveQuickEntry,
-                      icon: const Icon(Icons.save_outlined),
-                      label: Text(
-                        _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 19,
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('macro_vehicle_${index}_${row.vehicleId}'),
+                      isExpanded: true,
+                      initialValue:
+                          row.vehicleId.isEmpty ||
+                              !macroCars.contains(row.vehicleId)
+                          ? null
+                          : row.vehicleId,
+                      decoration: const InputDecoration(
+                        labelText: 'รถแม็คโคร',
+                        prefixIcon: Icon(Icons.construction_outlined),
+                      ),
+                      items: macroCars
+                          .map(
+                            (c) => DropdownMenuItem<String>(
+                              value: c,
+                              child: Text(
+                                c,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.kanit(fontSize: 18),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        row.vehicleId = v ?? '';
+                        _scheduleUiRefresh();
+                      },
+                    ),
+                    if (macroCars.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFFD14343),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
-                        backgroundColor: const Color(0xFFFF8F00),
-                        foregroundColor: Colors.white,
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('macro_driver_${index}_${row.driverId}'),
+                      isExpanded: true,
+                      initialValue:
+                          row.driverId.isEmpty ||
+                              !_macroDriverEmployees.any(
+                                (e) => e.id == row.driverId,
+                              )
+                          ? null
+                          : row.driverId,
+                      decoration: const InputDecoration(
+                        labelText: 'คนขับ (ตำแหน่งคนขับรถแม็คโคร)',
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                      items: _macroDriverEmployees
+                          .map(
+                            (e) => DropdownMenuItem<String>(
+                              value: e.id,
+                              child: Text(
+                                e.nickname.isNotEmpty ? e.nickname : e.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.kanit(fontSize: 18),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        row.driverId = v ?? '';
+                        _scheduleUiRefresh();
+                      },
+                    ),
+                    if (_macroDriverEmployees.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFFD14343),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 10),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment<String>(
+                          value: 'FullDay',
+                          label: Text('เต็มวัน'),
+                        ),
+                        ButtonSegment<String>(
+                          value: 'HalfDay',
+                          label: Text('ครึ่งวัน'),
+                        ),
+                      ],
+                      selected: {
+                        row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+                      },
+                      onSelectionChanged: (selection) {
+                        if (selection.isEmpty) return;
+                        setState(() => row.workType = selection.first);
+                      },
+                      style: ButtonStyle(
+                        textStyle: WidgetStatePropertyAll(
+                          GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: row.workDetailsController,
+                      minLines: 2,
+                      maxLines: 4,
+                      style: GoogleFonts.kanit(
+                        color: const Color(0xFF1D2A3A),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'รายละเอียดงาน',
+                        hintText: 'ขนดิน, ปรับพื้นที่...',
+                        prefixIcon: const Icon(Icons.notes_outlined),
+                        suffixIcon: IconButton(
+                          tooltip: 'ช่วยกรอก',
+                          icon: const Icon(Icons.tips_and_updates_outlined),
+                          onPressed: () => _openMacroWorkAssistSheet(row),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: macroCars.isEmpty
+                  ? null
+                  : () => setState(
+                      () => _macroVehicleDrafts.add(_MacroVehicleDraft.empty()),
+                    ),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(
+                'เพิ่มรถอีกคัน',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SmoothPressable(
+              enabled: !_saving,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveQuickEntry,
+                icon: const Icon(Icons.save_outlined),
+                label: Text(
+                  _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 19,
                   ),
-                ],
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  backgroundColor: const Color(0xFFFF8F00),
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
           ],
@@ -5632,280 +5848,605 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildLaborAdvanceFormCard() {
     const advPrimary = Color(0xFFE65100);
+    const advDeep = Color(0xFFBF360C);
+    const warmSurface = Color(0xFFFFF8F1);
     final employees = _dedupedEmployeesByDisplayName();
+    final nSel = _selectedAdvanceEmpIds.length;
+    final per =
+        double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
+    final totalHint = (nSel > 0 && per > 0) ? per * nSel : null;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
+    Widget advancePanel({required Widget child}) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: advPrimary.withValues(alpha: 0.18)),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: advPrimary.withValues(alpha: 0.1),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: warmSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFFE0B2)),
         ),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: child,
+      );
+    }
+
+    Widget stepLabel(String n, String title, String hint) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: advPrimary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              n,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+                color: advDeep,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                    color: const Color(0xFF37474F),
+                  ),
+                ),
+                Text(
+                  hint,
+                  style: GoogleFonts.kanit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black54,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Material(
+      elevation: 4,
+      shadowColor: advPrimary.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _employeeDataLoadProgressBanner(),
-            Text(
-              'เลือกพนักงาน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: const Color(0xFF314C6D),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFFE0B2), Color(0xFFFFCC80)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            employees.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'ยังไม่มีรายการพนักงานในระบบ',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF8A6A2C),
-                      ),
-                    ),
-                  )
-                : Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: employees.map((e) {
-                      final id = e.id;
-                      final selected = _selectedAdvanceEmpIds.contains(id);
-                      final name = _employeeUiDisplayName(e);
-                      return FilterChip(
-                        showCheckmark: false,
-                        label: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (selected) ...[
-                              const Icon(
-                                Icons.check_rounded,
-                                size: 20,
-                                color: Color(0xFF2E7D32),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            Text(
-                              name,
-                              style: GoogleFonts.kanit(fontSize: 13.5),
-                            ),
-                          ],
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: advPrimary.withValues(alpha: 0.18),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
-                        selected: selected,
-                        selectedColor: advPrimary.withValues(alpha: 0.18),
-                        side: BorderSide(
-                          color: selected
-                              ? advPrimary
-                              : const Color(0xFFD9E4F1),
-                        ),
-                        onSelected: (_) {
-                          setState(() {
-                            if (selected) {
-                              _selectedAdvanceEmpIds.remove(id);
-                            } else {
-                              _selectedAdvanceEmpIds.add(id);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-            const SizedBox(height: 14),
-            _AnimatedInputField(
-              controller: _advanceAmountPerPersonController,
-              decoration: InputDecoration(
-                labelText: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
-                labelStyle: GoogleFonts.kanit(),
-                prefixIcon: const Icon(Icons.payments_outlined),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: advPrimary, width: 1.4),
-                ),
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              readOnly: true,
-              onTap: () => _openNumericPad(
-                controller: _advanceAmountPerPersonController,
-                label: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
-                allowDecimal: true,
-                maxDecimalPlaces: 2,
-              ),
-              style: GoogleFonts.kanit(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF1D2A3A),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'ช่วงเวลารับเงิน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: const Color(0xFF314C6D),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _AdvanceChoiceButton(
-                    selected: _advancePayoutSlot == AdvanceGmMeta.midday,
-                    label: 'กลางวัน',
-                    icon: Icons.wb_sunny_rounded,
-                    primaryColor: advPrimary,
-                    onTap: () => setState(
-                      () => _advancePayoutSlot = AdvanceGmMeta.midday,
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.savings_rounded,
+                      color: advPrimary,
+                      size: 30,
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _AdvanceChoiceButton(
-                    selected: _advancePayoutSlot == AdvanceGmMeta.evening,
-                    label: 'เย็น',
-                    icon: Icons.nightlight_round,
-                    primaryColor: advPrimary,
-                    onTap: () => setState(
-                      () => _advancePayoutSlot = AdvanceGmMeta.evening,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'ต้องการรับเงิน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: const Color(0xFF314C6D),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _AdvanceChoiceButton(
-                    selected: _advancePaymentMethod == AdvanceGmMeta.cash,
-                    label: 'เงินสด',
-                    icon: Icons.payments_rounded,
-                    primaryColor: advPrimary,
-                    onTap: () => setState(
-                      () => _advancePaymentMethod = AdvanceGmMeta.cash,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _AdvanceChoiceButton(
-                    selected: _advancePaymentMethod == AdvanceGmMeta.transfer,
-                    label: 'เงินโอน',
-                    icon: Icons.account_balance_wallet_rounded,
-                    primaryColor: advPrimary,
-                    onTap: () => setState(
-                      () => _advancePaymentMethod = AdvanceGmMeta.transfer,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (_advancePaymentMethod == AdvanceGmMeta.transfer) ...[
-              const SizedBox(height: 12),
-              InputDecorator(
-                decoration: InputDecoration(
-                  labelText: 'ธนาคาร',
-                  labelStyle: GoogleFonts.kanit(),
-                  prefixIcon: _advanceBank.trim().isEmpty
-                      ? const Icon(Icons.account_balance_outlined)
-                      : Padding(
-                          padding: const EdgeInsets.only(left: 10, right: 2),
-                          child: ThaiBankBrandIcon(
-                            bankName: _advanceBank.trim(),
-                            size: 28,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ส่งคำขอเบิกเงิน',
+                          style: GoogleFonts.kanit(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF4E342E),
+                            height: 1.1,
                           ),
                         ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 6),
+                        Text(
+                          'กรอกครบแล้วกดส่งด้านล่าง — ระบบจะให้ลงลายเซ็นก่อนส่ง และแจ้งผู้ดูแลผ่าน LINE',
+                          style: GoogleFonts.kanit(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6D4C41),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFD9E4F1)),
+                ],
+              ),
+            ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _employeeDataLoadProgressBanner(),
+                  const SizedBox(height: 4),
+                  stepLabel(
+                    '1',
+                    'เลือกพนักงาน',
+                    'เลือกได้หลายคน — แต่ละคนจะได้คำขอแยกเมื่อส่ง',
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: advPrimary, width: 1.3),
+                  const SizedBox(height: 10),
+                  advancePanel(
+                    child: employees.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.groups_outlined,
+                                  color: Colors.orange.shade700,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'ยังไม่มีรายการพนักงานในระบบ',
+                                    style: GoogleFonts.kanit(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: const Color(0xFF8A6A2C),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: employees.map((e) {
+                              final id = e.id;
+                              final selected = _selectedAdvanceEmpIds.contains(id);
+                              final name = _employeeUiDisplayName(e);
+                              return FilterChip(
+                                showCheckmark: false,
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (selected) ...[
+                                      const Icon(
+                                        Icons.check_rounded,
+                                        size: 20,
+                                        color: Color(0xFF2E7D32),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.kanit(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                selected: selected,
+                                selectedColor:
+                                    advPrimary.withValues(alpha: 0.2),
+                                side: BorderSide(
+                                  color: selected
+                                      ? advPrimary
+                                      : const Color(0xFFE0E0E0),
+                                  width: selected ? 1.8 : 1,
+                                ),
+                                onSelected: (_) {
+                                  setState(() {
+                                    if (selected) {
+                                      _selectedAdvanceEmpIds.remove(id);
+                                    } else {
+                                      _selectedAdvanceEmpIds.add(id);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
                   ),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    isExpanded: true,
-                    itemHeight: 52,
-                    value: _advanceBankDropdownValue(),
-                    hint: Text(
-                      'เลือกธนาคาร',
-                      style: GoogleFonts.kanit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF8A9BA8),
+                  const SizedBox(height: 18),
+                  stepLabel(
+                    '2',
+                    'จำนวนเงินที่ขอ (บาทต่อคน)',
+                    'แตะช่องเพื่อเปิดตัวเลข — ทุกคนที่เลือกใช้ยอดเดียวกัน',
+                  ),
+                  const SizedBox(height: 10),
+                  _AnimatedInputField(
+                    controller: _advanceAmountPerPersonController,
+                    decoration: InputDecoration(
+                      labelText: 'บาทต่อคน',
+                      labelStyle: GoogleFonts.kanit(),
+                      prefixIcon: const Icon(Icons.payments_outlined),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide:
+                            const BorderSide(color: advPrimary, width: 1.5),
                       ),
                     ),
-                    items: _advanceBankDropdownItems(),
-                    onChanged: (v) =>
-                        setState(() => _advanceBank = (v ?? '').trim()),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    readOnly: true,
+                    onTap: () => _openNumericPad(
+                      controller: _advanceAmountPerPersonController,
+                      label: 'จำนวนเงินที่ขอเบิก (บาทต่อคน)',
+                      allowDecimal: true,
+                      maxDecimalPlaces: 2,
+                    ),
                     style: GoogleFonts.kanit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: const Color(0xFF1D2A3A),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _advanceAccountController,
-                decoration: InputDecoration(
-                  labelText: 'เลขบัญชี',
-                  labelStyle: GoogleFonts.kanit(),
-                  prefixIcon: const Icon(Icons.numbers_outlined),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: advPrimary, width: 1.3),
+                  if (totalHint != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9).withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFC8E6C9),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.calculate_rounded,
+                            color: Colors.green.shade800,
+                            size: 26,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'ประมาณการรวม $nSel คน × ฿${_strNum(per)} = ฿${_strNum(totalHint)}',
+                              style: GoogleFonts.kanit(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF1B5E20),
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  stepLabel(
+                    '3',
+                    'รับเงินเมื่อไหร่ และรูปแบบใด',
+                    'เลือกช่วงเวลาและเงินสดหรือโอน — ถ้าโอนให้กรอกธนาคารและเลขบัญชี',
                   ),
-                ),
-                style: GoogleFonts.kanit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
-            const SizedBox(height: 16),
-            _SmoothPressable(
-              enabled: !_saving,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _saveQuickEntry,
-                icon: const Icon(Icons.send_rounded),
-                label: Text('ส่งคำขอเบิกเงิน', style: GoogleFonts.kanit()),
-                style: FilledButton.styleFrom(
-                  backgroundColor: advPrimary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(52),
-                  elevation: 2,
-                  shadowColor: advPrimary.withValues(alpha: 0.45),
-                ),
+                  const SizedBox(height: 10),
+                  advancePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'ช่วงรับเงิน',
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: const Color(0xFF455A64),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _AdvanceChoiceButton(
+                                selected: _advancePayoutSlot ==
+                                    AdvanceGmMeta.midday,
+                                label: 'กลางวัน',
+                                icon: Icons.wb_sunny_rounded,
+                                primaryColor: advPrimary,
+                                onTap: () => setState(
+                                  () => _advancePayoutSlot =
+                                      AdvanceGmMeta.midday,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _AdvanceChoiceButton(
+                                selected: _advancePayoutSlot ==
+                                    AdvanceGmMeta.evening,
+                                label: 'เย็น',
+                                icon: Icons.nightlight_round,
+                                primaryColor: advPrimary,
+                                onTap: () => setState(
+                                  () => _advancePayoutSlot =
+                                      AdvanceGmMeta.evening,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'รูปแบบการรับ',
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: const Color(0xFF455A64),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _AdvanceChoiceButton(
+                                selected: _advancePaymentMethod ==
+                                    AdvanceGmMeta.cash,
+                                label: 'เงินสด',
+                                icon: Icons.payments_rounded,
+                                primaryColor: advPrimary,
+                                onTap: () => setState(
+                                  () => _advancePaymentMethod =
+                                      AdvanceGmMeta.cash,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _AdvanceChoiceButton(
+                                selected: _advancePaymentMethod ==
+                                    AdvanceGmMeta.transfer,
+                                label: 'เงินโอน',
+                                icon: Icons.account_balance_wallet_rounded,
+                                primaryColor: advPrimary,
+                                onTap: () => setState(
+                                  () => _advancePaymentMethod =
+                                      AdvanceGmMeta.transfer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: _advancePaymentMethod == AdvanceGmMeta.transfer
+                        ? Column(
+                            key: const ValueKey('adv_transfer'),
+                            children: [
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  14,
+                                  14,
+                                  14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE3F2FD)
+                                      .withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFF90CAF9),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.account_balance_rounded,
+                                          color: Colors.blue.shade800,
+                                          size: 22,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'ข้อมูลบัญชีรับโอน',
+                                          style: GoogleFonts.kanit(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 14,
+                                            color: const Color(0xFF0D47A1),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    InputDecorator(
+                                      decoration: InputDecoration(
+                                        labelText: 'ธนาคาร',
+                                        labelStyle: GoogleFonts.kanit(),
+                                        prefixIcon:
+                                            _advanceBank.trim().isEmpty
+                                            ? const Icon(
+                                                Icons.account_balance_outlined,
+                                              )
+                                            : Padding(
+                                                padding:
+                                                    const EdgeInsets.only(
+                                                  left: 10,
+                                                  right: 2,
+                                                ),
+                                                child: ThaiBankBrandIcon(
+                                                  bankName:
+                                                      _advanceBank.trim(),
+                                                  size: 28,
+                                                ),
+                                              ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFBBDEFB),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          borderSide: const BorderSide(
+                                            color: advPrimary,
+                                            width: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          itemHeight: 52,
+                                          value: _advanceBankDropdownValue(),
+                                          hint: Text(
+                                            'เลือกธนาคาร',
+                                            style: GoogleFonts.kanit(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF8A9BA8),
+                                            ),
+                                          ),
+                                          items: _advanceBankDropdownItems(),
+                                          onChanged: (v) => setState(
+                                            () => _advanceBank =
+                                                (v ?? '').trim(),
+                                          ),
+                                          style: GoogleFonts.kanit(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFF1D2A3A),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    TextField(
+                                      controller: _advanceAccountController,
+                                      decoration: InputDecoration(
+                                        labelText: 'เลขบัญชี',
+                                        labelStyle: GoogleFonts.kanit(),
+                                        prefixIcon:
+                                            const Icon(Icons.numbers_outlined),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          borderSide: const BorderSide(
+                                            color: advPrimary,
+                                            width: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                      style: GoogleFonts.kanit(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox(
+                            key: ValueKey('adv_no_transfer'),
+                            height: 0,
+                          ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SmoothPressable(
+                    enabled: !_saving,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF9800), Color(0xFFE65100)],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: advPrimary.withValues(alpha: 0.45),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _saveQuickEntry,
+                        icon: const Icon(Icons.draw_rounded),
+                        label: Text(
+                          'ส่งคำขอเบิกเงิน',
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shadowColor: Colors.transparent,
+                          minimumSize: const Size.fromHeight(54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'กดแล้วจะเปิดหน้าลายเซ็น — ยกเลิกได้จนกว่าจะยืนยัน',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black45,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -7110,12 +7651,16 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
     double sumTrips = 0;
     double sumCubic = 0;
     for (final row in widget.rows) {
-      final morning = double.tryParse(row.tripMorning) ?? 0;
-      final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
-      final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
-      final rowTrips = morning + afternoon;
-      sumTrips += rowTrips;
-      sumCubic += rowTrips * perTrip;
+      if (row.tripBillingMode == 'LumpSum') {
+        sumCubic += double.tryParse(row.lumpSumTotalCubic) ?? 0;
+      } else {
+        final morning = double.tryParse(row.tripMorning) ?? 0;
+        final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
+        final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
+        final rowTrips = morning + afternoon;
+        sumTrips += rowTrips;
+        sumCubic += rowTrips * perTrip;
+      }
     }
     return _VehicleTripAggregate(
       sumTrips: sumTrips,
@@ -7278,10 +7823,17 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final rowTrips =
-        (double.tryParse(row.tripMorning) ?? 0) +
-        (double.tryParse(row.tripAfternoon) ?? 0);
-    final rowCubic = rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
+    final isLump = row.tripBillingMode == 'LumpSum';
+    final rowTrips = isLump
+        ? 0.0
+        : (double.tryParse(row.tripMorning) ?? 0) +
+            (double.tryParse(row.tripAfternoon) ?? 0);
+    final rowCubic = isLump
+        ? (double.tryParse(row.lumpSumTotalCubic) ?? 0)
+        : rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
+    final summaryLine = isLump
+        ? '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • เหมา ${rowCubic.toStringAsFixed(0)} คิว'
+        : '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -7494,104 +8046,166 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
             ),
           ],
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: row.tripMorningController,
-                  readOnly: true,
-                  onTap: () => widget.openNumericPad(
-                    controller: row.tripMorningController,
-                    label: 'ช่วงเช้า (เที่ยว)',
-                    onChanged: (v) {
-                      final n =
-                          _QuickInputScreenState.normalizeVehicleTripNumericText(
-                            v,
-                          );
-                      row.tripMorning = n;
-                      if (row.tripMorningController.text != n) {
-                        row.tripMorningController.text = n;
-                      }
-                      widget.onChanged();
-                      setState(() {});
-                    },
-                  ),
-                  style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'ช่วงเช้า (เที่ยว)',
-                    prefixIcon: Icon(Icons.wb_sunny_outlined),
-                  ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF8F0),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFFE0B2)),
+            ),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(
+                  value: 'PerTrip',
+                  label: Text('คิดเป็นเที่ยว'),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextFormField(
-                  controller: row.tripAfternoonController,
-                  readOnly: true,
-                  onTap: () => widget.openNumericPad(
-                    controller: row.tripAfternoonController,
-                    label: 'ช่วงบ่าย (เที่ยว)',
-                    onChanged: (v) {
-                      final n =
-                          _QuickInputScreenState.normalizeVehicleTripNumericText(
-                            v,
-                          );
-                      row.tripAfternoon = n;
-                      if (row.tripAfternoonController.text != n) {
-                        row.tripAfternoonController.text = n;
-                      }
-                      widget.onChanged();
-                      setState(() {});
-                    },
-                  ),
-                  style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'ช่วงบ่าย (เที่ยว)',
-                    prefixIcon: Icon(Icons.nightlight_outlined),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: row.cubicPerTripController,
-            readOnly: true,
-            onTap: () => widget.openNumericPad(
-              controller: row.cubicPerTripController,
-              label: 'คิวต่อเที่ยว',
-              onChanged: (v) {
-                final n =
-                    _QuickInputScreenState.normalizeVehicleTripNumericText(v);
-                row.cubicPerTrip = n;
-                if (row.cubicPerTripController.text != n) {
-                  row.cubicPerTripController.text = n;
-                }
+                ButtonSegment<String>(value: 'LumpSum', label: Text('เหมา')),
+              ],
+              selected: {row.tripBillingMode},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) return;
+                setState(() => row.tripBillingMode = selection.first);
                 widget.onChanged();
-                setState(() {});
               },
-            ),
-            style: GoogleFonts.kanit(
-              color: const Color(0xFF1D2A3A),
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-            decoration: const InputDecoration(
-              labelText: 'คิวต่อเที่ยว',
-              prefixIcon: Icon(Icons.straighten_outlined),
+              style: ButtonStyle(
+                textStyle: WidgetStatePropertyAll(
+                  GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
             ),
           ),
+          if (row.tripBillingMode == 'LumpSum') ...[
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: row.lumpSumTotalCubicController,
+              readOnly: true,
+              onTap: () => widget.openNumericPad(
+                controller: row.lumpSumTotalCubicController,
+                label: 'รวมคิว (เหมา)',
+                onChanged: (v) {
+                  final n =
+                      _QuickInputScreenState.normalizeVehicleTripNumericText(
+                        v,
+                      );
+                  row.lumpSumTotalCubic = n;
+                  if (row.lumpSumTotalCubicController.text != n) {
+                    row.lumpSumTotalCubicController.text = n;
+                  }
+                  widget.onChanged();
+                  setState(() {});
+                },
+              ),
+              style: GoogleFonts.kanit(
+                color: const Color(0xFF1D2A3A),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'รวมคิว (เหมา)',
+                prefixIcon: Icon(Icons.inventory_2_outlined),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: row.tripMorningController,
+                    readOnly: true,
+                    onTap: () => widget.openNumericPad(
+                      controller: row.tripMorningController,
+                      label: 'ช่วงเช้า (เที่ยว)',
+                      onChanged: (v) {
+                        final n =
+                            _QuickInputScreenState.normalizeVehicleTripNumericText(
+                              v,
+                            );
+                        row.tripMorning = n;
+                        if (row.tripMorningController.text != n) {
+                          row.tripMorningController.text = n;
+                        }
+                        widget.onChanged();
+                        setState(() {});
+                      },
+                    ),
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'ช่วงเช้า (เที่ยว)',
+                      prefixIcon: Icon(Icons.wb_sunny_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    controller: row.tripAfternoonController,
+                    readOnly: true,
+                    onTap: () => widget.openNumericPad(
+                      controller: row.tripAfternoonController,
+                      label: 'ช่วงบ่าย (เที่ยว)',
+                      onChanged: (v) {
+                        final n =
+                            _QuickInputScreenState.normalizeVehicleTripNumericText(
+                              v,
+                            );
+                        row.tripAfternoon = n;
+                        if (row.tripAfternoonController.text != n) {
+                          row.tripAfternoonController.text = n;
+                        }
+                        widget.onChanged();
+                        setState(() {});
+                      },
+                    ),
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1D2A3A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'ช่วงบ่าย (เที่ยว)',
+                      prefixIcon: Icon(Icons.nightlight_outlined),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: row.cubicPerTripController,
+              readOnly: true,
+              onTap: () => widget.openNumericPad(
+                controller: row.cubicPerTripController,
+                label: 'คิวต่อเที่ยว',
+                onChanged: (v) {
+                  final n =
+                      _QuickInputScreenState.normalizeVehicleTripNumericText(v);
+                  row.cubicPerTrip = n;
+                  if (row.cubicPerTripController.text != n) {
+                    row.cubicPerTripController.text = n;
+                  }
+                  widget.onChanged();
+                  setState(() {});
+                },
+              ),
+              style: GoogleFonts.kanit(
+                color: const Color(0xFF1D2A3A),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'คิวต่อเที่ยว',
+                prefixIcon: Icon(Icons.straighten_outlined),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
-            '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว',
+            summaryLine,
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
               color: const Color(0xFF2C4D77),
@@ -8316,7 +8930,8 @@ class _VehicleTripDraft {
       hourlyHoursController = TextEditingController(),
       tripMorningController = TextEditingController(),
       tripAfternoonController = TextEditingController(),
-      cubicPerTripController = TextEditingController();
+      cubicPerTripController = TextEditingController(),
+      lumpSumTotalCubicController = TextEditingController();
 
   factory _VehicleTripDraft.empty() => _VehicleTripDraft();
 
@@ -8324,16 +8939,20 @@ class _VehicleTripDraft {
   String vehicleId = '';
   String driverId = '';
   String workType = 'FullDay';
+  /// PerTrip | LumpSum
+  String tripBillingMode = 'PerTrip';
   String hourlyHours = '';
   String workDetails = '';
   String tripMorning = '';
   String tripAfternoon = '';
   String cubicPerTrip = '';
+  String lumpSumTotalCubic = '';
   final TextEditingController workDetailsController;
   final TextEditingController hourlyHoursController;
   final TextEditingController tripMorningController;
   final TextEditingController tripAfternoonController;
   final TextEditingController cubicPerTripController;
+  final TextEditingController lumpSumTotalCubicController;
 
   void dispose() {
     workDetailsController.dispose();
@@ -8341,6 +8960,7 @@ class _VehicleTripDraft {
     tripMorningController.dispose();
     tripAfternoonController.dispose();
     cubicPerTripController.dispose();
+    lumpSumTotalCubicController.dispose();
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
@@ -64,7 +65,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final employees = await widget.employeeService.fetchEmployees(
       forceRefresh: forceRefresh,
     );
-    final weeklyOffByMonday = await _weeklyOffStore.load();
+    final weeklyOffByMonday = await _weeklyOffStore.load(
+      client: Supabase.instance.client,
+    );
     return _CalendarPayload(
       transactions: transactions,
       employees: employees,
@@ -246,7 +249,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _showMoveWeeklyOffSheet() async {
-    final map = await _weeklyOffStore.load();
+    final map = await _weeklyOffStore.load(
+      client: Supabase.instance.client,
+    );
     final mondayStr = WeeklyOffCalendarStore.mondayKeyOf(_selectedDate);
 
     if (!mounted) return;
@@ -321,6 +326,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       await _weeklyOffStore.setWeekOffWeekday(
                         _selectedDate,
                         sel,
+                        client: Supabase.instance.client,
                       );
                       if (!ctx.mounted) return;
                       Navigator.of(ctx).pop();

@@ -29,6 +29,8 @@ function makeTx(id: number): Transaction {
         category: id % 2 === 0 ? 'Fuel' : 'Income',
         description: `row-${id}`,
         amount: id * 10 + 1,
+        /** ลำดับเดิมของรายการในวันเดียวกัน: id เล็กก่อน (เรียงตาม createdAt มากไปน้อยแล้วตาม id) */
+        createdAt: new Date(Date.UTC(2100, 0, 1, 0, 0, 500 - id)).toISOString(),
     };
 }
 

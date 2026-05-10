@@ -85,6 +85,8 @@ export interface Transaction {
     tripMorning?: number;
     tripAfternoon?: number;
     cubicPerTrip?: number;
+    /** DailyLog VehicleTrip: PerTrip | LumpSum (เหมา) */
+    tripBillingMode?: string;
     totalCubic?: number;
     perCarTrips?: number;
     perCarCubic?: number;
@@ -116,6 +118,8 @@ export interface Transaction {
     eventType?: string;
     eventPriority?: string;
     eventTime?: string;
+    /** รายรับ: Unpaid = ยังไม่ได้จ่ายเงิน, Paid = จ่ายเงินแล้ว */
+    incomePaymentStatus?: 'Unpaid' | 'Paid';
 }
 
 export interface PayrollSnapshot {
@@ -148,6 +152,8 @@ export interface OrgProfile {
 }
 
 export interface AppDefaults {
+    /** คีย์ = yyyy-MM-dd ของวันจันทร์ในสัปดาห์นั้น, ค่า = 1–7 (จันทร์–อาทิตย์) วันหยุดประจำสัปดาห์ที่เลื่อนจากมาตรฐาน — ซิงก์จากแอปมือถือปฏิทิน */
+    weeklyOffByMonday?: Record<string, number>;
     sandCubicPerTrip?: number;
     vehicleDefaultMachineWage?: number;
     laborWorkCategories?: Array<{ id: string; label: string }>;

@@ -27,7 +27,15 @@ export type WizardDraftPayload = {
     vehDetails: string;
     vehWorkType: WorkType;
     editingVehicleTxId: string | null;
-    tripEntries: Array<{ id: string; vehicle: string; driver: string; work: string; cubicPerTrip: string }>;
+    tripEntries: Array<{
+        id: string;
+        vehicle: string;
+        driver: string;
+        work: string;
+        cubicPerTrip: string;
+        billingMode: 'PerTrip' | 'LumpSum';
+        lumpSumCubic: string;
+    }>;
     tripMorning: string;
     tripAfternoon: string;
     sand1Morning: string;
@@ -55,6 +63,8 @@ export type WizardDraftPayload = {
     incomeTotal: string;
     newIncomeType: string;
     incomeTypeAddOpen: boolean;
+    /** รายรับ: Unpaid = ยังไม่ได้จ่ายเงิน */
+    incomePaymentStatus: 'Paid' | 'Unpaid';
     eventDesc: string;
     eventType: string;
     eventPriority: string;
@@ -94,6 +104,8 @@ function sanitizeTripEntries(raw: unknown): WizardDraftPayload['tripEntries'] {
             driver: strOr(v.driver),
             work: strOr(v.work),
             cubicPerTrip: strOr(v.cubicPerTrip),
+            billingMode: v.billingMode === 'LumpSum' ? 'LumpSum' : 'PerTrip',
+            lumpSumCubic: strOr(v.lumpSumCubic),
         }));
 }
 
@@ -155,6 +167,7 @@ function normalizePayload(raw: unknown): WizardDraftPayload | null {
         incomeTotal: strOr(raw.incomeTotal),
         newIncomeType: strOr(raw.newIncomeType),
         incomeTypeAddOpen: boolOr(raw.incomeTypeAddOpen),
+        incomePaymentStatus: raw.incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
         eventDesc: strOr(raw.eventDesc),
         eventType: strOr(raw.eventType, 'info'),
         eventPriority: strOr(raw.eventPriority, 'normal'),

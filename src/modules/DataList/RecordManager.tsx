@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { normalizeDate } from '../../utils';
+import { transactionMetaSummary, transactionRecordedTimeLabel, transactionSearchBlob } from '../../utils/transactionDisplay';
 import { Transaction } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
 
@@ -92,16 +93,26 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
         }
         const q = debouncedSearch.trim().toLowerCase();
         if (q) {
-            list = list.filter(
-                t =>
-                    (t.description || '').toLowerCase().includes(q) ||
-                    (t.category || '').toLowerCase().includes(q) ||
+            list = list.filter(t => {
+                const blob = transactionSearchBlob(t);
+                return (
+                    blob.includes(q) ||
+                    (t.subCategory || '').toLowerCase().includes(q) ||
                     (CATEGORY_LABELS[t.category || ''] || '').toLowerCase().includes(q)
-            );
+                );
+            });
         }
         if (sortMode === 'amountDesc') return [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
         if (sortMode === 'amountAsc') return [...list].sort((a, b) => (a.amount || 0) - (b.amount || 0));
-        return [...list].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        return [...list].sort((a, b) => {
+            const da = normalizeDate(a.date);
+            const db = normalizeDate(b.date);
+            if (da !== db) return db.localeCompare(da);
+            const ca = a.createdAt || '';
+            const cb = b.createdAt || '';
+            if (ca !== cb) return cb.localeCompare(ca);
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        });
     }, [transactions, filterMode, filterMonth, filterDate, debouncedSearch, sortMode]);
 
     const byDay = useMemo(() => {
@@ -149,7 +160,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
         const row = flatRows[index];
         if (!row) return compact ? 100 : 56;
         if (row.kind === 'header') return compact ? 34 : 42;
-        return compact ? 118 : 54;
+        return compact ? 132 : 64;
     };
 
     // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is required for long-list windowing
@@ -215,6 +226,23 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                         >
                                             {row.t.description || '—'}
                                         </p>
+                                        {(transactionMetaSummary(row.t) || transactionRecordedTimeLabel(row.t)) && (
+                                            <p
+                                                className={`mt-1 line-clamp-2 text-[11px] leading-snug ${
+                                                    darkMode ? 'text-slate-400' : 'text-slate-500'
+                                                }`}
+                                            >
+                                                {transactionRecordedTimeLabel(row.t) ? (
+                                                    <span className="font-mono tabular-nums">
+                                                        {transactionRecordedTimeLabel(row.t)}
+                                                    </span>
+                                                ) : null}
+                                                {transactionRecordedTimeLabel(row.t) && transactionMetaSummary(row.t)
+                                                    ? ' · '
+                                                    : null}
+                                                {transactionMetaSummary(row.t)}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end justify-between">
                                         <span
@@ -238,17 +266,33 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                     </div>
                                 </div>
                             ) : (
-                                <div className="grid min-h-[52px] grid-cols-[minmax(5.5rem,auto)_1fr_minmax(5rem,auto)_auto] items-center gap-2 border-b border-slate-50 px-3 py-2 hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/[0.04] sm:px-4">
-                                    <div className="whitespace-nowrap">
+                                <div className="grid min-h-[52px] grid-cols-[minmax(5.5rem,auto)_1fr_minmax(5rem,auto)_auto] items-start gap-2 border-b border-slate-50 px-3 py-2 hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/[0.04] sm:px-4">
+                                    <div className="whitespace-nowrap pt-0.5">
                                         <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-600 dark:text-slate-200">
                                             {CATEGORY_LABELS[row.t.category || ''] || row.t.category}
                                         </span>
                                     </div>
-                                    <div className="min-w-0 truncate text-sm text-slate-700 dark:text-slate-300" title={row.t.description}>
-                                        {row.t.description}
+                                    <div className="min-w-0 text-sm text-slate-700 dark:text-slate-300">
+                                        <div className="truncate font-medium" title={row.t.description}>
+                                            {row.t.description}
+                                        </div>
+                                        {(transactionMetaSummary(row.t) || transactionRecordedTimeLabel(row.t)) && (
+                                            <div
+                                                className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400"
+                                                title={`${transactionRecordedTimeLabel(row.t) ? `${transactionRecordedTimeLabel(row.t)} · ` : ''}${transactionMetaSummary(row.t)}`}
+                                            >
+                                                {transactionRecordedTimeLabel(row.t) ? (
+                                                    <span className="font-mono tabular-nums">{transactionRecordedTimeLabel(row.t)}</span>
+                                                ) : null}
+                                                {transactionRecordedTimeLabel(row.t) && transactionMetaSummary(row.t)
+                                                    ? ' · '
+                                                    : null}
+                                                {transactionMetaSummary(row.t)}
+                                            </div>
+                                        )}
                                     </div>
                                     <div
-                                        className={`text-right text-sm font-bold tabular-nums ${
+                                        className={`pt-0.5 text-right text-sm font-bold tabular-nums ${
                                             row.t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
                                         }`}
                                     >
@@ -259,7 +303,7 @@ const RecordManager = ({ transactions, onDeleteTransaction, compact = false, dar
                                         <button
                                             type="button"
                                             onClick={() => void tryDelete(row.t.id)}
-                                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 touch-manipulation"
+                                            className="inline-flex min-h-[44px] min-w-[44px] items-start justify-center rounded-lg p-2 pt-0.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 touch-manipulation"
                                             title="ลบ"
                                         >
                                             <Trash2 size={16} />

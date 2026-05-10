@@ -64,9 +64,17 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   total_cubic numeric,
   per_car_trips numeric,
   per_car_cubic numeric,
+  trip_billing_mode text,
+  income_payment_status text,
   event_type text,
   event_priority text,
   event_time text,
+  sand_batch_id text,
+  sand_home_batch_usages jsonb,
+  payroll_lock_action text,
+  unlocked_by_admin_id text,
+  unlocked_by_admin_name text,
+  unlocked_at text,
   created_at timestamptz DEFAULT now()
 );
 
@@ -90,7 +98,19 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS cubic_per_trip numeric;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS total_cubic numeric;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS per_car_trips numeric;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS per_car_cubic numeric;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS trip_billing_mode text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS income_payment_status text;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS event_time text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS work_type_by_employee jsonb;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sand_work_start text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS event_type text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS event_priority text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sand_batch_id text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sand_home_batch_usages jsonb;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payroll_lock_action text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS unlocked_by_admin_id text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS unlocked_by_admin_name text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS unlocked_at text;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 
 -- 3) Helpful defaults / not-null guards for app-side JSON parsing

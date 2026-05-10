@@ -6,6 +6,7 @@ import BarChart from '../../components/charts/BarChart';
 import DonutChartSimple from '../../components/charts/DonutChart';
 import { StatCard } from './DashboardOverview';
 import { Transaction, AppSettings, Employee } from '../../types';
+import { visibleIncomeTypes } from '../../utils/incomeTypes';
 
 const SpecificDashboard = ({ type, transactions, settings, employees = [], dateFilter }: { type: string, transactions: Transaction[], settings: AppSettings, employees?: Employee[], dateFilter: any }) => {
     const [expandedDate, setExpandedDate] = useState<string | null>(null);
@@ -463,7 +464,7 @@ const SpecificDashboard = ({ type, transactions, settings, employees = [], dateF
     if (type === 'Income') {
         const incomeTxs = filteredTransactions.filter(t => t.type === 'Income');
         const totalIncome = incomeTxs.reduce((s, t) => s + t.amount, 0);
-        const incomeByType = (settings.incomeTypes || []).map(tp => ({
+        const incomeByType = visibleIncomeTypes(settings.incomeTypes || []).map(tp => ({
             type: tp,
             val: incomeTxs.filter(t => t.category === 'Income' && (t.subCategory === tp || (t.description || '').includes(tp))).reduce((s, t) => s + t.amount, 0)
         }));

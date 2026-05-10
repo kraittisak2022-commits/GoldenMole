@@ -651,7 +651,7 @@ class _SideIcon extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        icon: Icon(icon, size: 22),
+        icon:  Icon(icon, size: 22),
       ),
     );
   }

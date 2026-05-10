@@ -83,6 +83,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     event_type TEXT,
     event_priority TEXT,
     event_time TEXT,
+    trip_billing_mode TEXT,
+    income_payment_status TEXT,
+    sand_batch_id TEXT,
+    sand_home_batch_usages JSONB,
+    payroll_lock_action TEXT,
+    unlocked_by_admin_id TEXT,
+    unlocked_by_admin_name TEXT,
+    unlocked_at TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -154,6 +162,14 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS per_car_trips NUMERIC;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS per_car_cubic NUMERIC;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_type TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS event_priority TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trip_billing_mode TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS income_payment_status TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_batch_id TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sand_home_batch_usages JSONB;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payroll_lock_action TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS unlocked_by_admin_id TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS unlocked_by_admin_name TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS unlocked_at TEXT;
 
 -- 5. Work Plans (แยกตารางจริงสำหรับระบบวางแผนงาน)
 CREATE TABLE IF NOT EXISTS work_plans (

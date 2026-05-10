@@ -42,12 +42,14 @@ class AppTransaction {
     this.totalCubic,
     this.perCarTrips,
     this.perCarCubic,
+    this.tripBillingMode,
     this.otAmount,
     this.otHours,
     this.otDescription,
     this.advanceAmount,
     this.leaveReason,
     this.leaveDays,
+    this.incomePaymentStatus,
     this.createdAt,
   });
 
@@ -95,12 +97,16 @@ class AppTransaction {
   final double? totalCubic;
   final double? perCarTrips;
   final double? perCarCubic;
+  /// DailyLog VehicleTrip: PerTrip | LumpSum
+  final String? tripBillingMode;
   final double? otAmount;
   final double? otHours;
   final String? otDescription;
   final double? advanceAmount;
   final String? leaveReason;
   final double? leaveDays;
+  /// รายรับ: Unpaid | Paid
+  final String? incomePaymentStatus;
 
   /// จากคอลัมน์ created_at ของฐานข้อมูล (แสดงประวัติ / upsert ให้คงเวลาสร้าง)
   final DateTime? createdAt;
@@ -163,12 +169,14 @@ class AppTransaction {
       totalCubic: _toDouble(row['total_cubic']),
       perCarTrips: _toDouble(row['per_car_trips']),
       perCarCubic: _toDouble(row['per_car_cubic']),
+      tripBillingMode: row['trip_billing_mode']?.toString(),
       otAmount: _toDouble(row['ot_amount']),
       otHours: _toDouble(row['ot_hours']),
       otDescription: row['ot_description']?.toString(),
       advanceAmount: _toDouble(row['advance_amount']),
       leaveReason: row['leave_reason']?.toString(),
       leaveDays: _toDouble(row['leave_days']),
+      incomePaymentStatus: row['income_payment_status']?.toString(),
       createdAt: _parseDateTime(row['created_at']),
     );
   }
@@ -235,6 +243,8 @@ class AppTransaction {
       if (totalCubic != null) 'total_cubic': totalCubic,
       if (perCarTrips != null) 'per_car_trips': perCarTrips,
       if (perCarCubic != null) 'per_car_cubic': perCarCubic,
+      if (tripBillingMode != null && tripBillingMode!.isNotEmpty)
+        'trip_billing_mode': tripBillingMode,
       if (otAmount != null) 'ot_amount': otAmount,
       if (otHours != null) 'ot_hours': otHours,
       if (otDescription != null && otDescription!.isNotEmpty)
@@ -243,6 +253,8 @@ class AppTransaction {
       if (leaveReason != null && leaveReason!.isNotEmpty)
         'leave_reason': leaveReason,
       if (leaveDays != null) 'leave_days': leaveDays,
+      if (incomePaymentStatus != null && incomePaymentStatus!.isNotEmpty)
+        'income_payment_status': incomePaymentStatus,
       if (createdAt != null) 'created_at': createdAt!.toUtc().toIso8601String(),
     };
   }
@@ -302,6 +314,8 @@ class AppTransaction {
       if (totalCubic != null) 'total_cubic': totalCubic,
       if (perCarTrips != null) 'per_car_trips': perCarTrips,
       if (perCarCubic != null) 'per_car_cubic': perCarCubic,
+      if (tripBillingMode != null && tripBillingMode!.isNotEmpty)
+        'trip_billing_mode': tripBillingMode,
       if (otAmount != null) 'ot_amount': otAmount,
       if (otHours != null) 'ot_hours': otHours,
       if (otDescription != null && otDescription!.isNotEmpty)
@@ -310,6 +324,8 @@ class AppTransaction {
       if (leaveReason != null && leaveReason!.isNotEmpty)
         'leave_reason': leaveReason,
       if (leaveDays != null) 'leave_days': leaveDays,
+      if (incomePaymentStatus != null && incomePaymentStatus!.isNotEmpty)
+        'income_payment_status': incomePaymentStatus,
       if (!omitCreatedAt)
         'created_at': DateTime.now().toUtc().toIso8601String(),
     };
