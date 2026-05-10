@@ -53,6 +53,7 @@ Future<void> main() async {
     debugPrint('Error during initialization: $e');
     runApp(
       MaterialApp(
+        title: 'GoldenMole for Users',
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -170,7 +171,7 @@ class _MobileAppState extends State<MobileApp> {
     );
 
     return MaterialApp(
-      title: 'Construction Management Mobile',
+      title: 'GoldenMole for Users',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
       scrollBehavior: DevicePerf.isConstrainedDevice

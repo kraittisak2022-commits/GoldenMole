@@ -27,6 +27,9 @@ const keysToCamel = (obj: any): any => {
     return obj;
 };
 
+/** แถวจาก Supabase (snake_case) → Transaction — ใช้ realtime / sync */
+export const transactionFromDbRow = (row: Record<string, unknown>): Transaction => keysToCamel(row) as Transaction;
+
 // ============================================
 // EMPLOYEES
 // ============================================

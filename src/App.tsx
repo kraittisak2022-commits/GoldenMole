@@ -23,6 +23,7 @@ import WorkPlanner from './modules/Planning/WorkPlanner';
 import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
+import { WebSignatureDialog } from './components/WebSignatureDialog';
 const PayrollModule = lazy(() => import('./modules/Payroll/PayrollModule'));
 const RecordManager = lazy(() => import('./modules/DataList/RecordManager'));
 const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
@@ -51,7 +52,7 @@ import { isBackupDue, runBackup } from './services/backupService';
 // Supabase Services
 import * as db from './services/dataService';
 import { notifyAdvanceLineSaved, notifyLeaveLineSaved } from './services/lineAdvanceNotify';
-import { supabase } from './lib/supabase';
+import { supabase, hasSupabaseConfig } from './lib/supabase';
 import { ensureSupabaseSessionForEdgeFunctions } from './utils/supabaseFunctionSession';
 
 // --- Default Admin Account (รหัสผ่านเก็บเป็น SHA-256 — ค่าเริ่มต้นเข้าได้ด้วย 1234) ---
@@ -307,6 +308,10 @@ function App() {
     const [pinInput, setPinInput] = useState('');
     const [showPinLock, setShowPinLock] = useState(false);
     const [pinLockedUntil, setPinLockedUntil] = useState<number | null>(null);
+    const [signatureDialogAdmin, setSignatureDialogAdmin] = useState<AdminUser | null>(null);
+    const signatureDialogResolve = useRef<((note: string | null) => void) | null>(null);
+    const recentWebSaveTxAt = useRef<Map<string, number>>(new Map());
+    const lastRemoteToastAt = useRef(0);
     const currentAdminAccess: AdminDataAccess | null = useMemo(() => {
         if (!currentAdmin) return null;
         return settings.appDefaults?.adminDataAccessByAdminId?.[currentAdmin.id] || null;
@@ -622,6 +627,78 @@ function App() {
         setClientSurface('select');
         applyUiThemeToApp(matchedAdmin.uiTheme);
     }, [isLoading, admins, applyUiThemeToApp]);
+
+    // Supabase Realtime: merge transaction changes from mobile / other tabs
+    useEffect(() => {
+        if (!hasSupabaseConfig || !isLoggedIn || isLoading) return;
+
+        const channel = supabase
+            .channel('transactions-realtime')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'transactions' },
+                (payload) => {
+                    const eventType = payload.eventType;
+                    try {
+                        if (eventType === 'DELETE') {
+                            const oldRow = payload.old as Record<string, unknown> | undefined;
+                            const id = oldRow?.id != null ? String(oldRow.id) : '';
+                            if (!id) return;
+                            setTransactions(prev => prev.filter(x => x.id !== id));
+                            const own = recentWebSaveTxAt.current.get(id);
+                            if (own && Date.now() - own < 4000) return;
+                            const now = Date.now();
+                            if (now - lastRemoteToastAt.current < 1200) return;
+                            lastRemoteToastAt.current = now;
+                            setToast('รายการถูกลบจากอุปกรณ์อื่น');
+                            setTimeout(() => setToast(null), 3000);
+                            return;
+                        }
+
+                        const row =
+                            (eventType === 'INSERT' || eventType === 'UPDATE') && payload.new
+                                ? (payload.new as Record<string, unknown>)
+                                : null;
+                        if (!row || row.id == null) return;
+                        const tx = normalizeTransactionCreatedAt(db.transactionFromDbRow(row));
+
+                        setTransactions(prev => {
+                            const i = prev.findIndex(x => x.id === tx.id);
+                            if (i >= 0) {
+                                const next = [...prev];
+                                next[i] = tx;
+                                return next;
+                            }
+                            return [...prev, tx];
+                        });
+
+                        const own = recentWebSaveTxAt.current.get(tx.id);
+                        if (own && Date.now() - own < 4000) return;
+
+                        const now = Date.now();
+                        if (now - lastRemoteToastAt.current < 1200) return;
+                        lastRemoteToastAt.current = now;
+                        setToast(
+                            eventType === 'INSERT'
+                                ? 'มีรายการใหม่จากมือถือหรืออุปกรณ์อื่น'
+                                : 'ข้อมูลรายการอัปเดตจากมือถือหรืออุปกรณ์อื่น',
+                        );
+                        setTimeout(() => setToast(null), 3500);
+                    } catch (e) {
+                        console.warn('transactions realtime merge failed', e);
+                    }
+                },
+            )
+            .subscribe((status) => {
+                if (status === 'CHANNEL_ERROR') {
+                    console.warn('transactions realtime channel error');
+                }
+            });
+
+        return () => {
+            void supabase.removeChannel(channel);
+        };
+    }, [hasSupabaseConfig, isLoggedIn, isLoading]);
 
     // Sync dark mode to <html> for full-page background and Tailwind dark:
     useEffect(() => {
@@ -990,6 +1067,22 @@ function App() {
         }
     }, []);
 
+    const requestTransactionSignature = useCallback(
+        (admin: AdminUser) =>
+            new Promise<string | null>((resolve) => {
+                signatureDialogResolve.current = resolve;
+                setSignatureDialogAdmin(admin);
+            }),
+        [],
+    );
+
+    const finishSignatureDialog = useCallback((note: string | null) => {
+        const resolve = signatureDialogResolve.current;
+        signatureDialogResolve.current = null;
+        setSignatureDialogAdmin(null);
+        resolve?.(note);
+    }, []);
+
     const handleSave = async (t: Transaction) => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
@@ -998,9 +1091,6 @@ function App() {
         }
         const existingTx = transactions.find(x => x.id === t.id);
         const wasUpdate = !!existingTx;
-        const txToSave: Transaction = wasUpdate
-            ? { ...t, createdAt: existingTx?.createdAt || t.createdAt || new Date().toISOString() }
-            : { ...t, createdAt: t.createdAt || new Date().toISOString() };
         if (!wasUpdate && !canCreateTransactions) {
             setToast('ไม่มีสิทธิ์สร้างรายการ (Create)');
             setTimeout(() => setToast(null), 3000);
@@ -1011,6 +1101,19 @@ function App() {
             setTimeout(() => setToast(null), 3000);
             return;
         }
+
+        let signedTx = t;
+        if (currentAdmin) {
+            const sigNote = await requestTransactionSignature(currentAdmin);
+            if (sigNote === null) {
+                return;
+            }
+            signedTx = { ...t, note: sigNote };
+        }
+
+        const txToSave: Transaction = wasUpdate
+            ? { ...signedTx, createdAt: existingTx?.createdAt || signedTx.createdAt || new Date().toISOString() }
+            : { ...signedTx, createdAt: signedTx.createdAt || new Date().toISOString() };
         if (txToSave.category !== 'Payroll' && txToSave.category !== 'PayrollUnlock') {
             const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
@@ -1040,6 +1143,9 @@ function App() {
             return;
         }
         ok = await db.saveTransaction(txToSave);
+        if (ok) {
+            recentWebSaveTxAt.current.set(txToSave.id, Date.now());
+        }
         if (!ok) {
             enqueueTransaction(txToSave);
             setToast('ซิงก์ไม่สำเร็จ บันทึกไว้ในเครื่องแล้ว จะลองซิงก์อีกครั้งอัตโนมัติ');
@@ -1510,6 +1616,13 @@ function App() {
                         changeClientSurface('desktop');
                     }}
                 />
+                {signatureDialogAdmin && (
+                    <WebSignatureDialog
+                        admin={signatureDialogAdmin}
+                        onConfirm={note => finishSignatureDialog(note)}
+                        onCancel={() => finishSignatureDialog(null)}
+                    />
+                )}
             </>
         );
     }
@@ -1532,6 +1645,13 @@ function App() {
                     darkMode={darkMode}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
                 />
+                {signatureDialogAdmin && (
+                    <WebSignatureDialog
+                        admin={signatureDialogAdmin}
+                        onConfirm={note => finishSignatureDialog(note)}
+                        onCancel={() => finishSignatureDialog(null)}
+                    />
+                )}
                 {wagePromptEmp && (
                     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-[100] p-4">
                         <Card className="w-full max-w-sm p-6 shadow-xl">
@@ -1733,6 +1853,13 @@ function App() {
                     currentAdmin={currentAdmin}
                     darkMode={darkMode}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
+                />
+            )}
+            {signatureDialogAdmin && (
+                <WebSignatureDialog
+                    admin={signatureDialogAdmin}
+                    onConfirm={note => finishSignatureDialog(note)}
+                    onCancel={() => finishSignatureDialog(null)}
                 />
             )}
 

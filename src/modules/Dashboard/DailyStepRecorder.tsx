@@ -22,41 +22,13 @@ import {
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
 
-type DraftMergeSection = 'labor' | 'vehicle' | 'trip' | 'sand' | 'fuel' | 'income' | 'event';
-const ALL_DRAFT_MERGE_SECTIONS: DraftMergeSection[] = ['labor', 'vehicle', 'trip', 'sand', 'fuel', 'income', 'event'];
-type MobileSignatureMeta = {
-    source: string;
-    signedAt?: string;
-    signedBy?: string;
-    paths?: number[][][];
-};
-const parseMobileSignatureNote = (note?: string): MobileSignatureMeta | null => {
-    if (!note) return null;
-    const raw = String(note).trim();
-    if (!raw.startsWith('mobile_signature:')) return null;
-    const payload = raw.slice('mobile_signature:'.length).trim();
-    if (!payload) return null;
-    try {
-        const parsed = JSON.parse(payload) as MobileSignatureMeta;
-        if (!parsed || typeof parsed !== 'object') return null;
-        return parsed;
-    } catch {
-        return null;
-    }
-};
-const formatSignatureDateTime = (iso?: string) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-};
+import {
+    parseSignatureNote,
+    formatSignatureDateTime,
+    signatureSourceLabel,
+} from '../../utils/signatureNote';
+import { SignatureAttachmentPreview } from '../../components/SignatureAttachmentPreview';
+
 const normalizeTimeInputValue = (raw?: string | null) => {
     const value = String(raw || '').trim();
     if (!value) return '';
@@ -68,45 +40,6 @@ const normalizeTimeInputValue = (raw?: string | null) => {
     if (!Number.isFinite(hh) || !Number.isFinite(mm)) return '';
     if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return '';
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-};
-const hasSignaturePaths = (meta: MobileSignatureMeta | null) =>
-    !!meta &&
-    Array.isArray(meta.paths) &&
-    meta.paths.some(path => Array.isArray(path) && path.length >= 2);
-const MobileSignatureAttachment = ({ meta }: { meta: MobileSignatureMeta }) => {
-    if (!hasSignaturePaths(meta)) return null;
-    const paths = (meta.paths || []).filter(path => Array.isArray(path) && path.length >= 2);
-    let maxX = 1;
-    let maxY = 1;
-    paths.forEach(path => {
-        path.forEach((point) => {
-            const x = Number(point?.[0] || 0);
-            const y = Number(point?.[1] || 0);
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-        });
-    });
-    return (
-        <div className="mt-1 rounded-md border border-cyan-200 bg-white px-1.5 py-1 dark:border-cyan-500/30 dark:bg-slate-900/30">
-            <div className="mb-1 text-[10px] font-semibold text-cyan-700 dark:text-cyan-200">ลายเซ็นแนบ</div>
-            <svg viewBox={`0 0 ${Math.max(10, maxX + 4)} ${Math.max(10, maxY + 4)}`} className="h-14 w-full rounded border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-950/40">
-                {paths.map((path, idx) => {
-                    const points = path.map((point) => `${Number(point?.[0] || 0)},${Number(point?.[1] || 0)}`).join(' ');
-                    return (
-                        <polyline
-                            key={`mobile-signature-path-${idx}`}
-                            points={points}
-                            fill="none"
-                            stroke="#0f172a"
-                            strokeWidth="2.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        />
-                    );
-                })}
-            </svg>
-        </div>
-    );
 };
 
 interface DailyStepRecorderProps {
@@ -2295,7 +2228,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         ) : (
                                             <div className="space-y-1.5 max-h-32 overflow-y-auto">
                                                 {dayTransactions.filter(t => t.category === 'Labor').map(t => {
-                                                    const mobileSignature = parseMobileSignatureNote(t.note);
+                                                    const mobileSignature = parseSignatureNote(t.note);
                                                     return (
                                                         <div key={t.id} className="text-sm py-1.5 px-2 rounded-lg bg-white/80 dark:bg-white/5 border border-emerald-100 dark:border-emerald-500/20">
                                                             <div className="flex justify-between items-center gap-2">
@@ -2304,11 +2237,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             </div>
                                                             {mobileSignature && (
                                                                 <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
-                                                                    ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                    ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                                     {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                                 </div>
                                                             )}
-                                                            {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                            {mobileSignature && <SignatureAttachmentPreview meta={mobileSignature} />}
                                                         </div>
                                                     );
                                                 })}
@@ -2872,7 +2805,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Truck className="text-amber-500" /> บันทึกการใช้รถ</h3>
                                 <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
                                     {dayTransactions.filter(t => t.category === 'Vehicle').map(t => {
-                                        const mobileSignature = parseMobileSignatureNote(t.note);
+                                        const mobileSignature = parseSignatureNote(t.note);
                                         return (
                                             <div
                                                 key={t.id}
@@ -2916,11 +2849,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 <div className="mt-1 text-[10px] font-medium text-amber-900/80">฿{(t.amount ?? 0).toLocaleString()}</div>
                                                 {mobileSignature && (
                                                     <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
-                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                        ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                     </div>
                                                 )}
-                                                {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                {mobileSignature && <SignatureAttachmentPreview meta={mobileSignature} />}
                                             </div>
                                         );
                                     })}
@@ -3166,7 +3099,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length > 0 && (
                                     <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
                                         {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').map(t => {
-                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                            const mobileSignature = parseSignatureNote(t.note);
                                             return (
                                                 <div key={t.id} className="min-w-[200px] p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs">
                                                     <div className="font-bold text-emerald-900">✅ {t.vehicleId}</div>
@@ -3175,11 +3108,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     <div className="text-emerald-500/70 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
                                                     {mobileSignature && (
                                                         <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
-                                                            ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                            ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                             {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                         </div>
                                                     )}
-                                                    {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                    {mobileSignature && <SignatureAttachmentPreview meta={mobileSignature} />}
                                                 </div>
                                             );
                                         })}
@@ -3369,7 +3302,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             const sandTotal = ((t as any).sandMorning || 0) + ((t as any).sandAfternoon || 0);
                                                             const drums = (t as any).drumsObtained ?? 0;
                                                             const isDrumsOnly = sandTotal === 0 && drums > 0;
-                                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                                            const mobileSignature = parseSignatureNote(t.note);
                                                             return (
                                                             <div key={t.id} className="min-w-[190px] p-2.5 bg-white border border-slate-200 rounded-xl text-xs relative shadow-sm dark:bg-white/[0.03] dark:border-white/10">
                                                                 <div className="font-bold text-slate-700 dark:text-slate-200">🌊 {t.description}</div>
@@ -3380,11 +3313,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 )}
                                                                 {mobileSignature && (
                                                                     <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
-                                                                        ✍️ เซ็นจาก Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                        ✍️ เซ็นจาก {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                                     </div>
                                                                 )}
-                                                                {mobileSignature && <MobileSignatureAttachment meta={mobileSignature} />}
+                                                                {mobileSignature && <SignatureAttachmentPreview meta={mobileSignature} />}
                                                                 {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-1.5 right-1.5 p-0.5 text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                                             </div>
                                                         );})}
@@ -3750,15 +3683,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 {fuelInTx.map(t => (
                                                                     <div key={t.id} className="min-w-[220px] p-3 bg-red-50 border border-red-100 rounded-xl text-xs relative">
                                                                         {(() => {
-                                                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                                                            const mobileSignature = parseSignatureNote(t.note);
                                                                             if (!mobileSignature) return null;
                                                                             return (
                                                                                 <>
                                                                                     <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                        ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                                                     </div>
-                                                                                    <MobileSignatureAttachment meta={mobileSignature} />
+                                                                                    <SignatureAttachmentPreview meta={mobileSignature} />
                                                                                 </>
                                                                             );
                                                                         })()}
@@ -3779,15 +3712,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 {fuelOutTx.map(t => (
                                                                     <div key={t.id} className="min-w-[220px] p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs relative">
                                                                         {(() => {
-                                                                            const mobileSignature = parseMobileSignatureNote(t.note);
+                                                                            const mobileSignature = parseSignatureNote(t.note);
                                                                             if (!mobileSignature) return null;
                                                                             return (
                                                                                 <>
                                                                                     <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                                                        ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                                        ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                                                     </div>
-                                                                                    <MobileSignatureAttachment meta={mobileSignature} />
+                                                                                    <SignatureAttachmentPreview meta={mobileSignature} />
                                                                                 </>
                                                                             );
                                                                         })()}
@@ -4028,15 +3961,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         {dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').map(t => (
                                             <div key={t.id} className="min-w-[220px] p-3 bg-lime-50 border border-lime-200 rounded-xl text-xs relative">
                                                 {(() => {
-                                                    const mobileSignature = parseMobileSignatureNote(t.note);
+                                                    const mobileSignature = parseSignatureNote(t.note);
                                                     if (!mobileSignature) return null;
                                                     return (
                                                         <>
                                                             <div className="mb-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700">
-                                                                ✍️ Android {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
+                                                                ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                                 {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                             </div>
-                                                            <MobileSignatureAttachment meta={mobileSignature} />
+                                                            <SignatureAttachmentPreview meta={mobileSignature} />
                                                         </>
                                                     );
                                                 })()}
