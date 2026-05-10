@@ -1868,10 +1868,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             <p className="text-base font-semibold text-amber-800 dark:text-amber-100">฿{formatDisplayNumber(vehicleSum)}</p>
                                             <p className="mt-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-200">{vehicle.length} รายการ</p>
                                         </div>
-                                        <div className="rounded-xl border border-blue-100 bg-blue-50 p-3.5 dark:border-blue-500/30 dark:bg-blue-500/10">
-                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300"><Truck size={14} /> เที่ยวรถ</div>
-                                            <p className="text-base font-semibold text-blue-800 dark:text-blue-100">{tripsTotal} เที่ยว</p>
-                                            <p className="mt-0.5 text-[11px] font-normal text-blue-600 dark:text-blue-200">{tripsCubic} คิว • {trips.length} รายการ</p>
+                                        <div className="rounded-xl border border-amber-100 bg-amber-50/90 p-3.5 dark:border-amber-500/25 dark:bg-amber-950/30">
+                                            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-200"><Truck size={14} /> เที่ยวรถ</div>
+                                            <p className="text-base font-semibold text-amber-900 dark:text-amber-100">{tripsTotal} เที่ยว</p>
+                                            <p className="mt-0.5 text-[11px] font-normal text-amber-800/90 dark:text-amber-300/90">{tripsCubic} คิว • {trips.length} รายการ</p>
                                         </div>
                                         <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3.5 dark:border-cyan-500/30 dark:bg-cyan-500/10">
                                             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-cyan-700 dark:text-cyan-300"><Droplets size={14} /> ล้างทราย</div>
@@ -2158,7 +2158,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-4">
                                             <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-2 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10"><div className="font-semibold text-emerald-700 dark:text-emerald-300">ค่าแรง</div><div className="mt-0.5 text-base font-black text-emerald-800 dark:text-emerald-200">{dayStepStats.laborCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-500/10"><div className="font-semibold text-amber-700 dark:text-amber-300">การใช้รถ</div><div className="mt-0.5 text-base font-black text-amber-800 dark:text-amber-200">{dayStepStats.vehicleCount}</div></div>
-                                            <div className="min-w-0 rounded-lg border border-blue-200/80 bg-blue-50/80 px-2.5 py-2 text-center dark:border-blue-500/25 dark:bg-blue-500/10"><div className="font-semibold text-blue-700 dark:text-blue-300">เที่ยวรถ</div><div className="mt-0.5 text-base font-black text-blue-800 dark:text-blue-200">{dayStepStats.tripCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-950/30"><div className="font-semibold text-amber-800 dark:text-amber-200">เที่ยวรถ</div><div className="mt-0.5 text-base font-black text-amber-900 dark:text-amber-100">{dayStepStats.tripCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-2 text-center dark:border-cyan-500/25 dark:bg-cyan-500/10"><div className="font-semibold text-cyan-700 dark:text-cyan-300">ทราย</div><div className="mt-0.5 text-base font-black text-cyan-800 dark:text-cyan-200">{dayStepStats.sandCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-2 text-center dark:border-rose-500/25 dark:bg-rose-500/10"><div className="font-semibold text-rose-700 dark:text-rose-300">น้ำมัน</div><div className="mt-0.5 text-base font-black text-rose-800 dark:text-rose-200">{dayStepStats.fuelCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-lime-200/80 bg-lime-50/80 px-2.5 py-2 text-center dark:border-lime-500/25 dark:bg-lime-500/10"><div className="font-semibold text-lime-700 dark:text-lime-300">รายรับ</div><div className="mt-0.5 text-base font-black text-lime-800 dark:text-lime-200">{dayStepStats.incomeCount}</div></div>
@@ -2848,7 +2848,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 <div className="text-amber-700 line-clamp-3">{t.workDetails}</div>
                                                 <div className="mt-1 text-[10px] font-medium text-amber-900/80">฿{(t.amount ?? 0).toLocaleString()}</div>
                                                 {mobileSignature && (
-                                                    <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                    <div className="mt-1 rounded-md border border-amber-200/90 bg-amber-50/95 px-1.5 py-1 text-[10px] font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-950/50 dark:text-amber-100">
                                                         ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                         {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                     </div>
@@ -2902,7 +2902,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     setVehWorkType('FullDay');
                                                     void applyVehicleDriverAllowance(vehDriver, 'FullDay');
                                                 }}
-                                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${vehWorkType === 'FullDay' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/15 hover:border-emerald-300'}`}
+                                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${vehWorkType === 'FullDay' ? 'bg-amber-700 text-white border-amber-700' : 'bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/15 hover:border-amber-300'}`}
                                             >
                                                 เต็มวัน
                                             </button>
@@ -3002,7 +3002,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {/* Header with date and saved totals */}
                                 <div className="flex flex-col gap-2 mb-4">
                                     <div className="flex justify-between items-center">
-                                        <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Truck className="text-blue-500 dark:text-blue-400" /> บันทึกรถและจำนวนเที่ยวรถ</h3>
+                                        <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Truck className="text-amber-600 dark:text-amber-400" /> บันทึกรถและจำนวนเที่ยวรถ</h3>
                                         {(() => {
                                             const savedTrips = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
                                             const savedTotalTrips = savedTrips.reduce((sum, t) => sum + ((t as any).perCarTrips || 0), 0);
@@ -3022,10 +3022,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             })();
                                             return (
                                                 <div className="flex gap-2">
-                                                    <div className={`${displayTrips > 0 ? 'bg-blue-600' : 'bg-slate-400'} text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md`}>
+                                                    <div className={`${displayTrips > 0 ? 'bg-amber-700' : 'bg-slate-400'} text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md`}>
                                                         {displayTrips} เที่ยว
                                                     </div>
-                                                    <div className={`${displayCubic > 0 ? 'bg-emerald-600' : 'bg-slate-400'} text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md`}>
+                                                    <div className={`${displayCubic > 0 ? 'bg-amber-600' : 'bg-slate-400'} text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md`}>
                                                         {displayCubic} คิว
                                                     </div>
                                                 </div>
@@ -3033,17 +3033,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         })()}
                                     </div>
                                     <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                                        📅 วันที่: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                        📅 วันที่: <span className="font-semibold text-amber-900 dark:text-amber-200">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
                                     </div>
                                 </div>
 
                                 {/* Morning / Afternoon Trip Counts + Cubic per trip */}
-                                <div className="bg-gradient-to-r from-amber-50 to-blue-50 dark:from-amber-500/10 dark:to-blue-500/10 p-4 rounded-xl border border-amber-100 dark:border-white/10 mb-4">
+                                <div className="rounded-xl border border-amber-100/90 bg-gradient-to-br from-amber-50/90 via-white to-stone-50/80 p-4 dark:border-white/10 dark:from-amber-950/30 dark:via-white/[0.03] dark:to-stone-950/20 mb-4">
                                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">จำนวนเที่ยวรวม</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">เว้นว่างได้ หากวันนี้ใช้รถขนงานอย่างอื่นและไม่มีการวิ่งเที่ยว</p>
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
                                         <div className="space-y-2">
-                                            <label className="mb-1 block text-xs font-medium text-amber-700 dark:text-amber-300">☀️ ช่วงเช้า (เที่ยว)</label>
+                                            <label className="mb-1 block text-xs font-medium text-amber-800 dark:text-amber-200">☀️ ช่วงเช้า (เที่ยว)</label>
                                             <NumberPickerInput
                                                 placeholder="0"
                                                 value={tripMorning}
@@ -3052,11 +3052,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 listMax={200}
                                                 scrollAnchor={90}
                                                 min={0}
-                                                className="w-full px-3 py-2.5 border-2 border-amber-200 bg-white text-center text-lg font-bold text-amber-800 transition-colors focus:border-amber-400 focus:outline-none dark:border-amber-500/35 dark:bg-white/5 dark:text-amber-200"
+                                                className="w-full px-3 py-2.5 border-2 border-amber-300/90 bg-white text-center text-lg font-bold text-amber-900 transition-colors focus:border-amber-500 focus:outline-none dark:border-amber-500/40 dark:bg-white/5 dark:text-amber-100"
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="mb-1 block text-xs font-medium text-blue-700 dark:text-blue-300">🌙 ช่วงบ่าย (เที่ยว)</label>
+                                            <label className="mb-1 block text-xs font-medium text-amber-700/90 dark:text-amber-300/90">🌙 ช่วงบ่าย (เที่ยว)</label>
                                             <NumberPickerInput
                                                 placeholder="0"
                                                 value={tripAfternoon}
@@ -3065,7 +3065,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 listMax={200}
                                                 scrollAnchor={90}
                                                 min={0}
-                                                className="w-full px-3 py-2.5 border-2 border-blue-200 bg-white text-center text-lg font-bold text-blue-800 transition-colors focus:border-blue-400 focus:outline-none dark:border-blue-500/35 dark:bg-white/5 dark:text-blue-200"
+                                                className="w-full px-3 py-2.5 border-2 border-amber-200 bg-white text-center text-lg font-bold text-amber-900 transition-colors focus:border-amber-400 focus:outline-none dark:border-amber-500/30 dark:bg-white/5 dark:text-amber-100"
                                             />
                                         </div>
                                     </div>
@@ -3082,12 +3082,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         });
                                         if (validCount <= 1) displayTotalCubic = totalTrips * (Number(tripEntries[0]?.cubicPerTrip) || detectDefaultCubicPerTrip(tripEntries[0]?.vehicle || '', 3));
                                         return (
-                                            <div className="mt-3 p-3 bg-white/70 rounded-lg text-sm font-medium text-slate-600 space-y-1">
+                                            <div className="mt-3 p-3 bg-white/80 dark:bg-white/[0.04] rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 space-y-1 border border-amber-100/80 dark:border-white/10">
                                                 <div className="text-center">
-                                                    รวม <span className="font-bold text-blue-700">{totalTrips}</span> เที่ยว ÷ <span className="font-bold text-purple-700">{validCount}</span> คัน = <span className="font-bold text-indigo-700">{tripsPerCar}{remainder > 0 ? `~${tripsPerCar + 1}` : ''}</span> เที่ยว/คัน
+                                                    รวม <span className="font-bold text-amber-800 dark:text-amber-200">{totalTrips}</span> เที่ยว ÷ <span className="font-bold text-amber-900 dark:text-amber-100">{validCount}</span> คัน = <span className="font-bold text-amber-700 dark:text-amber-300">{tripsPerCar}{remainder > 0 ? `~${tripsPerCar + 1}` : ''}</span> เที่ยว/คัน
                                                 </div>
                                                 <div className="text-center">
-                                                    รวมทราย <span className="font-bold text-lg text-rose-600">{displayTotalCubic} คิว</span>
+                                                    รวมทราย <span className="font-bold text-lg text-amber-800 dark:text-amber-200">{displayTotalCubic} คิว</span>
                                                     <span className="text-xs text-slate-400 ml-1">(คำนวณตามคิว/เที่ยวรายคัน)</span>
                                                 </div>
                                             </div>
@@ -3101,13 +3101,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         {dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').map(t => {
                                             const mobileSignature = parseSignatureNote(t.note);
                                             return (
-                                                <div key={t.id} className="min-w-[200px] p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs">
-                                                    <div className="font-bold text-emerald-900">✅ {t.vehicleId}</div>
-                                                    <div className="text-emerald-700 font-semibold">{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic || (t as any).totalCubic || 0} คิว</div>
-                                                    <div className="text-emerald-600 mt-0.5">{t.workDetails || '-'}</div>
-                                                    <div className="text-emerald-500/70 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
+                                                <div key={t.id} className="min-w-[200px] p-2.5 bg-amber-50/90 border border-amber-200/90 rounded-lg text-xs dark:bg-amber-950/25 dark:border-amber-500/25">
+                                                    <div className="font-bold text-amber-950 dark:text-amber-100">✅ {t.vehicleId}</div>
+                                                    <div className="text-amber-900/95 dark:text-amber-200 font-semibold">{(t as any).perCarTrips || (t as any).tripCount} เที่ยว • {(t as any).perCarCubic || (t as any).totalCubic || 0} คิว</div>
+                                                    <div className="text-amber-800/90 dark:text-amber-300/90 mt-0.5">{t.workDetails || '-'}</div>
+                                                    <div className="text-amber-700/70 dark:text-amber-400/80 mt-1 text-[10px]">📅 {new Date(t.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
                                                     {mobileSignature && (
-                                                        <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
+                                                        <div className="mt-1 rounded-md border border-amber-200/90 bg-amber-50/95 px-1.5 py-1 text-[10px] font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-950/50 dark:text-amber-100">
                                                             ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
                                                             {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
                                                         </div>
@@ -3123,9 +3123,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <p className="text-sm font-medium text-slate-500 mb-2">เลือกรถและคนขับ ({tripEntries.length} คัน)</p>
                                 <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1">
                                     {tripEntries.map((entry, idx) => (
-                                        <div key={entry.id} className="relative bg-white p-4 rounded-xl border-2 border-blue-100 hover:border-blue-300 shadow-sm hover:shadow-md transition-all">
+                                        <div key={entry.id} className="relative bg-white dark:bg-white/[0.03] p-4 rounded-xl border-2 border-amber-100 shadow-sm transition-all hover:border-amber-300/90 dark:border-amber-500/20 dark:hover:border-amber-500/40">
                                             <div className="flex justify-between items-center mb-3">
-                                                <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-lg">🚛 คันที่ {idx + 1}</span>
+                                                <span className="text-xs font-bold text-amber-800 bg-amber-50 dark:text-amber-100 dark:bg-amber-950/40 px-2 py-1 rounded-lg border border-amber-200/80 dark:border-amber-500/25">🚛 คันที่ {idx + 1}</span>
                                                 {tripEntries.length > 1 && (
                                                     <button onClick={() => removeTripCard(entry.id)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ลบ">
                                                         <Trash2 size={14} />
@@ -3163,7 +3163,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         scrollAnchor={6}
                                                         min={0}
                                                         placeholder={String(detectDefaultCubicPerTrip(entry.vehicle, 3))}
-                                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:focus:ring-amber-500/30 focus:border-emerald-500 dark:focus:border-amber-500/50 transition-all bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/20 focus:outline-none focus:ring-2 focus:ring-amber-500/25 dark:focus:ring-amber-500/20 focus:border-amber-500 dark:focus:border-amber-500/50 transition-all bg-white dark:bg-white/5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                                     />
                                                     <div className="flex flex-wrap gap-2">
                                                         {['3', '6'].map(v => (
@@ -3171,7 +3171,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 key={`${entry.id}-cubic-${v}`}
                                                                 type="button"
                                                                 onClick={() => updateTripCard(entry.id, 'cubicPerTrip', v)}
-                                                                className="touch-manipulation rounded-lg border border-blue-200/90 bg-blue-50/80 px-3 py-2 text-xs font-bold text-blue-800 shadow-sm transition hover:bg-blue-100 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-100 dark:hover:bg-blue-500/25"
+                                                                className="touch-manipulation rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-xs font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-100 dark:hover:bg-amber-500/25"
                                                             >
                                                                 {v}
                                                             </button>
@@ -3200,7 +3200,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                     ))}
 
-                                    <button onClick={addTripCard} className="w-full py-4 border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-xl text-slate-400 hover:text-blue-500 flex items-center justify-center gap-2 transition-all hover:bg-blue-50/50">
+                                    <button onClick={addTripCard} className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-white/15 hover:border-amber-400 rounded-xl text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center justify-center gap-2 transition-all hover:bg-amber-50/60 dark:hover:bg-amber-950/20">
                                         <Plus size={20} /> เพิ่มรถอีกคัน
                                     </button>
                                 </div>
@@ -3240,7 +3240,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         });
                                         setTripEntries([{ id: Date.now().toString(), vehicle: '', driver: '', work: '', cubicPerTrip: '' }]);
                                         setTripMorning(''); setTripAfternoon('');
-                                    }} className="w-full bg-blue-500 hover:bg-blue-600 py-3 text-base">
+                                    }} className="w-full bg-amber-600 hover:bg-amber-700 py-3 text-base">
                                         <CheckCircle2 size={18} className="mr-2" /> บันทึกทั้งหมด ({tripEntries.filter(e => e.vehicle).length} คัน, {totalTrips} เที่ยวรวม)
                                     </Button>
                                     <div className={stepActionWrapClass}>

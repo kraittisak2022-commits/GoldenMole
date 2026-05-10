@@ -225,7 +225,7 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                                 setWorkType('FullDay');
                                 void applyDriverAllowance(form.driver, 'FullDay');
                             }}
-                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${workType === 'FullDay' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}
+                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${workType === 'FullDay' ? 'border-amber-700 bg-amber-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300'}`}
                         >
                             เต็มวัน
                         </button>
@@ -250,7 +250,7 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-medium text-slate-700">รายละเอียดงาน (Work Details)</label>
                     <textarea
-                        className="border rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500"
+                        className="border rounded-xl p-3 text-sm focus:outline-none focus:border-amber-500"
                         rows={2}
                         placeholder="เช่น ขนดินจากบ่อ 1 ไปถมที่..."
                         value={form.workDetails}
