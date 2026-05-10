@@ -11,7 +11,7 @@ const isE2EHarness = search.get('e2e') === 'harness'
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
             console.error('Service worker registration failed', err)
         })
     })
