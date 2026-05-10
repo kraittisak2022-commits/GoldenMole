@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 
 /// ไอคอน outline บนพื้นขาว: คงโทนเมนูจาก [accent] แต่ผสมกับสีหมึกเข้มตามความสว่างเพื่อคอนทราสต์
@@ -50,7 +51,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
+        DevicePerf.isConstrainedDevice;
     final titleColor = const Color(0xFF1A2A3C);
     final status = widget.fillStatus;
     final recorded = status == DailyModuleFillStatus.complete;
@@ -97,7 +99,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
           color: const Color(0xFFE0E7F0),
           width: 1,
         ),
-        boxShadow: isAndroid
+        boxShadow: useLiteChrome
             ? null
             : [
                 BoxShadow(
@@ -114,7 +116,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
       ),
     );
 
-    final mainPlate = isAndroid
+    final mainPlate = useLiteChrome
         ? Container(
             decoration: BoxDecoration(
               color: cardTint,
@@ -187,7 +189,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
             ),
           );
 
-    final badge = isAndroid
+    final badge = useLiteChrome
         ? Container(
             width: 26,
             height: 26,
@@ -280,13 +282,13 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final scaled = AnimatedScale(
       scale: _pressed
           ? 0.96
-          : (isAndroid ? 1.0 : (_hovered ? 1.02 : 1)),
-      duration: Duration(milliseconds: isAndroid ? 100 : 150),
+          : (useLiteChrome ? 1.0 : (_hovered ? 1.02 : 1)),
+      duration: Duration(milliseconds: useLiteChrome ? 100 : 150),
       curve: Curves.easeOutCubic,
       child: ink,
     );
 
-    if (isAndroid) {
+    if (useLiteChrome) {
       return scaled;
     }
     return MouseRegion(

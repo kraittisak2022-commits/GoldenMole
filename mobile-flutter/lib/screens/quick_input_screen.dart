@@ -16,6 +16,7 @@ import '../widgets/thai_bank_brand_icon.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/device_perf.dart';
 
 class QuickInputScreen extends StatefulWidget {
   const QuickInputScreen({
@@ -280,9 +281,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     super.initState();
     final reduceMotion =
         WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final lowSpec = DevicePerf.isConstrainedDevice;
     _entranceController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: reduceMotion ? 115 : 195),
+      duration: Duration(
+        milliseconds: reduceMotion
+            ? 80
+            : (lowSpec ? 120 : 195),
+      ),
     );
     _entranceFade = CurvedAnimation(
       parent: _entranceController,
@@ -2663,7 +2669,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   child: ListView(
                                     keyboardDismissBehavior:
                                         ScrollViewKeyboardDismissBehavior.onDrag,
-                                    cacheExtent: isLargeTablet ? 1200 : 700,
+                                    cacheExtent: DevicePerf.isConstrainedDevice
+                                        ? (isLargeTablet ? 380 : 220)
+                                        : (isLargeTablet ? 1200 : 700),
                                     padding: const EdgeInsets.fromLTRB(
                                       14,
                                       0,

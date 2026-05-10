@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../utils/device_perf.dart';
 import 'app_logo.dart';
 
 /// หน้าโหลดตอน restore session / เปิดแอพ — ใช้โลโก้และอนิเมชันเดียวกับ login
@@ -15,20 +16,22 @@ class BootstrapSplash extends StatefulWidget {
 
 class _BootstrapSplashState extends State<BootstrapSplash>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  AnimationController? _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat();
+    if (!DevicePerf.isConstrainedDevice) {
+      _controller = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 3),
+      )..repeat();
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -36,6 +39,55 @@ class _BootstrapSplashState extends State<BootstrapSplash>
   Widget build(BuildContext context) {
     final textPrimary = const Color(0xFF1B2735);
     final textSecondary = const Color(0xFF73849A);
+    final c = _controller;
+    if (c == null) {
+      return Scaffold(
+        body: DecoratedBox(
+          decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE3EAF2)),
+                  ),
+                  child: const AppLogo(size: 96),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  'Golden Mole User',
+                  style: GoogleFonts.kanit(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: textPrimary,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Construction Management',
+                  style: GoogleFonts.kanit(fontSize: 13.5, color: textSecondary),
+                ),
+                const SizedBox(height: 24),
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.6,
+                    color: Color(0xFF2D8CFF),
+                    backgroundColor: Color(0xFFDCE6F2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
@@ -43,7 +95,7 @@ class _BootstrapSplashState extends State<BootstrapSplash>
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter: _SplashGraphicPainter(progress: _controller),
+                painter: _SplashGraphicPainter(progress: c),
               ),
             ),
             Center(
@@ -51,10 +103,10 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AnimatedBuilder(
-                    animation: _controller,
+                    animation: c,
                     builder: (context, child) {
                       final pulse =
-                          1.0 + 0.02 * math.sin(_controller.value * 2 * math.pi);
+                          1.0 + 0.02 * math.sin(c.value * 2 * math.pi);
                       return Transform.scale(scale: pulse, child: child);
                     },
                     child: Container(

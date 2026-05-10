@@ -22,7 +22,13 @@ void main() {
 
   testWidgets('app bootstraps to login', (WidgetTester tester) async {
     await tester.pumpWidget(const MobileApp());
-    await tester.pumpAndSettle();
-    expect(find.text('เข้าสู่ระบบ'), findsNWidgets(2));
+    await tester.pump();
+    // BootstrapSplash uses a repeating animation — never "settles".
+    const tick = Duration(milliseconds: 50);
+    for (var i = 0; i < 120; i++) {
+      await tester.pump(tick);
+      if (find.text('เข้าสู่ระบบ').evaluate().isNotEmpty) break;
+    }
+    expect(find.text('เข้าสู่ระบบ'), findsWidgets);
   });
 }

@@ -13,6 +13,7 @@ import '../services/employee_service.dart';
 import '../services/project_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/device_perf.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/page_loading_view.dart';
 import '../widgets/record_module_card.dart';
@@ -650,9 +651,14 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         .platformDispatcher
         .accessibilityFeatures
         .disableAnimations;
+    final lowSpec = DevicePerf.isConstrainedDevice;
     _entranceController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: _reduceMotion ? 165 : 340),
+      duration: Duration(
+        milliseconds: _reduceMotion
+            ? 120
+            : (lowSpec ? 220 : 340),
+      ),
     );
     _entranceController.addStatusListener(_onEntranceStatus);
     _entranceController.forward();
@@ -719,6 +725,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       curve: const Interval(0.16, 0.78, curve: Curves.easeOutCubic),
     );
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final constrained = DevicePerf.isConstrainedDevice;
+    final cacheRows = constrained ? 1.0 : (isAndroid ? 3.5 : 2.0);
 
     final dailyMenuPanel = DecoratedBox(
       decoration: BoxDecoration(
@@ -775,7 +783,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final topInset = menuScrolls
                   ? 6.0
                   : ((availH - contentHeight) / 2).clamp(0.0, 24.0);
-              final cacheRows = isAndroid ? 3.5 : 2.0;
               return RepaintBoundary(
                 child: GridView.builder(
                   padding: EdgeInsets.fromLTRB(

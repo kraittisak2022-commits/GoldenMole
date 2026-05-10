@@ -10,6 +10,7 @@ import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/session_service.dart';
+import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
 import 'widgets/bootstrap_splash.dart';
 
@@ -29,6 +30,8 @@ Future<void> _preloadKanitFonts() async {
 Future<void> main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+
+    await DevicePerf.init();
 
     // Load environment variables
     await dotenv.load(fileName: '.env');
@@ -170,7 +173,9 @@ class _MobileAppState extends State<MobileApp> {
       title: 'Construction Management Mobile',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
-      scrollBehavior: const _AppScrollBehavior(),
+      scrollBehavior: DevicePerf.isConstrainedDevice
+          ? const _AppScrollBehaviorConstrained()
+          : const _AppScrollBehavior(),
       theme: appTheme,
       darkTheme: appTheme,
       supportedLocales: const [
@@ -221,6 +226,28 @@ class _AppScrollBehavior extends MaterialScrollBehavior {
       case TargetPlatform.android:
       case TargetPlatform.iOS:
       case TargetPlatform.fuchsia:
+        return const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        );
+      default:
+        return super.getScrollPhysics(context);
+    }
+  }
+}
+
+/// เครื่อง RAM/CPU จำกัด: บน Android ใช้ Clamping ลดงาน physics ขณะเลื่อน
+class _AppScrollBehaviorConstrained extends MaterialScrollBehavior {
+  const _AppScrollBehaviorConstrained();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    switch (Theme.of(context).platform) {
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+        return const AlwaysScrollableScrollPhysics(
+          parent: ClampingScrollPhysics(),
+        );
+      case TargetPlatform.iOS:
         return const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         );

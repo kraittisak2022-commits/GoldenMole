@@ -49,3 +49,5 @@ npm run build
 2. **เปิด Row Level Security (RLS)** ใน Supabase Dashboard สำหรับทุกตาราง
 3. **เก็บ Service Role Key เป็นความลับ** — ใช้เฉพาะฝั่ง backend เท่านั้น ห้ามใส่ใน frontend
 4. เมนู **จัดการแอดมิน** แสดงเฉพาะบัญชีที่มีบทบาท **SuperAdmin**
+
+รายละเอียดเชิง production (CI, RLS, checklist): ดู [`docs/PRODUCTION.md`](docs/PRODUCTION.md)

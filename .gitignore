@@ -27,3 +27,25 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# Playwright / local e2e output
+test-results/
+playwright-report/
+blob-report/
+
+# Flutter (mobile-flutter) — build & tool cache (do not commit)
+mobile-flutter/.dart_tool/
+mobile-flutter/build/
+mobile-flutter/**/build/
+mobile-flutter/.flutter-plugins
+mobile-flutter/.flutter-plugins-dependencies
+mobile-flutter/android/.gradle/
+mobile-flutter/android/app/.cxx/
+mobile-flutter/android/local.properties
+mobile-flutter/ios/Pods/
+mobile-flutter/ios/.symlinks/
+mobile-flutter/ios/Flutter/Flutter.podspec
+mobile-flutter/linux/flutter/ephemeral/
+mobile-flutter/macos/Flutter/ephemeral/
+mobile-flutter/windows/flutter/ephemeral/
+mobile-flutter/.env
