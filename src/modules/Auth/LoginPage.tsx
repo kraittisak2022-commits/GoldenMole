@@ -336,8 +336,8 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
                                     : `0 0 40px ${gold}20, 0 10px 30px rgba(0,0,0,0.3)`,
                                 border: darkMode ? '1px solid rgba(0,200,255,0.15)' : `1px solid ${gold}25`
                             }}>
-                            {appIcon.startsWith('http') || appIcon.startsWith('data:') ? (
-                                <img src={appIcon} alt="Logo" className="w-full h-full object-cover" />
+                            {appIcon.startsWith('http') || appIcon.startsWith('/') || appIcon.startsWith('data:') ? (
+                                <img src={appIcon} alt="Logo" className="w-full h-full object-contain p-1" />
                             ) : (
                                 <span className="text-3xl font-bold" style={{ color: darkMode ? '#00c8ff' : gold }}>{appIcon}</span>
                             )}

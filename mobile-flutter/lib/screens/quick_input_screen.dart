@@ -83,6 +83,9 @@ String _normalizeLaborWashHomeKey(String key) {
   }
 }
 
+/// เลือกบันทึกรายจ่ายสาธารณูปโภคหรือรายรับประจำวัน
+enum _IuEntryKind { expense, income }
+
 class _QuickInputScreenState extends State<QuickInputScreen>
     with SingleTickerProviderStateMixin {
   static const List<_LaborWorkCategory> _laborCategories = [
@@ -198,6 +201,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _incomeQtyController = TextEditingController();
   final _incomeUnitPriceController = TextEditingController();
   final _incomeTotalController = TextEditingController();
+  static const String _iuOtherSentinel = '__other__';
+  _IuEntryKind? _iuEntryKind;
+  String? _iuExpenseChoice;
+  String? _iuIncomeChoice;
+  List<String> _appExpenseTypes = const [];
+  List<String> _appIncomeTypes = const [];
   final Set<String> _selectedLeaveEmpIds = {};
   final Set<String> _selectedAdvanceEmpIds = {};
   String? _laborLeaveTxId;
@@ -351,6 +360,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
     _loadEmployees();
     _loadAppCars();
+    _loadAppExpenseIncomeTypes();
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
     _loadMacroWorkSuggestions();
@@ -506,6 +516,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _dailyEventType = 'info';
       _dailyEventPriority = 'normal';
     } else if (_isIncomeUtilitiesEntryMode) {
+      _iuEntryKind = null;
+      _iuExpenseChoice = null;
+      _iuIncomeChoice = null;
       _utilitiesTypeController.clear();
       _utilitiesExtraController.clear();
       _utilitiesAmountController.clear();
@@ -519,7 +532,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
-  Future<void> _loadModuleTransactions() async {
+  Future<void> _loadModuleTransactions({
+    bool preserveIncomeUtilitiesForm = false,
+  }) async {
     final cat = widget.initialCategory?.trim();
     if (!mounted || cat == null || cat.isEmpty) return;
     setState(() {
@@ -527,15 +542,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _moduleHistoryVisible = false;
     });
     _clearHydrationSlots();
-    _clearModuleFormFields();
+    if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
+      _clearModuleFormFields();
+    }
     try {
       final ymd = _quickYmd(_selectedDate);
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: false)
           : await widget.service.fetchTransactionsForDate(ymd);
-      final matched = rows
-          .where((t) => transactionMatchesDailyModule(t, ymd, cat))
-          .toList();
+      final matched = cat == 'รายจ่ายรายรับ'
+          ? rows
+                .where(
+                  (t) =>
+                      t.date.trim() == ymd.trim() &&
+                      (transactionIsUtilitiesExpense(t) ||
+                          transactionIsWizardDailyIncome(t)),
+                )
+                .toList()
+          : rows
+                .where((t) => transactionMatchesDailyModule(t, ymd, cat))
+                .toList();
       matched.sort((a, b) {
         final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -1180,6 +1206,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } catch (_) {}
   }
 
+  Future<void> _loadAppExpenseIncomeTypes() async {
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('app_settings')
+          .select('expense_types, income_types')
+          .eq('id', 'default')
+          .limit(1);
+      if (rows.isEmpty) return;
+      final exp = rows.first['expense_types'];
+      final inc = rows.first['income_types'];
+      final expenseList = <String>[
+        if (exp is List)
+          ...exp.map((e) => '$e').map((s) => s.trim()).where((s) => s.isNotEmpty),
+      ];
+      final incomeList = <String>[
+        if (inc is List)
+          ...inc.map((e) => '$e').map((s) => s.trim()).where((s) => s.isNotEmpty),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _appExpenseTypes = expenseList;
+        _appIncomeTypes = incomeList;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _loadOtSuggestions() async {
     try {
       final txs = await widget.service.fetchTransactions();
@@ -1465,6 +1518,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required Future<void> Function() body,
     required String successMessage,
     bool requireSignature = true,
+    bool stayOnPage = false,
   }) async {
     if (!mounted) return;
     if (requireSignature) {
@@ -1483,7 +1537,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!mounted) return;
       _dismissSavingPopup();
       savingDialogOpen = false;
-      await _showSuccessPopupAndPopToHome(successMessage);
+      if (stayOnPage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage, style: GoogleFonts.kanit())),
+        );
+        await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
+      } else {
+        await _showSuccessPopupAndPopToHome(successMessage);
+      }
     } catch (error) {
       if (savingDialogOpen && mounted) _dismissSavingPopup();
       if (mounted) {
@@ -1536,6 +1597,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (_isDailyEventMode) {
       await _saveDailyEventEntry();
+      return;
+    }
+    if (_isIncomeUtilitiesEntryMode) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ใช้ปุ่มบันทึกในฟอร์มรายจ่ายหรือรายรับด้านล่าง',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
       return;
     }
     if (!_formKey.currentState!.validate()) return;
@@ -2540,6 +2613,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildModuleHistorySection() {
+    if (_isIncomeUtilitiesEntryMode) return const SizedBox.shrink();
     if (_moduleDayLoading) return const SizedBox.shrink();
 
     final n = _moduleDayTransactions.length;
@@ -3109,16 +3183,68 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (mounted) setState(() {});
   }
 
+  void _clearIncomeUtilitiesFormValuesOnly() {
+    setState(() {
+      _iuExpenseChoice = null;
+      _iuIncomeChoice = null;
+      _utilitiesTypeController.clear();
+      _utilitiesExtraController.clear();
+      _utilitiesAmountController.clear();
+      _incomeTypeController.clear();
+      _incomeQtyController.clear();
+      _incomeUnitPriceController.clear();
+      _incomeTotalController.clear();
+    });
+  }
+
+  String _effectiveUtilitySubcategory() {
+    final choice = _iuExpenseChoice?.trim();
+    if (choice == null || choice.isEmpty) return '';
+    if (choice == _iuOtherSentinel) {
+      return _utilitiesTypeController.text.trim();
+    }
+    return choice;
+  }
+
+  List<String> _incomeTypeDropdownOptions() {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final t in _appIncomeTypes) {
+      if (seen.add(t)) out.add(t);
+    }
+    for (final tx in _moduleDayTransactions) {
+      if (!transactionIsWizardDailyIncome(tx)) continue;
+      final d = _stripRecorderSuffix(tx.description).trim();
+      if (d.isEmpty || !seen.add(d)) continue;
+      out.add(d);
+    }
+    out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return out;
+  }
+
+  String _effectiveIncomeDescription() {
+    final choice = _iuIncomeChoice?.trim();
+    if (choice == null || choice.isEmpty) return '';
+    if (choice == _iuOtherSentinel) {
+      return _incomeTypeController.text.trim();
+    }
+    return choice;
+  }
+
   Future<void> _saveUtilitiesExpense() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกสาธารณูปโภคสำเร็จ',
+      stayOnPage: true,
       body: () async {
-        final sub = _utilitiesTypeController.text.trim();
+        final sub = _effectiveUtilitySubcategory();
         final extra = _utilitiesExtraController.text.trim();
         final amt =
             double.tryParse(_utilitiesAmountController.text.trim()) ?? 0;
+        if (_iuExpenseChoice == null || _iuExpenseChoice!.trim().isEmpty) {
+          throw 'กรุณาเลือกประเภทค่าใช้จ่าย';
+        }
         if (sub.isEmpty) {
-          throw 'กรุณาระบุประเภทค่าใช้จ่าย (เช่น ไฟฟ้า น้ำ)';
+          throw 'กรุณาระบุประเภท (เลือกจากรายการหรือระบุเมื่อเลือกอื่นๆ)';
         }
         if (amt <= 0) {
           throw 'กรุณาระบุจำนวนเงินให้ถูกต้อง';
@@ -3139,11 +3265,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         );
         if (!mounted) return;
-        setState(() {
-          _utilitiesTypeController.clear();
-          _utilitiesExtraController.clear();
-          _utilitiesAmountController.clear();
-        });
+        _clearIncomeUtilitiesFormValuesOnly();
       },
     );
   }
@@ -3151,16 +3273,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveWizardIncomeEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกรายรับสำเร็จ',
+      stayOnPage: true,
       body: () async {
-        final incomeType = _incomeTypeController.text.trim();
+        final incomeType = _effectiveIncomeDescription();
         final total =
             double.tryParse(_incomeTotalController.text.trim()) ?? 0;
         final qtyRaw = _incomeQtyController.text.trim();
         final priceRaw = _incomeUnitPriceController.text.trim();
         final qty = double.tryParse(qtyRaw);
         final unitPrice = double.tryParse(priceRaw);
+        if (_iuIncomeChoice == null || _iuIncomeChoice!.trim().isEmpty) {
+          throw 'กรุณาเลือกประเภทรายรับ';
+        }
         if (incomeType.isEmpty) {
-          throw 'กรุณาระบุประเภทรายรับ';
+          throw 'กรุณาระบุประเภทรายรับ (เลือกจากรายการหรือพิมพ์เมื่อเลือกอื่นๆ)';
         }
         if (total <= 0) {
           throw 'กรุณาระบุยอดรวม (บาท) ให้ถูกต้อง';
@@ -3181,12 +3307,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         );
         if (!mounted) return;
-        setState(() {
-          _incomeTypeController.clear();
-          _incomeQtyController.clear();
-          _incomeUnitPriceController.clear();
-          _incomeTotalController.clear();
-        });
+        _clearIncomeUtilitiesFormValuesOnly();
       },
     );
   }
@@ -3195,6 +3316,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const indigo = Color(0xFF3949AB);
     const teal = Color(0xFF00897B);
     const green = Color(0xFF2E7D32);
+
+    final expenseOpts = List<String>.from(_appExpenseTypes);
+    final incomeOpts = _incomeTypeDropdownOptions();
+
+    String expenseDropdownValue() {
+      final c = _iuExpenseChoice;
+      if (c == null || c.isEmpty) return '';
+      if (c == _iuOtherSentinel) return _iuOtherSentinel;
+      if (expenseOpts.contains(c)) return c;
+      return '';
+    }
+
+    String incomeDropdownValue() {
+      final c = _iuIncomeChoice;
+      if (c == null || c.isEmpty) return '';
+      if (c == _iuOtherSentinel) return _iuOtherSentinel;
+      if (incomeOpts.contains(c)) return c;
+      return '';
+    }
 
     Widget dateRow() {
       return Material(
@@ -3244,6 +3384,128 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
+    Widget kindTile({
+      required _IuEntryKind kind,
+      required String title,
+      required String subtitle,
+      required IconData icon,
+      required Color accent,
+    }) {
+      final sel = _iuEntryKind == kind;
+      return Material(
+        color: sel ? accent.withValues(alpha: 0.12) : const Color(0xFFF5F7FB),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() => _iuEntryKind = kind),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: accent, size: 26),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.kanit(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1D2736),
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.kanit(
+                          fontSize: 12,
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (sel)
+                  Icon(Icons.check_circle_rounded, color: accent, size: 22),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    List<Widget> todayRows() {
+      final ymd = _quickYmd(_selectedDate);
+      final list = _moduleDayTransactions.where((t) {
+        if (t.date.trim() != ymd.trim()) return false;
+        if (_iuEntryKind == null) {
+          return transactionIsUtilitiesExpense(t) ||
+              transactionIsWizardDailyIncome(t);
+        }
+        if (_iuEntryKind == _IuEntryKind.expense) {
+          return transactionIsUtilitiesExpense(t);
+        }
+        return transactionIsWizardDailyIncome(t);
+      }).toList();
+      list.sort((a, b) {
+        final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return tb.compareTo(ta);
+      });
+      if (list.isEmpty) {
+        return [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              'ยังไม่มีรายการในวันนี้ (บันทึกได้หลายรายการ)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontSize: 13.5,
+                color: Colors.black45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ];
+      }
+      return [
+        for (final t in list.take(14)) ...[
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            title: Text(
+              _stripRecorderSuffix(t.description),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+            subtitle: Text(
+              '${transactionIsUtilitiesExpense(t) ? 'รายจ่าย' : 'รายรับ'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
+              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+          const Divider(height: 1),
+        ],
+        if (list.length > 14)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '… และอีก ${list.length - 14} รายการ',
+              style: GoogleFonts.kanit(
+                fontSize: 12.5,
+                color: Colors.black45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ];
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3256,9 +3518,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             color: const Color(0xFF1A237E),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Text(
-          'ตรงกับเว็บแอป: Utilities (รายจ่าย) และ Daily Wizard รายรับประจำวัน',
+          'เลือกรายจ่ายหรือรายรับก่อน แล้วกรอกฟอร์ม · ประเภทดึงจากตั้งค่าเว็บ (สาธารณูปโภค / รายรับ) และช่วยกรอกจากประวัติ',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
             fontSize: 12.5,
@@ -3269,227 +3531,336 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ),
         const SizedBox(height: 14),
         dateRow(),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            const Icon(Icons.bolt_outlined, color: teal, size: 24),
-            const SizedBox(width: 8),
-            Text(
-              'สาธารณูปโภค (รายจ่าย)',
-              style: GoogleFonts.kanit(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1A237E),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _utilitiesTypeController,
-          decoration: deco('ประเภทค่าใช้จ่าย', Icons.category_outlined),
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1D2A3A),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _utilitiesExtraController,
-          decoration: deco('รายละเอียดเพิ่ม (ไม่บังคับ)', Icons.notes_outlined),
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1D2A3A),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _utilitiesAmountController,
-          decoration: deco('จำนวนเงิน (บาท)', Icons.attach_money_outlined),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1D2A3A),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-        _SmoothPressable(
-          enabled: !_saving,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(
-                colors: [teal.withValues(alpha: 0.92), const Color(0xFF00695C)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: teal.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _saveUtilitiesExpense,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save_alt_rounded, color: Colors.white),
-              label: Text(
-                _saving ? 'กำลังบันทึก...' : 'บันทึกสาธารณูปโภค',
-                style: GoogleFonts.kanit(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                minimumSize: const Size.fromHeight(52),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 22),
-        Row(
-          children: [
-            Icon(Icons.trending_up_rounded, color: green, size: 26),
-            const SizedBox(width: 8),
-            Text(
-              'รายรับประจำวัน (รายรับ)',
-              style: GoogleFonts.kanit(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1A237E),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _incomeTypeController,
-          decoration: deco('ประเภทรายรับ', Icons.label_outline_rounded),
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1D2A3A),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
-              child: TextField(
-                controller: _incomeQtyController,
-                decoration: deco('จำนวน (ไม่บังคับ)', Icons.numbers_outlined),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: GoogleFonts.kanit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1D2A3A),
-                ),
-                onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+              child: kindTile(
+                kind: _IuEntryKind.expense,
+                title: 'รายจ่าย',
+                subtitle: 'สาธารณูปโภค',
+                icon: Icons.south_west_rounded,
+                accent: teal,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: TextField(
-                controller: _incomeUnitPriceController,
-                decoration: deco(
-                  'ราคาต่อหน่วย (ไม่บังคับ)',
-                  Icons.price_change_outlined,
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: GoogleFonts.kanit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1D2A3A),
-                ),
-                onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+              child: kindTile(
+                kind: _IuEntryKind.income,
+                title: 'รายรับ',
+                subtitle: 'รายรับประจำวัน',
+                icon: Icons.north_east_rounded,
+                accent: green,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _incomeTotalController,
-          decoration: deco('ยอดรวม (บาท)', Icons.payments_outlined),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1D2A3A),
+        if (_iuEntryKind == null) ...[
+          const SizedBox(height: 18),
+          Text(
+            'แตะเลือก «รายจ่าย» หรือ «รายรับ» เพื่อแสดงฟอร์มกรอก',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              color: const Color(0xFF546E7A),
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-        _SmoothPressable(
-          enabled: !_saving,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(
-                colors: [
-                  green.withValues(alpha: 0.95),
-                  const Color(0xFF1B5E20),
+        ],
+        if (_iuEntryKind == _IuEntryKind.expense) ...[
+          const SizedBox(height: 18),
+          Text(
+            'สาธารณูปโภค',
+            style: GoogleFonts.kanit(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A237E),
+            ),
+          ),
+          if (expenseOpts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Text(
+                'ยังไม่มีรายการประเภทในเว็บ (ตั้งค่า → สาธารณูปโภค → ประเภทค่าใช้จ่าย) — ใช้ «อื่นๆ» ด้านล่าง',
+                style: GoogleFonts.kanit(
+                  fontSize: 12.5,
+                  color: const Color(0xFFB45309),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            // ignore: deprecated_member_use — ต้องสะท้อน state หลังบันทึก/โหลด
+            value: expenseDropdownValue().isEmpty ? null : expenseDropdownValue(),
+            isExpanded: true,
+            decoration: deco('ประเภทค่าใช้จ่าย', Icons.category_outlined),
+            hint: Text('— เลือกประเภท —', style: GoogleFonts.kanit()),
+            items: [
+              ...expenseOpts.map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(e, style: GoogleFonts.kanit(), overflow: TextOverflow.ellipsis),
+                ),
+              ),
+              DropdownMenuItem(
+                value: _iuOtherSentinel,
+                child: Text('อื่นๆ (พิมพ์เอง)', style: GoogleFonts.kanit()),
+              ),
+            ],
+            onChanged: (v) => setState(() => _iuExpenseChoice = v),
+          ),
+          if (_iuExpenseChoice == _iuOtherSentinel) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _utilitiesTypeController,
+              decoration: deco('ระบุประเภท', Icons.edit_outlined),
+              style: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1D2A3A),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextField(
+            controller: _utilitiesExtraController,
+            decoration: deco('รายละเอียดเพิ่ม (ไม่บังคับ)', Icons.notes_outlined),
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1D2A3A),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _utilitiesAmountController,
+            decoration: deco('จำนวนเงิน (บาท)', Icons.attach_money_outlined),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1D2A3A),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  colors: [teal.withValues(alpha: 0.92), const Color(0xFF00695C)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: teal.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
                 ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: green.withValues(alpha: 0.32),
-                  blurRadius: 16,
-                  offset: const Offset(0, 5),
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveUtilitiesExpense,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_alt_rounded, color: Colors.white),
+                label: Text(
+                  _saving ? 'กำลังบันทึก...' : 'บันทึกรายจ่าย (เพิ่มรายการได้หลายครั้ง)',
+                  style: GoogleFonts.kanit(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
-              ],
-            ),
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _saveWizardIncomeEntry,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.savings_outlined, color: Colors.white),
-              label: Text(
-                _saving ? 'กำลังบันทึก...' : 'บันทึกรายรับประจำวัน',
-                style: GoogleFonts.kanit(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  minimumSize: const Size.fromHeight(52),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                minimumSize: const Size.fromHeight(52),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               ),
             ),
           ),
+        ],
+        if (_iuEntryKind == _IuEntryKind.income) ...[
+          const SizedBox(height: 18),
+          Text(
+            'รายรับประจำวัน',
+            style: GoogleFonts.kanit(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A237E),
+            ),
+          ),
+          if (_appIncomeTypes.isEmpty && incomeOpts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Text(
+                'ยังไม่มีประเภทรายรับในเว็บ — เลือก «อื่นๆ» แล้วพิมพ์ประเภท',
+                style: GoogleFonts.kanit(
+                  fontSize: 12.5,
+                  color: const Color(0xFFB45309),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            // ignore: deprecated_member_use — ต้องสะท้อน state หลังบันทึก/โหลด
+            value: incomeDropdownValue().isEmpty ? null : incomeDropdownValue(),
+            isExpanded: true,
+            decoration: deco('ประเภทรายรับ', Icons.label_outline_rounded),
+            hint: Text('— เลือกหรือใช้จากประวัติ —', style: GoogleFonts.kanit()),
+            items: [
+              ...incomeOpts.map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(e, style: GoogleFonts.kanit(), overflow: TextOverflow.ellipsis),
+                ),
+              ),
+              DropdownMenuItem(
+                value: _iuOtherSentinel,
+                child: Text('อื่นๆ (พิมพ์เอง)', style: GoogleFonts.kanit()),
+              ),
+            ],
+            onChanged: (v) => setState(() => _iuIncomeChoice = v),
+          ),
+          if (_iuIncomeChoice == _iuOtherSentinel) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _incomeTypeController,
+              decoration: deco('ระบุประเภทรายรับ', Icons.edit_outlined),
+              style: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1D2A3A),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _incomeQtyController,
+                  decoration: deco('จำนวน (ไม่บังคับ)', Icons.numbers_outlined),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: GoogleFonts.kanit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1D2A3A),
+                  ),
+                  onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _incomeUnitPriceController,
+                  decoration: deco(
+                    'ราคาต่อหน่วย (ไม่บังคับ)',
+                    Icons.price_change_outlined,
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: GoogleFonts.kanit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1D2A3A),
+                  ),
+                  onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _incomeTotalController,
+            decoration: deco('ยอดรวม (บาท)', Icons.payments_outlined),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1D2A3A),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  colors: [
+                    green.withValues(alpha: 0.95),
+                    const Color(0xFF1B5E20),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: green.withValues(alpha: 0.32),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveWizardIncomeEntry,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.savings_outlined, color: Colors.white),
+                label: Text(
+                  _saving ? 'กำลังบันทึก...' : 'บันทึกรายรับ (เพิ่มรายการได้หลายครั้ง)',
+                  style: GoogleFonts.kanit(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  minimumSize: const Size.fromHeight(52),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        Text(
+          'รายการวันนี้',
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1A237E),
+          ),
         ),
+        const SizedBox(height: 6),
+        ...todayRows(),
       ],
     );
   }

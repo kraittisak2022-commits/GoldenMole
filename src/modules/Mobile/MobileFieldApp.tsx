@@ -284,8 +284,8 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 darkMode ? 'bg-blue-600' : 'bg-blue-600'
                             }`}
                         >
-                            {appIcon.startsWith('http') || appIcon.startsWith('data:') ? (
-                                <img src={appIcon} alt={settings.appName} className="h-full w-full object-cover" />
+                            {appIcon.startsWith('http') || appIcon.startsWith('/') || appIcon.startsWith('data:') ? (
+                                <img src={appIcon} alt={settings.appName} className="h-full w-full object-contain p-0.5" />
                             ) : (
                                 <span className="text-lg font-black text-white">{appIcon}</span>
                             )}

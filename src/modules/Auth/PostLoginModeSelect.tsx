@@ -52,8 +52,8 @@ const PostLoginModeSelect = ({
                             darkMode ? 'bg-white/5 ring-1 ring-amber-500/30' : 'bg-white ring-1 ring-stone-200'
                         }`}
                     >
-                        {iconSrc.startsWith('http') || iconSrc.startsWith('data:') ? (
-                            <img src={iconSrc} alt="" className="h-full w-full object-cover" />
+                        {iconSrc.startsWith('http') || iconSrc.startsWith('/') || iconSrc.startsWith('data:') ? (
+                            <img src={iconSrc} alt="" className="h-full w-full object-contain p-1" />
                         ) : (
                             <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">{iconSrc}</span>
                         )}

@@ -20,7 +20,6 @@ class AppLogo extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
       ),
     );
   }
