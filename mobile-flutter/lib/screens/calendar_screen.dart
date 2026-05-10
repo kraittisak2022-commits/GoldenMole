@@ -258,9 +258,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) {
-        var sel =
-            map[mondayStr] ??
-            WeeklyOffCalendarStore.defaultOffWeekday;
+        var sel = map[mondayStr] ?? WeeklyOffCalendarStore.defaultOffWeekday;
         return StatefulBuilder(
           builder: (context, setSt) {
             return Padding(
@@ -339,7 +337,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       );
                       _reload();
                     },
-                    child: Text('บันทึก', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+                    child: Text(
+                      'บันทึก',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ],
               ),
@@ -578,6 +579,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final y = _monthCursor.year;
     final m = _monthCursor.month;
     final monthLabel = _formatThaiMonthYear(_monthCursor);
+    final selectedLabel =
+        '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -592,9 +595,41 @@ class _CalendarScreenState extends State<CalendarScreen> {
           scrolledUnderElevation: 0,
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          title: Text(
-            'ปฏิทิน',
-            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+          titleSpacing: 12,
+          centerTitle: false,
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  monthLabel,
+                  style: GoogleFonts.kanit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1A1A1A),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                tooltip: 'เดือนก่อน',
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() {
+                  _monthCursor = DateTime(y, m - 1, 1);
+                }),
+                icon: const Icon(Icons.chevron_left, color: Color(0xFF5C6470)),
+              ),
+              IconButton(
+                tooltip: 'เดือนถัดไป',
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() {
+                  _monthCursor = DateTime(y, m + 1, 1);
+                }),
+                icon: const Icon(Icons.chevron_right, color: Color(0xFF5C6470)),
+              ),
+            ],
           ),
           actions: [
             IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
@@ -623,97 +658,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
               data.employees,
               data.weeklyOffByMonday,
             );
-            final selectedLabel =
-                '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
             final bottomFabClearance =
-                MediaQuery.of(context).padding.bottom + 72.0;
+                MediaQuery.of(context).padding.bottom + 42.0;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Material(
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 2, 4, 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                monthLabel,
-                                style: GoogleFonts.kanit(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF1A1A1A),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'เดือนก่อน',
-                              constraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 40,
-                              ),
-                              padding: EdgeInsets.zero,
-                              onPressed: () => setState(() {
-                                _monthCursor = DateTime(y, m - 1, 1);
-                              }),
-                              icon: const Icon(
-                                Icons.chevron_left,
-                                color: Color(0xFF5C6470),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'เดือนถัดไป',
-                              constraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 40,
-                              ),
-                              padding: EdgeInsets.zero,
-                              onPressed: () => setState(() {
-                                _monthCursor = DateTime(y, m + 1, 1);
-                              }),
-                              icon: const Icon(
-                                Icons.chevron_right,
-                                color: Color(0xFF5C6470),
-                              ),
-                            ),
-                          ],
-                        ),
                         Text(
                           'เลือก: $selectedLabel',
                           style: GoogleFonts.kanit(
-                            color: Colors.black54,
+                            color: const Color(0xFF1A1A1A),
                             fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 6),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          child: Row(
-                            children: [
-                              _legendChip(
-                                color: const Color(0xFFE57373),
-                                label: 'หยุดรายสัปดาห์ · บันทึกวันหยุด',
-                              ),
-                              const SizedBox(width: 6),
-                              _legendChip(
-                                color: const Color(0xFF5C7C9F),
-                                label: 'นักขัตฤกษ์ (ประมาณการ)',
-                              ),
-                              const SizedBox(width: 6),
-                              _legendChip(
-                                color: const Color(0xFFFFB74D),
-                                label: 'ลางาน',
-                              ),
-                            ],
-                          ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 1,
+                          height: 22,
+                          color: const Color(0xFFE0E4E8),
+                        ),
+                        const SizedBox(width: 10),
+                        _legendChip(
+                          color: const Color(0xFFE57373),
+                          label: 'หยุดรายสัปดาห์ · บันทึกวันหยุด',
+                        ),
+                        const SizedBox(width: 6),
+                        _legendChip(
+                          color: const Color(0xFF5C7C9F),
+                          label: 'นักขัตฤกษ์ (ประมาณการ)',
+                        ),
+                        const SizedBox(width: 6),
+                        _legendChip(
+                          color: const Color(0xFFFFB74D),
+                          label: 'ลางาน',
                         ),
                       ],
                     ),
@@ -725,103 +710,117 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: Color(0xFFE8ECF0),
                 ),
                 Expanded(
-                  child: ColoredBox(
-                    color: Colors.white,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
-                          child: Row(
-                            children: [
-                              for (final d in const [
-                                'อา.',
-                                'จ.',
-                                'อ.',
-                                'พ.',
-                                'พฤ.',
-                                'ศ.',
-                                'ส.',
-                              ])
-                                Expanded(
-                                  child: Center(
-                                    child: Text(
-                                      d,
-                                      textAlign: TextAlign.center,
-                                      maxLines: 1,
-                                      style: GoogleFonts.kanit(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                        color: const Color(0xFF6B7280),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: ColoredBox(
+                      color: Colors.white,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                            child: Row(
+                              children: [
+                                for (final d in const [
+                                  'อา.',
+                                  'จ.',
+                                  'อ.',
+                                  'พ.',
+                                  'พฤ.',
+                                  'ศ.',
+                                  'ส.',
+                                ])
+                                  Expanded(
+                                    child: Center(
+                                      child: Text(
+                                        d,
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        style: GoogleFonts.kanit(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
+                                          color: const Color(0xFF6B7280),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const Divider(height: 1, color: Color(0xFFF0F2F5)),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(bottom: bottomFabClearance),
-                            child: LayoutBuilder(
-                              builder: (context, gridConstraints) {
-                                const gap = 4.0;
-                                const pad = 3.0;
-                                final rows =
-                                    (days.length / 7).ceil().clamp(1, 12);
-                                final innerW =
-                                    gridConstraints.maxWidth - pad * 2;
-                                final innerH =
-                                    gridConstraints.maxHeight - pad * 2;
-                                if (innerW <= 8 || innerH <= 8) {
-                                  return const SizedBox.shrink();
-                                }
-                                final cellH =
-                                    (innerH - gap * (rows - 1)) / rows;
-
-                                return Padding(
-                                  padding: const EdgeInsets.all(pad),
-                                  child: GridView.builder(
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 7,
-                                      mainAxisSpacing: gap,
-                                      crossAxisSpacing: gap,
-                                      mainAxisExtent: cellH,
-                                    ),
-                                    itemCount: days.length,
-                                    itemBuilder: (context, index) {
-                                      final day = days[index];
-                                      if (day == null) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      final d = _dateFromYmd(day.dateStr);
-                                      final isSelected =
-                                          d.year == _selectedDate.year &&
-                                          d.month == _selectedDate.month &&
-                                          d.day == _selectedDate.day;
-                                      final now = DateTime.now();
-                                      final isToday =
-                                          d.year == now.year &&
-                                          d.month == now.month &&
-                                          d.day == now.day;
-                                      return _DayCell(
-                                        day: day,
-                                        selected: isSelected,
-                                        today: isToday,
-                                        onTap: () => _pickDay(day),
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
+                              ],
                             ),
                           ),
-                        ),
-                      ],
+                          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                bottom: bottomFabClearance,
+                              ),
+                              child: LayoutBuilder(
+                                builder: (context, gridConstraints) {
+                                  const mainGap = 3.0;
+                                  const crossGap = 6.0;
+                                  const padH = 8.0;
+                                  const padTop = 0.0;
+                                  final rows = (days.length / 7).ceil().clamp(
+                                    1,
+                                    12,
+                                  );
+                                  final innerW =
+                                      gridConstraints.maxWidth - padH * 2;
+                                  final innerH =
+                                      gridConstraints.maxHeight - padTop;
+                                  if (innerW <= 8 || innerH <= 8) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final cellH =
+                                      (innerH - mainGap * (rows - 1)) / rows;
+
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      padH,
+                                      padTop,
+                                      padH,
+                                      0,
+                                    ),
+                                    child: GridView.builder(
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      gridDelegate:
+                                          SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 7,
+                                            mainAxisSpacing: mainGap,
+                                            crossAxisSpacing: crossGap,
+                                            mainAxisExtent: cellH,
+                                          ),
+                                      itemCount: days.length,
+                                      itemBuilder: (context, index) {
+                                        final day = days[index];
+                                        if (day == null) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final d = _dateFromYmd(day.dateStr);
+                                        final isSelected =
+                                            d.year == _selectedDate.year &&
+                                            d.month == _selectedDate.month &&
+                                            d.day == _selectedDate.day;
+                                        final now = DateTime.now();
+                                        final isToday =
+                                            d.year == now.year &&
+                                            d.month == now.month &&
+                                            d.day == now.day;
+                                        return _DayCell(
+                                          day: day,
+                                          selected: isSelected,
+                                          today: isToday,
+                                          onTap: () => _pickDay(day),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -840,7 +839,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _legendChip({required Color color, required String label}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
@@ -850,7 +849,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         label,
         style: GoogleFonts.kanit(
           color: color,
-          fontSize: 12.5,
+          fontSize: 11.5,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -893,15 +892,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final dtPlain = DateTime(year, month, d);
       final monKey = WeeklyOffCalendarStore.mondayKeyOf(dtPlain);
       final offWd =
-          weeklyOffByMonday[monKey] ??
-          WeeklyOffCalendarStore.defaultOffWeekday;
+          weeklyOffByMonday[monKey] ?? WeeklyOffCalendarStore.defaultOffWeekday;
       final weeklyOffLine = dtPlain.weekday == offWd
           ? _companyWeeklyHolidayLine(offWd)
           : null;
 
       final leaveRows = transactions.where((t) {
-        return isLaborLeaveRecord(t) &&
-            laborLeaveCoversCalendarDay(t, dateStr);
+        return isLaborLeaveRecord(t) && laborLeaveCoversCalendarDay(t, dateStr);
       }).toList();
       final leaveEmpIds = <String>{};
       for (final row in leaveRows) {
@@ -1032,8 +1029,7 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final strongOff =
         day.hasWeeklyOff || day.userHolidayDescriptions.isNotEmpty;
-    final thaiOnly =
-        day.thaiPublicHolidayNames.isNotEmpty && !strongOff;
+    final thaiOnly = day.thaiPublicHolidayNames.isNotEmpty && !strongOff;
     final hasLeave = day.leaveNames.isNotEmpty;
 
     Color borderColor;
@@ -1058,26 +1054,25 @@ class _DayCell extends StatelessWidget {
       borderW = 1;
     }
 
-    final cellBg =
-        selected
-            ? const Color(0xFFEFF6FF)
-            : strongOff
-            ? const Color(0xFFFFF5F5)
-            : thaiOnly
-            ? const Color(0xFFF7F9FC)
-            : Colors.white;
+    final cellBg = selected
+        ? const Color(0xFFEFF6FF)
+        : strongOff
+        ? const Color(0xFFFFF5F5)
+        : thaiOnly
+        ? const Color(0xFFF7F9FC)
+        : Colors.white;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.fromLTRB(5, 5, 5, 4),
+          padding: const EdgeInsets.fromLTRB(7, 7, 7, 6),
           decoration: BoxDecoration(
             color: cellBg,
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(width: borderW, color: borderColor),
           ),
           child: Column(
@@ -1087,21 +1082,20 @@ class _DayCell extends StatelessWidget {
                 children: [
                   if (today)
                     Container(
-                      width: 22,
-                      height: 22,
+                      width: 36,
+                      height: 36,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color:
-                            selected
-                                ? const Color(0xFF1565C0)
-                                : const Color(0xFF1A1A1A),
+                        color: selected
+                            ? const Color(0xFF1565C0)
+                            : const Color(0xFF1A1A1A),
                         shape: BoxShape.circle,
                       ),
                       child: Text(
                         '${day.day}',
                         style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16.5,
                           color: Colors.white,
                           height: 1,
                         ),
@@ -1111,17 +1105,17 @@ class _DayCell extends StatelessWidget {
                     Text(
                       '${day.day}',
                       style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        color:
-                            selected
-                                ? const Color(0xFF1565C0)
-                                : const Color(0xFF2C333A),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 19,
+                        height: 1.02,
+                        color: selected
+                            ? const Color(0xFF1565C0)
+                            : const Color(0xFF2C333A),
                       ),
                     ),
                 ],
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 5),
               if (strongOff) ...[
                 if (day.hasWeeklyOff)
                   Text(
@@ -1129,7 +1123,7 @@ class _DayCell extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
-                      fontSize: 9.5,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w600,
                       color: Colors.red.shade700,
                       height: 1.15,
@@ -1143,7 +1137,7 @@ class _DayCell extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
-                      fontSize: 9.5,
+                      fontSize: 10.5,
                       color: Colors.red.shade700,
                       height: 1.15,
                     ),
@@ -1155,7 +1149,7 @@ class _DayCell extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: FontWeight.w500,
                     color: _thaiHint,
                     height: 1.2,
@@ -1169,38 +1163,41 @@ class _DayCell extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
-                      fontSize: 8.5,
+                      fontSize: 9.5,
                       color: _thaiHint.withValues(alpha: 0.95),
                       height: 1.15,
                     ),
                   ),
                 ),
-              if (hasLeave)
+              if (day.leaveNames.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    'ลา ${day.leaveNames.length}',
-                    style: GoogleFonts.kanit(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.deepOrange.shade700,
-                    ),
-                  ),
-                ),
-              if (day.leaveNames.isNotEmpty)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 1),
-                    child: Text(
-                      day.leaveNames.take(2).join(', '),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.kanit(
-                        fontSize: 8.5,
-                        color: Colors.black54,
-                        height: 1.1,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ลา ${day.leaveNames.length}',
+                        style: GoogleFonts.kanit(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.deepOrange.shade700,
+                          height: 1.15,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          day.leaveNames.take(4).join(', '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.kanit(
+                            fontSize: 9.5,
+                            color: Colors.black54,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
