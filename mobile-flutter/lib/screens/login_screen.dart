@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -127,9 +128,18 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _errorMessage = e.message);
     } catch (e) {
       final raw = e.toString();
-      final detail = raw.contains('PostgrestException')
-          ? 'เชื่อมต่อฐานข้อมูล Supabase ไม่สำเร็จ — ตรวจ SUPABASE_URL / key ใน .env และสิทธิ์ RLS ตาราง admin_users'
-          : raw;
+      final String detail;
+      if (e is SocketException ||
+          raw.contains('SocketException') ||
+          raw.contains('Failed host lookup')) {
+        detail =
+            'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ — ตรวจสอบ Wi‑Fi หรือเน็ตมือถือ แล้วลองอีกครั้ง';
+      } else if (raw.contains('PostgrestException')) {
+        detail =
+            'เชื่อมต่อฐานข้อมูล Supabase ไม่สำเร็จ — ตรวจ SUPABASE_URL / key ใน .env และสิทธิ์ RLS ตาราง admin_users';
+      } else {
+        detail = raw;
+      }
       setState(() => _errorMessage = 'เข้าสู่ระบบไม่สำเร็จ: $detail');
     } finally {
       if (mounted) {
