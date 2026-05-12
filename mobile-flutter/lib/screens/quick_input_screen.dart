@@ -18,7 +18,6 @@ import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
-import '../utils/sand_drum_carryover.dart';
 
 class QuickInputScreen extends StatefulWidget {
   const QuickInputScreen({
@@ -117,6 +116,9 @@ String _normalizeSandDayKey(String raw) {
   return s;
 }
 
+bool _isDedicatedHomeSandRow(AppTransaction t) =>
+    t.description.contains('ทรายที่ล้างที่บ้าน');
+
 /// ถังล้างที่บ้านต่อวัน — สอดคล้องกับ `persistedSandHomeDrums` ใน `dailyStepRecorderUtils.ts`
 double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
   if (sandTxs.isEmpty) return 0;
@@ -125,6 +127,16 @@ double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
   bool isMachine(AppTransaction t) {
     final m = (t.sandMachineType ?? '').trim();
     return m == 'Old' || m == 'New';
+  }
+
+  final dedicatedHome = sandTxs.where(_isDedicatedHomeSandRow).toList();
+  if (dedicatedHome.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in dedicatedHome) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
   }
 
   final withMachine = sandTxs.where(isMachine).toList();
@@ -344,7 +356,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   double _homeSandAvailable = 0;
   double _homeSandBeforeToday = 0;
   double _homeSandTodayObtained = 0;
-  bool _homeWashAll = false;
+  /// ถังล้างที่บ้านที่บันทึกแล้วของวันที่เลือก — ใช้เมื่อช่องกรอกว่าง (สอดคล้องกับ `computeSandDrumStockSummary` บนเว็บ)
+  double _homeSandTodayHomeSaved = 0;
   final Set<String> _selectedLaborEmpIds = {};
   final Set<String> _laborPickedIds = {};
   final Map<String, Set<String>> _laborAssignments = {
@@ -692,7 +705,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } else if (_isHomeSandMode) {
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
-      _homeWashAll = false;
     } else if (_isVehicleTripMode) {
       _vehicleIdController.clear();
       _driverIdController.clear();
@@ -1499,27 +1511,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _refreshHomeSandStock() async {
     try {
       final rows = await widget.service.fetchTransactions();
-      List<Map<String, dynamic>> sandRoundAuditTrail = const [];
-      try {
-        final client = Supabase.instance.client;
-        final settingRows = await client
-            .from('app_settings')
-            .select('app_defaults')
-            .eq('id', 'default')
-            .limit(1);
-        if (settingRows.isNotEmpty) {
-          final ad = settingRows.first['app_defaults'];
-          if (ad is Map) {
-            final trail = ad['sandRoundAuditTrail'];
-            if (trail is List) {
-              sandRoundAuditTrail = trail
-                  .whereType<Map>()
-                  .map((e) => Map<String, dynamic>.from(e))
-                  .toList();
-            }
-          }
-        }
-      } catch (_) {}
       final byDay = <String, List<AppTransaction>>{};
       for (final t in rows) {
         if (t.category != 'DailyLog' || t.subCategory != 'Sand') continue;
@@ -1538,13 +1529,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         map[e.key] = rec;
       }
       final selected = _quickYmd(_selectedDate);
-      final epochStart =
-          computeSandDrumCarryoverEpochStart(selected, rows, sandRoundAuditTrail: sandRoundAuditTrail);
       final days = map.keys.toList()..sort();
       var before = 0.0;
       for (final d in days) {
         if (d.compareTo(selected) >= 0) continue;
-        if (d.compareTo(epochStart) < 0) continue;
         final rec = map[d]!;
         before = (before + rec.obtained - rec.home).clamp(0.0, 9999999.0);
       }
@@ -1554,6 +1542,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       setState(() {
         _homeSandBeforeToday = before;
         _homeSandTodayObtained = today.obtained;
+        _homeSandTodayHomeSaved = today.home;
         _homeSandAvailable = available;
         if (_drumsWashedAtHomeController.text.trim().isEmpty &&
             today.home > 0) {
@@ -1895,10 +1884,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกทรายที่ล้างที่บ้านสำเร็จ',
       body: () async {
         final maxWashable = _homeSandAvailable;
-        final typedHome =
-            double.tryParse(_drumsWashedAtHomeController.text.trim()) ?? 0;
-        final drumsHome = _homeWashAll ? maxWashable : typedHome;
-        if (drumsHome <= 0) throw 'กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้';
+        final rawHome = _drumsWashedAtHomeController.text.trim();
+        if (rawHome.isEmpty) {
+          throw 'กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้ (กรอก 0 ได้หากไม่ล้าง)';
+        }
+        final drumsHome = double.tryParse(rawHome) ?? 0;
+        if (drumsHome < 0) {
+          throw 'จำนวนถังที่ล้างที่บ้านต้องไม่ติดลบ';
+        }
         if (drumsHome > maxWashable) {
           throw 'จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)';
         }
@@ -1925,7 +1918,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         );
         _drumsWashedAtHomeController.clear();
-        _homeWashAll = false;
         await _refreshHomeSandStock();
       },
     );
@@ -7231,9 +7223,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildHomeSandFormCard() {
-    final typedHome = double.tryParse(_drumsWashedAtHomeController.text) ?? 0;
-    final home = _homeWashAll ? _homeSandAvailable : typedHome;
-    final remain = (_homeSandAvailable - home).clamp(0, 999999).toDouble();
+    final rawHome = _drumsWashedAtHomeController.text.trim();
+    final parsedHome = double.tryParse(rawHome);
+    final homeForSummary =
+        rawHome.isEmpty ? _homeSandTodayHomeSaved : (parsedHome ?? 0);
+    final remain = (_homeSandBeforeToday + _homeSandTodayObtained - homeForSummary)
+        .clamp(0, 999999)
+        .toDouble();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -7253,55 +7249,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 10),
-          IgnorePointer(
-            ignoring: _homeWashAll,
-            child: Opacity(
-              opacity: _homeWashAll ? 0.55 : 1,
-              child: _AnimatedInputField(
+          _AnimatedInputField(
+            controller: _drumsWashedAtHomeController,
+            onChanged: (_) => _scheduleUiRefresh(),
+            keyboardType: TextInputType.number,
+            readOnly: true,
+            onTap: () {
+              _openNumericPad(
                 controller: _drumsWashedAtHomeController,
+                label: 'จำนวนทรายที่ล้างที่บ้านวันนี้ (ถัง)',
                 onChanged: (_) => _scheduleUiRefresh(),
-                keyboardType: TextInputType.number,
-                readOnly: true,
-                onTap: () {
-                  if (_homeWashAll) return;
-                  _openNumericPad(
-                    controller: _drumsWashedAtHomeController,
-                    label: 'จำนวนทรายที่ล้างที่บ้านวันนี้ (ถัง)',
-                    onChanged: (_) => _scheduleUiRefresh(),
-                  );
-                },
-                style: GoogleFonts.kanit(
-                  color: const Color(0xFF1D2A3A),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'จำนวนทรายที่ล้างที่บ้านวันนี้',
-                  prefixIcon: Icon(Icons.home_work_outlined),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SwitchListTile(
-            value: _homeWashAll,
-            onChanged: (v) {
-              setState(() {
-                _homeWashAll = v;
-                if (v) {
-                  _drumsWashedAtHomeController.text = _strNum(
-                    _homeSandAvailable,
-                  );
-                }
-              });
+              );
             },
-            title: Text(
-              'ล้างทรายทั้งหมด (ตัดรอบ)',
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
             ),
-            subtitle: Text(
-              'ระบบจะใช้จำนวนคงเหลือทั้งหมด ${_homeSandAvailable.toStringAsFixed(0)} ถัง',
-              style: GoogleFonts.kanit(fontSize: 12.5),
+            decoration: const InputDecoration(
+              labelText: 'จำนวนทรายที่ล้างที่บ้านวันนี้',
+              prefixIcon: Icon(Icons.home_work_outlined),
             ),
           ),
           const SizedBox(height: 10),
@@ -7312,7 +7279,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              'คงเหลือก่อนวันนี้: ${_homeSandBeforeToday.toStringAsFixed(0)} • ได้เพิ่มวันนี้: ${_homeSandTodayObtained.toStringAsFixed(0)}\nล้างที่บ้านวันนี้: ${home.toStringAsFixed(0)} • คงเหลือหลังล้าง: ${remain.toStringAsFixed(0)}',
+              'คงเหลือก่อนวันนี้: ${_homeSandBeforeToday.toStringAsFixed(0)} • ได้เพิ่มวันนี้: ${_homeSandTodayObtained.toStringAsFixed(0)}\nล้างที่บ้านวันนี้: ${homeForSummary.toStringAsFixed(0)} • คงเหลือหลังล้าง: ${remain.toStringAsFixed(0)}',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
             ),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    computeSandDrumCarryoverEpochStart,
+    computeSandDrumStockSummary,
     persistedSandHomeDrums,
     sumWizardDailySpend,
     countsTowardWizardDailySpend,
@@ -47,6 +47,28 @@ describe('persistedSandHomeDrums', () => {
             }),
         ];
         expect(persistedSandHomeDrums(txs)).toBe(1);
+    });
+
+    it('prefers dedicated ทรายที่ล้างที่บ้าน rows over machine drumsWashedAtHome', () => {
+        const txs = [
+            sand({
+                id: 'old',
+                sandMachineType: 'Old',
+                sandMorning: 10,
+                sandAfternoon: 0,
+                drumsObtained: 26,
+                drumsWashedAtHome: 55,
+            }),
+            sand({
+                id: 'home',
+                description: 'ทรายที่ล้างที่บ้าน',
+                drumsObtained: 0,
+                drumsWashedAtHome: 10,
+                sandMorning: 0,
+                sandAfternoon: 0,
+            }),
+        ];
+        expect(persistedSandHomeDrums(txs)).toBe(10);
     });
 
     it('falls back to drums-only rows when no machine rows', () => {
@@ -161,7 +183,7 @@ describe('sumWizardDailySpend / countsTowardWizardDailySpend', () => {
     });
 });
 
-describe('computeSandDrumCarryoverEpochStart', () => {
+describe('computeSandDrumStockSummary', () => {
     const trip = (id: string, date: string, cubic: number): Transaction =>
         ({
             id,
@@ -174,38 +196,140 @@ describe('computeSandDrumCarryoverEpochStart', () => {
             totalCubic: cubic,
         }) as Transaction;
 
-    it('resets carryover on the day after an auto-completed round (remaining drums 0)', () => {
-        const txs: Transaction[] = [
-            trip('t1', '2026-05-01', 10),
-            sand({ id: 's1', date: '2026-05-01', drumsObtained: 474, drumsWashedAtHome: 0, sandMorning: 1, sandAfternoon: 0 }),
-            trip('t2', '2026-05-02', 10),
-            sand({ id: 's2', date: '2026-05-02', drumsObtained: 0, drumsWashedAtHome: 200, sandMorning: 1, sandAfternoon: 0 }),
-            trip('t3', '2026-05-03', 10),
-            sand({ id: 's3', date: '2026-05-03', drumsObtained: 0, drumsWashedAtHome: 274, sandMorning: 1, sandAfternoon: 0 }),
+    it('accumulates 26 → 52 → 78 across three days (single open sand round)', () => {
+        const all: Transaction[] = [
+            trip('v4', '2026-01-04', 10),
+            sand({
+                id: 's4',
+                date: '2026-01-04',
+                drumsObtained: 27,
+                drumsWashedAtHome: 1,
+                sandMorning: 1,
+                sandAfternoon: 0,
+            }),
+            trip('v5', '2026-01-05', 10),
+            sand({
+                id: 's5',
+                date: '2026-01-05',
+                drumsObtained: 26,
+                drumsWashedAtHome: 0,
+                sandMorning: 1,
+                sandAfternoon: 0,
+            }),
+            trip('v6', '2026-01-06', 10),
+            sand({
+                id: 's6',
+                date: '2026-01-06',
+                drumsObtained: 26,
+                drumsWashedAtHome: 0,
+                sandMorning: 1,
+                sandAfternoon: 0,
+            }),
         ];
-        expect(computeSandDrumCarryoverEpochStart('2026-05-04', txs, { roundCloseMinDays: 2 })).toBe('2026-05-04');
+
+        const day4 = computeSandDrumStockSummary('2026-01-04', all.slice(0, 2), {});
+        expect(day4.cumulativeBeforeToday).toBe(0);
+        expect(day4.cumulativeRemaining).toBe(26);
+
+        const day5 = computeSandDrumStockSummary('2026-01-05', all.slice(0, 4), {});
+        expect(day5.cumulativeBeforeToday).toBe(26);
+        expect(day5.cumulativeRemaining).toBe(52);
+
+        const day6 = computeSandDrumStockSummary('2026-01-06', all, {});
+        expect(day6.cumulativeBeforeToday).toBe(52);
+        expect(day6.cumulativeRemaining).toBe(78);
     });
 
-    it('matches manual_close_round by roundId start date when roundNo differs from a short-range UI', () => {
-        const txs: Transaction[] = [
-            trip('t1', '2026-05-01', 10),
-            sand({ id: 's1', date: '2026-05-01', drumsObtained: 100, drumsWashedAtHome: 0, sandMorning: 1, sandAfternoon: 0 }),
-            trip('t2', '2026-05-02', 10),
-            sand({ id: 's2', date: '2026-05-02', drumsObtained: 0, drumsWashedAtHome: 100, sandMorning: 1, sandAfternoon: 0 }),
-        ];
-        const audit = [
-            {
-                id: 'a1',
-                roundId: 'round_9_2026-05-01',
-                action: 'manual_close_round' as const,
-                createdAt: 'x',
-            },
-        ];
-        expect(
-            computeSandDrumCarryoverEpochStart('2026-05-03', txs, {
-                sandRoundAuditTrail: audit,
-                roundCloseMinDays: 999,
-            }),
-        ).toBe('2026-05-03');
+    /** สเปกจากผู้ใช้: วันที่ 4–6 ได้ถังละ 26 ไม่ล้างที่บ้าน → คงเหลือหลังวัน 26 / 52 / 78 */
+    it('26 drums obtained each day, 0 washed at home: before 0,26,52 and remaining 26,52,78', () => {
+        const d4 = sand({
+            id: 'home4',
+            date: '2026-05-04',
+            drumsObtained: 26,
+            drumsWashedAtHome: 0,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const d5 = sand({
+            id: 'home5',
+            date: '2026-05-05',
+            drumsObtained: 26,
+            drumsWashedAtHome: 0,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const d6 = sand({
+            id: 'home6',
+            date: '2026-05-06',
+            drumsObtained: 26,
+            drumsWashedAtHome: 0,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const all = [d4, d5, d6];
+
+        const s4 = computeSandDrumStockSummary('2026-05-04', all.slice(0, 1), {});
+        expect(s4.cumulativeBeforeToday).toBe(0);
+        expect(s4.todayObtained).toBe(26);
+        expect(s4.cumulativeRemaining).toBe(26);
+
+        const s5 = computeSandDrumStockSummary('2026-05-05', all.slice(0, 2), {});
+        expect(s5.cumulativeBeforeToday).toBe(26);
+        expect(s5.todayObtained).toBe(26);
+        expect(s5.cumulativeRemaining).toBe(52);
+
+        const s6 = computeSandDrumStockSummary('2026-05-06', all, {});
+        expect(s6.cumulativeBeforeToday).toBe(52);
+        expect(s6.todayObtained).toBe(26);
+        expect(s6.cumulativeRemaining).toBe(78);
+    });
+
+    it('26 obtained per day with home wash 0, 10, 20: before 0,26,42 and remaining 26,42,48', () => {
+        const d4 = sand({
+            id: 'h4',
+            date: '2026-05-04',
+            drumsObtained: 26,
+            drumsWashedAtHome: 0,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const d5 = sand({
+            id: 'h5',
+            date: '2026-05-05',
+            drumsObtained: 26,
+            drumsWashedAtHome: 10,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const d6 = sand({
+            id: 'h6',
+            date: '2026-05-06',
+            drumsObtained: 26,
+            drumsWashedAtHome: 20,
+            sandMorning: 1,
+            sandAfternoon: 0,
+            sandMachineType: 'Old',
+        });
+        const all = [d4, d5, d6];
+
+        const s4 = computeSandDrumStockSummary('2026-05-04', all.slice(0, 1), {});
+        expect(s4.cumulativeBeforeToday).toBe(0);
+        expect(s4.todayHome).toBe(0);
+        expect(s4.cumulativeRemaining).toBe(26);
+
+        const s5 = computeSandDrumStockSummary('2026-05-05', all.slice(0, 2), {});
+        expect(s5.cumulativeBeforeToday).toBe(26);
+        expect(s5.todayHome).toBe(10);
+        expect(s5.cumulativeRemaining).toBe(42);
+
+        const s6 = computeSandDrumStockSummary('2026-05-06', all, {});
+        expect(s6.cumulativeBeforeToday).toBe(42);
+        expect(s6.todayHome).toBe(20);
+        expect(s6.cumulativeRemaining).toBe(48);
     });
 });

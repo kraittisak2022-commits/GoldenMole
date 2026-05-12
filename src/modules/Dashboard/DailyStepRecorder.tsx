@@ -22,7 +22,7 @@ import {
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
 import {
-    computeSandDrumCarryoverEpochStart,
+    computeSandDrumStockSummary,
     getTransactionRecencyScore,
     pickLatestByDayOrder,
     persistedSandHomeDrums,
@@ -403,7 +403,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     String(t.sandAfternoonStart ?? ''),
                     String(t.sandEveningEnd ?? ''),
                     String(t.sandBatchId ?? ''),
-                    JSON.stringify(t.sandHomeBatchUsages || []),
                 ].join(':')
             )
             .sort()
@@ -875,120 +874,22 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [sand2Operators, setSand2Operators] = useState<string[]>([]);
     const [sandDrumsObtained, setSandDrumsObtained] = useState('');
     const [sandBatchId, setSandBatchId] = useState('');
-    const [homeBatchUsages, setHomeBatchUsages] = useState<Array<{ batchId: string; sourceDate: string; drums: number }>>([]);
     const [sandMorningStart, setSandMorningStart] = useState('');
     const [sandAfternoonStart, setSandAfternoonStart] = useState('');
     const [sandEveningEnd, setSandEveningEnd] = useState('');
-    const drumStockSummary = useMemo(() => {
-        const selectedDate = normalizeDate(date);
-        const perDay = new Map<string, { obtained: number; home: number }>();
-        const sandByDay = new Map<string, Transaction[]>();
-        transactions
-            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
-            .forEach((t) => {
-                const d = normalizeDate(t.date);
-                const arr = sandByDay.get(d) || [];
-                arr.push(t);
-                sandByDay.set(d, arr);
-            });
-        sandByDay.forEach((txs, d) => {
-            const obtained = Math.max(0, ...txs.map(t => Number((t as any).drumsObtained || 0)));
-            const home = persistedSandHomeDrums(txs);
-            perDay.set(d, { obtained, home });
-        });
-
-        const epochStart = computeSandDrumCarryoverEpochStart(selectedDate, transactions, {
-            sandRoundAuditTrail: settings.appDefaults?.sandRoundAuditTrail,
-        });
-        const sortedBeforeToday = Array.from(perDay.entries())
-            .filter(([d]) => d < selectedDate && d >= epochStart)
-            .sort(([a], [b]) => a.localeCompare(b));
-        let cumulativeBeforeToday = 0;
-        sortedBeforeToday.forEach(([, v]) => {
-            cumulativeBeforeToday = Math.max(0, cumulativeBeforeToday + v.obtained - v.home);
-        });
-
-        const savedToday = perDay.get(selectedDate) || { obtained: 0, home: 0 };
-        const todayObtained = String(sandDrumsObtained).trim() === '' ? savedToday.obtained : (Number(sandDrumsObtained) || 0);
-        const todayHome = String(drumsWashedAtHome).trim() === '' ? savedToday.home : (Number(drumsWashedAtHome) || 0);
-        const todayNet = todayObtained - todayHome;
-        const cumulativeRemaining = Math.max(0, cumulativeBeforeToday + todayNet);
-
-        return { cumulativeBeforeToday, todayObtained, todayHome, todayNet, cumulativeRemaining };
-    }, [transactions, date, sandDrumsObtained, drumsWashedAtHome, settings.appDefaults?.sandRoundAuditTrail]);
+    const drumStockSummary = useMemo(
+        () =>
+            computeSandDrumStockSummary(
+                normalizeDate(date),
+                transactions,
+                { sandDrumsObtained, drumsWashedAtHome },
+            ),
+        [transactions, date, sandDrumsObtained, drumsWashedAtHome],
+    );
     const sand1Total = (Number(sand1Morning) || 0) + (Number(sand1Afternoon) || 0);
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
-    const allSandTx = useMemo(() => transactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand'), [transactions]);
-    const batchStockSummary = useMemo(() => {
-        const summary = new Map<string, { sourceDate: string; obtained: number }>();
-        // usageKey = `${batchId}|${date}` to avoid counting the same day usage multiple times
-        // when the wizard saves multiple sand transactions in one submit (e.g. machine 1 + machine 2).
-        const usageByBatchDay = new Map<string, number>();
-        allSandTx.forEach((t: any) => {
-            const batchId = String(t.sandBatchId || '').trim();
-            if (!batchId) return;
-            const sourceDate = normalizeDate(t.date);
-            const rec = summary.get(batchId) || { sourceDate, obtained: 0 };
-            rec.sourceDate = rec.sourceDate < sourceDate ? rec.sourceDate : sourceDate;
-            rec.obtained = Math.max(rec.obtained, Number(t.drumsObtained || 0));
-            summary.set(batchId, rec);
-
-            const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-            usages.forEach((u: any) => {
-                const usageBatchId = String(u?.batchId || '').trim();
-                if (!usageBatchId) return;
-                const usageDrums = Math.max(0, Number(u?.drums || 0));
-                const usageKey = `${usageBatchId}|${sourceDate}`;
-                const prev = usageByBatchDay.get(usageKey) || 0;
-                usageByBatchDay.set(usageKey, Math.max(prev, usageDrums));
-            });
-        });
-
-        const usedByBatch = new Map<string, number>();
-        usageByBatchDay.forEach((drums, key) => {
-            const batchId = key.split('|')[0];
-            usedByBatch.set(batchId, (usedByBatch.get(batchId) || 0) + drums);
-        });
-
-        return Array.from(summary.entries())
-            .map(([batchId, v]) => {
-                const used = usedByBatch.get(batchId) || 0;
-                return { batchId, ...v, used, available: Math.max(0, v.obtained - used) };
-            })
-            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
-    }, [allSandTx]);
-    const sourceBatchesForHome = useMemo(() => {
-        const selectedDate = normalizeDate(date);
-        return batchStockSummary
-            .filter(b => b.sourceDate <= selectedDate && b.available > 0)
-            .sort((a, b) => a.sourceDate.localeCompare(b.sourceDate));
-    }, [batchStockSummary, date]);
-    const autoUnallocatedHomeDrums = useMemo(() => {
-        const total = Number(drumsWashedAtHome) || 0;
-        const allocated = homeBatchUsages.reduce((s, u) => s + (Number(u.drums) || 0), 0);
-        return Math.max(0, total - allocated);
-    }, [drumsWashedAtHome, homeBatchUsages]);
-    useEffect(() => {
-        const desired = Math.max(0, Number(drumsWashedAtHome) || 0);
-        if (desired <= 0) {
-            if (homeBatchUsages.length > 0) setHomeBatchUsages([]);
-            return;
-        }
-        let remain = desired;
-        const next: Array<{ batchId: string; sourceDate: string; drums: number }> = [];
-        sourceBatchesForHome.forEach(b => {
-            if (remain <= 0) return;
-            const used = Math.min(remain, b.available);
-            if (used > 0) {
-                next.push({ batchId: b.batchId, sourceDate: b.sourceDate, drums: used });
-                remain -= used;
-            }
-        });
-        const currentKey = JSON.stringify(homeBatchUsages);
-        const nextKey = JSON.stringify(next);
-        if (currentKey !== nextKey) setHomeBatchUsages(next);
-    }, [drumsWashedAtHome, sourceBatchesForHome, homeBatchUsages]); // auto-assign FIFO
+    // Sand drum stock (ได้ − ล้างที่บ้าน) สะสมแบบต่อเนื่อง — ไม่ใช้รอบตัดอัตโนมัติ
 
     // Fuel State
     const [fuelAmount, setFuelAmount] = useState('');
@@ -1516,7 +1417,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 0,
                 ...sandTx.map(t => (t.drumsObtained != null ? Number(t.drumsObtained) : 0))
             );
-            setSandDrumsObtained(drums > 0 ? String(drums) : '');
+            setSandDrumsObtained(sandTx.length > 0 ? String(drums) : drums > 0 ? String(drums) : '');
             const txWithTime = sandTx.find((t: any) =>
                 !!(t.sandMorningStart || t.sandAfternoonStart || t.sandEveningEnd)
             ) as any;
@@ -1525,32 +1426,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSandAfternoonStart(normalizeTimeInputValue(first.sandAfternoonStart));
             setSandEveningEnd(normalizeTimeInputValue(first.sandEveningEnd));
             setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
-            const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
-            sandTx.forEach((t: any) => {
-                const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-                usages.forEach((u: any) => {
-                    const batchId = String(u?.batchId || '');
-                    const sourceDate = String(u?.sourceDate || '');
-                    if (!batchId || !sourceDate) return;
-                    const key = `${batchId}_${sourceDate}`;
-                    const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
-                    prev.drums += Math.max(0, Number(u?.drums || 0));
-                    usageMap.set(key, prev);
-                });
-            });
-            setHomeBatchUsages(Array.from(usageMap.values()).filter(u => u.drums > 0));
         } else {
             setSandDrumsObtained('');
             setSandMorningStart('');
             setSandAfternoonStart('');
             setSandEveningEnd('');
             setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
-            setHomeBatchUsages([]);
         }
 
         const homeFromSand = persistedSandHomeDrums(sandTx as Transaction[]);
         const mergedHomeDrums = Math.max(homeFromLabor, homeFromSand);
-        setDrumsWashedAtHome(mergedHomeDrums > 0 ? String(mergedHomeDrums) : '');
+        setDrumsWashedAtHome(
+            sandTx.length > 0 || homeFromLabor > 0 ? String(mergedHomeDrums) : mergedHomeDrums > 0 ? String(mergedHomeDrums) : '',
+        );
     }, [date, sandPersistedPrefillSignature, laborCanvasPersistedPrefillSignature]);
 
     const nextStep = async () => {
@@ -2738,8 +2626,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
-                                                const homeDrumsVal = Number(drumsWashedAtHome) || 0;
-                                                const drumsHome = homeDrumsVal > 0 ? homeDrumsVal : undefined;
+                                                const homeDraft = String(drumsWashedAtHome).trim();
+                                                let drumsHome: number | undefined;
+                                                if (homeDraft === '') drumsHome = undefined;
+                                                else drumsHome = Math.max(0, Number(homeDraft) || 0);
                                                 const t = {
                                                     ...base,
                                                     type: 'Expense',
@@ -2752,7 +2642,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     workAssignments: { ...normalizedWa },
                                                     customWorkCategories: [],
                                                     laborGeneralWorkNotes: genNote,
-                                                    drumsWashedAtHome: drumsHome
+                                                    ...(drumsHome !== undefined ? { drumsWashedAtHome: drumsHome } : {}),
                                                 };
                                                 if (hasSemanticNearDuplicate(t as Transaction, { ignoreId: existingDailyLaborTx?.id })) {
                                                     const proceed = await shouldContinueWithWarning(
@@ -3339,7 +3229,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         : (Number(sandDrumsObtained) || 0);
                                     const savedHomeDrumsFromSand =
                                         sandTxToday.length > 0 ? persistedSandHomeDrums(sandTxToday) : 0;
-                                    const homeDrums = Math.max(0, Number(drumsWashedAtHome) || savedHomeDrumsFromSand || latestLaborDrumsWashedAtHome || 0);
+                                    const homeField = String(drumsWashedAtHome).trim();
+                                    const homeDrums =
+                                        homeField === ''
+                                            ? Math.max(0, savedHomeDrumsFromSand || latestLaborDrumsWashedAtHome || 0)
+                                            : Math.max(0, Number(homeField) || 0);
                                     const netDrumsDay = Math.max(0, totalDrumsDay - homeDrums);
                                     const drumsDisplay = totalDrumsDay > 0 || homeDrums > 0;
                                     return (
@@ -3587,56 +3481,35 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
                                             <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-white/[0.03] px-3 py-2">
                                                 <p className="text-[10px] text-slate-500 dark:text-slate-400">จำนวนถังที่ได้วันนี้</p>
-                                                <p className="text-lg font-black text-slate-700 dark:text-slate-100">{Number(sandDrumsObtained) || 0}</p>
+                                                <p className="text-lg font-black text-slate-700 dark:text-slate-100">{drumStockSummary.todayObtained}</p>
                                             </div>
                                             <div className="rounded-xl border border-teal-200/80 dark:border-teal-500/30 bg-teal-50/70 dark:bg-teal-500/10 px-3 py-2">
                                                 <p className="text-[10px] text-teal-700/90 dark:text-teal-300">ล้างที่บ้านวันนี้</p>
-                                                <p className="text-lg font-black text-teal-700 dark:text-teal-300">{Number(drumsWashedAtHome) || 0}</p>
+                                                <p className="text-lg font-black text-teal-700 dark:text-teal-300">{drumStockSummary.todayHome}</p>
+                                            </div>
+                                            <div className="rounded-xl border border-amber-200/80 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 px-3 py-2">
+                                                <p className="text-[10px] text-amber-800/90 dark:text-amber-200">คงเหลือก่อนวันนี้</p>
+                                                <p className="text-lg font-black text-amber-800 dark:text-amber-100">{drumStockSummary.cumulativeBeforeToday}</p>
                                             </div>
                                             <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-500/10 px-3 py-2">
-                                                <p className="text-[10px] text-emerald-700/90 dark:text-emerald-300">จำนวนถังคงเหลือ</p>
+                                                <p className="text-[10px] text-emerald-700/90 dark:text-emerald-300">คงเหลือหลังล้างวันนี้</p>
                                                 <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{drumStockSummary.cumulativeRemaining}</p>
                                             </div>
                                         </div>
                                         <div className="mt-3 rounded-xl border border-cyan-200/70 dark:border-cyan-500/30 bg-cyan-50/60 dark:bg-cyan-500/10 p-3">
                                             <p className="text-xs font-bold text-cyan-800 dark:text-cyan-200 mb-2">Lot/Batch ต้นทาง</p>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                                                <label className="text-[11px] text-cyan-700 dark:text-cyan-300">
-                                                    รหัสล็อตทรายวันนี้
-                                                    <input
-                                                        type="text"
-                                                        value={sandBatchId}
-                                                        onChange={e => setSandBatchId(e.target.value)}
-                                                        className="mt-1 w-full rounded-lg border border-cyan-200 dark:border-cyan-500/35 bg-white dark:bg-white/5 px-2 py-1.5 text-[11px]"
-                                                    />
-                                                </label>
-                                                <label className="text-[11px] text-cyan-700 dark:text-cyan-300">
-                                                    ระบบตัดล็อตล้างที่บ้าน (Auto FIFO)
-                                                    <div className="mt-1 rounded-lg border border-cyan-200 dark:border-cyan-500/35 bg-white/90 dark:bg-white/5 px-2 py-1.5 text-[11px] text-cyan-800 dark:text-cyan-200">
-                                                        ตัดจากล็อตเก่าสุดก่อนแบบอัตโนมัติ ตามจำนวน “ล้างที่บ้านวันนี้”
-                                                    </div>
-                                                </label>
-                                            </div>
-                                            <div className="space-y-1">
-                                                {homeBatchUsages.length === 0 ? (
-                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">ยังไม่ได้เลือกล็อตสำหรับล้างที่บ้าน</p>
-                                                ) : (
-                                                    homeBatchUsages.map((u, idx) => (
-                                                        <div key={`${u.batchId}_${u.sourceDate}_${idx}`} className="flex items-center justify-between rounded-lg border border-cyan-100 dark:border-cyan-500/25 bg-white/80 dark:bg-white/[0.03] px-2 py-1 text-[11px]">
-                                                            <span>{u.batchId} ({formatDateBE(u.sourceDate)})</span>
-                                                            <span className="font-semibold text-cyan-700 dark:text-cyan-300">{u.drums} ถัง</span>
-                                                        </div>
-                                                    ))
-                                                )}
-                                                {autoUnallocatedHomeDrums > 0 && (
-                                                    <p className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
-                                                        สต็อกล็อตไม่พอสำหรับล้างที่บ้าน ขาดอีก {autoUnallocatedHomeDrums.toLocaleString()} ถัง
-                                                    </p>
-                                                )}
-                                            </div>
+                                            <label className="block text-[11px] text-cyan-700 dark:text-cyan-300">
+                                                รหัสล็อตทรายวันนี้
+                                                <input
+                                                    type="text"
+                                                    value={sandBatchId}
+                                                    onChange={e => setSandBatchId(e.target.value)}
+                                                    className="mt-1 w-full max-w-md rounded-lg border border-cyan-200 dark:border-cyan-500/35 bg-white dark:bg-white/5 px-2 py-1.5 text-[11px]"
+                                                />
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
@@ -3644,9 +3517,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <div className={mobileShell ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-2 space-y-2 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90' : 'pt-3 border-t space-y-2'}>
                                     <Button onClick={async () => {
                                         const drumsToday = Number(sandDrumsObtained) || 0;
-                                        const drumsHomeToday = Number(drumsWashedAtHome) || 0;
-                                        const totalAllocatedHome = homeBatchUsages.reduce((s, u) => s + Math.max(0, Number(u.drums || 0)), 0);
-                                        const noLotStockAvailable = sourceBatchesForHome.length === 0;
+                                        const homeDraft = String(drumsWashedAtHome).trim();
+                                        const drumsHomeToday =
+                                            homeDraft === '' ? 0 : Math.max(0, Number(homeDraft) || 0);
                                         if (sandGrandTotal === 0 && drumsToday === 0) {
                                             await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
                                             return;
@@ -3654,28 +3527,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         const batchIdFinal = (sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`).trim();
                                         if (drumsToday > 0 && !batchIdFinal) {
                                             await sessionAlert('กรุณาระบุรหัสล็อตทรายก่อนบันทึก');
-                                            return;
-                                        }
-                                        if (drumsHomeToday > 0) {
-                                            if (!noLotStockAvailable) {
-                                                if (homeBatchUsages.length === 0) {
-                                                    await sessionAlert('ต้องเลือกล็อตที่นำไปล้างที่บ้านก่อนบันทึก');
-                                                    return;
-                                                }
-                                                if (totalAllocatedHome !== drumsHomeToday) {
-                                                    await sessionAlert(`จำนวนถังล้างที่บ้าน (${drumsHomeToday}) ต้องเท่ากับผลรวมถังจากล็อตที่เลือก (${totalAllocatedHome})`);
-                                                    return;
-                                                }
-                                                const availableMap = new Map(sourceBatchesForHome.map(b => [b.batchId, b.available]));
-                                                const invalid = homeBatchUsages.find(u => (Number(u.drums) || 0) > (availableMap.get(u.batchId) || 0));
-                                                if (invalid) {
-                                                    await sessionAlert(`ล็อต ${invalid.batchId} มีคงเหลือไม่พอสำหรับตัด ${invalid.drums} ถัง`);
-                                                    return;
-                                                }
-                                            }
-                                        }
-                                        if (drumsHomeToday <= 0 && !noLotStockAvailable && homeBatchUsages.length > 0) {
-                                            await sessionAlert('มีรายการตัดล็อตล้างที่บ้าน แต่จำนวนถังล้างที่บ้านเป็น 0 — กรุณากรอกจำนวนถังหรือล้างรายการตัดล็อต');
                                             return;
                                         }
                                         const sandSnap = dayTransactions.filter(
@@ -3719,7 +3570,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
                                                     drumsWashedAtHome: drumsHomeToday,
                                                     sandBatchId: batchIdFinal || undefined,
-                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    sandHomeBatchUsages: [],
                                                     ...timePayload
                                                 } as Transaction)
                                             );
@@ -3734,7 +3585,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
                                                     drumsWashedAtHome: drumsHomeToday,
                                                     sandBatchId: batchIdFinal || undefined,
-                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    sandHomeBatchUsages: [],
                                                     ...timePayload
                                                 } as Transaction)
                                             );
@@ -3746,13 +3597,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     id: idSandDrumsOnly, date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                     description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
                                                     sandBatchId: batchIdFinal || undefined,
-                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    sandHomeBatchUsages: [],
                                                     ...timePayload
                                                 } as Transaction)
                                             );
                                             if (ok === false) return;
                                         }
-                                        if (drumsHomeToday > 0) {
+                                        if (homeDraft !== '') {
                                             const laborWork = dayTransactions.filter(
                                                 t =>
                                                     t.category === 'Labor' &&
@@ -3808,7 +3659,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         setSand1Morning(''); setSand1Afternoon(''); setSand2Morning(''); setSand2Afternoon('');
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
                                         setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
-                                        setHomeBatchUsages([]);
                                         setDrumsWashedAtHome('');
                                         setSandMorningStart(''); setSandAfternoonStart(''); setSandEveningEnd('');
                                     }} className="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 focus-ring-strong" data-hotkey-primary="true">
