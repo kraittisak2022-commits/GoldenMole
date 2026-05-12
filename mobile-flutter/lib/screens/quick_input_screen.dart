@@ -305,8 +305,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
 
-  /// รายละเอียดงานจากประวัติธุรกรรมรถแม็คโคร (เมนูแม็คโคร)
-  List<String> _macroWorkSuggestions = const [];
   bool get _isLaborMode =>
       widget.initialCategory == 'ค่าแรง' ||
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
@@ -389,7 +387,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadAppExpenseIncomeTypes();
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
-    _loadMacroWorkSuggestions();
     _refreshHomeSandStock();
     _otGroups.add(_OtGroupDraft.empty());
     final cat = widget.initialCategory?.trim();
@@ -804,7 +801,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         inferredMaxDrums = rowDrums;
       }
       final mt = (t.sandMachineType ?? '').toLowerCase();
-      if (mt == 'old' || (t.description).contains('เครื่องร่อน 1')) {
+      final desc = t.description;
+      final isOldMachine =
+          mt == 'old' ||
+          desc.contains('เครื่องร่อน (เก่า)') ||
+          desc.contains('เครื่องร่อน 1');
+      final isNewMachine =
+          mt == 'new' ||
+          desc.contains('เครื่องร่อน (ใหม่)') ||
+          desc.contains('เครื่องร่อน 2');
+      if (isOldMachine) {
         _sandRowIdsByKey.putIfAbsent('Old', () => t.id);
         _sand1MorningController.text = _strNum(t.sandMorning);
         _sand1AfternoonController.text = _strNum(t.sandAfternoon);
@@ -812,7 +818,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (oldMachineNames.isEmpty && names.isNotEmpty) {
           oldMachineNames = names;
         }
-      } else if (mt == 'new' || (t.description).contains('เครื่องร่อน 2')) {
+      } else if (isNewMachine) {
         _sandRowIdsByKey.putIfAbsent('New', () => t.id);
         _sand2MorningController.text = _strNum(t.sandMorning);
         _sand2AfternoonController.text = _strNum(t.sandAfternoon);
@@ -875,70 +881,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isVehicleTripMode) {
-      final byVehicle = <String, _VehicleTripDraft>{};
-      _VehicleTripDraft ensureDraft(String vehicleId) {
-        final key = vehicleId.trim().isEmpty ? '__unknown__' : vehicleId.trim();
-        return byVehicle.putIfAbsent(
-          key,
-          () => _VehicleTripDraft.empty()..vehicleId = vehicleId.trim(),
-        );
-      }
-
-      for (final t in txs) {
-        final key = (t.vehicleId ?? '').trim();
-        final draft = ensureDraft(key);
-        if (transactionCountsAsVehicleTripMenu(t)) {
-          draft.tripTxId = t.id;
-          draft.vehicleId = draft.vehicleId.isEmpty
-              ? (t.vehicleId ?? '').trim()
-              : draft.vehicleId;
-          draft.driverId = draft.driverId.isEmpty
-              ? (t.driverId ?? '').trim()
-              : draft.driverId;
-          draft.tripMorning = _strNum(t.tripMorning);
-          draft.tripAfternoon = _strNum(t.tripAfternoon);
-          draft.cubicPerTrip = _strNum(t.cubicPerTrip);
-          draft.tripMorningController.text = draft.tripMorning;
-          draft.tripAfternoonController.text = draft.tripAfternoon;
-          draft.cubicPerTripController.text = draft.cubicPerTrip;
-          if (draft.workDetails.isEmpty) {
-            draft.workDetails = _stripRecorderSuffix(t.workDetails ?? '');
-            draft.workDetailsController.text = draft.workDetails;
-          }
-          final wt = (t.workType ?? '').trim();
-          draft.workType = wt == 'HalfDay' || wt == 'Hourly' ? wt : 'FullDay';
-          if (draft.workType == 'Hourly') {
-            final hourlyMatch = RegExp(
-              r'(\d+(?:\.\d+)?)\s*ชม',
-            ).firstMatch(_stripRecorderSuffix(t.workDetails ?? ''));
-            if (hourlyMatch != null) {
-              draft.hourlyHours = hourlyMatch.group(1) ?? '';
-              draft.hourlyHoursController.text = draft.hourlyHours;
-            }
-          }
-          final bm = (t.tripBillingMode ?? '').trim();
-          if (bm.toLowerCase() == 'lumpsum' || bm == 'เหมา') {
-            draft.tripBillingMode = 'LumpSum';
-            final c = t.perCarCubic ?? t.totalCubic;
-            draft.lumpSumTotalCubic = _strNum(c);
-            draft.lumpSumTotalCubicController.text = draft.lumpSumTotalCubic;
-          } else {
-            draft.tripBillingMode = 'PerTrip';
-          }
-        }
-      }
-
-      final loaded = byVehicle.values.where((d) {
-        return d.vehicleId.isNotEmpty ||
-            d.driverId.isNotEmpty ||
-            d.workDetails.isNotEmpty ||
-            d.tripMorning.isNotEmpty ||
-            d.tripAfternoon.isNotEmpty ||
-            d.cubicPerTrip.isNotEmpty ||
-            (d.tripBillingMode == 'LumpSum' &&
-                d.lumpSumTotalCubic.trim().isNotEmpty);
-      }).toList();
-      _replaceVehicleDrafts(loaded);
+      // ฟอร์มใช้สำหรับบันทึกใหม่เท่านั้น — รายการที่บันทึกแล้วแสดงใต้ปุ่มบันทึก
+      _replaceVehicleDrafts(const []);
       return;
     }
 
@@ -962,25 +906,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isFuelMode) {
-      final drafts = <_FuelVehicleDraft>[];
-      for (final t in txs) {
-        final isVehicleUsage =
-            t.fuelMovement == 'stock_out' ||
-            (t.vehicleId ?? '').trim().isNotEmpty;
-        if (!isVehicleUsage) continue;
-        final draft = _FuelVehicleDraft.empty();
-        draft.txId = t.id;
-        draft.vehicleId = (t.vehicleId ?? '').trim();
-        draft.fuelType = ((t.fuelType ?? '').toLowerCase().contains('ben'))
-            ? 'Benzine'
-            : 'Diesel';
-        draft.liters = _strNum(t.quantity);
-        draft.time = _stripRecorderSuffix(t.workDetails ?? '');
-        draft.litersController.text = draft.liters;
-        draft.timeController.text = draft.time;
-        drafts.add(draft);
-      }
-      _replaceFuelVehicleDrafts(drafts);
+      // ฟอร์มสำหรับบันทึกใหม่ — บันทึกทีละคัน/หลายคันต่อครั้งได้ รายการเดิมดูในเมนูประวัติ
+      _replaceFuelVehicleDrafts(const []);
       return;
     }
 
@@ -1285,38 +1212,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } catch (_) {}
   }
 
-  Future<void> _loadMacroWorkSuggestions() async {
-    try {
-      final txs = await widget.service.fetchTransactions();
-      final ranked = <String, int>{};
-      for (final tx in txs) {
-        if (!isMacroVehicleTransaction(tx)) continue;
-        final raw = _stripRecorderSuffix(tx.workDetails ?? '').trim();
-        if (raw.isEmpty) continue;
-        ranked[raw] = (ranked[raw] ?? 0) + 1;
-      }
-      final sorted = ranked.entries.toList()
-        ..sort((a, b) {
-          final byCount = b.value.compareTo(a.value);
-          if (byCount != 0) return byCount;
-          return a.key.compareTo(b.key);
-        });
-      if (!mounted) return;
-      setState(() {
-        _macroWorkSuggestions = sorted.map((e) => e.key).take(15).toList();
-      });
-    } catch (_) {}
-  }
-
   static const List<String> _kMacroWorkQuickPhrases = [
-    'ขุด/ตักดิน',
-    'ปรับพื้นที่ เกลี่ยดิน',
-    'บดอัด/ตีแตกหิน',
-    'เทคอนกรีต/ขนวัสดุ',
-    'ตัดหญ้า เก็บกวาด',
-    'ซ่อมท่อ/วางท่อ',
-    'รื้อโครงสร้าง',
-    'ย้ายอุปกรณ์/จัดเก็บ',
+    'เปิดหน้าดิน',
+    'ทอยดิน',
+    'ขุดแร่',
+    'ร่อนทราย',
+    'ชัพพอต',
+    'อื่นๆ',
   ];
 
   void _applyMacroWorkPhrase(_MacroVehicleDraft row, String phrase) {
@@ -1328,93 +1230,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         offset: row.workDetailsController.text.length,
       );
     });
-  }
-
-  Future<void> _openMacroWorkAssistSheet(_MacroVehicleDraft row) async {
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: bottomInset),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'ช่วยกรอกรายละเอียดงาน',
-                    style: GoogleFonts.kanit(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'ข้อความยอดใช้บ่อย',
-                    style: GoogleFonts.kanit(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final s in _kMacroWorkQuickPhrases)
-                        ActionChip(
-                          label: Text(
-                            s,
-                            style: GoogleFonts.kanit(fontSize: 13),
-                          ),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _applyMacroWorkPhrase(row, s);
-                          },
-                        ),
-                    ],
-                  ),
-                  if (_macroWorkSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      'จากประวัติการบันทึก (รถแม็คโคร)',
-                      style: GoogleFonts.kanit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ..._macroWorkSuggestions.map(
-                      (s) => ListTile(
-                        title: Text(s, style: GoogleFonts.kanit()),
-                        dense: true,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          if (!mounted) return;
-                          setState(() {
-                            row.workDetailsController.text = s;
-                            row.workDetailsController.selection =
-                                TextSelection.collapsed(offset: s.length);
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Future<void> _refreshHomeSandStock() async {
@@ -1726,14 +1541,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await saveMachine(
           suffix: 's1',
           machineType: 'Old',
-          description: 'ล้างทราย เครื่องร่อน 1',
+          description: 'ล้างทราย เครื่องร่อน (เก่า)',
           morning: s1m,
           afternoon: s1a,
         );
         await saveMachine(
           suffix: 's2',
           machineType: 'New',
-          description: 'ล้างทราย เครื่องร่อน 2',
+          description: 'ล้างทราย เครื่องร่อน (ใหม่)',
           morning: s2m,
           afternoon: s2a,
         );
@@ -1824,6 +1639,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveVehicleTripEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
+      stayOnPage: true,
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           final lumpFilled =
@@ -1853,8 +1669,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final driver = row.driverId.trim();
           final details = row.workDetails.trim();
           final hourlyHours = double.tryParse(row.hourlyHours.trim()) ?? 0;
-          final tripMorning = double.tryParse(row.tripMorning.trim()) ?? 0;
-          final tripAfternoon = double.tryParse(row.tripAfternoon.trim()) ?? 0;
+          if (row.tripMorning.trim().isEmpty ||
+              row.tripAfternoon.trim().isEmpty) {
+            throw 'กรุณาระบุจำนวนเที่ยวช่วงเช้าและช่วงบ่ายให้ครบทุกคัน (ทั้งแบบเหมาและคิดเป็นเที่ยว)';
+          }
+          final tripMorning = double.tryParse(row.tripMorning.trim());
+          final tripAfternoon = double.tryParse(row.tripAfternoon.trim());
+          if (tripMorning == null || tripAfternoon == null) {
+            throw 'จำนวนเที่ยวเช้า/บ่ายต้องเป็นตัวเลข';
+          }
+          if (tripMorning < 0 || tripAfternoon < 0) {
+            throw 'จำนวนเที่ยวเช้า/บ่ายต้องไม่ติดลบ';
+          }
           final totalTrips = tripMorning + tripAfternoon;
           final cubicPerTrip = double.tryParse(row.cubicPerTrip.trim()) ?? 0;
 
@@ -1889,19 +1715,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 category: 'DailyLog',
                 subCategory: 'VehicleTrip',
                 description: _appendRecorder(
-                  '$vehicle: เหมา ${lumpCubic.toStringAsFixed(0)} คิว',
+                  '$vehicle: เหมา ${lumpCubic.toStringAsFixed(0)} คิว • เช้า ${_strNum(tripMorning)} เที่ยว บ่าย ${_strNum(tripAfternoon)} เที่ยว',
                 ),
                 amount: 0,
                 note: _activeSignatureNote,
                 vehicleId: vehicle,
                 driverId: driver,
                 tripBillingMode: 'LumpSum',
-                tripCount: 0,
-                tripMorning: 0,
-                tripAfternoon: 0,
+                tripCount: totalTrips,
+                tripMorning: tripMorning,
+                tripAfternoon: tripAfternoon,
                 cubicPerTrip: 0,
                 totalCubic: lumpCubic,
-                perCarTrips: 0,
+                perCarTrips: totalTrips,
                 perCarCubic: lumpCubic,
                 workDetails: _appendRecorder(detailsWithHours),
                 workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
@@ -1912,7 +1738,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             continue;
           }
 
-          if (totalTrips <= 0) continue;
+          if (totalTrips <= 0) {
+            throw 'กรุณาระบุจำนวนเที่ยวรวม (เช้า+บ่าย) ให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว';
+          }
+          if (cubicPerTrip <= 0) {
+            throw 'กรุณาระบุคิวต่อเที่ยวให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว';
+          }
           final totalCubic = totalTrips * cubicPerTrip;
           await _persist(
             AppTransaction(
@@ -2006,7 +1837,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           );
         }
-        await _loadMacroWorkSuggestions();
         _replaceMacroVehicleDrafts(const []);
       },
     );
@@ -2015,6 +1845,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveFuelVehicleUsageEntries() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
+      stayOnPage: true,
       body: () async {
         final fuelCars = _fuelMacroCars();
         if (fuelCars.isEmpty) {
@@ -5506,7 +5337,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 Expanded(
                   child: sandMachineColumn(
                     controller: machine2Controller,
-                    label: 'เครื่องร่อน 2 (ใหม่)',
+                    label: 'เครื่องร่อน (ใหม่)',
                     operatorNames: _sand2OperatorNames,
                     accent: sandM2Border,
                     fill: sandM2Fill,
@@ -5520,7 +5351,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 Expanded(
                   child: sandMachineColumn(
                     controller: machine1Controller,
-                    label: 'เครื่องร่อน 1 (เก่า)',
+                    label: 'เครื่องร่อน (เก่า)',
                     operatorNames: _sand1OperatorNames,
                     accent: sandM1Border,
                     fill: sandM1Fill,
@@ -5742,7 +5573,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         readOnly: true,
                         onTap: () => _pickSandTime(
                           controller: _sandMorningStartController,
-                          hour: 7,
+                          hour: 8,
                           minute: 20,
                         ),
                         decoration: deco('เช้าเริ่ม', Icons.wb_sunny_outlined),
@@ -6066,6 +5897,146 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  String _vehicleTripWorkTypeLabel(String? workType) {
+    switch ((workType ?? '').trim()) {
+      case 'HalfDay':
+        return 'ครึ่งวัน';
+      case 'Hourly':
+        return 'รายชั่วโมง';
+      default:
+        return 'เต็มวัน';
+    }
+  }
+
+  Widget _vehicleTripSavedDetailCard(AppTransaction t) {
+    final vehicle = _vehicleLabelFromId((t.vehicleId ?? '').trim());
+    final driver = _driverLabelFromId((t.driverId ?? '').trim());
+    final mode = (t.tripBillingMode ?? '').trim();
+    final isLump = mode.toLowerCase() == 'lumpsum' || mode == 'เหมา';
+    final tm = t.tripMorning ?? 0;
+    final ta = t.tripAfternoon ?? 0;
+    final cubic = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
+    final cpt = t.cubicPerTrip ?? 0;
+    final totalTripCount = (t.perCarTrips ?? t.tripCount ?? (tm + ta))
+        .toDouble();
+    final wd = _stripRecorderSuffix(t.workDetails ?? '').trim();
+    final wtLabel = _vehicleTripWorkTypeLabel(t.workType);
+    final modeLabel = isLump ? 'เหมา' : 'คิดเป็นเที่ยว';
+    final tripLine = 'เช้า ${_strNum(tm)} เที่ยว • บ่าย ${_strNum(ta)} เที่ยว';
+    final cubicLine = isLump
+        ? 'รวม ${cubic.toStringAsFixed(0)} คิว (เหมา)'
+        : '${_strNum(totalTripCount)} เที่ยว × ${_strNum(cpt)} คิว = ${cubic.toStringAsFixed(0)} คิว';
+    final created = t.createdAt;
+    final timeHint = created != null
+        ? 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
+        : null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4FAFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFC5DCF3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$vehicle • $driver',
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A4A7A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$modeLabel • $wtLabel',
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF3D5A80),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            tripLine,
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2C4D77),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            cubicLine,
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F5FAF),
+            ),
+          ),
+          if (wd.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'รายละเอียด: $wd',
+              style: GoogleFonts.kanit(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+                height: 1.25,
+              ),
+            ),
+          ],
+          if (timeHint != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              timeHint,
+              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black45),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleTripSavedTodaySection() {
+    final saved = _moduleDayTransactions
+        .where(transactionCountsAsVehicleTripMenu)
+        .toList();
+    if (saved.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          'ยังไม่มีบันทึกรถดรัมในวันที่เลือก',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 14),
+        Text(
+          'รายละเอียดรถที่บันทึกแล้ว (${saved.length} รายการ)',
+          style: GoogleFonts.kanit(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF205A9A),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...saved.map(
+          (t) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _vehicleTripSavedDetailCard(t),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildVehicleTripFormCard() {
     if (_vehicleTripDrafts.isEmpty) {
       _vehicleTripDrafts.add(_VehicleTripDraft.empty());
@@ -6098,6 +6069,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 color: const Color(0xFF0F5FAF),
               ),
             ),
+            const SizedBox(height: 6),
+            Text(
+              'ทั้งแบบเหมาและคิดเป็นเที่ยว ต้องระบุจำนวนเที่ยวช่วงเช้าและช่วงบ่ายให้ครบ — บันทึกทีละคันแล้วกรอกคันถัดไปได้ หรือกด «เพิ่มรถอีกคัน» เพื่อส่งหลายคันครั้งเดียว',
+              style: GoogleFonts.kanit(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.black54,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
             _VehicleTripRowsBoard(
               rows: _vehicleTripDrafts,
               cars: _cars,
@@ -6123,6 +6105,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
             ),
+            _buildVehicleTripSavedTodaySection(),
           ],
         ),
       ),
@@ -6134,271 +6117,285 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (_macroVehicleDrafts.isEmpty) {
       _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE3ECF7)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF8F00).withValues(alpha: 0.12),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...List.generate(_macroVehicleDrafts.length, (index) {
-              final row = _macroVehicleDrafts[index];
-              return Container(
-                key: ObjectKey(row),
-                margin: EdgeInsets.only(
-                  bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
-                ),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8F0),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFFFE0B2)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'คันที่ ${index + 1}',
-                          style: GoogleFonts.kanit(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFFE65100),
-                          ),
-                        ),
-                        const Spacer(),
-                        if (_macroVehicleDrafts.length > 1)
-                          IconButton(
-                            onPressed: () {
-                              setState(() {
-                                final removed = _macroVehicleDrafts.removeAt(
-                                  index,
-                                );
-                                removed.dispose();
-                              });
-                            },
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            color: const Color(0xFFD14343),
-                            tooltip: 'ลบคันนี้',
-                          ),
-                      ],
-                    ),
-                    DropdownButtonFormField<String>(
-                      key: ValueKey('macro_vehicle_${index}_${row.vehicleId}'),
-                      isExpanded: true,
-                      initialValue:
-                          row.vehicleId.isEmpty ||
-                              !macroCars.contains(row.vehicleId)
-                          ? null
-                          : row.vehicleId,
-                      decoration: const InputDecoration(
-                        labelText: 'รถแม็คโคร',
-                        prefixIcon: Icon(Icons.construction_outlined),
-                      ),
-                      items: macroCars
-                          .map(
-                            (c) => DropdownMenuItem<String>(
-                              value: c,
-                              child: Text(
-                                c,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.kanit(fontSize: 18),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
-                        row.vehicleId = v ?? '';
-                        _scheduleUiRefresh();
-                      },
-                    ),
-                    if (macroCars.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
-                          style: GoogleFonts.kanit(
-                            color: const Color(0xFFD14343),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      key: ValueKey('macro_driver_${index}_${row.driverId}'),
-                      isExpanded: true,
-                      initialValue:
-                          row.driverId.isEmpty ||
-                              !_macroDriverEmployees.any(
-                                (e) => e.id == row.driverId,
-                              )
-                          ? null
-                          : row.driverId,
-                      decoration: const InputDecoration(
-                        labelText: 'คนขับ (ตำแหน่งคนขับรถแม็คโคร)',
-                        prefixIcon: Icon(Icons.badge_outlined),
-                      ),
-                      items: _macroDriverEmployees
-                          .map(
-                            (e) => DropdownMenuItem<String>(
-                              value: e.id,
-                              child: Text(
-                                e.nickname.isNotEmpty ? e.nickname : e.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.kanit(fontSize: 18),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
-                        row.driverId = v ?? '';
-                        _scheduleUiRefresh();
-                      },
-                    ),
-                    if (_macroDriverEmployees.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
-                          style: GoogleFonts.kanit(
-                            color: const Color(0xFFD14343),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment<String>(
-                          value: 'FullDay',
-                          label: Text('เต็มวัน'),
-                        ),
-                        ButtonSegment<String>(
-                          value: 'HalfDay',
-                          label: Text('ครึ่งวัน'),
-                        ),
-                      ],
-                      selected: {
-                        row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
-                      },
-                      onSelectionChanged: (selection) {
-                        if (selection.isEmpty) return;
-                        setState(() => row.workType = selection.first);
-                      },
-                      style: ButtonStyle(
-                        textStyle: WidgetStatePropertyAll(
-                          GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: row.workDetailsController,
-                      minLines: 2,
-                      maxLines: 4,
-                      style: GoogleFonts.kanit(
-                        color: const Color(0xFF1D2A3A),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'รายละเอียดงาน',
-                        hintText: 'ขนดิน, ปรับพื้นที่...',
-                        prefixIcon: const Icon(Icons.notes_outlined),
-                        suffixIcon: IconButton(
-                          tooltip: 'ช่วยกรอก',
-                          icon: const Icon(Icons.tips_and_updates_outlined),
-                          onPressed: () => _openMacroWorkAssistSheet(row),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'ช่วยกรอกด่วน',
-                      style: GoogleFonts.kanit(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final s in _kMacroWorkQuickPhrases)
-                          ActionChip(
-                            label: Text(
-                              s,
-                              style: GoogleFonts.kanit(fontSize: 12.5),
-                            ),
-                            onPressed: () => _applyMacroWorkPhrase(row, s),
-                          ),
-                        ActionChip(
-                          avatar: const Icon(Icons.history, size: 18),
-                          label: Text(
-                            'จากประวัติ',
-                            style: GoogleFonts.kanit(fontSize: 12.5),
-                          ),
-                          onPressed: () => _openMacroWorkAssistSheet(row),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: macroCars.isEmpty
-                  ? null
-                  : () => setState(
-                      () => _macroVehicleDrafts.add(_MacroVehicleDraft.empty()),
-                    ),
-              icon: const Icon(Icons.add_rounded),
-              label: Text(
-                'เพิ่มรถอีกคัน',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE3ECF7)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF8F00).withValues(alpha: 0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-            ),
-            const SizedBox(height: 14),
-            _SmoothPressable(
-              enabled: !_saving,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _saveQuickEntry,
-                icon: const Icon(Icons.save_outlined),
+            ],
+          ),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ...List.generate(_macroVehicleDrafts.length, (index) {
+                final row = _macroVehicleDrafts[index];
+                return Container(
+                  key: ObjectKey(row),
+                  margin: EdgeInsets.only(
+                    bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
+                  ),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8F0),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFFE0B2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'คันที่ ${index + 1}',
+                            style: GoogleFonts.kanit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFE65100),
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_macroVehicleDrafts.length > 1)
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  final removed = _macroVehicleDrafts.removeAt(
+                                    index,
+                                  );
+                                  removed.dispose();
+                                });
+                              },
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              color: const Color(0xFFD14343),
+                              tooltip: 'ลบคันนี้',
+                            ),
+                        ],
+                      ),
+                      DropdownButtonFormField<String>(
+                        key: ValueKey(
+                          'macro_vehicle_${index}_${row.vehicleId}',
+                        ),
+                        isExpanded: true,
+                        initialValue:
+                            row.vehicleId.isEmpty ||
+                                !macroCars.contains(row.vehicleId)
+                            ? null
+                            : row.vehicleId,
+                        decoration: const InputDecoration(
+                          labelText: 'รถแม็คโคร',
+                          prefixIcon: Icon(Icons.construction_outlined),
+                        ),
+                        items: macroCars
+                            .map(
+                              (c) => DropdownMenuItem<String>(
+                                value: c,
+                                child: Text(
+                                  c,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.kanit(fontSize: 18),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          row.vehicleId = v ?? '';
+                          _scheduleUiRefresh();
+                        },
+                      ),
+                      if (macroCars.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                            style: GoogleFonts.kanit(
+                              color: const Color(0xFFD14343),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('macro_driver_${index}_${row.driverId}'),
+                        isExpanded: true,
+                        initialValue:
+                            row.driverId.isEmpty ||
+                                !_macroDriverEmployees.any(
+                                  (e) => e.id == row.driverId,
+                                )
+                            ? null
+                            : row.driverId,
+                        decoration: const InputDecoration(
+                          labelText: 'คนขับ (ตำแหน่งคนขับรถแม็คโคร)',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                        items: _macroDriverEmployees
+                            .map(
+                              (e) => DropdownMenuItem<String>(
+                                value: e.id,
+                                child: Text(
+                                  e.nickname.isNotEmpty ? e.nickname : e.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.kanit(fontSize: 18),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          row.driverId = v ?? '';
+                          _scheduleUiRefresh();
+                        },
+                      ),
+                      if (_macroDriverEmployees.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
+                            style: GoogleFonts.kanit(
+                              color: const Color(0xFFD14343),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'FullDay',
+                            label: Text('เต็มวัน'),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'HalfDay',
+                            label: Text('ครึ่งวัน'),
+                          ),
+                        ],
+                        selected: {
+                          row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+                        },
+                        onSelectionChanged: (selection) {
+                          if (selection.isEmpty) return;
+                          setState(() => row.workType = selection.first);
+                        },
+                        style: ButtonStyle(
+                          textStyle: WidgetStatePropertyAll(
+                            GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: row.workDetailsController,
+                        minLines: 2,
+                        maxLines: 4,
+                        keyboardType: TextInputType.multiline,
+                        textCapitalization: TextCapitalization.sentences,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        enableIMEPersonalizedLearning: false,
+                        smartDashesType: SmartDashesType.disabled,
+                        smartQuotesType: SmartQuotesType.disabled,
+                        spellCheckConfiguration:
+                            const SpellCheckConfiguration.disabled(),
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFF1D2A3A),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'รายละเอียดงาน',
+                          hintText:
+                              'พิมพ์รายละเอียดงานเป็นภาษาไทย หรือกดชิปด้านล่าง',
+                          hintMaxLines: 3,
+                          prefixIcon: Icon(Icons.notes_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'ช่วยกรอกด่วน',
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
+                        style: GoogleFonts.kanit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black45,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final s in _kMacroWorkQuickPhrases)
+                            ActionChip(
+                              label: Text(
+                                s,
+                                style: GoogleFonts.kanit(fontSize: 12.5),
+                              ),
+                              onPressed: () => _applyMacroWorkPhrase(row, s),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: macroCars.isEmpty
+                    ? null
+                    : () => setState(
+                        () =>
+                            _macroVehicleDrafts.add(_MacroVehicleDraft.empty()),
+                      ),
+                icon: const Icon(Icons.add_rounded),
                 label: Text(
-                  _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
-                  style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 19,
+                  'เพิ่มรถอีกคัน',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _SmoothPressable(
+                enabled: !_saving,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _saveQuickEntry,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(
+                    _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 19,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(56),
+                    backgroundColor: const Color(0xFFFF8F00),
+                    foregroundColor: Colors.white,
                   ),
                 ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  backgroundColor: const Color(0xFFFF8F00),
-                  foregroundColor: Colors.white,
-                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -6438,6 +6435,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               fontSize: 24,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF0F5FAF),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'บันทึกคันที่ 1 แล้วกดบันทึกได้เลย จากนั้นกรอกคันที่ 2 ต่อได้ (หรือกด «เพิ่มรถอีกคัน» เพื่อส่งหลายคันในครั้งเดียว)',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.black54,
+              height: 1.35,
             ),
           ),
           const SizedBox(height: 10),
@@ -8889,14 +8896,14 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
     double sumTrips = 0;
     double sumCubic = 0;
     for (final row in widget.rows) {
+      final morning = double.tryParse(row.tripMorning) ?? 0;
+      final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
+      final rowTrips = morning + afternoon;
+      sumTrips += rowTrips;
       if (row.tripBillingMode == 'LumpSum') {
         sumCubic += double.tryParse(row.lumpSumTotalCubic) ?? 0;
       } else {
-        final morning = double.tryParse(row.tripMorning) ?? 0;
-        final afternoon = double.tryParse(row.tripAfternoon) ?? 0;
         final perTrip = double.tryParse(row.cubicPerTrip) ?? 0;
-        final rowTrips = morning + afternoon;
-        sumTrips += rowTrips;
         sumCubic += rowTrips * perTrip;
       }
     }
@@ -8990,7 +8997,7 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
               color: const Color(0xFFF4F8FD),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: agg.sumTrips > 0
+                color: agg.sumTrips > 0 || agg.sumCubic > 0
                     ? const Color(0xFFBFD8F4)
                     : const Color(0xFFE2EAF4),
               ),
@@ -9062,16 +9069,19 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
   Widget build(BuildContext context) {
     final row = widget.row;
     final isLump = row.tripBillingMode == 'LumpSum';
-    final rowTrips = isLump
-        ? 0.0
-        : (double.tryParse(row.tripMorning) ?? 0) +
-              (double.tryParse(row.tripAfternoon) ?? 0);
+    final tripM = double.tryParse(row.tripMorning) ?? 0;
+    final tripA = double.tryParse(row.tripAfternoon) ?? 0;
+    final rowTrips = tripM + tripA;
     final rowCubic = isLump
         ? (double.tryParse(row.lumpSumTotalCubic) ?? 0)
         : rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
+    final vLabel = widget.vehicleLabelFromId(row.vehicleId);
+    final dLabel = widget.driverLabelFromId(row.driverId);
+    final tripPart =
+        'เช้า ${_QuickInputScreenState._strNum(tripM)} • บ่าย ${_QuickInputScreenState._strNum(tripA)} เที่ยว';
     final summaryLine = isLump
-        ? '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • เหมา ${rowCubic.toStringAsFixed(0)} คิว'
-        : '${widget.vehicleLabelFromId(row.vehicleId)} • ${widget.driverLabelFromId(row.driverId)} • ${rowTrips.toStringAsFixed(0)} เที่ยว • ${rowCubic.toStringAsFixed(0)} คิว';
+        ? '$vLabel • $dLabel • $tripPart • เหมา ${rowCubic.toStringAsFixed(0)} คิว'
+        : '$vLabel • $dLabel • $tripPart • ${rowTrips.toStringAsFixed(0)} เที่ยวรวม • ${rowCubic.toStringAsFixed(0)} คิว';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -9293,11 +9303,11 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
             ),
             child: SegmentedButton<String>(
               segments: const [
+                ButtonSegment<String>(value: 'LumpSum', label: Text('เหมา')),
                 ButtonSegment<String>(
                   value: 'PerTrip',
                   label: Text('คิดเป็นเที่ยว'),
                 ),
-                ButtonSegment<String>(value: 'LumpSum', label: Text('เหมา')),
               ],
               selected: {row.tripBillingMode},
               onSelectionChanged: (selection) {
@@ -9311,6 +9321,74 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: row.tripMorningController,
+                  readOnly: true,
+                  onTap: () => widget.openNumericPad(
+                    controller: row.tripMorningController,
+                    label: 'ช่วงเช้า (เที่ยว)',
+                    onChanged: (v) {
+                      final n =
+                          _QuickInputScreenState.normalizeVehicleTripNumericText(
+                            v,
+                          );
+                      row.tripMorning = n;
+                      if (row.tripMorningController.text != n) {
+                        row.tripMorningController.text = n;
+                      }
+                      widget.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'ช่วงเช้า (เที่ยว)',
+                    prefixIcon: Icon(Icons.wb_sunny_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  controller: row.tripAfternoonController,
+                  readOnly: true,
+                  onTap: () => widget.openNumericPad(
+                    controller: row.tripAfternoonController,
+                    label: 'ช่วงบ่าย (เที่ยว)',
+                    onChanged: (v) {
+                      final n =
+                          _QuickInputScreenState.normalizeVehicleTripNumericText(
+                            v,
+                          );
+                      row.tripAfternoon = n;
+                      if (row.tripAfternoonController.text != n) {
+                        row.tripAfternoonController.text = n;
+                      }
+                      widget.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'ช่วงบ่าย (เที่ยว)',
+                    prefixIcon: Icon(Icons.nightlight_outlined),
+                  ),
+                ),
+              ),
+            ],
           ),
           if (row.tripBillingMode == 'LumpSum') ...[
             const SizedBox(height: 10),
@@ -9342,74 +9420,6 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               ),
             ),
           ] else ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: row.tripMorningController,
-                    readOnly: true,
-                    onTap: () => widget.openNumericPad(
-                      controller: row.tripMorningController,
-                      label: 'ช่วงเช้า (เที่ยว)',
-                      onChanged: (v) {
-                        final n =
-                            _QuickInputScreenState.normalizeVehicleTripNumericText(
-                              v,
-                            );
-                        row.tripMorning = n;
-                        if (row.tripMorningController.text != n) {
-                          row.tripMorningController.text = n;
-                        }
-                        widget.onChanged();
-                        setState(() {});
-                      },
-                    ),
-                    style: GoogleFonts.kanit(
-                      color: const Color(0xFF1D2A3A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'ช่วงเช้า (เที่ยว)',
-                      prefixIcon: Icon(Icons.wb_sunny_outlined),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextFormField(
-                    controller: row.tripAfternoonController,
-                    readOnly: true,
-                    onTap: () => widget.openNumericPad(
-                      controller: row.tripAfternoonController,
-                      label: 'ช่วงบ่าย (เที่ยว)',
-                      onChanged: (v) {
-                        final n =
-                            _QuickInputScreenState.normalizeVehicleTripNumericText(
-                              v,
-                            );
-                        row.tripAfternoon = n;
-                        if (row.tripAfternoonController.text != n) {
-                          row.tripAfternoonController.text = n;
-                        }
-                        widget.onChanged();
-                        setState(() {});
-                      },
-                    ),
-                    style: GoogleFonts.kanit(
-                      color: const Color(0xFF1D2A3A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'ช่วงบ่าย (เที่ยว)',
-                      prefixIcon: Icon(Icons.nightlight_outlined),
-                    ),
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 8),
             TextFormField(
               controller: row.cubicPerTripController,
@@ -10177,7 +10187,7 @@ class _VehicleTripDraft {
   String workType = 'FullDay';
 
   /// PerTrip | LumpSum
-  String tripBillingMode = 'PerTrip';
+  String tripBillingMode = 'LumpSum';
   String hourlyHours = '';
   String workDetails = '';
   String tripMorning = '';

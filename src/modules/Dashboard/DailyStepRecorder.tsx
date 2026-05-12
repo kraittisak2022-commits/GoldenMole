@@ -21,6 +21,7 @@ import {
     readWizardDraftEntry,
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
+import { getTransactionRecencyScore, pickLatestByDayOrder } from './dailyStepRecorderUtils';
 
 import {
     parseSignatureNote,
@@ -345,36 +346,6 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
-const toTimeOrNull = (value: string | undefined): number | null => {
-    if (!value) return null;
-    const t = Date.parse(value);
-    return Number.isNaN(t) ? null : t;
-};
-
-const getTransactionRecencyScore = (tx: Transaction, dayItems: Transaction[], idxFallback = -1): number => {
-    const createdAtMs = toTimeOrNull(tx.createdAt);
-    if (createdAtMs != null) return createdAtMs;
-    const dayMs = toTimeOrNull(`${normalizeDate(tx.date)}T00:00:00.000Z`);
-    if (dayMs != null) return dayMs + Math.max(0, idxFallback);
-    return idxFallback;
-};
-
-export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems: Transaction[]): T | null => {
-    if (items.length === 0) return null;
-    const lastIndexById = new Map<string, number>();
-    dayItems.forEach((tx, idx) => {
-        lastIndexById.set(tx.id, idx);
-    });
-    return items.reduce((latest, current) => {
-        const latestIdx = lastIndexById.get(latest.id) ?? -1;
-        const currentIdx = lastIndexById.get(current.id) ?? -1;
-        const latestScore = getTransactionRecencyScore(latest, dayItems, latestIdx);
-        const currentScore = getTransactionRecencyScore(current, dayItems, currentIdx);
-        if (currentScore === latestScore) return currentIdx >= latestIdx ? current : latest;
-        return currentScore > latestScore ? current : latest;
-    });
-};
-
 const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
@@ -433,6 +404,35 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             )
             .sort()
             .join('|');
+    }, [dayTransactions]);
+    /** สรุป Labor Attendance (canvas) ที่บันทึกแล้ว — กันไม่ให้รีเซ็ต workAssignments เมื่อ transactions reference เปลี่ยน */
+    const laborCanvasPersistedPrefillSignature = useMemo(() => {
+        const laborAttendance = dayTransactions.filter(
+            (t) => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work'
+        );
+        if (laborAttendance.length === 0) return '';
+        const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
+        if (!latest?.id) return '';
+        const wa =
+            latest.workAssignments && typeof latest.workAssignments === 'object'
+                ? mergeUnknownLaborCanvasAssignments(latest.workAssignments as Record<string, string[]>)
+                : ({} as Record<string, string[]>);
+        const waSig = Object.keys(wa)
+            .sort()
+            .map((k) => `${k}:${(wa[k] || []).slice().sort().join(',')}`)
+            .join(';');
+        const wte = (latest.workTypeByEmployee || {}) as Record<string, string>;
+        const halfSig = Object.keys(wte)
+            .sort()
+            .filter((id) => wte[id] === 'HalfDay')
+            .join(',');
+        return [
+            String(latest.id),
+            waSig,
+            String(latest.laborGeneralWorkNotes ?? '').trim(),
+            halfSig,
+            String(latest.drumsWashedAtHome ?? ''),
+        ].join('#');
     }, [dayTransactions]);
     const washHomeDrumsAlertMessage = useMemo(() => getWashHomeDrumsMismatchMessage(dayTransactions), [dayTransactions]);
     const otDescSuggestions = useMemo(() => {
@@ -850,7 +850,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         setVehWage(t.driverWage != null ? String(t.driverWage) : '');
         setVehDetails(t.workDetails || '');
         setVehWorkType(x.workType === 'HalfDay' ? 'HalfDay' : 'FullDay');
-    }, []);
+    }, [defaultVehicleMachineWage]);
 
     useEffect(() => {
         setEditingVehicleTxId(null);
@@ -1151,7 +1151,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setEventType(p.eventType);
             setEventPriority(p.eventPriority);
         }
-    }, []);
+    }, [defaultVehicleMachineWage]);
 
     const wizardDraftPayload: WizardDraftPayload = useMemo(
         () => ({
@@ -1380,39 +1380,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
     // Prefill form state เมื่อเลือกวันที่ที่เคยบันทึกแล้ว
     useEffect(() => {
-        // Labor Attendance (canvas)
-        const laborAttendance = dayTransactions
-            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance');
-        if (laborAttendance.length > 0) {
-            const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
-            if (!latest) return;
-            if (latest.workAssignments) {
-                setWorkAssignments(mergeUnknownLaborCanvasAssignments(latest.workAssignments));
-            } else {
-                setWorkAssignments({});
-            }
-            setLaborGeneralWorkNotes(String(latest.laborGeneralWorkNotes || '').trim());
-            if (latest.workTypeByEmployee) {
-                const half = new Set<string>();
-                Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
-                    if (wt === 'HalfDay') half.add(id);
-                });
-                setHalfDayEmpIds(half);
-            } else {
-                setHalfDayEmpIds(new Set());
-            }
-            if (latest.drumsWashedAtHome != null) {
-                setDrumsWashedAtHome(String(latest.drumsWashedAtHome));
-            } else {
-                setDrumsWashedAtHome('');
-            }
-        } else {
-            setWorkAssignments({});
-            setLaborGeneralWorkNotes('');
-            setHalfDayEmpIds(new Set());
-            setDrumsWashedAtHome('');
-        }
-
         // Fuel (prefill แยก: ซื้อเข้า / ใช้รายรถ)
         const fuelTx = dayTransactions
             .filter(t => t.category === 'Fuel')
@@ -1470,6 +1437,43 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             }
         }
     }, [date, dayTransactions, editingVehicleTxId]);
+
+    // Prefill canvas ค่าแรงจาก Attendance ที่บันทึกแล้ว — แยกจาก effect หลักเพื่อไม่รีเซ็ตเมื่อ parent ส่ง transactions array ใหม่โดยเนื้อหาเดิม
+    useEffect(() => {
+        const laborAttendance = dayTransactions.filter(
+            (t) => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work'
+        );
+        if (laborAttendance.length > 0) {
+            const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
+            if (!latest) return;
+            const mergedWa =
+                latest.workAssignments && typeof latest.workAssignments === 'object'
+                    ? mergeUnknownLaborCanvasAssignments(latest.workAssignments as Record<string, string[]>)
+                    : ({} as Record<string, string[]>);
+            const hasAssignedWorkers = Object.values(mergedWa).some(ids => Array.isArray(ids) && ids.length > 0);
+            setWorkAssignments(hasAssignedWorkers ? mergedWa : {});
+            setLaborGeneralWorkNotes(String(latest.laborGeneralWorkNotes || '').trim());
+            if (latest.workTypeByEmployee) {
+                const half = new Set<string>();
+                Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
+                    if (wt === 'HalfDay') half.add(id);
+                });
+                setHalfDayEmpIds(half);
+            } else {
+                setHalfDayEmpIds(new Set());
+            }
+            if (latest.drumsWashedAtHome != null) {
+                setDrumsWashedAtHome(String(latest.drumsWashedAtHome));
+            } else {
+                setDrumsWashedAtHome('');
+            }
+        } else {
+            setWorkAssignments({});
+            setLaborGeneralWorkNotes('');
+            setHalfDayEmpIds(new Set());
+            setDrumsWashedAtHome('');
+        }
+    }, [date, laborCanvasPersistedPrefillSignature]);
 
     // Prefill ฟอร์มล้างทรายจากรายการที่บันทึกแล้ว — ใช้ signature แทน dayTransactions เพื่อไม่รีเซ็ตเมื่อ parent ส่ง transactions array ใหม่ (reference) โดยเนื้อหาเดิม
     useEffect(() => {
@@ -2572,7 +2576,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 }
                                                                 setWorkAssignments(prev => {
                                                                     const u = { ...prev };
-                                                                    Object.keys(u).forEach(k => { u[k] = u[k].filter(id => id !== dragEmployee); });
+                                                                    Object.keys(u).forEach(k => { u[k] = (u[k] || []).filter(id => id !== dragEmployee); });
                                                                     u[cat.id] = [...(u[cat.id] || []), dragEmployee];
                                                                     return u;
                                                                 });

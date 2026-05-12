@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import DailyStepRecorder, { pickLatestByDayOrder } from './DailyStepRecorder';
+import DailyStepRecorder from './DailyStepRecorder';
+import { pickLatestByDayOrder } from './dailyStepRecorderUtils';
 import { AppSettings, Transaction } from '../../types';
 import { WizardDraftPayload, WIZARD_DRAFT_STORAGE_KEY, writeWizardDraftForDate } from './wizardDraftUtils';
 
