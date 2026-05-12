@@ -63,6 +63,8 @@ export interface Transaction {
     workAssignments?: Record<string, string[]>;
     /** กลุ่มงานที่ผู้ใช้เพิ่มเองใน Daily Wizard */
     customWorkCategories?: Array<{ id: string; label: string }>;
+    /** รายละเอียดงานทั่วไป (กล่องงานทั่วไปใน Daily Wizard) */
+    laborGeneralWorkNotes?: string;
     otAmount?: number; advanceAmount?: number; specialAmount?: number;
     otHours?: number; // Added for detailed OT tracking
     otDescription?: string; // Added for detailed OT tracking

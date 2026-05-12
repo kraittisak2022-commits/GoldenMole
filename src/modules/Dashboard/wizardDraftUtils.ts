@@ -20,6 +20,10 @@ export type WizardDraftPayload = {
     workAssignments: Record<string, string[]>;
     customCategories: Array<{ id: string; label: string }>;
     newCategoryName: string;
+    /** กลุ่มพนักงานในขั้นค่าแรง (กรองรายชื่อ) */
+    laborEmployeeBucket: 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+    /** รายละเอียดงานทั่วไป (กล่อง canvas งานทั่วไป) */
+    laborGeneralWorkNotes: string;
     vehCar: string;
     vehDriver: string;
     vehWage: string;
@@ -132,6 +136,13 @@ function normalizePayload(raw: unknown): WizardDraftPayload | null {
         workAssignments: sanitizeWorkAssignments(raw.workAssignments),
         customCategories: sanitizeCustomCategories(raw.customCategories),
         newCategoryName: strOr(raw.newCategoryName),
+        laborEmployeeBucket:
+            raw.laborEmployeeBucket === 'excavatorMac' ||
+            raw.laborEmployeeBucket === 'nightWatch' ||
+            raw.laborEmployeeBucket === 'generalLabor'
+                ? raw.laborEmployeeBucket
+                : 'sifter',
+        laborGeneralWorkNotes: strOr(raw.laborGeneralWorkNotes),
         vehCar: strOr(raw.vehCar),
         vehDriver: strOr(raw.vehDriver),
         vehWage: strOr(raw.vehWage),

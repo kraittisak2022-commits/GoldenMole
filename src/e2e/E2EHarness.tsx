@@ -31,6 +31,8 @@ const basePayload: WizardDraftPayload = {
     workAssignments: {},
     customCategories: [],
     newCategoryName: '',
+    laborEmployeeBucket: 'sifter',
+    laborGeneralWorkNotes: '',
     vehCar: 'รถ A',
     vehDriver: '',
     vehWage: '200',

@@ -119,13 +119,40 @@ const STEPS = [
     { id: 8, label: 'ตรวจสอบ', shortLabel: 'สรุป', icon: CheckCircle2 }
 ];
 
-// Default work categories for labor canvas
+// Default work categories for labor canvas (fixed set — ไม่มีกล่องอื่นนอกจากรายการนี้)
 const DEFAULT_WORK_CATEGORIES = [
     { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200' },
     { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200' },
     { id: 'washHome', label: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200' },
+    { id: 'pierWatch', label: 'เฝ้าท่าทราย', color: 'bg-amber-500', bgLight: 'bg-amber-50 border-amber-200' },
+    { id: 'nightShift', label: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200' },
+    { id: 'digHaul', label: 'ขุดขน (รวมกล่อง ควบคุมการขุด + ควบคุมรถขุด)', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200' },
+    { id: 'generalWork', label: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200' },
 ];
 const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
+/** รวมคีย์ประเภทงานเก่า/กำหนดเอง เข้า generalWork เพื่อให้ตรงกับกล่อง canvas ปัจจุบัน */
+const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | undefined | null): Record<string, string[]> => {
+    const base = sanitizeWorkAssignments(raw);
+    const out: Record<string, string[]> = {};
+    const pushUnique = (key: string, ids: string[]) => {
+        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
+        if (list.length === 0) return;
+        if (!out[key]) out[key] = [];
+        const seen = new Set(out[key]);
+        for (const id of list) {
+            if (!seen.has(id)) {
+                seen.add(id);
+                out[key].push(id);
+            }
+        }
+    };
+    for (const [k, ids] of Object.entries(base)) {
+        if (DEFAULT_WORK_CATEGORY_IDS.has(k)) pushUnique(k, ids);
+        else if (['wash_home', 'wash_yard_house', 'sift_home'].includes(k)) pushUnique('washHome', ids);
+        else pushUnique('generalWork', ids);
+    }
+    return out;
+};
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
 const HIDDEN_WORK_CATEGORY_IDS = new Set(['other']);
 const HIDDEN_WORK_CATEGORY_LABELS = new Set(['ทำอื่นๆ'].map(normalizeCategoryLabel));
@@ -135,21 +162,6 @@ const isCfgLikeToken = (value: string) => /^cfg(?:[_-]|[a-z0-9]{4,})/i.test((val
 const isGeneratedCategoryLabel = (value: string) => isGeneratedCategoryId(value);
 const isSystemCategoryLabel = (value: string) =>
     isGeneratedCategoryLabel(value) || isCfgLikeToken(value);
-const CUSTOM_CATEGORY_STYLES = [
-    { color: 'bg-purple-500', bgLight: 'bg-purple-50 border-purple-200' },
-    { color: 'bg-fuchsia-500', bgLight: 'bg-fuchsia-50 border-fuchsia-200' },
-    { color: 'bg-violet-500', bgLight: 'bg-violet-50 border-violet-200' },
-    { color: 'bg-indigo-500', bgLight: 'bg-indigo-50 border-indigo-200' },
-    { color: 'bg-pink-500', bgLight: 'bg-pink-50 border-pink-200' },
-    { color: 'bg-sky-500', bgLight: 'bg-sky-50 border-sky-200' },
-];
-const hashString = (value: string) => {
-    let h = 0;
-    for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
-    return h;
-};
-const getCustomCategoryStyle = (id: string) => CUSTOM_CATEGORY_STYLES[hashString(id) % CUSTOM_CATEGORY_STYLES.length];
-const makeStableCustomCategoryId = (label: string) => `cfg_${hashString(normalizeCategoryLabel(label)).toString(36)}`;
 const sanitizeWorkAssignments = (raw: Record<string, string[]> | undefined | null) => {
     if (!raw || typeof raw !== 'object') return {};
     return Object.fromEntries(
@@ -191,6 +203,36 @@ const isEmployeeMatchedBySearch = (emp: Employee, search: string) => {
     const name = String(emp.name || '');
     return nickname.includes(q) || name.includes(q) || getEmployeeDisplayName(emp).includes(q);
 };
+
+type LaborEmployeeBucket = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
+    sifter: 'พนักงานร่อนทราย',
+    excavatorMac: 'คนขับรถแม็คโคร',
+    nightWatch: 'เฝ้ากลางคืน',
+    generalLabor: 'พนักงานทั่วไป',
+};
+const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
+const getEmployeePositionBlob = (emp: Employee) => {
+    const parts = [...(emp.positions || [])];
+    if (emp.position && !parts.includes(emp.position)) parts.push(emp.position);
+    return parts.join(' ').toLowerCase();
+};
+/** จัดกลุ่มพนักงานในขั้นค่าแรง — กรองตามตำแหน่งงาน */
+const classifyLaborEmployeeBucket = (emp: Employee): LaborEmployeeBucket => {
+    const blob = getEmployeePositionBlob(emp);
+    if (blob.includes('แม็คโคร') || blob.includes('แมคโคร')) return 'excavatorMac';
+    if (blob.includes('ร่อน') || blob.includes('ร่อนทราย')) return 'sifter';
+    if (
+        blob.includes('เฝ้ากลางคืน') ||
+        blob.includes('เวรกลางคืน') ||
+        blob.includes('กลางคืน') ||
+        blob.includes('night')
+    ) {
+        return 'nightWatch';
+    }
+    return 'generalLabor';
+};
+
 const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
     const name = (vehicleName || '').toLowerCase().replace(/\s+/g, '');
     if (name.includes('10ล้อ') || name.includes('สิบล้อ')) return 6;
@@ -404,8 +446,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const eventCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length;
         return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, incomeCount, eventCount };
     }, [dayTransactions]);
-    const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
-    const [newCategoryName, setNewCategoryName] = useState('');
     const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
     const latestLaborAttendance = useMemo(() => {
         const laborAttendance = dayTransactions
@@ -422,67 +462,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         if (dayStepStats.laborCount > 0) return 1;
         return 1;
     }, [dayStepStats]);
-    /** จำประเภทงานกำหนดเองจากทุกวัน เพื่อให้วันใหม่แสดงอัตโนมัติ */
-    const rememberedCustomCategories = useMemo(() => {
-        const customById = new Map<string, { id: string; label: string }>();
-        const knownLabelById = new Map<string, string>();
-        const seenLabels = new Set<string>();
-        const addCategory = (id: string, label: string) => {
-            if (!id || !label || DEFAULT_WORK_CATEGORY_IDS.has(id)) return;
-            if (HIDDEN_WORK_CATEGORY_IDS.has(id)) return;
-            if (isSystemCategoryLabel(label)) return;
-            const norm = normalizeCategoryLabel(label);
-            if (HIDDEN_WORK_CATEGORY_LABELS.has(norm)) return;
-            if (isCfgLikeToken(norm)) return;
-            if (!norm || seenLabels.has(norm)) return;
-            customById.set(id, { id, label });
-            knownLabelById.set(id, label);
-            seenLabels.add(norm);
-        };
-        const configuredFromJobDescriptions = settings.jobDescriptions || [];
-        configuredFromJobDescriptions.forEach((label) => {
-            const safeLabel = String(label || '').trim();
-            if (!safeLabel) return;
-            addCategory(makeStableCustomCategoryId(safeLabel), safeLabel);
-        });
-        const configuredCategories = settings.appDefaults?.laborWorkCategories || [];
-        configuredCategories
-            .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
-            .forEach((c: any) => addCategory(c.id, c.label));
-        const laborAttendance = transactions.filter(t => t.category === 'Labor' && t.subCategory === 'Attendance') as any[];
-
-        laborAttendance.forEach((tx) => {
-            if (Array.isArray(tx.customWorkCategories)) {
-                tx.customWorkCategories
-                    .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
-                    .forEach((c: any) => addCategory(c.id, c.label));
-            }
-        });
-
-        laborAttendance.forEach((tx) => {
-            if (tx.workAssignments && typeof tx.workAssignments === 'object') {
-                Object.keys(tx.workAssignments)
-                    .filter(catId => !DEFAULT_WORK_CATEGORY_IDS.has(catId))
-                    .forEach((catId) => {
-                        const knownLabel = knownLabelById.get(catId);
-                        if (knownLabel) {
-                            addCategory(catId, knownLabel);
-                            return;
-                        }
-                        // orphan id แบบ c_เวลา ไม่ควรแสดงเป็นชื่อกล่อง
-                        if (isGeneratedCategoryId(catId) || isCfgLikeToken(catId)) return;
-                        addCategory(catId, catId);
-                    });
-            }
-        });
-        return Array.from(customById.values());
-    }, [transactions, settings.appDefaults?.laborWorkCategories, settings.jobDescriptions]);
     const mobileLaborCanvasPreview = useMemo(() => {
-        const assignments = latestLaborAttendance?.workAssignments as Record<string, string[]> | undefined;
-        if (!assignments || Object.keys(assignments).length === 0) return [];
+        const assignments = mergeUnknownLaborCanvasAssignments(latestLaborAttendance?.workAssignments as Record<string, string[]> | undefined);
+        if (Object.keys(assignments).length === 0) return [];
         const knownLabels = new Map<string, string>();
         DEFAULT_WORK_CATEGORIES.forEach(c => knownLabels.set(c.id, c.label));
-        rememberedCustomCategories.forEach(c => knownLabels.set(c.id, c.label));
         const rows = Object.entries(assignments)
             .filter(([catId]) => !HIDDEN_WORK_CATEGORY_IDS.has(catId))
             .filter(([, empIds]) => Array.isArray(empIds) && empIds.length > 0)
@@ -495,33 +479,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             })
             .sort((a, b) => b.names.length - a.names.length);
         return rows;
-    }, [latestLaborAttendance, rememberedCustomCategories, employees]);
+    }, [latestLaborAttendance, employees]);
     const hasLaborAttendanceToday = dayTransactions.some(t => t.category === 'Labor' && t.subCategory === 'Attendance');
-    const addOrSelectCustomCategory = useCallback((rawLabel: string) => {
-        const label = rawLabel.trim();
-        if (!label) return;
-        if (isCfgLikeToken(label)) return;
-        const target = normalizeCategoryLabel(label);
-        setCustomCategories(prev => {
-            const exists = prev.some(c => normalizeCategoryLabel(c.label) === target);
-            if (exists) return prev;
-            const configured = (settings.appDefaults?.laborWorkCategories || []).find(c => normalizeCategoryLabel(c.label) === target);
-            const id = configured?.id || makeStableCustomCategoryId(label);
-            return [...prev, { id, label }];
-        });
-        setNewCategoryName('');
-    }, [settings.appDefaults?.laborWorkCategories]);
-    const settingJobDescriptionSuggestions = useMemo(() => {
-        const existingLabels = new Set(customCategories.map(c => normalizeCategoryLabel(c.label)));
-        const defaultLabels = new Set(DEFAULT_WORK_CATEGORIES.map(c => normalizeCategoryLabel(c.label)));
-        return (settings.jobDescriptions || [])
-            .map(v => String(v || '').trim())
-            .filter(Boolean)
-            .filter(v => !isCfgLikeToken(v))
-            .filter(v => !defaultLabels.has(normalizeCategoryLabel(v)))
-            .filter(v => !existingLabels.has(normalizeCategoryLabel(v)));
-    }, [settings.jobDescriptions, customCategories]);
-
     /** สรุปวันนี้ (คอลัมน์ขวา) — คำนวณครั้งเดียว */
     const atAGlanceStats = useMemo(() => {
         const laborCount = dayTransactions
@@ -664,6 +623,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     // Labor State
     const [laborSearch, setLaborSearch] = useState('');
     const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
+    const [laborEmployeeBucket, setLaborEmployeeBucket] = useState<LaborEmployeeBucket>('sifter');
+    const [laborGeneralWorkNotes, setLaborGeneralWorkNotes] = useState('');
     const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
@@ -676,10 +637,26 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [otRate, setOtRate] = useState('');
     // Canvas-style work category assignments: { categoryId: employeeId[] }
     const [workAssignments, setWorkAssignments] = useState<Record<string, string[]>>({});
+    const normalizedWorkAssignments = useMemo(
+        () => mergeUnknownLaborCanvasAssignments(workAssignments),
+        [workAssignments]
+    );
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
+    const laborBucketCounts = useMemo(() => {
+        const counts: Record<LaborEmployeeBucket, number> = { sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
+        for (const e of employees) {
+            counts[classifyLaborEmployeeBucket(e)] += 1;
+        }
+        return counts;
+    }, [employees]);
     const filteredLaborEmployees = useMemo(
-        () => employees.filter(e => isEmployeeMatchedBySearch(e, debouncedLaborSearch)),
-        [employees, debouncedLaborSearch]
+        () =>
+            employees.filter(
+                e =>
+                    classifyLaborEmployeeBucket(e) === laborEmployeeBucket &&
+                    isEmployeeMatchedBySearch(e, debouncedLaborSearch)
+            ),
+        [employees, laborEmployeeBucket, debouncedLaborSearch]
     );
     const otVisibleEmployees = useMemo(
         () => filteredLaborEmployees.slice(0, otVisibleEmployeeCount),
@@ -750,7 +727,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         ) as any[];
         const freq = new Map<string, { count: number; workAssignments: Record<string, string[]>; label: string }>();
         for (const tx of pool) {
-            const wa = sanitizeWorkAssignments(tx.workAssignments);
+            const wa = mergeUnknownLaborCanvasAssignments(sanitizeWorkAssignments(tx.workAssignments));
             const key = JSON.stringify(Object.entries(wa).sort(([a], [b]) => a.localeCompare(b)));
             const current = freq.get(key) || {
                 count: 0,
@@ -1090,17 +1067,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setOtHours(p.otHours);
             setOtDesc(p.otDesc);
             setOtRate(p.otRate);
-            setWorkAssignments(p.workAssignments);
-            setCustomCategories(
-                (p.customCategories || []).filter((c) =>
-                    c &&
-                    typeof c.id === 'string' &&
-                    typeof c.label === 'string' &&
-                    !isCfgLikeToken(c.id) &&
-                    !isCfgLikeToken(c.label)
-                )
+            setWorkAssignments(mergeUnknownLaborCanvasAssignments(p.workAssignments));
+            setLaborEmployeeBucket(
+                p.laborEmployeeBucket === 'excavatorMac' ||
+                    p.laborEmployeeBucket === 'nightWatch' ||
+                    p.laborEmployeeBucket === 'generalLabor'
+                    ? p.laborEmployeeBucket
+                    : 'sifter'
             );
-            setNewCategoryName(p.newCategoryName);
+            setLaborGeneralWorkNotes(p.laborGeneralWorkNotes || '');
         }
         if (pick('vehicle')) {
             setVehCar(p.vehCar);
@@ -1167,8 +1142,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             otDesc,
             otRate,
             workAssignments,
-            customCategories,
-            newCategoryName,
+            customCategories: [],
+            newCategoryName: '',
+            laborEmployeeBucket,
+            laborGeneralWorkNotes,
             vehCar,
             vehDriver,
             vehWage,
@@ -1220,8 +1197,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             otDesc,
             otRate,
             workAssignments,
-            customCategories,
-            newCategoryName,
+            laborEmployeeBucket,
+            laborGeneralWorkNotes,
             vehCar,
             vehDriver,
             vehWage,
@@ -1387,37 +1364,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
             if (!latest) return;
             if (latest.workAssignments) {
-                setWorkAssignments(sanitizeWorkAssignments(latest.workAssignments));
+                setWorkAssignments(mergeUnknownLaborCanvasAssignments(latest.workAssignments));
             } else {
                 setWorkAssignments({});
             }
-            if (Array.isArray(latest.customWorkCategories)) {
-                const seenLabels = new Set<string>();
-                setCustomCategories(latest.customWorkCategories
-                    .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
-                    .filter((c: any) => {
-                        if (isSystemCategoryLabel(c.label)) return false;
-                        if (isCfgLikeToken(c.label)) return false;
-                        const norm = normalizeCategoryLabel(c.label);
-                        if (!norm || seenLabels.has(norm)) return false;
-                        seenLabels.add(norm);
-                        return true;
-                    })
-                );
-            } else if (latest.workAssignments) {
-                const recoveredCustom = Object.keys(latest.workAssignments)
-                    .filter(catId => !DEFAULT_WORK_CATEGORY_IDS.has(catId))
-                    .map((catId) => {
-                        const remembered = rememberedCustomCategories.find(c => c.id === catId);
-                        if (remembered) return remembered;
-                        if (isGeneratedCategoryId(catId) || isCfgLikeToken(catId)) return null;
-                        return { id: catId, label: catId };
-                    })
-                    .filter((c): c is { id: string; label: string } => !!c);
-                setCustomCategories(recoveredCustom);
-            } else {
-                setCustomCategories([]);
-            }
+            setLaborGeneralWorkNotes(String(latest.laborGeneralWorkNotes || '').trim());
             if (latest.workTypeByEmployee) {
                 const half = new Set<string>();
                 Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
@@ -1434,7 +1385,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             }
         } else {
             setWorkAssignments({});
-            setCustomCategories(rememberedCustomCategories);
+            setLaborGeneralWorkNotes('');
             setHalfDayEmpIds(new Set());
             setDrumsWashedAtHome('');
         }
@@ -1554,7 +1505,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 setVehWorkType('FullDay');
             }
         }
-    }, [date, dayTransactions, rememberedCustomCategories, editingVehicleTxId]);
+    }, [date, dayTransactions, editingVehicleTxId]);
 
     const nextStep = async () => {
         // กันลืมกดบันทึก: ถ้ายังกด "ถัดไป" โดยไม่มีข้อมูลในแต่ละขั้น ให้เตือนก่อน
@@ -1874,27 +1825,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             let workGroups: { label: string; count: number }[] = [];
                             if (attendance.length > 0) {
                                 const latest = pickLatestByDayOrder(attendance as any[], txs) as any;
-                                if (latest) {
-                                    const wa: Record<string, string[]> | undefined = latest.workAssignments;
-                                    const customCategoryMap = new Map<string, string>(
-                                        Array.isArray(latest.customWorkCategories)
-                                            ? latest.customWorkCategories
-                                                .filter((c: any) => c && typeof c.id === 'string' && typeof c.label === 'string')
-                                                .map((c: any) => [c.id, c.label])
-                                            : []
-                                    );
-                                    if (wa) {
-                                        workGroups = Object.entries(wa)
-                                            .map(([catId, empIds]) => {
-                                                const def = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
-                                                return {
-                                                    label: def?.label || customCategoryMap.get(catId) || catId,
+                                    if (latest) {
+                                        const waRaw: Record<string, string[]> | undefined = latest.workAssignments;
+                                        if (waRaw) {
+                                            const mergedWa = mergeUnknownLaborCanvasAssignments(waRaw);
+                                            workGroups = Object.entries(mergedWa)
+                                                .map(([catId, empIds]) => ({
+                                                    label: DEFAULT_WORK_CATEGORIES.find(c => c.id === catId)?.label || catId,
                                                     count: (empIds || []).length,
-                                                };
-                                            })
-                                            .filter(g => g.count > 0);
+                                                }))
+                                                .filter(g => g.count > 0);
+                                        }
                                     }
-                                }
                             }
 
                             return (
@@ -2516,10 +2458,28 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 <span className="text-sm font-bold text-slate-600">👥 เลือกพนักงานเพื่อย้ายลงกล่องงาน</span>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                                                        {filteredLaborEmployees.length}/{employees.length} คน
+                                                        {filteredLaborEmployees.length}/{laborBucketCounts[laborEmployeeBucket]} คนในกลุ่ม
                                                     </span>
                                                     <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-36 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300" />
                                                 </div>
+                                            </div>
+                                            <div className="mb-2 flex flex-wrap gap-1.5" role="tablist" aria-label="กลุ่มพนักงาน">
+                                                {LABOR_EMPLOYEE_BUCKET_ORDER.map((b) => (
+                                                    <button
+                                                        key={b}
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-selected={laborEmployeeBucket === b}
+                                                        onClick={() => setLaborEmployeeBucket(b)}
+                                                        className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                                                            laborEmployeeBucket === b
+                                                                ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
+                                                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/60'
+                                                        }`}
+                                                    >
+                                                        {LABOR_EMPLOYEE_BUCKET_LABEL[b]} ({laborBucketCounts[b]})
+                                                    </button>
+                                                ))}
                                             </div>
                                             <div className="grid max-h-[180px] grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-3 sm:p-3 md:max-h-[240px] md:grid-cols-4 lg:grid-cols-5">
                                                 {poolVisibleEmployees.map(emp => {
@@ -2547,7 +2507,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 })}
                                                 {poolVisibleEmployees.length === 0 && (
                                                     <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white/70 p-3 text-center text-xs text-slate-500">
-                                                        ยังไม่มีพนักงานที่ตรงคำค้นหา
+                                                        ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา
                                                         {laborSearch.trim() && (
                                                             <button
                                                                 type="button"
@@ -2567,9 +2527,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <div className="flex-1 overflow-y-auto mb-3">
                                             <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
                                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
-                                                {[...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, ...getCustomCategoryStyle(c.id) }))].map(cat => {
+                                                {DEFAULT_WORK_CATEGORIES.map(cat => {
                                                     const assigned = workAssignments[cat.id] || [];
-                                                    const isCustomCategory = !DEFAULT_WORK_CATEGORY_IDS.has(cat.id);
                                                     return (
                                                         <div key={cat.id}
                                                             onDragOver={e => e.preventDefault()}
@@ -2605,23 +2564,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 </span>
                                                                 <div className="mt-1.5 flex items-center justify-end gap-2">
                                                                     <span className="text-[11px] font-medium text-slate-400">{assigned.length} คน</span>
-                                                                    {isCustomCategory && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                setCustomCategories(prev => prev.filter(c => c.id !== cat.id));
-                                                                                setWorkAssignments(prev => {
-                                                                                    const next = { ...prev };
-                                                                                    delete next[cat.id];
-                                                                                    return next;
-                                                                                });
-                                                                            }}
-                                                                            className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-100"
-                                                                            title="ลบกล่องประเภทงานนี้เฉพาะวันนี้"
-                                                                        >
-                                                                            ลบ
-                                                                        </button>
-                                                                    )}
                                                                 </div>
                                                             </div>
                                                             <div className="flex flex-wrap gap-1">
@@ -2632,11 +2574,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                         <span key={eid} className={`flex items-center gap-1 rounded-lg border bg-white font-semibold ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}>
                                                                             {getEmployeeDisplayName(emp)}
                                                                             <button type="button" onClick={(ev) => { ev.stopPropagation(); setHalfDayEmpIds(prev => { const n = new Set(prev); if (n.has(eid)) n.delete(eid); else n.add(eid); return n; }); }} className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`} title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}>½</button>
-                                                                            <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: prev[cat.id].filter(id => id !== eid) }))} className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}>×</button>
+                                                                            <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).filter(id => id !== eid) }))} className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}>×</button>
                                                                         </span>) : null;
                                                                 })}
                                                                 {assigned.length === 0 && <span className="text-[11px] text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
                                                             </div>
+                                                            {cat.id === 'generalWork' && (
+                                                                <div className="mt-2 space-y-1">
+                                                                    <label htmlFor="labor-general-work-notes" className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">รายละเอียดงาน (งานทั่วไป)</label>
+                                                                    <textarea
+                                                                        id="labor-general-work-notes"
+                                                                        value={laborGeneralWorkNotes}
+                                                                        onChange={e => setLaborGeneralWorkNotes(e.target.value)}
+                                                                        placeholder="ระบุรายละเอียดงานที่ทำ เช่น เก็บกวาด, ขนวัสดุ..."
+                                                                        rows={touchUI ? 3 : 2}
+                                                                        className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                    />
+                                                                </div>
+                                                            )}
                                                             {selectedEmps.length > 0 && (
                                                                 <button onClick={async () => {
                                                                     for (const id of selectedEmps) {
@@ -2660,57 +2615,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                 })}
                                             </div>
-                                            <div className="flex gap-2 mt-3">
-                                                <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="เพิ่มประเภทงานใหม่..." className="flex-1 text-sm border rounded-xl px-3 py-2" />
-                                                <button onClick={() => {
-                                                    const label = newCategoryName.trim();
-                                                    if (!label) return;
-                                                    if (isCfgLikeToken(label)) return;
-                                                    const target = normalizeCategoryLabel(label);
-                                                    addOrSelectCustomCategory(label);
-
-                                                    // Sync with Settings so added category appears in config screens too.
-                                                    setSettings?.((prev: AppSettings) => {
-                                                        const currentWorkCats = prev.appDefaults?.laborWorkCategories || [];
-                                                        const hasWorkCat = currentWorkCats.some(c => normalizeCategoryLabel(c.label) === target);
-                                                        const generatedId = makeStableCustomCategoryId(label);
-                                                        const nextWorkCats = hasWorkCat ? currentWorkCats : [...currentWorkCats, { id: generatedId, label }];
-
-                                                        const currentJobDescriptions = prev.jobDescriptions || [];
-                                                        const hasJobDescription = currentJobDescriptions.some(d => normalizeCategoryLabel(d) === target);
-                                                        const nextJobDescriptions = hasJobDescription ? currentJobDescriptions : [...currentJobDescriptions, label];
-
-                                                        if (hasWorkCat && hasJobDescription) return prev;
-                                                        return {
-                                                            ...prev,
-                                                            jobDescriptions: nextJobDescriptions,
-                                                            appDefaults: {
-                                                                ...(prev.appDefaults || {}),
-                                                                laborWorkCategories: nextWorkCats,
-                                                            },
-                                                        };
-                                                    });
-
-                                                }} className="px-4 py-2 bg-purple-500 text-white text-sm rounded-xl hover:bg-purple-600 font-bold">+ เพิ่ม</button>
-                                            </div>
-                                            {settingJobDescriptionSuggestions.length > 0 && (
-                                                <div className="mt-2">
-                                                    <p className="text-xs font-medium text-slate-500 mb-1">ดึงจาก ตั้งค่า &gt; รายละเอียดงาน:</p>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {settingJobDescriptionSuggestions.slice(0, 12).map((label) => (
-                                                            <button
-                                                                key={label}
-                                                                type="button"
-                                                                onClick={() => addOrSelectCustomCategory(label)}
-                                                                className="px-2 py-1 text-xs rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
-                                                                title={`เพิ่มประเภทงาน: ${label}`}
-                                                            >
-                                                                + {label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
 
                                         {/* เมนูย่อย ล้างทรายที่บ้าน — เมื่อมีพนักงานในประเภทนี้ */}
@@ -2746,7 +2650,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
-                                                const allAssigned = Object.entries(workAssignments).flatMap(([, ids]) => ids);
+                                                const normalizedWa = normalizedWorkAssignments;
+                                                const allAssigned = Object.entries(normalizedWa).flatMap(([, ids]) => ids);
                                                 const driverWorkedToday = dayTransactions
                                                     .filter(t => t.category === 'Vehicle' && !!t.driverId)
                                                     .map(t => t.driverId as string);
@@ -2782,10 +2687,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     employeeIds: allEmps,
                                                     createdAt: existingDailyLaborTx?.createdAt || new Date().toISOString(),
                                                 };
-                                                const allCats = [...DEFAULT_WORK_CATEGORIES, ...customCategories.map(c => ({ ...c, color: '', bgLight: '' }))];
-                                                const desc = Object.entries(workAssignments).filter(([, ids]) => ids.length > 0).map(([catId, ids]) => {
-                                                    const cat = allCats.find(c => c.id === catId); const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
-                                                    return `${cat?.label || catId}: ${names}`;
+                                                const genNote = laborGeneralWorkNotes.trim();
+                                                const desc = Object.entries(normalizedWa).filter(([, ids]) => ids.length > 0).map(([catId, ids]) => {
+                                                    const cat = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
+                                                    const baseLabel = cat?.label || catId;
+                                                    const labelForLine = catId === 'generalWork' && genNote ? `${baseLabel} (${genNote})` : baseLabel;
+                                                    const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
+                                                    return `${labelForLine}: ${names}`;
                                                 }).join(' | ');
                                                 const driverOnlyIds = driverWorkedToday.filter(id => !allAssigned.includes(id));
                                                 const driverOnlyNames = [...new Set(driverOnlyIds)]
@@ -2809,8 +2717,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
-                                                const drumsHome = hasWashHomeAssignment(workAssignments) ? (Number(drumsWashedAtHome) || 0) : undefined;
-                                                const hasWashHomeAssigned = hasWashHomeAssignment(workAssignments);
+                                                const drumsHome = hasWashHomeAssignment(normalizedWa) ? (Number(drumsWashedAtHome) || 0) : undefined;
+                                                const hasWashHomeAssigned = hasWashHomeAssignment(normalizedWa);
                                                 const rawHomeDrums = Number(drumsWashedAtHome) || 0;
                                                 if (rawHomeDrums > 0 && !hasWashHomeAssigned) {
                                                     await sessionAlert('พบจำนวนถังล้างที่บ้าน แต่ยังไม่ได้ assign พนักงานในงาน "ล้างทรายที่บ้าน"');
@@ -2825,8 +2733,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     workTypeByEmployee,
                                                     description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}${driverOnlyNames ? ` [คนขับจากงานใช้รถ: ${driverOnlyNames}]` : ''}`,
                                                     amount: total,
-                                                    workAssignments: { ...workAssignments },
-                                                    customWorkCategories: [...customCategories],
+                                                    workAssignments: { ...normalizedWa },
+                                                    customWorkCategories: [],
+                                                    laborGeneralWorkNotes: genNote,
                                                     drumsWashedAtHome: drumsHome
                                                 };
                                                 if (hasSemanticNearDuplicate(t as Transaction, { ignoreId: existingDailyLaborTx?.id })) {
@@ -2836,10 +2745,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                     if (!proceed) return;
                                                 }
-                                                onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
+                                                onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setLaborGeneralWorkNotes(''); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
                                                 <CheckCircle2 size={18} className="mr-2" /> {(dayTransactions.some(tx => tx.category === 'Labor' && tx.subCategory === 'Attendance' && tx.laborStatus === 'Work') ? 'อัปเดตค่าแรง' : 'บันทึกค่าแรง')} ({[...new Set([
-                                                    ...Object.values(workAssignments).flat(),
+                                                    ...Object.values(normalizedWorkAssignments).flat(),
                                                     ...dayTransactions.filter(t => t.category === 'Vehicle' && !!t.driverId).map(t => t.driverId as string),
                                                 ])].length} คน)
                                             </Button>
