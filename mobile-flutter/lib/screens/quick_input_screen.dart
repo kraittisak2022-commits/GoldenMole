@@ -209,6 +209,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   _IuEntryKind? _iuEntryKind;
   String? _iuExpenseChoice;
   String? _iuIncomeChoice;
+
   /// รายรับประจำวัน: Paid | Unpaid — ตรงกับคอลัมน์ income_payment_status
   String _wizardIncomePaymentStatus = 'Paid';
   List<String> _appExpenseTypes = const [];
@@ -313,8 +314,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _isDailyEventMode => widget.initialCategory == 'เหตุการณ์';
   bool get _isLaborLeaveMode => widget.initialCategory == 'ลางาน';
   bool get _isLaborAdvanceMode => widget.initialCategory == 'เบิกเงิน';
-  bool get _isSuperAdmin =>
-      (widget.currentAdmin?.role.trim() == 'SuperAdmin');
+  bool get _isSuperAdmin => (widget.currentAdmin?.role.trim() == 'SuperAdmin');
 
   /// SuperAdmin แก้ไข/ลบประวัติได้เฉพาะรายการที่ตรงกับเมนูและวันที่ปัจจุบัน
   bool _superAdminMayManageHistoryRow(AppTransaction t) {
@@ -575,9 +575,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     try {
       final ymd = _quickYmd(_selectedDate);
-      final forceServer = forceRefresh ||
-          cat == 'ลางาน' ||
-          cat.toUpperCase().contains('OT');
+      final forceServer =
+          forceRefresh || cat == 'ลางาน' || cat.toUpperCase().contains('OT');
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: forceServer)
           : await widget.service.fetchTransactionsForDate(
@@ -1336,67 +1335,85 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-          shrinkWrap: true,
-          children: [
-            Text(
-              'ช่วยกรอกรายละเอียดงาน',
-              style: GoogleFonts.kanit(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'ข้อความยอดใช้บ่อย',
-              style: GoogleFonts.kanit(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in _kMacroWorkQuickPhrases)
-                  ActionChip(
-                    label: Text(s, style: GoogleFonts.kanit(fontSize: 13)),
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _applyMacroWorkPhrase(row, s);
-                    },
+      isScrollControlled: true,
+      builder: (ctx) {
+        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'ช่วยกรอกรายละเอียดงาน',
+                    style: GoogleFonts.kanit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-              ],
+                  const SizedBox(height: 10),
+                  Text(
+                    'ข้อความยอดใช้บ่อย',
+                    style: GoogleFonts.kanit(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final s in _kMacroWorkQuickPhrases)
+                        ActionChip(
+                          label: Text(
+                            s,
+                            style: GoogleFonts.kanit(fontSize: 13),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _applyMacroWorkPhrase(row, s);
+                          },
+                        ),
+                    ],
+                  ),
+                  if (_macroWorkSuggestions.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      'จากประวัติการบันทึก (รถแม็คโคร)',
+                      style: GoogleFonts.kanit(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ..._macroWorkSuggestions.map(
+                      (s) => ListTile(
+                        title: Text(s, style: GoogleFonts.kanit()),
+                        dense: true,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          if (!mounted) return;
+                          setState(() {
+                            row.workDetailsController.text = s;
+                            row.workDetailsController.selection =
+                                TextSelection.collapsed(offset: s.length);
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            if (_macroWorkSuggestions.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text(
-                'จากประวัติการบันทึก (รถแม็คโคร)',
-                style: GoogleFonts.kanit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 4),
-              ..._macroWorkSuggestions.map(
-                (s) => ListTile(
-                  title: Text(s, style: GoogleFonts.kanit()),
-                  dense: true,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() => row.workDetailsController.text = s);
-                  },
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1809,7 +1826,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
-          final lumpFilled = row.tripBillingMode == 'LumpSum' &&
+          final lumpFilled =
+              row.tripBillingMode == 'LumpSum' &&
               row.lumpSumTotalCubic.trim().isNotEmpty;
           return row.vehicleId.trim().isNotEmpty ||
               row.driverId.trim().isNotEmpty ||
@@ -2621,14 +2639,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 IconButton(
                   tooltip: 'แก้ไข (SuperAdmin)',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: Color(0xFF1565C0),
+                  ),
                   onPressed: () => _openSuperAdminHistoryEditor(t),
                 ),
                 IconButton(
                   tooltip: 'ลบจากฐานข้อมูล',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
                   icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
                   onPressed: () => _confirmSuperAdminHardDelete(t),
                 ),
@@ -2644,7 +2671,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('ลบจากฐานข้อมูล', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+        title: Text(
+          'ลบจากฐานข้อมูล',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+        ),
         content: Text(
           'ลบรายการนี้ออกจากฐานข้อมูลถาวร ไม่สามารถกู้คืนได้',
           style: GoogleFonts.kanit(),
@@ -2655,7 +2685,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             child: Text('ยกเลิก', style: GoogleFonts.kanit()),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text('ลบ', style: GoogleFonts.kanit(color: Colors.white)),
           ),
@@ -2667,7 +2699,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       await widget.service.deleteTransaction(t.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit())),
+        SnackBar(
+          content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+        ),
       );
       await _loadModuleTransactions(
         preserveIncomeUtilitiesForm: _isIncomeUtilitiesEntryMode,
@@ -2710,10 +2744,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _openSuperAdminDailyEventEditor(AppTransaction t) async {
-    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
-    var evType = (t.eventType ?? 'info').trim().isEmpty ? 'info' : t.eventType!.trim();
-    var evPri =
-        (t.eventPriority ?? 'normal').trim().isEmpty ? 'normal' : t.eventPriority!.trim();
+    final descCtrl = TextEditingController(
+      text: _stripRecorderSuffix(t.description),
+    );
+    var evType = (t.eventType ?? 'info').trim().isEmpty
+        ? 'info'
+        : t.eventType!.trim();
+    var evPri = (t.eventPriority ?? 'normal').trim().isEmpty
+        ? 'normal'
+        : t.eventPriority!.trim();
     const typeOpts = <({String v, String label})>[
       (v: 'info', label: 'ℹ️ ข้อมูล'),
       (v: 'warning', label: '⚠️ เตือน'),
@@ -2742,7 +2781,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 children: [
                   Text(
                     'แก้ไขเหตุการณ์ (SuperAdmin)',
-                    style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.kanit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -2751,7 +2793,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     children: [
                       for (final o in typeOpts)
                         ChoiceChip(
-                          label: Text(o.label, style: GoogleFonts.kanit(fontSize: 12.5)),
+                          label: Text(
+                            o.label,
+                            style: GoogleFonts.kanit(fontSize: 12.5),
+                          ),
                           selected: evType == o.v,
                           onSelected: (sel) {
                             if (sel) setModal(() => evType = o.v);
@@ -2793,7 +2838,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       final text = descCtrl.text.trim();
                       if (text.isEmpty) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('กรุณากรอกรายละเอียด', style: GoogleFonts.kanit())),
+                          SnackBar(
+                            content: Text(
+                              'กรุณากรอกรายละเอียด',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
                         );
                         return;
                       }
@@ -2807,13 +2857,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                          SnackBar(
+                            content: Text(
+                              'บันทึกการแก้ไขแล้ว',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
                         );
                         await _loadModuleTransactions(forceRefresh: true);
                       } catch (e) {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                            SnackBar(
+                              content: Text(
+                                'บันทึกไม่สำเร็จ: $e',
+                                style: GoogleFonts.kanit(),
+                              ),
+                            ),
                           );
                         }
                       }
@@ -2830,7 +2890,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _openSuperAdminLeaveEditor(AppTransaction t) async {
-    final reasonCtrl = TextEditingController(text: (t.leaveReason ?? '').trim());
+    final reasonCtrl = TextEditingController(
+      text: (t.leaveReason ?? '').trim(),
+    );
     final daysCtrl = TextEditingController(
       text: t.leaveDays != null ? _strNum(t.leaveDays) : '1',
     );
@@ -2852,7 +2914,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             children: [
               Text(
                 'แก้ไขลางาน (SuperAdmin)',
-                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                style: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -2871,7 +2936,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               const SizedBox(height: 10),
               TextField(
                 controller: daysCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'จำนวนวัน',
                   labelStyle: GoogleFonts.kanit(),
@@ -2885,13 +2952,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   final days = double.tryParse(daysCtrl.text.trim()) ?? 0;
                   if (reason.isEmpty) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('กรุณากรอกเหตุผล', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'กรุณากรอกเหตุผล',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     return;
                   }
                   if (days <= 0) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('จำนวนวันต้องมากกว่า 0', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'จำนวนวันต้องมากกว่า 0',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     return;
                   }
@@ -2907,13 +2984,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     if (ctx.mounted) Navigator.pop(ctx);
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'บันทึกการแก้ไขแล้ว',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     await _loadModuleTransactions(forceRefresh: true);
                   } catch (e) {
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                        SnackBar(
+                          content: Text(
+                            'บันทึกไม่สำเร็จ: $e',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
                       );
                     }
                   }
@@ -2934,7 +3021,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final hoursCtrl = TextEditingController(
       text: t.otHours != null ? _strNum(t.otHours) : '',
     );
-    final descCtrl = TextEditingController(text: (t.otDescription ?? '').trim());
+    final descCtrl = TextEditingController(
+      text: (t.otDescription ?? '').trim(),
+    );
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2953,7 +3042,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             children: [
               Text(
                 'แก้ไข OT (SuperAdmin)',
-                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                style: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -2963,7 +3055,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               const SizedBox(height: 12),
               TextField(
                 controller: hoursCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'ชั่วโมง OT',
                   labelStyle: GoogleFonts.kanit(),
@@ -2988,13 +3082,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   final desc = descCtrl.text.trim();
                   if (hours <= 0) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('กรุณาระบุชั่วโมง OT', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'กรุณาระบุชั่วโมง OT',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     return;
                   }
                   if (desc.isEmpty) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('กรุณาระบุรายละเอียด', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'กรุณาระบุรายละเอียด',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     return;
                   }
@@ -3010,13 +3114,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     if (ctx.mounted) Navigator.pop(ctx);
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'บันทึกการแก้ไขแล้ว',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     await _loadModuleTransactions(forceRefresh: true);
                   } catch (e) {
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                        SnackBar(
+                          content: Text(
+                            'บันทึกไม่สำเร็จ: $e',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
                       );
                     }
                   }
@@ -3035,7 +3149,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _openSuperAdminUtilitiesExpenseEditor(AppTransaction t) async {
     final amtCtrl = TextEditingController(text: _strNum(t.amount));
-    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
+    final descCtrl = TextEditingController(
+      text: _stripRecorderSuffix(t.description),
+    );
     final subCtrl = TextEditingController(text: (t.subCategory ?? '').trim());
     await showModalBottomSheet<void>(
       context: context,
@@ -3055,7 +3171,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             children: [
               Text(
                 'แก้ไขรายจ่ายสาธารณูปโภค (SuperAdmin)',
-                style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                style: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -3080,7 +3199,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               const SizedBox(height: 10),
               TextField(
                 controller: amtCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'จำนวนเงิน (บาท)',
                   labelStyle: GoogleFonts.kanit(),
@@ -3114,7 +3235,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     if (ctx.mounted) Navigator.pop(ctx);
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                      SnackBar(
+                        content: Text(
+                          'บันทึกการแก้ไขแล้ว',
+                          style: GoogleFonts.kanit(),
+                        ),
+                      ),
                     );
                     await _loadModuleTransactions(
                       preserveIncomeUtilitiesForm: true,
@@ -3123,7 +3249,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   } catch (e) {
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                        SnackBar(
+                          content: Text(
+                            'บันทึกไม่สำเร็จ: $e',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
                       );
                     }
                   }
@@ -3143,7 +3274,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _openSuperAdminWizardIncomeEditor(AppTransaction t) async {
     final amtCtrl = TextEditingController(text: _strNum(t.amount));
-    final descCtrl = TextEditingController(text: _stripRecorderSuffix(t.description));
+    final descCtrl = TextEditingController(
+      text: _stripRecorderSuffix(t.description),
+    );
     final qtyCtrl = TextEditingController(
       text: t.quantity != null ? _strNum(t.quantity) : '',
     );
@@ -3173,7 +3306,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 children: [
                   Text(
                     'แก้ไขรายรับประจำวัน (SuperAdmin)',
-                    style: GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.kanit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -3187,7 +3323,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   const SizedBox(height: 10),
                   TextField(
                     controller: amtCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: 'ยอดรวม (บาท)',
                       labelStyle: GoogleFonts.kanit(),
@@ -3197,7 +3335,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   const SizedBox(height: 10),
                   TextField(
                     controller: qtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: 'จำนวน (ว่างได้)',
                       labelStyle: GoogleFonts.kanit(),
@@ -3207,7 +3347,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   const SizedBox(height: 8),
                   TextField(
                     controller: priceCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: 'ราคาต่อหน่วย (ว่างได้)',
                       labelStyle: GoogleFonts.kanit(),
@@ -3215,7 +3357,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(fontSize: 14),
                   ),
                   const SizedBox(height: 12),
-                  Text('สถานะรับเงิน', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                  Text(
+                    'สถานะรับเงิน',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
@@ -3226,7 +3371,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         onSelected: (_) => setModal(() => payStatus = 'Paid'),
                       ),
                       ChoiceChip(
-                        label: Text('ยังไม่ได้จ่าย', style: GoogleFonts.kanit()),
+                        label: Text(
+                          'ยังไม่ได้จ่าย',
+                          style: GoogleFonts.kanit(),
+                        ),
                         selected: payStatus == 'Unpaid',
                         onSelected: (_) => setModal(() => payStatus = 'Unpaid'),
                       ),
@@ -3254,7 +3402,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         description: _appendRecorder(desc),
                         amount: total,
                         quantity: (qty != null && qty > 0) ? qty : null,
-                        unitPrice: (unitPrice != null && unitPrice > 0) ? unitPrice : null,
+                        unitPrice: (unitPrice != null && unitPrice > 0)
+                            ? unitPrice
+                            : null,
                         incomePaymentStatus: payStatus,
                       );
                       try {
@@ -3262,7 +3412,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit())),
+                          SnackBar(
+                            content: Text(
+                              'บันทึกการแก้ไขแล้ว',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
                         );
                         await _loadModuleTransactions(
                           preserveIncomeUtilitiesForm: true,
@@ -3271,7 +3426,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       } catch (e) {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit())),
+                            SnackBar(
+                              content: Text(
+                                'บันทึกไม่สำเร็จ: $e',
+                                style: GoogleFonts.kanit(),
+                              ),
+                            ),
                           );
                         }
                       }
@@ -3328,14 +3488,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 IconButton(
                   tooltip: 'แก้ไข (SuperAdmin)',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: Color(0xFF1565C0),
+                  ),
                   onPressed: () => _openSuperAdminHistoryEditor(t),
                 ),
                 IconButton(
                   tooltip: 'ลบจากฐานข้อมูล',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
                   icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
                   onPressed: () => _confirmSuperAdminHardDelete(t),
                 ),
@@ -3430,7 +3599,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('บันทึกการแก้ไขแล้ว', style: GoogleFonts.kanit()),
+                      content: Text(
+                        'บันทึกการแก้ไขแล้ว',
+                        style: GoogleFonts.kanit(),
+                      ),
                     ),
                   );
                   await _loadModuleTransactions(forceRefresh: true);
@@ -3438,7 +3610,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(
-                        content: Text('บันทึกไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+                        content: Text(
+                          'บันทึกไม่สำเร็จ: $e',
+                          style: GoogleFonts.kanit(),
+                        ),
                       ),
                     );
                   }
@@ -3485,7 +3660,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     const SizedBox(height: 12),
                     TextField(
                       controller: amtCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: 'จำนวนเงิน (บาท)',
                         labelStyle: GoogleFonts.kanit(),
@@ -3493,13 +3670,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(fontSize: 16),
                     ),
                     const SizedBox(height: 12),
-                    Text('รับเงิน', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                    Text(
+                      'รับเงิน',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       children: [
                         ChoiceChip(
-                          label: Text('ช่วงกลางวัน', style: GoogleFonts.kanit()),
+                          label: Text(
+                            'ช่วงกลางวัน',
+                            style: GoogleFonts.kanit(),
+                          ),
                           selected: payout == AdvanceGmMeta.midday,
                           onSelected: (_) =>
                               setModal(() => payout = AdvanceGmMeta.midday),
@@ -3513,7 +3696,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Text('วิธีรับ', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                    Text(
+                      'วิธีรับ',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -3614,116 +3800,119 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFE0B2).withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.request_quote_rounded,
-                    color: Color(0xFFE65100),
-                    size: 24,
-                  ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFE0B2).withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        namesLine,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.kanit(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1A237E),
-                          height: 1.25,
-                        ),
+                child: const Icon(
+                  Icons.request_quote_rounded,
+                  color: Color(0xFFE65100),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      namesLine,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1A237E),
+                        height: 1.25,
                       ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          _advanceMetaChip(amtStr, Icons.payments_rounded),
-                          _advanceMetaChip(slotTh, Icons.schedule_rounded),
-                          _advanceMetaChip(payTh, Icons.account_balance_wallet_rounded),
-                        ],
-                      ),
-                      if (bankLine.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          bankLine.trimLeft(),
-                          style: GoogleFonts.kanit(
-                            fontSize: 11.5,
-                            color: const Color(0xFF5C6BC0),
-                            fontWeight: FontWeight.w600,
-                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _advanceMetaChip(amtStr, Icons.payments_rounded),
+                        _advanceMetaChip(slotTh, Icons.schedule_rounded),
+                        _advanceMetaChip(
+                          payTh,
+                          Icons.account_balance_wallet_rounded,
                         ),
                       ],
+                    ),
+                    if (bankLine.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
-                        t.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        bankLine.trimLeft(),
                         style: GoogleFonts.kanit(
-                          fontSize: 12,
-                          color: Colors.black87,
-                          height: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${formatTxnHistoryTime(t.createdAt)} · ${t.id}',
-                        style: GoogleFonts.kanit(
-                          fontSize: 10.5,
-                          color: Colors.black45,
+                          fontSize: 11.5,
+                          color: const Color(0xFF5C6BC0),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      t.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        color: Colors.black87,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${formatTxnHistoryTime(t.createdAt)} · ${t.id}',
+                      style: GoogleFonts.kanit(
+                        fontSize: 10.5,
+                        color: Colors.black45,
+                      ),
+                    ),
+                  ],
                 ),
-                if (_superAdminMayManageHistoryRow(t))
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'แก้ไข (SuperAdmin)',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 40,
-                          minHeight: 40,
-                        ),
-                        icon: const Icon(
-                          Icons.edit_outlined,
-                          color: Color(0xFFE65100),
-                        ),
-                        onPressed: () => _openSuperAdminHistoryEditor(t),
+              ),
+              if (_superAdminMayManageHistoryRow(t))
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'แก้ไข (SuperAdmin)',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
                       ),
-                      IconButton(
-                        tooltip: 'ลบจากฐานข้อมูล',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 40,
-                          minHeight: 40,
-                        ),
-                        icon: Icon(
-                          Icons.delete_outline,
-                          color: Colors.red.shade700,
-                        ),
-                        onPressed: () => _confirmSuperAdminHardDelete(t),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFFE65100),
                       ),
-                    ],
-                  ),
-              ],
-            ),
+                      onPressed: () => _openSuperAdminHistoryEditor(t),
+                    ),
+                    IconButton(
+                      tooltip: 'ลบจากฐานข้อมูล',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: Colors.red.shade700,
+                      ),
+                      onPressed: () => _confirmSuperAdminHardDelete(t),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ),
+      ),
     );
   }
 
@@ -3795,10 +3984,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       side: BorderSide(
                         color: _moduleHistoryVisible
                             ? (_isLaborAdvanceMode
-                                  ? const Color(0xFFE65100)
-                                      .withValues(alpha: 0.55)
-                                  : theme.colorScheme.primary
-                                        .withValues(alpha: 0.45))
+                                  ? const Color(
+                                      0xFFE65100,
+                                    ).withValues(alpha: 0.55)
+                                  : theme.colorScheme.primary.withValues(
+                                      alpha: 0.45,
+                                    ))
                             : const Color(0xFFD9E4F1),
                       ),
                       padding: const EdgeInsets.symmetric(
@@ -4391,6 +4582,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final s = t.trim();
       return s.isNotEmpty && s != removed;
     }
+
     final seen = <String>{};
     final out = <String>[];
     for (final t in _appIncomeTypes) {
@@ -4976,8 +5168,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           ),
                         ),
                         selected: _wizardIncomePaymentStatus == 'Unpaid',
-                        onSelected: (_) =>
-                            setState(() => _wizardIncomePaymentStatus = 'Unpaid'),
+                        onSelected: (_) => setState(
+                          () => _wizardIncomePaymentStatus = 'Unpaid',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -5124,7 +5317,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildSandWashFormCard() {
     if (_sandMorningStartController.text.trim().isEmpty) {
-      _sandMorningStartController.text = '07.20';
+      _sandMorningStartController.text = '08.20';
     }
     if (_sandAfternoonStartController.text.trim().isEmpty) {
       _sandAfternoonStartController.text = '13.00';
@@ -5312,20 +5505,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               children: [
                 Expanded(
                   child: sandMachineColumn(
-                    controller: machine1Controller,
-                    label: 'เครื่องร่อน 1 (เก่า)',
-                    operatorNames: _sand1OperatorNames,
-                    accent: sandM1Border,
-                    fill: sandM1Fill,
-                    labelTint: sandM1Label,
-                    chipFg: sandM1ChipFg,
-                    chipBg: sandM1ChipBg,
-                    chipSide: sandM1ChipSide,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: sandMachineColumn(
                     controller: machine2Controller,
                     label: 'เครื่องร่อน 2 (ใหม่)',
                     operatorNames: _sand2OperatorNames,
@@ -5335,6 +5514,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     chipFg: sandM2ChipFg,
                     chipBg: sandM2ChipBg,
                     chipSide: sandM2ChipSide,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: sandMachineColumn(
+                    controller: machine1Controller,
+                    label: 'เครื่องร่อน 1 (เก่า)',
+                    operatorNames: _sand1OperatorNames,
+                    accent: sandM1Border,
+                    fill: sandM1Fill,
+                    labelTint: sandM1Label,
+                    chipFg: sandM1ChipFg,
+                    chipBg: sandM1ChipBg,
+                    chipSide: sandM1ChipSide,
                   ),
                 ),
               ],
@@ -5965,6 +6158,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ...List.generate(_macroVehicleDrafts.length, (index) {
               final row = _macroVehicleDrafts[index];
               return Container(
+                key: ObjectKey(row),
                 margin: EdgeInsets.only(
                   bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
                 ),
@@ -6134,6 +6328,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           onPressed: () => _openMacroWorkAssistSheet(row),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ช่วยกรอกด่วน',
+                      style: GoogleFonts.kanit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final s in _kMacroWorkQuickPhrases)
+                          ActionChip(
+                            label: Text(
+                              s,
+                              style: GoogleFonts.kanit(fontSize: 12.5),
+                            ),
+                            onPressed: () => _applyMacroWorkPhrase(row, s),
+                          ),
+                        ActionChip(
+                          avatar: const Icon(Icons.history, size: 18),
+                          label: Text(
+                            'จากประวัติ',
+                            style: GoogleFonts.kanit(fontSize: 12.5),
+                          ),
+                          onPressed: () => _openMacroWorkAssistSheet(row),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -7040,7 +7266,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             runSpacing: 8,
                             children: employees.map((e) {
                               final id = e.id;
-                              final selected = _selectedAdvanceEmpIds.contains(id);
+                              final selected = _selectedAdvanceEmpIds.contains(
+                                id,
+                              );
                               final name = _employeeUiDisplayName(e);
                               return FilterChip(
                                 showCheckmark: false,
@@ -7065,8 +7293,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   ],
                                 ),
                                 selected: selected,
-                                selectedColor:
-                                    advPrimary.withValues(alpha: 0.2),
+                                selectedColor: advPrimary.withValues(
+                                  alpha: 0.2,
+                                ),
                                 side: BorderSide(
                                   color: selected
                                       ? advPrimary
@@ -7101,8 +7330,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       prefixIcon: const Icon(Icons.payments_outlined),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: advPrimary, width: 1.5),
+                        borderSide: const BorderSide(
+                          color: advPrimary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
@@ -7132,9 +7363,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       decoration: BoxDecoration(
                         color: const Color(0xFFE8F5E9).withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: const Color(0xFFC8E6C9),
-                        ),
+                        border: Border.all(color: const Color(0xFFC8E6C9)),
                       ),
                       child: Row(
                         children: [
@@ -7183,22 +7412,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           children: [
                             Expanded(
                               child: _AdvanceChoiceButton(
-                                selected: _advancePayoutSlot ==
-                                    AdvanceGmMeta.midday,
+                                selected:
+                                    _advancePayoutSlot == AdvanceGmMeta.midday,
                                 label: 'กลางวัน',
                                 icon: Icons.wb_sunny_rounded,
                                 primaryColor: advPrimary,
                                 onTap: () => setState(
-                                  () => _advancePayoutSlot =
-                                      AdvanceGmMeta.midday,
+                                  () =>
+                                      _advancePayoutSlot = AdvanceGmMeta.midday,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: _AdvanceChoiceButton(
-                                selected: _advancePayoutSlot ==
-                                    AdvanceGmMeta.evening,
+                                selected:
+                                    _advancePayoutSlot == AdvanceGmMeta.evening,
                                 label: 'เย็น',
                                 icon: Icons.nightlight_round,
                                 primaryColor: advPrimary,
@@ -7224,8 +7453,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           children: [
                             Expanded(
                               child: _AdvanceChoiceButton(
-                                selected: _advancePaymentMethod ==
-                                    AdvanceGmMeta.cash,
+                                selected:
+                                    _advancePaymentMethod == AdvanceGmMeta.cash,
                                 label: 'เงินสด',
                                 icon: Icons.payments_rounded,
                                 primaryColor: advPrimary,
@@ -7238,7 +7467,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             const SizedBox(width: 10),
                             Expanded(
                               child: _AdvanceChoiceButton(
-                                selected: _advancePaymentMethod ==
+                                selected:
+                                    _advancePaymentMethod ==
                                     AdvanceGmMeta.transfer,
                                 label: 'เงินโอน',
                                 icon: Icons.account_balance_wallet_rounded,
@@ -7270,8 +7500,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   14,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFE3F2FD)
-                                      .withValues(alpha: 0.55),
+                                  color: const Color(
+                                    0xFFE3F2FD,
+                                  ).withValues(alpha: 0.55),
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
                                     color: const Color(0xFF90CAF9),
@@ -7304,37 +7535,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       decoration: InputDecoration(
                                         labelText: 'ธนาคาร',
                                         labelStyle: GoogleFonts.kanit(),
-                                        prefixIcon:
-                                            _advanceBank.trim().isEmpty
+                                        prefixIcon: _advanceBank.trim().isEmpty
                                             ? const Icon(
                                                 Icons.account_balance_outlined,
                                               )
                                             : Padding(
-                                                padding:
-                                                    const EdgeInsets.only(
+                                                padding: const EdgeInsets.only(
                                                   left: 10,
                                                   right: 2,
                                                 ),
                                                 child: ThaiBankBrandIcon(
-                                                  bankName:
-                                                      _advanceBank.trim(),
+                                                  bankName: _advanceBank.trim(),
                                                   size: 28,
                                                 ),
                                               ),
                                         border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                         ),
                                         enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                           borderSide: const BorderSide(
                                             color: Color(0xFFBBDEFB),
                                           ),
                                         ),
                                         focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                           borderSide: const BorderSide(
                                             color: advPrimary,
                                             width: 1.4,
@@ -7356,8 +7587,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                           ),
                                           items: _advanceBankDropdownItems(),
                                           onChanged: (v) => setState(
-                                            () => _advanceBank =
-                                                (v ?? '').trim(),
+                                            () =>
+                                                _advanceBank = (v ?? '').trim(),
                                           ),
                                           style: GoogleFonts.kanit(
                                             fontSize: 16,
@@ -7373,11 +7604,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       decoration: InputDecoration(
                                         labelText: 'เลขบัญชี',
                                         labelStyle: GoogleFonts.kanit(),
-                                        prefixIcon:
-                                            const Icon(Icons.numbers_outlined),
+                                        prefixIcon: const Icon(
+                                          Icons.numbers_outlined,
+                                        ),
                                         focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                           borderSide: const BorderSide(
                                             color: advPrimary,
                                             width: 1.4,
@@ -8832,7 +9065,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
     final rowTrips = isLump
         ? 0.0
         : (double.tryParse(row.tripMorning) ?? 0) +
-            (double.tryParse(row.tripAfternoon) ?? 0);
+              (double.tryParse(row.tripAfternoon) ?? 0);
     final rowCubic = isLump
         ? (double.tryParse(row.lumpSumTotalCubic) ?? 0)
         : rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
@@ -9089,9 +9322,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                 label: 'รวมคิว (เหมา)',
                 onChanged: (v) {
                   final n =
-                      _QuickInputScreenState.normalizeVehicleTripNumericText(
-                        v,
-                      );
+                      _QuickInputScreenState.normalizeVehicleTripNumericText(v);
                   row.lumpSumTotalCubic = n;
                   if (row.lumpSumTotalCubicController.text != n) {
                     row.lumpSumTotalCubicController.text = n;
@@ -9944,6 +10175,7 @@ class _VehicleTripDraft {
   String vehicleId = '';
   String driverId = '';
   String workType = 'FullDay';
+
   /// PerTrip | LumpSum
   String tripBillingMode = 'PerTrip';
   String hourlyHours = '';
