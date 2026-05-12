@@ -18,6 +18,7 @@ import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
+import '../utils/sand_drum_carryover.dart';
 
 class QuickInputScreen extends StatefulWidget {
   const QuickInputScreen({
@@ -1498,6 +1499,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _refreshHomeSandStock() async {
     try {
       final rows = await widget.service.fetchTransactions();
+      List<Map<String, dynamic>> sandRoundAuditTrail = const [];
+      try {
+        final client = Supabase.instance.client;
+        final settingRows = await client
+            .from('app_settings')
+            .select('app_defaults')
+            .eq('id', 'default')
+            .limit(1);
+        if (settingRows.isNotEmpty) {
+          final ad = settingRows.first['app_defaults'];
+          if (ad is Map) {
+            final trail = ad['sandRoundAuditTrail'];
+            if (trail is List) {
+              sandRoundAuditTrail = trail
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList();
+            }
+          }
+        }
+      } catch (_) {}
       final byDay = <String, List<AppTransaction>>{};
       for (final t in rows) {
         if (t.category != 'DailyLog' || t.subCategory != 'Sand') continue;
@@ -1516,10 +1538,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         map[e.key] = rec;
       }
       final selected = _quickYmd(_selectedDate);
+      final epochStart =
+          computeSandDrumCarryoverEpochStart(selected, rows, sandRoundAuditTrail: sandRoundAuditTrail);
       final days = map.keys.toList()..sort();
       var before = 0.0;
       for (final d in days) {
         if (d.compareTo(selected) >= 0) continue;
+        if (d.compareTo(epochStart) < 0) continue;
         final rec = map[d]!;
         before = (before + rec.obtained - rec.home).clamp(0.0, 9999999.0);
       }

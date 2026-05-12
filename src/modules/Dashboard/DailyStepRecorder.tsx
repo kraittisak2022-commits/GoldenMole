@@ -21,7 +21,13 @@ import {
     readWizardDraftEntry,
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
-import { getTransactionRecencyScore, pickLatestByDayOrder, persistedSandHomeDrums, sumWizardDailySpend } from './dailyStepRecorderUtils';
+import {
+    computeSandDrumCarryoverEpochStart,
+    getTransactionRecencyScore,
+    pickLatestByDayOrder,
+    persistedSandHomeDrums,
+    sumWizardDailySpend,
+} from './dailyStepRecorderUtils';
 
 import {
     parseSignatureNote,
@@ -891,8 +897,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             perDay.set(d, { obtained, home });
         });
 
+        const epochStart = computeSandDrumCarryoverEpochStart(selectedDate, transactions, {
+            sandRoundAuditTrail: settings.appDefaults?.sandRoundAuditTrail,
+        });
         const sortedBeforeToday = Array.from(perDay.entries())
-            .filter(([d]) => d < selectedDate)
+            .filter(([d]) => d < selectedDate && d >= epochStart)
             .sort(([a], [b]) => a.localeCompare(b));
         let cumulativeBeforeToday = 0;
         sortedBeforeToday.forEach(([, v]) => {
@@ -906,7 +915,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const cumulativeRemaining = Math.max(0, cumulativeBeforeToday + todayNet);
 
         return { cumulativeBeforeToday, todayObtained, todayHome, todayNet, cumulativeRemaining };
-    }, [transactions, date, sandDrumsObtained, drumsWashedAtHome]);
+    }, [transactions, date, sandDrumsObtained, drumsWashedAtHome, settings.appDefaults?.sandRoundAuditTrail]);
     const sand1Total = (Number(sand1Morning) || 0) + (Number(sand1Afternoon) || 0);
     const sand2Total = (Number(sand2Morning) || 0) + (Number(sand2Afternoon) || 0);
     const sandGrandTotal = sand1Total + sand2Total;
@@ -4838,7 +4847,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">ค่าแรง, รถ, น้ำมัน ฯลฯ</span>
                             </div>
                             <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight tabular-nums shrink-0 self-end sm:self-auto">
-                                ฿{sumWizardDailySpend(dayTransactions).toLocaleString()}
+                                ฿{sumWizardDailySpend(dayTransactions, employees).toLocaleString()}
                             </span>
                         </div>
                     </Card>
