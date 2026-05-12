@@ -7,6 +7,7 @@ import DonutChartSimple from '../../components/charts/DonutChart';
 import { StatCard } from './DashboardOverview';
 import { Transaction, AppSettings, Employee } from '../../types';
 import { visibleIncomeTypes } from '../../utils/incomeTypes';
+import { persistedSandHomeDrums } from './dailyStepRecorderUtils';
 
 const SpecificDashboard = ({ type, transactions, settings, employees = [], dateFilter }: { type: string, transactions: Transaction[], settings: AppSettings, employees?: Employee[], dateFilter: any }) => {
     const [expandedDate, setExpandedDate] = useState<string | null>(null);
@@ -65,15 +66,20 @@ const SpecificDashboard = ({ type, transactions, settings, employees = [], dateF
 
     if (type === 'Sand') {
         const perDay = new Map<string, { obtained: number; home: number; remaining: number }>();
+        const sandByDay = new Map<string, Transaction[]>();
         filteredTransactions
             .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
             .forEach(t => {
                 const d = t.date.slice(0, 10);
-                const prev = perDay.get(d) || { obtained: 0, home: 0, remaining: 0 };
-                const obtained = Math.max(prev.obtained, Number((t as any).drumsObtained || 0));
-                const home = Math.max(prev.home, Number((t as any).drumsWashedAtHome || 0));
-                perDay.set(d, { obtained, home, remaining: Math.max(0, obtained - home) });
+                const arr = sandByDay.get(d) || [];
+                arr.push(t);
+                sandByDay.set(d, arr);
             });
+        sandByDay.forEach((txs, d) => {
+            const obtained = Math.max(0, ...txs.map(t => Number((t as any).drumsObtained || 0)));
+            const home = persistedSandHomeDrums(txs);
+            perDay.set(d, { obtained, home, remaining: Math.max(0, obtained - home) });
+        });
         const toWeekStart = (dateStr: string) => {
             const d = new Date(`${dateStr}T12:00:00`);
             const day = d.getDay();

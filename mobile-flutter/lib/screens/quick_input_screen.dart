@@ -109,6 +109,53 @@ String _normalizeLaborCanvasKey(String key) {
   }
 }
 
+/// คีย์ yyyy-MM-dd — สอดคล้องกับ `normalizeDate` บนเว็บ (ตัด suffix หลังวันที่)
+String _normalizeSandDayKey(String raw) {
+  final s = raw.trim();
+  if (s.length >= 10) return s.substring(0, 10);
+  return s;
+}
+
+/// ถังล้างที่บ้านต่อวัน — สอดคล้องกับ `persistedSandHomeDrums` ใน `dailyStepRecorderUtils.ts`
+double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
+  if (sandTxs.isEmpty) return 0;
+  double homeVal(AppTransaction t) =>
+      (t.drumsWashedAtHome ?? 0).toDouble().clamp(0, 9999999);
+  bool isMachine(AppTransaction t) {
+    final m = (t.sandMachineType ?? '').trim();
+    return m == 'Old' || m == 'New';
+  }
+
+  final withMachine = sandTxs.where(isMachine).toList();
+  if (withMachine.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in withMachine) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
+  }
+  final drumsOnly = sandTxs.where((t) {
+    if (isMachine(t)) return false;
+    final sm = (t.sandMorning ?? 0) + (t.sandAfternoon ?? 0);
+    return sm == 0;
+  }).toList();
+  if (drumsOnly.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in drumsOnly) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
+  }
+  var maxH = 0.0;
+  for (final t in sandTxs) {
+    final h = homeVal(t);
+    if (h > maxH) maxH = h;
+  }
+  return maxH;
+}
+
 /// เลือกบันทึกรายจ่ายสาธารณูปโภคหรือรายรับประจำวัน
 enum _IuEntryKind { expense, income }
 
@@ -1451,15 +1498,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _refreshHomeSandStock() async {
     try {
       final rows = await widget.service.fetchTransactions();
-      final map = <String, _HomeSandDaily>{};
+      final byDay = <String, List<AppTransaction>>{};
       for (final t in rows) {
         if (t.category != 'DailyLog' || t.subCategory != 'Sand') continue;
-        final day = t.date;
-        final rec = map.putIfAbsent(day, () => _HomeSandDaily());
-        final obtained = t.drumsObtained ?? 0;
-        final home = t.drumsWashedAtHome ?? 0;
-        if (obtained > rec.obtained) rec.obtained = obtained;
-        if (home > rec.home) rec.home = home;
+        final day = _normalizeSandDayKey(t.date);
+        byDay.putIfAbsent(day, () => []).add(t);
+      }
+      final map = <String, _HomeSandDaily>{};
+      for (final e in byDay.entries) {
+        final txs = e.value;
+        final rec = _HomeSandDaily();
+        for (final t in txs) {
+          final o = (t.drumsObtained ?? 0).toDouble();
+          if (o > rec.obtained) rec.obtained = o;
+        }
+        rec.home = persistedSandHomeDrumsForDay(txs);
+        map[e.key] = rec;
       }
       final selected = _quickYmd(_selectedDate);
       final days = map.keys.toList()..sort();
@@ -5137,7 +5191,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'บันทึกรายจ่าย-รายรับ',
+          'บันทึกรายรับ-รายจ่าย',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
             fontSize: 20,

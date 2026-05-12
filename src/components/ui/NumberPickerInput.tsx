@@ -144,6 +144,8 @@ const NumberPickerInput: React.FC<NumberPickerInputProps> = ({
     const parsedValue = parseNum(value);
     const isOptionSelected = (n: number) => Number.isFinite(parsedValue) && Math.abs(parsedValue - n) < 1e-4;
 
+    const { onWheel: onWheelProp, ...inputRest } = rest as React.InputHTMLAttributes<HTMLInputElement>;
+
     return (
         <div ref={wrapRef} className={`relative ${wrapperClassName}`}>
             <input
@@ -152,8 +154,12 @@ const NumberPickerInput: React.FC<NumberPickerInputProps> = ({
                 value={value}
                 disabled={disabled}
                 onChange={e => onChange(e.target.value)}
+                onWheel={e => {
+                    e.preventDefault();
+                    onWheelProp?.(e);
+                }}
                 className={`min-w-0 flex-1 touch-manipulation [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${className}`}
-                {...rest}
+                {...inputRest}
             />
             <button
                 type="button"

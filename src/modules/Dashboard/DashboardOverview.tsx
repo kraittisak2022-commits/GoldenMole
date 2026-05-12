@@ -6,6 +6,7 @@ import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { Transaction } from '../../types';
+import { persistedSandHomeDrums } from './dailyStepRecorderUtils';
 
 interface StatCardProps {
     title: string;
@@ -449,7 +450,7 @@ const DashboardOverview = ({ transactions, dateFilter }: { transactions: Transac
             const washed = daySand.reduce((s, t) => s + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
             sandWashedPerDay.push(washed);
             const drumsObtained = daySand.length > 0 ? Math.max(0, ...daySand.map(t => Number((t as any).drumsObtained || 0))) : 0;
-            const drumsHome = daySand.length > 0 ? Math.max(0, ...daySand.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
+            const drumsHome = daySand.length > 0 ? persistedSandHomeDrums(daySand) : 0;
             drumsObtainedPerDay.push(drumsObtained);
             drumsHomePerDay.push(drumsHome);
 

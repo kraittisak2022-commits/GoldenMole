@@ -85,7 +85,7 @@ const List<_DailyModuleDef> _kDailyModules = [
   ),
   _DailyModuleDef(
     title: 'การใช้รถแม็คโคร',
-    icon: Icons.construction_outlined,
+    icon: Icons.front_loader,
     category: 'การใช้รถแม็คโคร',
     quickInputTitle: 'บันทึกการใช้รถแม็คโคร',
     color: Color(0xFFFF8F00),
@@ -140,10 +140,10 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFFFF6F00),
   ),
   _DailyModuleDef(
-    title: 'รายจ่าย-รายรับ',
+    title: 'รายรับ-รายจ่าย',
     icon: Icons.account_balance_wallet_outlined,
     category: 'รายจ่ายรายรับ',
-    quickInputTitle: 'รายจ่าย-รายรับ',
+    quickInputTitle: 'รายรับ-รายจ่าย',
     color: Color(0xFF5C6BC0),
   ),
 ];

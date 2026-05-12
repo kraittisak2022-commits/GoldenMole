@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -21,7 +21,7 @@ import {
     readWizardDraftEntry,
     writeWizardDraftForDate,
 } from './wizardDraftUtils';
-import { getTransactionRecencyScore, pickLatestByDayOrder } from './dailyStepRecorderUtils';
+import { getTransactionRecencyScore, pickLatestByDayOrder, persistedSandHomeDrums, sumWizardDailySpend } from './dailyStepRecorderUtils';
 
 import {
     parseSignatureNote,
@@ -125,7 +125,6 @@ const STEPS = [
 const DEFAULT_WORK_CATEGORIES = [
     { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200' },
     { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200' },
-    { id: 'washHome', label: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200' },
     { id: 'pierWatch', label: 'เฝ้าท่าทราย', color: 'bg-amber-500', bgLight: 'bg-amber-50 border-amber-200' },
     { id: 'nightShift', label: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200' },
     { id: 'digHaul', label: 'ขุดขน (รวมกล่อง ควบคุมการขุด + ควบคุมรถขุด)', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200' },
@@ -150,7 +149,7 @@ const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | unde
     };
     for (const [k, ids] of Object.entries(base)) {
         if (DEFAULT_WORK_CATEGORY_IDS.has(k)) pushUnique(k, ids);
-        else if (['wash_home', 'wash_yard_house', 'sift_home'].includes(k)) pushUnique('washHome', ids);
+        else if (['wash_home', 'wash_yard_house', 'sift_home', 'washHome'].includes(k)) pushUnique('generalWork', ids);
         else pushUnique('generalWork', ids);
     }
     return out;
@@ -187,9 +186,6 @@ function countWashHomeAssignedWorkers(wa: Record<string, string[] | undefined>):
     return ids.size;
 }
 
-function hasWashHomeAssignment(wa: Record<string, string[] | undefined>): boolean {
-    return countWashHomeAssignedWorkers(wa) > 0;
-}
 const getEmployeeDisplayName = (emp?: Employee) => {
     if (!emp) return '';
     const nickname = String(emp.nickname || '').trim();
@@ -338,11 +334,11 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
         washHomeWorkers = Math.max(washHomeWorkers, n);
     }
     const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
-    const fromSand = sand.length > 0 ? Math.max(0, ...sand.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
+    const fromSand = persistedSandHomeDrums(sand);
     const fromLabor = labor.length > 0 ? Math.max(0, ...labor.map(t => Number((t as any).drumsWashedAtHome || 0))) : 0;
     const homeDrums = Math.max(fromSand, fromLabor);
     if (washHomeWorkers >= 1 && homeDrums <= 0) {
-        return `มีพนักงานในประเภทงาน "ล้างทรายที่บ้าน" ${washHomeWorkers} คน แต่ยังไม่ระบุจำนวนถังที่ล้างที่บ้านวันนี้ — กรุณาตรวจสอบและกรอกในขั้นล้างทรายหรือบันทึกค่าแรง`;
+        return `มีพนักงานในประเภทงาน "ล้างทรายที่บ้าน" (ข้อมูลเก่า) ${washHomeWorkers} คน แต่ยังไม่ระบุจำนวนถังที่ล้างที่บ้านวันนี้ — กรุณาตรวจสอบและกรอกในขั้นล้างทราย`;
     }
     return null;
 }
@@ -655,7 +651,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
     /** รายคน: เฉพาะคนที่มาครึ่งวัน (ไม่มีในนี้ = เต็มวันปกติ) */
     const [halfDayEmpIds, setHalfDayEmpIds] = useState<Set<string>>(new Set());
-    /** จำนวนถังที่ล้างที่บ้านวันนี้ (แสดงเมื่อมีพนักงานในประเภท ล้างทรายที่บ้าน) */
+    /** จำนวนถังล้างที่บ้าน (ซิงก์จากขั้นล้างทราย / พรีฟิลจากข้อมูลวันนี้) */
     const [drumsWashedAtHome, setDrumsWashedAtHome] = useState('');
     const [otHours, setOtHours] = useState('');
     const [otDesc, setOtDesc] = useState('');
@@ -705,9 +701,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             if (totalAssignedWorkers === 0) {
                 items.push({ level: 'warning', message: 'ยังไม่ได้จัดคนลงกล่องงาน', fix: 'เลือกพนักงานแล้วกดย้ายลงประเภทงานอย่างน้อย 1 กล่อง' });
             }
-            if (hasWashHomeAssignment(workAssignments) && (Number(drumsWashedAtHome) || 0) <= 0) {
-                items.push({ level: 'warning', message: 'มีคนล้างทรายที่บ้าน แต่ยังไม่ระบุจำนวนถัง', fix: 'กรอกจำนวนถังล้างที่บ้านเพื่อให้สรุปถังสุทธิถูกต้อง' });
-            }
         }
         if (step === 1 && laborStatus === 'OT') {
             if (selectedEmps.length === 0) items.push({ level: 'warning', message: 'ยังไม่ได้เลือกคนทำ OT', fix: 'เลือกพนักงานอย่างน้อย 1 คน' });
@@ -715,7 +708,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             if ((Number(otHours) || 0) <= 0) items.push({ level: 'info', message: 'OT ชั่วโมงยังว่าง', fix: 'ใส่จำนวนชั่วโมงเพื่อคำนวณยอดถูกต้อง' });
         }
         return items;
-    }, [step, laborStatus, totalAssignedWorkers, workAssignments, drumsWashedAtHome, selectedEmps.length, otDesc, otHours]);
+    }, [step, laborStatus, totalAssignedWorkers, workAssignments, selectedEmps.length, otDesc, otHours]);
     const sortedDayTransactions = useMemo(() => {
         return [...dayTransactions].sort((a, b) => {
             const scoreA = getTransactionRecencyScore(a, dayTransactions, dayTransactions.findIndex(x => x.id === a.id));
@@ -883,15 +876,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const drumStockSummary = useMemo(() => {
         const selectedDate = normalizeDate(date);
         const perDay = new Map<string, { obtained: number; home: number }>();
+        const sandByDay = new Map<string, Transaction[]>();
         transactions
             .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
             .forEach((t) => {
                 const d = normalizeDate(t.date);
-                const prev = perDay.get(d) || { obtained: 0, home: 0 };
-                const obtained = Math.max(prev.obtained, Number((t as any).drumsObtained || 0));
-                const home = Math.max(prev.home, Number((t as any).drumsWashedAtHome || 0));
-                perDay.set(d, { obtained, home });
+                const arr = sandByDay.get(d) || [];
+                arr.push(t);
+                sandByDay.set(d, arr);
             });
+        sandByDay.forEach((txs, d) => {
+            const obtained = Math.max(0, ...txs.map(t => Number((t as any).drumsObtained || 0)));
+            const home = persistedSandHomeDrums(txs);
+            perDay.set(d, { obtained, home });
+        });
 
         const sortedBeforeToday = Array.from(perDay.entries())
             .filter(([d]) => d < selectedDate)
@@ -1541,8 +1539,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setHomeBatchUsages([]);
         }
 
-        const homeFromSand =
-            sandTx.length > 0 ? Math.max(0, ...sandTx.map((t: any) => Number(t.drumsWashedAtHome || 0))) : 0;
+        const homeFromSand = persistedSandHomeDrums(sandTx as Transaction[]);
         const mergedHomeDrums = Math.max(homeFromLabor, homeFromSand);
         setDrumsWashedAtHome(mergedHomeDrums > 0 ? String(mergedHomeDrums) : '');
     }, [date, sandPersistedPrefillSignature, laborCanvasPersistedPrefillSignature]);
@@ -1847,9 +1844,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             const sandDrumsTotal = sand.length > 0
                                 ? Math.max(0, ...sand.map(t => Number((t as any).drumsObtained || 0)))
                                 : 0;
-                            const sandHomeDrums = sand.length > 0
-                                ? Math.max(0, ...sand.map(t => Number((t as any).drumsWashedAtHome || 0)))
-                                : 0;
+                            const sandHomeDrums = persistedSandHomeDrums(sand);
                             const laborAttendance = labor.filter(t => t.subCategory === 'Attendance') as any[];
                             const latestAttendance = pickLatestByDayOrder(laborAttendance, txs);
                             const homeDrums = Math.max(0, sandHomeDrums || Number(latestAttendance?.drumsWashedAtHome || 0));
@@ -2665,37 +2660,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             </div>
                                         </div>
 
-                                        {/* เมนูย่อย ล้างทรายที่บ้าน — เมื่อมีพนักงานในประเภทนี้ */}
-                                        {(hasWashHomeAssignment(workAssignments)) && (() => {
-                                            const sandTxToday = dayTransactions.filter((t: Transaction) => t.category === 'DailyLog' && t.subCategory === 'Sand');
-                                            const totalDrumsFromSand = sandTxToday.length > 0 ? Math.max(0, ...sandTxToday.map((t: Transaction) => (t as any).drumsObtained ?? 0)) : 0;
-                                            const homeDrums = Number(drumsWashedAtHome) || 0;
-                                            const remainingDrums = Math.max(0, totalDrumsFromSand - homeDrums);
-                                            return (
-                                                <div className="mb-4 p-4 rounded-xl border-2 border-teal-200 bg-teal-50/80">
-                                                    <h4 className="text-sm font-bold text-teal-800 mb-3 flex items-center gap-2">🏠 ล้างทรายที่บ้าน</h4>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
-                                                        <div>
-                                                            <label className="text-xs font-medium text-teal-700 mb-1 block">จำนวนถังที่ล้างวันนี้ (ที่บ้าน)</label>
-                                                            <input type="number" min="0" placeholder="0" value={drumsWashedAtHome} onChange={e => setDrumsWashedAtHome(e.target.value)}
-                                                                className="w-full px-3 py-2 border border-teal-200 rounded-lg text-center font-semibold text-teal-800 bg-white focus:border-teal-500 focus:outline-none" />
-                                                            <span className="text-xs text-teal-600 ml-1">ถัง</span>
-                                                        </div>
-                                                        <div className="flex flex-col justify-center p-2 bg-white rounded-lg border border-teal-100">
-                                                            <span className="text-[10px] text-teal-600">จำนวนถังทั้งหมด</span>
-                                                            <span className="text-lg font-bold text-teal-800">{(totalDrumsFromSand)}</span>
-                                                            <span className="text-[10px] text-teal-500">ถัง (จากบันทึกการล้างทราย)</span>
-                                                        </div>
-                                                        <div className="flex flex-col justify-center p-2 bg-white rounded-lg border border-teal-100">
-                                                            <span className="text-[10px] text-teal-600">จำนวนถังคงเหลือ</span>
-                                                            <span className="text-lg font-bold text-teal-800">{remainingDrums}</span>
-                                                            <span className="text-[10px] text-teal-500">ถัง</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
                                                 const normalizedWa = normalizedWorkAssignments;
@@ -2765,13 +2729,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                                 const halfCount = allEmps.filter(id => halfDayEmpIds.has(id)).length;
                                                 const workLabel = halfCount === 0 ? 'เต็มวัน' : halfCount === allEmps.length ? 'ครึ่งวัน' : `เต็มวัน ${allEmps.length - halfCount} คน, ครึ่งวัน ${halfCount} คน`;
-                                                const drumsHome = hasWashHomeAssignment(normalizedWa) ? (Number(drumsWashedAtHome) || 0) : undefined;
-                                                const hasWashHomeAssigned = hasWashHomeAssignment(normalizedWa);
-                                                const rawHomeDrums = Number(drumsWashedAtHome) || 0;
-                                                if (rawHomeDrums > 0 && !hasWashHomeAssigned) {
-                                                    await sessionAlert('พบจำนวนถังล้างที่บ้าน แต่ยังไม่ได้ assign พนักงานในงาน "ล้างทรายที่บ้าน"');
-                                                    return;
-                                                }
+                                                const homeDrumsVal = Number(drumsWashedAtHome) || 0;
+                                                const drumsHome = homeDrumsVal > 0 ? homeDrumsVal : undefined;
                                                 const t = {
                                                     ...base,
                                                     type: 'Expense',
@@ -3369,9 +3328,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     const totalDrumsDay = sandTxToday.length > 0
                                         ? Math.max(0, ...sandTxToday.map(t => (t as any).drumsObtained ?? 0))
                                         : (Number(sandDrumsObtained) || 0);
-                                    const savedHomeDrumsFromSand = sandTxToday.length > 0
-                                        ? Math.max(0, ...sandTxToday.map(t => Number((t as any).drumsWashedAtHome || 0)))
-                                        : 0;
+                                    const savedHomeDrumsFromSand =
+                                        sandTxToday.length > 0 ? persistedSandHomeDrums(sandTxToday) : 0;
                                     const homeDrums = Math.max(0, Number(drumsWashedAtHome) || savedHomeDrumsFromSand || latestLaborDrumsWashedAtHome || 0);
                                     const netDrumsDay = Math.max(0, totalDrumsDay - homeDrums);
                                     const drumsDisplay = totalDrumsDay > 0 || homeDrums > 0;
@@ -3433,59 +3391,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 })()}
 
                                 <div className="flex-1 space-y-3 overflow-y-auto">
-                                    {/* Machine 1 */}
-                                    <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-xl border border-blue-200">
-                                        <p className="text-sm font-bold text-blue-800 mb-2">🏭 เครื่องร่อน 1 (เก่า)</p>
-                                        <div className="grid grid-cols-3 gap-3 mb-2">
-                                            <div>
-                                                <label className="text-xs font-medium text-amber-700 mb-1 block">☀️ เช้า (คิว)</label>
-                                                <NumberPickerInput
-                                                    placeholder="0"
-                                                    value={sand1Morning}
-                                                    onChange={setSand1Morning}
-                                                    listMin={0}
-                                                    listMax={150}
-                                                    scrollAnchor={75}
-                                                    min={0}
-                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-blue-700 mb-1 block">🌙 บ่าย (คิว)</label>
-                                                <NumberPickerInput
-                                                    placeholder="0"
-                                                    value={sand1Afternoon}
-                                                    onChange={setSand1Afternoon}
-                                                    listMin={0}
-                                                    listMax={150}
-                                                    scrollAnchor={75}
-                                                    min={0}
-                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div className="flex flex-col items-center justify-center bg-white/70 rounded-xl border">
-                                                <span className="text-[10px] text-slate-400">รวม</span>
-                                                <span className="text-xl font-black text-blue-700">{sand1Total}</span>
-                                                <span className="text-[10px] text-slate-400">คิว</span>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-blue-700 mb-1 block">👷 พนักงานที่ล้าง</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {(workAssignments['wash1'] || []).length > 0 ? (workAssignments['wash1'] || []).map(eid => {
-                                                    const emp = employees.find(e => e.id === eid);
-                                                    return emp ? <span key={eid} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500 text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                }) : <span className="text-xs text-slate-400 italic">ยังไม่มีข้อมูล (กรุณาลากพนักงานใส่กล่อง "ล้างทราย เครื่องร่อน 1" ในขั้นค่าแรง)</span>}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {/* ร่อนทราย — เลย์เอาต์เดียวกับแอป Android: ช่วงเช้า/บ่าย แถวละ 2 เครื่อง (ซ้าย=ใหม่ ขวา=เก่า) */}
+                                    <p className="px-0.5 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
+                                        บันทึกทีละส่วนได้ เช่น กรอกคิวเช้าก่อน แล้วกลับมาเพิ่มคิวบ่ายภายหลัง
+                                    </p>
 
-                                    {/* Machine 2 */}
-                                    <div className="bg-gradient-to-r from-cyan-50 to-teal-50 p-4 rounded-xl border border-cyan-200">
-                                        <p className="text-sm font-bold text-cyan-800 mb-2">🏭 เครื่องร่อน 2 (ใหม่)</p>
-                                        <div className="grid grid-cols-3 gap-3 mb-2">
-                                            <div>
-                                                <label className="text-xs font-medium text-amber-700 mb-1 block">☀️ เช้า (คิว)</label>
+                                    <div className="rounded-[14px] border border-slate-200 bg-slate-50/90 p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                                        <div className="mb-3 flex items-center gap-2">
+                                            <Sun className="h-[18px] w-[18px] shrink-0 text-sky-500" aria-hidden />
+                                            <span className="text-[15.5px] font-bold text-slate-800 dark:text-slate-100">ช่วงเช้า</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-2.5">
+                                            <div className="rounded-[14px] border border-cyan-200/90 bg-cyan-50/80 p-2.5 dark:border-cyan-500/30 dark:bg-cyan-500/10">
+                                                <p className="mb-2 text-xs font-bold text-cyan-900 dark:text-cyan-100">เครื่องร่อน (ใหม่)</p>
+                                                <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">คิว</label>
                                                 <NumberPickerInput
                                                     placeholder="0"
                                                     value={sand2Morning}
@@ -3494,11 +3413,49 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     listMax={150}
                                                     scrollAnchor={75}
                                                     min={0}
-                                                    className="w-full px-3 py-2 border-2 border-amber-200 rounded-xl text-center text-lg font-bold text-amber-800 bg-white focus:border-amber-400 focus:outline-none"
+                                                    className="w-full rounded-xl border-2 border-cyan-200/90 bg-white px-3 py-2 text-center text-lg font-bold text-cyan-900 focus:border-cyan-400 focus:outline-none dark:border-cyan-500/35 dark:bg-white/5 dark:text-cyan-100"
                                                 />
+                                                <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(workAssignments['wash2'] || []).length > 0 ? (workAssignments['wash2'] || []).map(eid => {
+                                                        const emp = employees.find(e => e.id === eid);
+                                                        return emp ? <span key={eid} className="rounded-lg bg-cyan-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 2 (ใหม่)&quot; ในขั้นค่าแรง</span>}
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-blue-700 mb-1 block">🌙 บ่าย (คิว)</label>
+                                            <div className="rounded-[14px] border border-blue-200/90 bg-blue-50/80 p-2.5 dark:border-blue-500/30 dark:bg-blue-500/10">
+                                                <p className="mb-2 text-xs font-bold text-blue-900 dark:text-blue-100">เครื่องร่อน (เก่า)</p>
+                                                <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">คิว</label>
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand1Morning}
+                                                    onChange={setSand1Morning}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full rounded-xl border-2 border-blue-200/90 bg-white px-3 py-2 text-center text-lg font-bold text-blue-900 focus:border-blue-400 focus:outline-none dark:border-blue-500/35 dark:bg-white/5 dark:text-blue-100"
+                                                />
+                                                <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(workAssignments['wash1'] || []).length > 0 ? (workAssignments['wash1'] || []).map(eid => {
+                                                        const emp = employees.find(e => e.id === eid);
+                                                        return emp ? <span key={eid} className="rounded-lg bg-blue-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 1 (เก่า)&quot; ในขั้นค่าแรง</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-[14px] border border-slate-200 bg-slate-50/90 p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                                        <div className="mb-3 flex items-center gap-2">
+                                            <Sunset className="h-[18px] w-[18px] shrink-0 text-teal-500" aria-hidden />
+                                            <span className="text-[15.5px] font-bold text-slate-800 dark:text-slate-100">ช่วงบ่าย</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-2.5">
+                                            <div className="rounded-[14px] border border-cyan-200/90 bg-cyan-50/80 p-2.5 dark:border-cyan-500/30 dark:bg-cyan-500/10">
+                                                <p className="mb-2 text-xs font-bold text-cyan-900 dark:text-cyan-100">เครื่องร่อน (ใหม่)</p>
+                                                <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">คิว</label>
                                                 <NumberPickerInput
                                                     placeholder="0"
                                                     value={sand2Afternoon}
@@ -3507,33 +3464,47 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     listMax={150}
                                                     scrollAnchor={75}
                                                     min={0}
-                                                    className="w-full px-3 py-2 border-2 border-blue-200 rounded-xl text-center text-lg font-bold text-blue-800 bg-white focus:border-blue-400 focus:outline-none"
+                                                    className="w-full rounded-xl border-2 border-cyan-200/90 bg-white px-3 py-2 text-center text-lg font-bold text-cyan-900 focus:border-cyan-400 focus:outline-none dark:border-cyan-500/35 dark:bg-white/5 dark:text-cyan-100"
                                                 />
+                                                <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(workAssignments['wash2'] || []).length > 0 ? (workAssignments['wash2'] || []).map(eid => {
+                                                        const emp = employees.find(e => e.id === eid);
+                                                        return emp ? <span key={`pm2-${eid}`} className="rounded-lg bg-cyan-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 2 (ใหม่)&quot; ในขั้นค่าแรง</span>}
+                                                </div>
                                             </div>
-                                            <div className="flex flex-col items-center justify-center bg-white/70 rounded-xl border">
-                                                <span className="text-[10px] text-slate-400">รวม</span>
-                                                <span className="text-xl font-black text-cyan-700">{sand2Total}</span>
-                                                <span className="text-[10px] text-slate-400">คิว</span>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-cyan-700 mb-1 block">👷 พนักงานที่ล้าง</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {(workAssignments['wash2'] || []).length > 0 ? (workAssignments['wash2'] || []).map(eid => {
-                                                    const emp = employees.find(e => e.id === eid);
-                                                    return emp ? <span key={eid} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-cyan-500 text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                }) : <span className="text-xs text-slate-400 italic">ยังไม่มีข้อมูล (กรุณาลากพนักงานใส่กล่อง "ล้างทราย เครื่องร่อน 2" ในขั้นค่าแรง)</span>}
+                                            <div className="rounded-[14px] border border-blue-200/90 bg-blue-50/80 p-2.5 dark:border-blue-500/30 dark:bg-blue-500/10">
+                                                <p className="mb-2 text-xs font-bold text-blue-900 dark:text-blue-100">เครื่องร่อน (เก่า)</p>
+                                                <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">คิว</label>
+                                                <NumberPickerInput
+                                                    placeholder="0"
+                                                    value={sand1Afternoon}
+                                                    onChange={setSand1Afternoon}
+                                                    listMin={0}
+                                                    listMax={150}
+                                                    scrollAnchor={75}
+                                                    min={0}
+                                                    className="w-full rounded-xl border-2 border-blue-200/90 bg-white px-3 py-2 text-center text-lg font-bold text-blue-900 focus:border-blue-400 focus:outline-none dark:border-blue-500/35 dark:bg-white/5 dark:text-blue-100"
+                                                />
+                                                <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(workAssignments['wash1'] || []).length > 0 ? (workAssignments['wash1'] || []).map(eid => {
+                                                        const emp = employees.find(e => e.id === eid);
+                                                        return emp ? <span key={`pm1-${eid}`} className="rounded-lg bg-blue-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 1 (เก่า)&quot; ในขั้นค่าแรง</span>}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Grand total */}
                                     {sandGrandTotal > 0 && (
-                                        <div className="bg-gradient-to-r from-emerald-100 to-teal-100 p-3 rounded-xl text-center border border-emerald-200">
+                                        <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-100 to-teal-100 p-3 text-center">
                                             <span className="text-sm font-bold text-emerald-800">รวมล้างทรายทั้งหมด: </span>
                                             <span className="text-2xl font-black text-emerald-700">{sandGrandTotal}</span>
                                             <span className="text-sm text-emerald-600"> คิว/วัน</span>
-                                            <div className="text-[10px] text-emerald-600 mt-1">เครื่อง 1: {sand1Total} คิว | เครื่อง 2: {sand2Total} คิว</div>
+                                            <div className="mt-1 text-[10px] text-emerald-600">เครื่อง (เก่า): {sand1Total} คิว | เครื่อง (ใหม่): {sand2Total} คิว</div>
                                         </div>
                                     )}
 
@@ -3666,7 +3637,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         const drumsToday = Number(sandDrumsObtained) || 0;
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
                                         const totalAllocatedHome = homeBatchUsages.reduce((s, u) => s + Math.max(0, Number(u.drums || 0)), 0);
-                                        const hasWashHomeAssigned = hasWashHomeAssignment(workAssignments);
                                         const noLotStockAvailable = sourceBatchesForHome.length === 0;
                                         if (sandGrandTotal === 0 && drumsToday === 0) {
                                             await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
@@ -3678,10 +3648,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             return;
                                         }
                                         if (drumsHomeToday > 0) {
-                                            if (!hasWashHomeAssigned) {
-                                                await sessionAlert('มีการล้างที่บ้าน แต่ยังไม่ได้ assign งาน washHome ในขั้นค่าแรง');
-                                                return;
-                                            }
                                             if (!noLotStockAvailable) {
                                                 if (homeBatchUsages.length === 0) {
                                                     await sessionAlert('ต้องเลือกล็อตที่นำไปล้างที่บ้านก่อนบันทึก');
@@ -3699,17 +3665,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                             }
                                         }
-                                        if (hasWashHomeAssigned) {
-                                            if (drumsHomeToday <= 0) {
-                                                await sessionAlert('assign งาน washHome แล้ว ต้องระบุจำนวนถังล้างที่บ้านมากกว่า 0');
-                                                return;
-                                            }
-                                            if (!noLotStockAvailable && homeBatchUsages.length === 0) {
-                                                await sessionAlert('assign งาน washHome แล้ว ต้องระบุรายการตัดล็อตให้ครบ');
-                                                return;
-                                            }
-                                        } else if (!noLotStockAvailable && homeBatchUsages.length > 0) {
-                                            await sessionAlert('ยังไม่ได้ assign งาน washHome แต่มีรายการตัดล็อตล้างที่บ้าน');
+                                        if (drumsHomeToday <= 0 && !noLotStockAvailable && homeBatchUsages.length > 0) {
+                                            await sessionAlert('มีรายการตัดล็อตล้างที่บ้าน แต่จำนวนถังล้างที่บ้านเป็น 0 — กรุณากรอกจำนวนถังหรือล้างรายการตัดล็อต');
                                             return;
                                         }
                                         const sandSnap = dayTransactions.filter(
@@ -3786,7 +3743,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             );
                                             if (ok === false) return;
                                         }
-                                        if (hasWashHomeAssigned) {
+                                        if (drumsHomeToday > 0) {
                                             const laborWork = dayTransactions.filter(
                                                 t =>
                                                     t.category === 'Labor' &&
@@ -3817,6 +3774,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     onDeleteTransaction(t.id);
                                                 }
                                                 if (sand2Total > 0 && mt === 'New' && t.id !== idSand2) {
+                                                    onDeleteTransaction(t.id);
+                                                }
+                                            }
+                                            if (sand1Total > 0 || sand2Total > 0) {
+                                                for (const t of sandSnap) {
+                                                    if (normalizeDate(t.date) !== normD) continue;
+                                                    const tx = t as any;
+                                                    if (tx.sandMachineType === 'Old' || tx.sandMachineType === 'New') continue;
+                                                    if (Number(tx.sandMorning || 0) + Number(tx.sandAfternoon || 0) !== 0) continue;
                                                     onDeleteTransaction(t.id);
                                                 }
                                             }
@@ -3990,6 +3956,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     <div className="space-y-2">
                                         <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">ราคาซื้อน้ำมัน (บาท)</label>
                                         <input type="number" placeholder="" value={fuelAmount} onChange={e => setFuelAmount(e.target.value)}
+                                            onWheel={e => e.preventDefault()}
                                             className="w-full px-4 py-4 border border-slate-300 dark:border-white/15 rounded-xl text-lg text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors" />
                                         <div />
                                     </div>
@@ -4871,7 +4838,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">ค่าแรง, รถ, น้ำมัน ฯลฯ</span>
                             </div>
                             <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight tabular-nums shrink-0 self-end sm:self-auto">
-                                ฿{dayTransactions.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0).toLocaleString()}
+                                ฿{sumWizardDailySpend(dayTransactions).toLocaleString()}
                             </span>
                         </div>
                     </Card>
