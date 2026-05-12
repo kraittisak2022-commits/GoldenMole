@@ -293,6 +293,20 @@ bool transactionCountsAsVehicleTripMenu(AppTransaction t) {
   return trips > 0;
 }
 
+/// แถวที่เมนู **จำนวนเที่ยวรถ** / หน้าแอปควรโหลดแสดง (รวมแถว 0 เที่ยวจาก Daily Wizard บนเว็บ)
+bool transactionMatchesVehicleTripModuleList(AppTransaction t) {
+  if (isMacroVehicleTransaction(t)) return false;
+  if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
+  if (t.category == 'Vehicle') return true;
+  if (t.category == 'DailyLog' &&
+      (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
+    final hasVid = (t.vehicleId ?? '').trim().isNotEmpty ||
+        (t.driverId ?? '').trim().isNotEmpty;
+    return hasVid;
+  }
+  return false;
+}
+
 /// จับคู่แถว [transactions] กับเมนูบันทึกประจำวันที่เลือก (หมวดจากแดชบอร์ด)
 bool transactionMatchesDailyModule(
   AppTransaction t,
@@ -320,7 +334,7 @@ bool transactionMatchesDailyModule(
         ((t.drumsWashedAtHome ?? 0) > 0 && t.description.contains('ล้างที่บ้าน'));
   }
 
-  bool vehicleLike() => transactionCountsAsVehicleTripMenu(t);
+  bool vehicleLike() => transactionMatchesVehicleTripModuleList(t);
 
   bool macroVehicleLike() {
     return t.category == 'Vehicle' &&

@@ -1235,19 +1235,20 @@ class _HomeHeaderCompact extends StatelessWidget {
                                 ),
                               ),
                               child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   const Icon(
                                     Icons.calendar_today,
                                     color: Color(0xFF0D7284),
                                     size: 14,
                                   ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
+                                  const SizedBox(width: 4),
+                                  Flexible(
                                     child: Text(
                                       selectedDateLabel,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.end,
+                                      textAlign: TextAlign.start,
                                       style: const TextStyle(
                                         color: Color(0xFF0D7284),
                                         fontWeight: FontWeight.w800,

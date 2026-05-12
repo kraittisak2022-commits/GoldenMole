@@ -440,6 +440,78 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       ..addAll(nextRows.isEmpty ? [_VehicleTripDraft.empty()] : nextRows);
   }
 
+  /// ลบแถวรถดรัม: แถวที่บันทึกแล้ว (`tripTxId`) ลบจากฐานข้อมูลแล้วโหลดรายการใหม่ — ไม่เช่นนั้นลบเฉพาะในแบบฟอร์ม
+  Future<void> _handleVehicleTripRowDelete(int index) async {
+    if (index < 0 || index >= _vehicleTripDrafts.length) return;
+    final row = _vehicleTripDrafts[index];
+    final persistedId = row.tripTxId?.trim();
+    if (persistedId != null && persistedId.isNotEmpty) {
+      try {
+        await widget.service.deleteTransaction(persistedId);
+        if (!mounted) return;
+        await _loadModuleTransactions(forceRefresh: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+          ),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+            ),
+          );
+        }
+      }
+      return;
+    }
+    setState(() {
+      final removed = _vehicleTripDrafts.removeAt(index);
+      removed.dispose();
+      if (_vehicleTripDrafts.isEmpty) {
+        _vehicleTripDrafts.add(_VehicleTripDraft.empty());
+      }
+    });
+  }
+
+  /// ลบแถวแม็คโคร: แถวที่บันทึกแล้ว (`txId`) ลบจากฐานข้อมูลแล้วโหลดรายการใหม่ — ไม่เช่นนั้นลบเฉพาะในแบบฟอร์ม
+  Future<void> _handleMacroVehicleRowDelete(int index) async {
+    if (index < 0 || index >= _macroVehicleDrafts.length) return;
+    final row = _macroVehicleDrafts[index];
+    final persistedId = row.txId?.trim();
+    if (persistedId != null && persistedId.isNotEmpty) {
+      try {
+        await widget.service.deleteTransaction(persistedId);
+        if (!mounted) return;
+        await _loadModuleTransactions(forceRefresh: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+          ),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+            ),
+          );
+        }
+      }
+      return;
+    }
+    setState(() {
+      final removed = _macroVehicleDrafts.removeAt(index);
+      removed.dispose();
+      if (_macroVehicleDrafts.isEmpty) {
+        _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
+      }
+    });
+  }
+
   void _disposeFuelVehicleDrafts() {
     for (final row in _fuelVehicleDrafts) {
       row.dispose();
@@ -464,6 +536,96 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _macroVehicleDrafts
       ..clear()
       ..addAll(nextRows.isEmpty ? [_MacroVehicleDraft.empty()] : nextRows);
+  }
+
+  /// ดึงข้อมูลแม็คโครของคันที่เลือกในวันนี้ (ล่าสุด) เพื่อแก้ไข — กันบันทึกซ้ำ
+  void _applyMacroVehicleRowFromExistingTransaction(
+    _MacroVehicleDraft row,
+    List<AppTransaction> pool,
+    String ymd,
+  ) {
+    final vid = row.vehicleId.trim();
+    if (vid.isEmpty) {
+      row.txId = null;
+      return;
+    }
+    AppTransaction? best;
+    for (final t in pool) {
+      if (t.date.trim() != ymd.trim()) continue;
+      if (!isMacroVehicleTransaction(t)) continue;
+      if ((t.vehicleId ?? '').trim() != vid) continue;
+      if (best == null) {
+        best = t;
+        continue;
+      }
+      final ta = t.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final ba = best.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      if (ta.isAfter(ba)) best = t;
+    }
+    if (best != null) {
+      row.txId = best.id;
+      row.driverId = (best.driverId ?? '').trim();
+      final wt = (best.workType ?? '').trim();
+      row.workType = wt == 'HalfDay' ? 'HalfDay' : 'FullDay';
+      row.workDetailsController.text = _stripRecorderSuffix(
+        best.workDetails ?? '',
+      );
+      _persistOmitCreatedForIds.add(best.id);
+    } else {
+      row.txId = null;
+      row.driverId = '';
+      row.workType = 'FullDay';
+      row.workDetailsController.clear();
+    }
+  }
+
+  Future<void> _onMacroVehicleSelected(_MacroVehicleDraft row) async {
+    final pickedVid = row.vehicleId.trim();
+    final ymd = _quickYmd(_selectedDate);
+    if (pickedVid.isEmpty) {
+      row.txId = null;
+      if (mounted) setState(() {});
+      _scheduleUiRefresh();
+      return;
+    }
+    try {
+      final pool = await widget.service.fetchTransactionsForDate(
+        ymd,
+        forceRefresh: true,
+      );
+      if (!mounted) return;
+      if (row.vehicleId.trim() != pickedVid) return;
+      final cat = widget.initialCategory?.trim() ?? '';
+      final matched = pool
+          .where((t) => transactionMatchesDailyModule(t, ymd, cat))
+          .toList()
+        ..sort((a, b) {
+          final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return tb.compareTo(ta);
+        });
+      setState(() {
+        _moduleDayAllTransactions = pool;
+        _moduleDayTransactions = matched;
+      });
+      _applyMacroVehicleRowFromExistingTransaction(row, pool, ymd);
+      if (!mounted) return;
+      setState(() {});
+      if (row.txId != null && row.txId!.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'โหลดข้อมูลที่บันทึกไว้สำหรับรถคันนี้ในวันนี้แล้ว — แก้ไขแล้วกดบันทึก',
+              style: GoogleFonts.kanit(fontSize: 14),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _scheduleUiRefresh();
+    }
   }
 
   /// ล้างฟอร์มก่อนโหลดวันใหม่ เพื่อไม่ให้เหลือค่าจากวันก่อนหน้า
@@ -577,8 +739,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     try {
       final ymd = _quickYmd(_selectedDate);
-      final forceServer =
-          forceRefresh || cat == 'ลางาน' || cat.toUpperCase().contains('OT');
+      final forceServer = forceRefresh ||
+          cat == 'ลางาน' ||
+          cat == 'จำนวนเที่ยวรถ' ||
+          cat == 'การใช้รถแม็คโคร' ||
+          cat.toUpperCase().contains('OT');
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: forceServer)
           : await widget.service.fetchTransactionsForDate(
@@ -643,6 +808,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final n = double.tryParse(t);
     if (n == null) return raw;
     return _strNum(n);
+  }
+
+  /// จำนวนเที่ยวช่วงเช้า/บ่าย — ว่างได้ (นับเป็น 0); ถ้ากรอกต้องเป็นตัวเลขไม่ติดลบ
+  static double parseOptionalVehicleTripCount(
+    String raw,
+    String fieldLabelForError,
+  ) {
+    final s = raw.trim();
+    if (s.isEmpty) return 0;
+    final normalized = normalizeVehicleTripNumericText(s);
+    final n = double.tryParse(normalized);
+    if (n == null) {
+      throw 'จำนวนเที่ยว$fieldLabelForErrorต้องเป็นตัวเลข';
+    }
+    if (n < 0) {
+      throw 'จำนวนเที่ยว$fieldLabelForErrorต้องไม่ติดลบ';
+    }
+    return n;
   }
 
   String _stripRecorderSuffix(String raw) =>
@@ -886,14 +1069,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isVehicleTripMode) {
-      // ฟอร์มใช้สำหรับบันทึกใหม่เท่านั้น — รายการที่บันทึกแล้วแสดงใต้ปุ่มบันทึก
-      _replaceVehicleDrafts(const []);
+      final pool = dayTransactions ?? txs;
+      final sources = pool.where(_isVehicleTripHydrateSource).toList()
+        ..sort((a, b) {
+          final ca = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final cb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return ca.compareTo(cb);
+        });
+      final drafts = sources.map(_vehicleTripDraftFromAppTransaction).toList();
+      _replaceVehicleDrafts(drafts);
       return;
     }
 
     if (_isMacroVehicleMode) {
+      final pool = dayTransactions ?? txs;
       final drafts = <_MacroVehicleDraft>[];
-      for (final t in txs) {
+      for (final t in pool) {
         if (!isMacroVehicleTransaction(t)) continue;
         final draft = _MacroVehicleDraft.empty();
         draft.txId = t.id;
@@ -1228,6 +1419,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     'อื่นๆ',
   ];
 
+  /// บันทึกรถดรัม — ช่วยกรอกรายละเอียดงาน (คำย่อยทั่วไข)
+  static const List<String> _kVehicleDrumWorkQuickPhrases = [
+    'ขนทรายล้าง',
+    'ขนทรายถม',
+  ];
+
   void _applyMacroWorkPhrase(_MacroVehicleDraft row, String phrase) {
     final cur = row.workDetailsController.text.trim();
     final next = cur.isEmpty ? phrase : '$cur, $phrase';
@@ -1237,6 +1434,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         offset: row.workDetailsController.text.length,
       );
     });
+  }
+
+  /// รถดรัม/เที่ยว — ต่อท้ายรายละเอียดงาน (ไม่ซ้ำคำเดิม)
+  static void _applyVehicleDrumWorkPhrase(_VehicleTripDraft row, String phrase) {
+    final cur = row.workDetailsController.text.trim();
+    if (cur.contains(phrase)) return;
+    final next = cur.isEmpty ? phrase : '$cur, $phrase';
+    row.workDetails = next;
+    row.workDetailsController.text = next;
+    row.workDetailsController.selection = TextSelection.collapsed(
+      offset: row.workDetailsController.text.length,
+    );
   }
 
   Future<void> _refreshHomeSandStock() async {
@@ -1670,30 +1879,59 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
 
+        for (final row in activeRows) {
+          if (row.vehicleId.trim().isEmpty || row.driverId.trim().isEmpty) {
+            throw 'กรุณาระบุรถและคนขับให้ครบทุกคัน';
+          }
+        }
+
+        final seenVehicleDriver = <String>{};
+        for (final row in activeRows) {
+          final vehicle = row.vehicleId.trim();
+          final driver = row.driverId.trim();
+          final pairKey = '$vehicle|$driver';
+          if (!seenVehicleDriver.add(pairKey)) {
+            throw 'พบรายการซ้ำในฟอร์ม: รถ "$vehicle" กับคนขับคนเดียวกันซ้ำมากกว่า 1 แถว — ลบหรือแก้แถวซ้ำก่อนบันทึก';
+          }
+        }
+
+        final serverDayRows = await widget.service.fetchTransactionsForDate(
+          date,
+          forceRefresh: true,
+        );
+        for (final row in activeRows) {
+          final vehicle = row.vehicleId.trim();
+          final driver = row.driverId.trim();
+          final selfId = row.tripTxId?.trim();
+          for (final t in serverDayRows) {
+            if (!_isVehicleTripHydrateSource(t)) continue;
+            if (selfId != null && selfId.isNotEmpty && t.id == selfId) {
+              continue;
+            }
+            if ((t.vehicleId ?? '').trim() == vehicle &&
+                (t.driverId ?? '').trim() == driver) {
+              final driverLabel = _employeeLabelFromIdOrName(driver);
+              throw 'มีบันทึกรถดรัมชุดนี้ในวันนี้แล้ว: รถ "$vehicle" / $driverLabel — ไม่บันทึกซ้ำ (แก้ไขที่แถวที่โหลดมาแทน หรือลบรายการซ้ำในระบบ)';
+            }
+          }
+        }
+
         for (var i = 0; i < activeRows.length; i++) {
           final row = activeRows[i];
           final vehicle = row.vehicleId.trim();
           final driver = row.driverId.trim();
           final details = row.workDetails.trim();
           final hourlyHours = double.tryParse(row.hourlyHours.trim()) ?? 0;
-          if (row.tripMorning.trim().isEmpty ||
-              row.tripAfternoon.trim().isEmpty) {
-            throw 'กรุณาระบุจำนวนเที่ยวช่วงเช้าและช่วงบ่ายให้ครบทุกคัน (ทั้งแบบเหมาและคิดเป็นเที่ยว)';
-          }
-          final tripMorning = double.tryParse(row.tripMorning.trim());
-          final tripAfternoon = double.tryParse(row.tripAfternoon.trim());
-          if (tripMorning == null || tripAfternoon == null) {
-            throw 'จำนวนเที่ยวเช้า/บ่ายต้องเป็นตัวเลข';
-          }
-          if (tripMorning < 0 || tripAfternoon < 0) {
-            throw 'จำนวนเที่ยวเช้า/บ่ายต้องไม่ติดลบ';
-          }
+          final tripMorning = parseOptionalVehicleTripCount(
+            row.tripMorning,
+            'ช่วงเช้า ',
+          );
+          final tripAfternoon = parseOptionalVehicleTripCount(
+            row.tripAfternoon,
+            'ช่วงบ่าย ',
+          );
           final totalTrips = tripMorning + tripAfternoon;
           final cubicPerTrip = double.tryParse(row.cubicPerTrip.trim()) ?? 0;
-
-          if (vehicle.isEmpty || driver.isEmpty) {
-            throw 'กรุณาระบุรถและคนขับให้ครบทุกคัน';
-          }
           if (row.workType == 'Hourly' && hourlyHours <= 0) {
             throw 'กรุณาระบุชั่วโมงทำงานสำหรับรายการรายชั่วโมง';
           }
@@ -2231,7 +2469,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       setState(
         () => _selectedDate = DateTime(picked.year, picked.month, picked.day),
       );
-      await _loadModuleTransactions();
+      await _loadModuleTransactions(
+        forceRefresh: _isVehicleTripMode || _isMacroVehicleMode,
+      );
     }
   }
 
@@ -6085,6 +6325,75 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  /// แถวที่โหลดเข้าฟอร์มรถดรัมได้ (เว็บ Daily Wizard / เลกาซี category Vehicle)
+  bool _isVehicleTripHydrateSource(AppTransaction t) {
+    if (isMacroVehicleTransaction(t)) return false;
+    if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
+    if (t.category == 'DailyLog' &&
+        (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
+      return true;
+    }
+    if (t.category == 'Vehicle') return true;
+    return false;
+  }
+
+  _VehicleTripDraft _vehicleTripDraftFromAppTransaction(AppTransaction t) {
+    final d = _VehicleTripDraft.empty();
+    d.tripTxId = t.id;
+    d.vehicleId = (t.vehicleId ?? '').trim();
+    d.driverId = (t.driverId ?? '').trim();
+
+    final wt = (t.workType ?? '').trim();
+    if (wt == 'HalfDay') {
+      d.workType = 'HalfDay';
+    } else if (wt == 'Hourly') {
+      d.workType = 'Hourly';
+    } else {
+      d.workType = 'FullDay';
+    }
+
+    final modeRaw = (t.tripBillingMode ?? '').trim();
+    final isLump =
+        modeRaw.toLowerCase() == 'lumpsum' || modeRaw == 'เหมา';
+    d.tripBillingMode = isLump ? 'LumpSum' : 'PerTrip';
+
+    final tm = t.tripMorning ?? 0;
+    final ta = t.tripAfternoon ?? 0;
+    d.tripMorning = _strNum(tm);
+    d.tripAfternoon = _strNum(ta);
+    d.tripMorningController.text = d.tripMorning;
+    d.tripAfternoonController.text = d.tripAfternoon;
+
+    final lumpVal = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
+    if (isLump) {
+      d.lumpSumTotalCubic = lumpVal > 0 ? _strNum(lumpVal) : '';
+      d.lumpSumTotalCubicController.text = d.lumpSumTotalCubic;
+      d.cubicPerTrip = '';
+      d.cubicPerTripController.clear();
+    } else {
+      d.lumpSumTotalCubic = '';
+      d.lumpSumTotalCubicController.clear();
+      final cptVal = t.cubicPerTrip ?? 0;
+      d.cubicPerTrip = cptVal > 0 ? _strNum(cptVal) : '';
+      d.cubicPerTripController.text = d.cubicPerTrip;
+    }
+
+    final wd = _stripRecorderSuffix(t.workDetails ?? '');
+    d.workDetails = wd;
+    d.workDetailsController.text = wd;
+
+    if (d.workType == 'Hourly') {
+      final oh = t.otHours;
+      if (oh != null && oh > 0) {
+        final hs = _strNum(oh);
+        d.hourlyHours = hs;
+        d.hourlyHoursController.text = hs;
+      }
+    }
+
+    return d;
+  }
+
   String _vehicleTripWorkTypeLabel(String? workType) {
     switch ((workType ?? '').trim()) {
       case 'HalfDay':
@@ -6189,14 +6498,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildVehicleTripSavedTodaySection() {
+    final hydratedIds = _vehicleTripDrafts
+        .map((r) => r.tripTxId)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
     final saved = _moduleDayTransactions
-        .where(transactionCountsAsVehicleTripMenu)
+        .where(transactionMatchesVehicleTripModuleList)
+        .where((t) => !hydratedIds.contains(t.id))
         .toList();
     if (saved.isEmpty) {
+      final hasHydratedRows =
+          hydratedIds.isNotEmpty ||
+          _vehicleTripDrafts.any((r) => r.tripTxId != null && r.tripTxId!.isNotEmpty);
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(
-          'ยังไม่มีบันทึกรถดรัมในวันที่เลือก',
+          hasHydratedRows
+              ? 'รายการจากเว็บ/ระบบโหลดที่แถวด้านบนแล้ว — แก้ไขแล้วกดบันทึกเพื่ออัปเดต'
+              : 'ยังไม่มีบันทึกรถดรัมในวันที่เลือก',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
         ),
@@ -6259,7 +6579,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              'ทั้งแบบเหมาและคิดเป็นเที่ยว ต้องระบุจำนวนเที่ยวช่วงเช้าและช่วงบ่ายให้ครบ — บันทึกทีละคันแล้วกรอกคันถัดไปได้ หรือกด «เพิ่มรถอีกคัน» เพื่อส่งหลายคันครั้งเดียว',
+              'รายการจากเว็บ (บันทึกงานประจำวัน > บันทึกรถและจำนวนเที่ยวรถ) จะโหลดมาแสดงที่แถวด้านบนให้แก้ไข — ช่วงเช้า/บ่าย ไม่บังคับ (ว่าง = 0) — แบบเหมาให้กรอกรวมคิว แบบคิดเป็นเที่ยวต้องมีเที่ยวรวม > 0 และคิวต่อเที่ยว — บันทึกทีละคันหรือกด «เพิ่มรถอีกคัน»',
               style: GoogleFonts.kanit(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -6276,6 +6596,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               vehicleLabelFromId: _vehicleLabelFromId,
               driverLabelFromId: _driverLabelFromId,
               openNumericPad: _openNumericPad,
+              onVehicleTripRowDelete: _handleVehicleTripRowDelete,
               notifyParentRefresh: _scheduleUiRefresh,
             ),
             const SizedBox(height: 12),
@@ -6356,15 +6677,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             ),
                           ),
                           const Spacer(),
-                          if (_macroVehicleDrafts.length > 1)
+                          if (_macroVehicleDrafts.length > 1 ||
+                              (row.txId?.trim().isNotEmpty ?? false))
                             IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  final removed = _macroVehicleDrafts.removeAt(
-                                    index,
-                                  );
-                                  removed.dispose();
-                                });
+                              onPressed: () async {
+                                await _handleMacroVehicleRowDelete(index);
                               },
                               icon: const Icon(Icons.delete_outline_rounded),
                               color: const Color(0xFFD14343),
@@ -6399,9 +6716,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               ),
                             )
                             .toList(),
-                        onChanged: (v) {
+                        onChanged: (v) async {
                           row.vehicleId = v ?? '';
-                          _scheduleUiRefresh();
+                          await _onMacroVehicleSelected(row);
                         },
                       ),
                       if (macroCars.isEmpty)
@@ -9215,6 +9532,7 @@ class _VehicleTripRowsBoard extends StatefulWidget {
     required this.vehicleLabelFromId,
     required this.driverLabelFromId,
     required this.openNumericPad,
+    required this.onVehicleTripRowDelete,
     required this.notifyParentRefresh,
   });
 
@@ -9225,6 +9543,7 @@ class _VehicleTripRowsBoard extends StatefulWidget {
   final String Function(String vehicleId) vehicleLabelFromId;
   final String Function(String driverId) driverLabelFromId;
   final _OpenNumericPad openNumericPad;
+  final Future<void> Function(int index) onVehicleTripRowDelete;
   final VoidCallback notifyParentRefresh;
 
   @override
@@ -9292,18 +9611,18 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
             key: ValueKey('row_${row.tripTxId ?? index}'),
             index: index,
             row: row,
-            canDelete: widget.rows.length > 1,
+            canDelete:
+                widget.rows.length > 1 ||
+                (row.tripTxId?.trim().isNotEmpty ?? false),
             cars: widget.cars,
             drivers: widget.drivers,
             workSuggestions: widget.workSuggestions,
             vehicleLabelFromId: widget.vehicleLabelFromId,
             driverLabelFromId: widget.driverLabelFromId,
             openNumericPad: widget.openNumericPad,
-            onDelete: () {
-              setState(() {
-                final removed = widget.rows.removeAt(index);
-                removed.dispose();
-              });
+            onDelete: () async {
+              await widget.onVehicleTripRowDelete(index);
+              if (!mounted) return;
               _refreshAggregate();
               widget.notifyParentRefresh();
             },
@@ -9399,7 +9718,7 @@ class _VehicleTripRowItem extends StatefulWidget {
   final String Function(String vehicleId) vehicleLabelFromId;
   final String Function(String driverId) driverLabelFromId;
   final _OpenNumericPad openNumericPad;
-  final VoidCallback onDelete;
+  final Future<void> Function() onDelete;
   final VoidCallback onChanged;
 
   @override
@@ -9447,7 +9766,9 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               const Spacer(),
               if (widget.canDelete)
                 IconButton(
-                  onPressed: widget.onDelete,
+                  onPressed: () async {
+                    await widget.onDelete();
+                  },
                   icon: const Icon(Icons.delete_outline_rounded),
                   color: const Color(0xFFD14343),
                   tooltip: 'ลบคันนี้',
@@ -9607,13 +9928,58 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'รายละเอียดงาน',
-              prefixIcon: Icon(Icons.description_outlined),
+              hintText:
+                  'พิมพ์ได้ หรือกดชิป «ขนทรายล้าง» / «ขนทรายถม» ด้านล่าง',
+              hintStyle: GoogleFonts.kanit(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.black45,
+              ),
+              prefixIcon: const Icon(Icons.description_outlined),
             ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'ช่วยกรอก',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final phrase
+                  in _QuickInputScreenState._kVehicleDrumWorkQuickPhrases)
+                ActionChip(
+                  label: Text(phrase, style: GoogleFonts.kanit(fontSize: 13.5)),
+                  onPressed: () {
+                    _QuickInputScreenState._applyVehicleDrumWorkPhrase(
+                      row,
+                      phrase,
+                    );
+                    setState(() {});
+                    widget.onChanged();
+                  },
+                ),
+            ],
           ),
           if (widget.workSuggestions.isNotEmpty) ...[
             const SizedBox(height: 8),
+            Text(
+              'จากประวัติการบันทึก',
+              style: GoogleFonts.kanit(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.black45,
+              ),
+            ),
+            const SizedBox(height: 4),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -9673,7 +10039,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                   readOnly: true,
                   onTap: () => widget.openNumericPad(
                     controller: row.tripMorningController,
-                    label: 'ช่วงเช้า (เที่ยว)',
+                    label: 'ช่วงเช้า (เที่ยว) — ไม่บังคับ',
                     onChanged: (v) {
                       final n =
                           _QuickInputScreenState.normalizeVehicleTripNumericText(
@@ -9692,9 +10058,14 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'ช่วงเช้า (เที่ยว)',
-                    prefixIcon: Icon(Icons.wb_sunny_outlined),
+                    hintText: 'ไม่บังคับ · ว่าง = 0',
+                    hintStyle: GoogleFonts.kanit(
+                      fontSize: 13,
+                      color: Colors.black45,
+                    ),
+                    prefixIcon: const Icon(Icons.wb_sunny_outlined),
                   ),
                 ),
               ),
@@ -9705,7 +10076,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                   readOnly: true,
                   onTap: () => widget.openNumericPad(
                     controller: row.tripAfternoonController,
-                    label: 'ช่วงบ่าย (เที่ยว)',
+                    label: 'ช่วงบ่าย (เที่ยว) — ไม่บังคับ',
                     onChanged: (v) {
                       final n =
                           _QuickInputScreenState.normalizeVehicleTripNumericText(
@@ -9724,9 +10095,14 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'ช่วงบ่าย (เที่ยว)',
-                    prefixIcon: Icon(Icons.nightlight_outlined),
+                    hintText: 'ไม่บังคับ · ว่าง = 0',
+                    hintStyle: GoogleFonts.kanit(
+                      fontSize: 13,
+                      color: Colors.black45,
+                    ),
+                    prefixIcon: const Icon(Icons.nightlight_outlined),
                   ),
                 ),
               ),

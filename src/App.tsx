@@ -23,7 +23,6 @@ import WorkPlanner from './modules/Planning/WorkPlanner';
 import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
-import { WebSignatureDialog } from './components/WebSignatureDialog';
 const PayrollModule = lazy(() => import('./modules/Payroll/PayrollModule'));
 const RecordManager = lazy(() => import('./modules/DataList/RecordManager'));
 const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
@@ -308,8 +307,6 @@ function App() {
     const [pinInput, setPinInput] = useState('');
     const [showPinLock, setShowPinLock] = useState(false);
     const [pinLockedUntil, setPinLockedUntil] = useState<number | null>(null);
-    const [signatureDialogAdmin, setSignatureDialogAdmin] = useState<AdminUser | null>(null);
-    const signatureDialogResolve = useRef<((note: string | null) => void) | null>(null);
     const recentWebSaveTxAt = useRef<Map<string, number>>(new Map());
     const lastRemoteToastAt = useRef(0);
     const currentAdminAccess: AdminDataAccess | null = useMemo(() => {
@@ -1067,22 +1064,6 @@ function App() {
         }
     }, []);
 
-    const requestTransactionSignature = useCallback(
-        (admin: AdminUser) =>
-            new Promise<string | null>((resolve) => {
-                signatureDialogResolve.current = resolve;
-                setSignatureDialogAdmin(admin);
-            }),
-        [],
-    );
-
-    const finishSignatureDialog = useCallback((note: string | null) => {
-        const resolve = signatureDialogResolve.current;
-        signatureDialogResolve.current = null;
-        setSignatureDialogAdmin(null);
-        resolve?.(note);
-    }, []);
-
     const handleSave = async (t: Transaction): Promise<boolean> => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
@@ -1102,18 +1083,10 @@ function App() {
             return false;
         }
 
-        let signedTx = t;
-        if (currentAdmin) {
-            const sigNote = await requestTransactionSignature(currentAdmin);
-            if (sigNote === null) {
-                return false;
-            }
-            signedTx = { ...t, note: sigNote };
-        }
-
+        // เว็บไม่บังคับลายเซ็นต่อรายการ (แยกจากแอป Android ที่อาจมีขั้นตอนเซ็นเอง)
         const txToSave: Transaction = wasUpdate
-            ? { ...signedTx, createdAt: existingTx?.createdAt || signedTx.createdAt || new Date().toISOString() }
-            : { ...signedTx, createdAt: signedTx.createdAt || new Date().toISOString() };
+            ? { ...t, createdAt: existingTx?.createdAt || t.createdAt || new Date().toISOString() }
+            : { ...t, createdAt: t.createdAt || new Date().toISOString() };
         if (txToSave.category !== 'Payroll' && txToSave.category !== 'PayrollUnlock') {
             const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
@@ -1622,13 +1595,6 @@ function App() {
                         changeClientSurface('desktop');
                     }}
                 />
-                {signatureDialogAdmin && (
-                    <WebSignatureDialog
-                        admin={signatureDialogAdmin}
-                        onConfirm={note => finishSignatureDialog(note)}
-                        onCancel={() => finishSignatureDialog(null)}
-                    />
-                )}
             </>
         );
     }
@@ -1651,13 +1617,6 @@ function App() {
                     darkMode={darkMode}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
                 />
-                {signatureDialogAdmin && (
-                    <WebSignatureDialog
-                        admin={signatureDialogAdmin}
-                        onConfirm={note => finishSignatureDialog(note)}
-                        onCancel={() => finishSignatureDialog(null)}
-                    />
-                )}
                 {wagePromptEmp && (
                     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-[100] p-4">
                         <Card className="w-full max-w-sm p-6 shadow-xl">
@@ -1859,13 +1818,6 @@ function App() {
                     currentAdmin={currentAdmin}
                     darkMode={darkMode}
                     onUpdateAdminProfile={handleUpdateAdminProfile}
-                />
-            )}
-            {signatureDialogAdmin && (
-                <WebSignatureDialog
-                    admin={signatureDialogAdmin}
-                    onConfirm={note => finishSignatureDialog(note)}
-                    onCancel={() => finishSignatureDialog(null)}
                 />
             )}
 

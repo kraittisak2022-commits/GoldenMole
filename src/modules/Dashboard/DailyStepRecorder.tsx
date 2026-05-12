@@ -3712,6 +3712,31 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             await sessionAlert('ยังไม่ได้ assign งาน washHome แต่มีรายการตัดล็อตล้างที่บ้าน');
                                             return;
                                         }
+                                        const sandSnap = dayTransactions.filter(
+                                            t => t.category === 'DailyLog' && t.subCategory === 'Sand'
+                                        ) as any[];
+                                        const existingS1 = pickLatestByDayOrder(
+                                            sandSnap.filter((t: any) => t.sandMachineType === 'Old'),
+                                            dayTransactions
+                                        );
+                                        const existingS2 = pickLatestByDayOrder(
+                                            sandSnap.filter((t: any) => t.sandMachineType === 'New'),
+                                            dayTransactions
+                                        );
+                                        const drumsOnlyPool = sandSnap.filter((t: any) => {
+                                            if (t.sandMachineType === 'Old' || t.sandMachineType === 'New') return false;
+                                            return (Number(t.sandMorning || 0) + Number(t.sandAfternoon || 0)) === 0;
+                                        });
+                                        const existingDrumsOnly = pickLatestByDayOrder(
+                                            drumsOnlyPool as Transaction[],
+                                            dayTransactions
+                                        );
+                                        const ts = Date.now().toString();
+                                        const idSand1 = sand1Total > 0 ? (existingS1?.id ?? `${ts}_s1`) : '';
+                                        const idSand2 = sand2Total > 0 ? (existingS2?.id ?? `${ts}_s2`) : '';
+                                        const idSandDrumsOnly =
+                                            sandGrandTotal === 0 && drumsToday > 0 ? (existingDrumsOnly?.id ?? `${ts}_drums`) : '';
+
                                         const opNames1 = sand1Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const opNames2 = sand2Operators.map(id => employees.find(e => e.id === id)?.nickname || '').join(', ');
                                         const timePayload = {
@@ -3722,7 +3747,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (sand1Total > 0) {
                                             const ok = await Promise.resolve(
                                                 onSaveTransaction({
-                                                    id: Date.now().toString() + '_s1', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    id: idSand1, date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                     description: `ล้างทราย เครื่องร่อน 1 (เก่า)${opNames1 ? ` [${opNames1}]` : ''}`, amount: 0,
                                                     sandMorning: Number(sand1Morning) || 0, sandAfternoon: Number(sand1Afternoon) || 0,
                                                     sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
@@ -3737,7 +3762,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (sand2Total > 0) {
                                             const ok = await Promise.resolve(
                                                 onSaveTransaction({
-                                                    id: Date.now().toString() + '_s2', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    id: idSand2, date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                     description: `ล้างทราย เครื่องร่อน 2 (ใหม่)${opNames2 ? ` [${opNames2}]` : ''}`, amount: 0,
                                                     sandMorning: Number(sand2Morning) || 0, sandAfternoon: Number(sand2Afternoon) || 0,
                                                     sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
@@ -3752,7 +3777,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (sandGrandTotal === 0 && drumsToday > 0) {
                                             const ok = await Promise.resolve(
                                                 onSaveTransaction({
-                                                    id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    id: idSandDrumsOnly, date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
                                                     description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
                                                     sandBatchId: batchIdFinal || undefined,
                                                     sandHomeBatchUsages: homeBatchUsages,
@@ -3760,6 +3785,50 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 } as Transaction)
                                             );
                                             if (ok === false) return;
+                                        }
+                                        if (hasWashHomeAssigned) {
+                                            const laborWork = dayTransactions.filter(
+                                                t =>
+                                                    t.category === 'Labor' &&
+                                                    t.subCategory === 'Attendance' &&
+                                                    t.laborStatus === 'Work'
+                                            );
+                                            const laborLatest = pickLatestByDayOrder(laborWork as any[], dayTransactions);
+                                            if (laborLatest?.id) {
+                                                const okLabor = await Promise.resolve(
+                                                    onSaveTransaction({
+                                                        ...(laborLatest as any),
+                                                        drumsWashedAtHome: drumsHomeToday
+                                                    } as Transaction)
+                                                );
+                                                if (okLabor === false) {
+                                                    await sessionAlert(
+                                                        'บันทึกล้างทรายแล้ว แต่ซิงก์จำนวนถังล้างที่บ้านไปยังบันทึกค่าแรงไม่สำเร็จ — กรุณาเปิดขั้นค่าแรงแล้วบันทึกอีกครั้ง'
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        if (onDeleteTransaction) {
+                                            const normD = normalizeDate(date);
+                                            for (const t of sandSnap) {
+                                                if (normalizeDate(t.date) !== normD) continue;
+                                                const mt = (t as any).sandMachineType;
+                                                if (sand1Total > 0 && mt === 'Old' && t.id !== idSand1) {
+                                                    onDeleteTransaction(t.id);
+                                                }
+                                                if (sand2Total > 0 && mt === 'New' && t.id !== idSand2) {
+                                                    onDeleteTransaction(t.id);
+                                                }
+                                            }
+                                            if (sandGrandTotal === 0 && drumsToday > 0 && idSandDrumsOnly) {
+                                                for (const t of sandSnap) {
+                                                    if (normalizeDate(t.date) !== normD) continue;
+                                                    const tx = t as any;
+                                                    if (tx.sandMachineType === 'Old' || tx.sandMachineType === 'New') continue;
+                                                    if (Number(tx.sandMorning || 0) + Number(tx.sandAfternoon || 0) !== 0) continue;
+                                                    if (t.id !== idSandDrumsOnly) onDeleteTransaction(t.id);
+                                                }
+                                            }
                                         }
                                         setSand1Morning(''); setSand1Afternoon(''); setSand2Morning(''); setSand2Afternoon('');
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
