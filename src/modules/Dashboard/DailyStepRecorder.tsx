@@ -411,6 +411,29 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const norm = normalizeDate(date);
         return transactions.filter(t => normalizeDate(t.date) === norm);
     }, [transactions, date]);
+    /** สรุปข้อมูล Sand ที่บันทึกแล้ว — ใช้แทน dayTransactions ใน effect เพื่อไม่รีเซ็ตฟอร์มเมื่อ parent ส่ง array reference ใหม่โดยเนื้อหาเดิม */
+    const sandPersistedPrefillSignature = useMemo(() => {
+        const sandTx = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand') as any[];
+        if (sandTx.length === 0) return '';
+        return sandTx
+            .map((t) =>
+                [
+                    t.id,
+                    String(t.sandMachineType ?? ''),
+                    String(t.sandMorning ?? ''),
+                    String(t.sandAfternoon ?? ''),
+                    JSON.stringify(t.sandOperators || []),
+                    String(t.drumsObtained ?? ''),
+                    String(t.sandMorningStart ?? ''),
+                    String(t.sandAfternoonStart ?? ''),
+                    String(t.sandEveningEnd ?? ''),
+                    String(t.sandBatchId ?? ''),
+                    JSON.stringify(t.sandHomeBatchUsages || []),
+                ].join(':')
+            )
+            .sort()
+            .join('|');
+    }, [dayTransactions]);
     const washHomeDrumsAlertMessage = useMemo(() => getWashHomeDrumsMismatchMessage(dayTransactions), [dayTransactions]);
     const otDescSuggestions = useMemo(() => {
         const fromHistory = transactions
@@ -1390,65 +1413,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setDrumsWashedAtHome('');
         }
 
-        // Sand
-        const sandTx = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand') as any[];
-        const s1 = sandTx.find(t => t.sandMachineType === 'Old');
-        const s2 = sandTx.find(t => t.sandMachineType === 'New');
-        if (s1) {
-            setSand1Morning(s1.sandMorning != null ? String(s1.sandMorning) : '');
-            setSand1Afternoon(s1.sandAfternoon != null ? String(s1.sandAfternoon) : '');
-            setSand1Operators(s1.sandOperators || []);
-        } else {
-            setSand1Morning('');
-            setSand1Afternoon('');
-            setSand1Operators([]);
-        }
-        if (s2) {
-            setSand2Morning(s2.sandMorning != null ? String(s2.sandMorning) : '');
-            setSand2Afternoon(s2.sandAfternoon != null ? String(s2.sandAfternoon) : '');
-            setSand2Operators(s2.sandOperators || []);
-        } else {
-            setSand2Morning('');
-            setSand2Afternoon('');
-            setSand2Operators([]);
-        }
-        if (sandTx.length > 0) {
-            const drums = Math.max(
-                0,
-                ...sandTx.map(t => (t.drumsObtained != null ? Number(t.drumsObtained) : 0))
-            );
-            setSandDrumsObtained(drums > 0 ? String(drums) : '');
-            const txWithTime = sandTx.find((t: any) =>
-                !!(t.sandMorningStart || t.sandAfternoonStart || t.sandEveningEnd)
-            ) as any;
-            const first = (txWithTime || sandTx[0]) as any;
-            setSandMorningStart(normalizeTimeInputValue(first.sandMorningStart));
-            setSandAfternoonStart(normalizeTimeInputValue(first.sandAfternoonStart));
-            setSandEveningEnd(normalizeTimeInputValue(first.sandEveningEnd));
-            setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
-            const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
-            sandTx.forEach((t: any) => {
-                const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
-                usages.forEach((u: any) => {
-                    const batchId = String(u?.batchId || '');
-                    const sourceDate = String(u?.sourceDate || '');
-                    if (!batchId || !sourceDate) return;
-                    const key = `${batchId}_${sourceDate}`;
-                    const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
-                    prev.drums += Math.max(0, Number(u?.drums || 0));
-                    usageMap.set(key, prev);
-                });
-            });
-            setHomeBatchUsages(Array.from(usageMap.values()).filter(u => u.drums > 0));
-        } else {
-            setSandDrumsObtained('');
-            setSandMorningStart('');
-            setSandAfternoonStart('');
-            setSandEveningEnd('');
-            setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
-            setHomeBatchUsages([]);
-        }
-
         // Fuel (prefill แยก: ซื้อเข้า / ใช้รายรถ)
         const fuelTx = dayTransactions
             .filter(t => t.category === 'Fuel')
@@ -1506,6 +1470,67 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             }
         }
     }, [date, dayTransactions, editingVehicleTxId]);
+
+    // Prefill ฟอร์มล้างทรายจากรายการที่บันทึกแล้ว — ใช้ signature แทน dayTransactions เพื่อไม่รีเซ็ตเมื่อ parent ส่ง transactions array ใหม่ (reference) โดยเนื้อหาเดิม
+    useEffect(() => {
+        const sandTx = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand') as any[];
+        const s1 = sandTx.find(t => t.sandMachineType === 'Old');
+        const s2 = sandTx.find(t => t.sandMachineType === 'New');
+        if (s1) {
+            setSand1Morning(s1.sandMorning != null ? String(s1.sandMorning) : '');
+            setSand1Afternoon(s1.sandAfternoon != null ? String(s1.sandAfternoon) : '');
+            setSand1Operators(s1.sandOperators || []);
+        } else {
+            setSand1Morning('');
+            setSand1Afternoon('');
+            setSand1Operators([]);
+        }
+        if (s2) {
+            setSand2Morning(s2.sandMorning != null ? String(s2.sandMorning) : '');
+            setSand2Afternoon(s2.sandAfternoon != null ? String(s2.sandAfternoon) : '');
+            setSand2Operators(s2.sandOperators || []);
+        } else {
+            setSand2Morning('');
+            setSand2Afternoon('');
+            setSand2Operators([]);
+        }
+        if (sandTx.length > 0) {
+            const drums = Math.max(
+                0,
+                ...sandTx.map(t => (t.drumsObtained != null ? Number(t.drumsObtained) : 0))
+            );
+            setSandDrumsObtained(drums > 0 ? String(drums) : '');
+            const txWithTime = sandTx.find((t: any) =>
+                !!(t.sandMorningStart || t.sandAfternoonStart || t.sandEveningEnd)
+            ) as any;
+            const first = (txWithTime || sandTx[0]) as any;
+            setSandMorningStart(normalizeTimeInputValue(first.sandMorningStart));
+            setSandAfternoonStart(normalizeTimeInputValue(first.sandAfternoonStart));
+            setSandEveningEnd(normalizeTimeInputValue(first.sandEveningEnd));
+            setSandBatchId(String(first.sandBatchId || `BATCH-${normalizeDate(date).replace(/-/g, '')}`));
+            const usageMap = new Map<string, { batchId: string; sourceDate: string; drums: number }>();
+            sandTx.forEach((t: any) => {
+                const usages = Array.isArray(t.sandHomeBatchUsages) ? t.sandHomeBatchUsages : [];
+                usages.forEach((u: any) => {
+                    const batchId = String(u?.batchId || '');
+                    const sourceDate = String(u?.sourceDate || '');
+                    if (!batchId || !sourceDate) return;
+                    const key = `${batchId}_${sourceDate}`;
+                    const prev = usageMap.get(key) || { batchId, sourceDate, drums: 0 };
+                    prev.drums += Math.max(0, Number(u?.drums || 0));
+                    usageMap.set(key, prev);
+                });
+            });
+            setHomeBatchUsages(Array.from(usageMap.values()).filter(u => u.drums > 0));
+        } else {
+            setSandDrumsObtained('');
+            setSandMorningStart('');
+            setSandAfternoonStart('');
+            setSandEveningEnd('');
+            setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
+            setHomeBatchUsages([]);
+        }
+    }, [date, sandPersistedPrefillSignature]);
 
     const nextStep = async () => {
         // กันลืมกดบันทึก: ถ้ายังกด "ถัดไป" โดยไม่มีข้อมูลในแต่ละขั้น ให้เตือนก่อน
