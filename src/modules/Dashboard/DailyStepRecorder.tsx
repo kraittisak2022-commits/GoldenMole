@@ -395,6 +395,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     String(t.sandAfternoon ?? ''),
                     JSON.stringify(t.sandOperators || []),
                     String(t.drumsObtained ?? ''),
+                    String((t as any).drumsWashedAtHome ?? ''),
                     String(t.sandMorningStart ?? ''),
                     String(t.sandAfternoonStart ?? ''),
                     String(t.sandEveningEnd ?? ''),
@@ -1122,6 +1123,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSand1Operators(p.sand1Operators);
             setSand2Operators(p.sand2Operators);
             setSandDrumsObtained(p.sandDrumsObtained);
+            setDrumsWashedAtHome(p.drumsWashedAtHome);
             setSandMorningStart(p.sandMorningStart);
             setSandAfternoonStart(p.sandAfternoonStart);
             setSandEveningEnd(p.sandEveningEnd);
@@ -1462,21 +1464,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             } else {
                 setHalfDayEmpIds(new Set());
             }
-            if (latest.drumsWashedAtHome != null) {
-                setDrumsWashedAtHome(String(latest.drumsWashedAtHome));
-            } else {
-                setDrumsWashedAtHome('');
-            }
         } else {
             setWorkAssignments({});
             setLaborGeneralWorkNotes('');
             setHalfDayEmpIds(new Set());
-            setDrumsWashedAtHome('');
         }
     }, [date, laborCanvasPersistedPrefillSignature]);
 
     // Prefill ฟอร์มล้างทรายจากรายการที่บันทึกแล้ว — ใช้ signature แทน dayTransactions เพื่อไม่รีเซ็ตเมื่อ parent ส่ง transactions array ใหม่ (reference) โดยเนื้อหาเดิม
     useEffect(() => {
+        const laborWorkHome = dayTransactions.filter(
+            (t) => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work'
+        );
+        let homeFromLabor = 0;
+        if (laborWorkHome.length > 0) {
+            const latestLab = pickLatestByDayOrder(laborWorkHome as any[], dayTransactions) as any;
+            homeFromLabor = Number(latestLab?.drumsWashedAtHome || 0);
+        }
+
         const sandTx = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand') as any[];
         const s1 = sandTx.find(t => t.sandMachineType === 'Old');
         const s2 = sandTx.find(t => t.sandMachineType === 'New');
@@ -1534,7 +1539,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             setSandBatchId(`BATCH-${normalizeDate(date).replace(/-/g, '')}`);
             setHomeBatchUsages([]);
         }
-    }, [date, sandPersistedPrefillSignature]);
+
+        const homeFromSand =
+            sandTx.length > 0 ? Math.max(0, ...sandTx.map((t: any) => Number(t.drumsWashedAtHome || 0))) : 0;
+        const mergedHomeDrums = Math.max(homeFromLabor, homeFromSand);
+        setDrumsWashedAtHome(mergedHomeDrums > 0 ? String(mergedHomeDrums) : '');
+    }, [date, sandPersistedPrefillSignature, laborCanvasPersistedPrefillSignature]);
 
     const nextStep = async () => {
         // กันลืมกดบันทึก: ถ้ายังกด "ถัดไป" โดยไม่มีข้อมูลในแต่ละขั้น ให้เตือนก่อน
@@ -3636,6 +3646,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         const drumsHomeToday = Number(drumsWashedAtHome) || 0;
                                         const totalAllocatedHome = homeBatchUsages.reduce((s, u) => s + Math.max(0, Number(u.drums || 0)), 0);
                                         const hasWashHomeAssigned = hasWashHomeAssignment(workAssignments);
+                                        const noLotStockAvailable = sourceBatchesForHome.length === 0;
                                         if (sandGrandTotal === 0 && drumsToday === 0) {
                                             await sessionAlert('กรุณาใส่จำนวนทรายที่ล้างได้หรือจำนวนถังที่ได้วันนี้');
                                             return;
@@ -3650,19 +3661,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 await sessionAlert('มีการล้างที่บ้าน แต่ยังไม่ได้ assign งาน washHome ในขั้นค่าแรง');
                                                 return;
                                             }
-                                            if (homeBatchUsages.length === 0) {
-                                                await sessionAlert('ต้องเลือกล็อตที่นำไปล้างที่บ้านก่อนบันทึก');
-                                                return;
-                                            }
-                                            if (totalAllocatedHome !== drumsHomeToday) {
-                                                await sessionAlert(`จำนวนถังล้างที่บ้าน (${drumsHomeToday}) ต้องเท่ากับผลรวมถังจากล็อตที่เลือก (${totalAllocatedHome})`);
-                                                return;
-                                            }
-                                            const availableMap = new Map(sourceBatchesForHome.map(b => [b.batchId, b.available]));
-                                            const invalid = homeBatchUsages.find(u => (Number(u.drums) || 0) > (availableMap.get(u.batchId) || 0));
-                                            if (invalid) {
-                                                await sessionAlert(`ล็อต ${invalid.batchId} มีคงเหลือไม่พอสำหรับตัด ${invalid.drums} ถัง`);
-                                                return;
+                                            if (!noLotStockAvailable) {
+                                                if (homeBatchUsages.length === 0) {
+                                                    await sessionAlert('ต้องเลือกล็อตที่นำไปล้างที่บ้านก่อนบันทึก');
+                                                    return;
+                                                }
+                                                if (totalAllocatedHome !== drumsHomeToday) {
+                                                    await sessionAlert(`จำนวนถังล้างที่บ้าน (${drumsHomeToday}) ต้องเท่ากับผลรวมถังจากล็อตที่เลือก (${totalAllocatedHome})`);
+                                                    return;
+                                                }
+                                                const availableMap = new Map(sourceBatchesForHome.map(b => [b.batchId, b.available]));
+                                                const invalid = homeBatchUsages.find(u => (Number(u.drums) || 0) > (availableMap.get(u.batchId) || 0));
+                                                if (invalid) {
+                                                    await sessionAlert(`ล็อต ${invalid.batchId} มีคงเหลือไม่พอสำหรับตัด ${invalid.drums} ถัง`);
+                                                    return;
+                                                }
                                             }
                                         }
                                         if (hasWashHomeAssigned) {
@@ -3670,11 +3683,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 await sessionAlert('assign งาน washHome แล้ว ต้องระบุจำนวนถังล้างที่บ้านมากกว่า 0');
                                                 return;
                                             }
-                                            if (homeBatchUsages.length === 0) {
+                                            if (!noLotStockAvailable && homeBatchUsages.length === 0) {
                                                 await sessionAlert('assign งาน washHome แล้ว ต้องระบุรายการตัดล็อตให้ครบ');
                                                 return;
                                             }
-                                        } else if (homeBatchUsages.length > 0) {
+                                        } else if (!noLotStockAvailable && homeBatchUsages.length > 0) {
                                             await sessionAlert('ยังไม่ได้ assign งาน washHome แต่มีรายการตัดล็อตล้างที่บ้าน');
                                             return;
                                         }
