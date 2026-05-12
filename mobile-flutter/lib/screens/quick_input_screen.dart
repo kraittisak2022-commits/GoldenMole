@@ -221,6 +221,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   /// Personal | Sick — สอดคล้องเว็บ (ลากิจ / ลาป่วย) เก็บใน sub_category
   String _leaveTypeChoice = 'Personal';
+  /// ลาครึ่งวัน — เก็บช่วงใน [workDetails] เป็น meta สำหรับ LINE / แก้ไข
+  static const String _leaveHalfMorningMeta = 'leave_half:morning';
+  static const String _leaveHalfAfternoonMeta = 'leave_half:afternoon';
+  bool _leaveIsHalfDay = false;
+  String _leaveHalfPart = 'morning';
   List<Employee> _employees = const [];
   bool _employeesLoading = false;
   int _employeesLoadPercent = 0;
@@ -510,6 +515,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _selectedLeaveEmpIds.clear();
       _laborLeaveTxId = null;
       _leaveTypeChoice = 'Personal';
+      _leaveIsHalfDay = false;
+      _leaveHalfPart = 'morning';
       _leaveReasonController.clear();
       _leaveDaysController.text = '1';
       _leaveStartDate = DateTime(
@@ -1978,7 +1985,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final reason = _leaveReasonController.text.trim();
         if (reason.isEmpty) throw 'กรุณากรอกเหตุผลการลา';
         final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
-        if (days <= 0) throw 'กรุณากรอกจำนวนวันให้มากกว่า 0';
+        if (_leaveIsHalfDay) {
+          if (_leaveHalfPart != 'morning' && _leaveHalfPart != 'afternoon') {
+            throw 'กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย';
+          }
+        } else if (days <= 0) {
+          throw 'กรุณากรอกจำนวนวันให้มากกว่า 0';
+        }
+        final effectiveDays = _leaveIsHalfDay ? 0.5 : days;
+        final halfTh = _leaveIsHalfDay
+            ? (_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย')
+            : '';
+        final halfMeta = _leaveIsHalfDay
+            ? (_leaveHalfPart == 'morning'
+                  ? _leaveHalfMorningMeta
+                  : _leaveHalfAfternoonMeta)
+            : null;
         final y = _leaveStartDate.year.toString().padLeft(4, '0');
         final m = _leaveStartDate.month.toString().padLeft(2, '0');
         final d = _leaveStartDate.day.toString().padLeft(2, '0');
@@ -1986,6 +2008,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final id =
             _laborLeaveTxId ?? '${DateTime.now().millisecondsSinceEpoch}_leave';
         _laborLeaveTxId = id;
+        final typeTh = _leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ';
+        final descCore = 'ลา$typeTh: $reason';
+        final desc = _leaveIsHalfDay
+            ? '$descCore (ครึ่งวัน — $halfTh)'
+            : descCore;
         final saved = AppTransaction(
           id: id,
           date: ymd,
@@ -1996,11 +2023,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           employeeIds: _selectedLeaveEmpIds.toList(),
           amount: 0,
           note: _activeSignatureNote,
-          description: _appendRecorder(
-            'ลา${_leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ'}: $reason',
-          ),
+          description: _appendRecorder(desc),
           leaveReason: reason,
-          leaveDays: days,
+          leaveDays: effectiveDays,
+          workDetails: halfMeta,
         );
         await _persist(saved);
         unawaited(notifyLeaveLineAfterSaved(saved, _employees));
@@ -2724,121 +2750,283 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final reasonCtrl = TextEditingController(
       text: (t.leaveReason ?? '').trim(),
     );
+    final wd0 = (t.workDetails ?? '').trim();
+    final halfFromMeta =
+        wd0 == _leaveHalfMorningMeta || wd0 == _leaveHalfAfternoonMeta;
+    final halfFromDays =
+        t.leaveDays != null && (t.leaveDays! - 0.5).abs() < 1e-6;
+    var adminLeaveIsHalf = halfFromMeta || halfFromDays;
+    var adminLeaveHalfPart =
+        wd0 == _leaveHalfAfternoonMeta ? 'afternoon' : 'morning';
     final daysCtrl = TextEditingController(
-      text: t.leaveDays != null ? _strNum(t.leaveDays) : '1',
+      text: adminLeaveIsHalf
+          ? '0.5'
+          : (t.leaveDays != null ? _strNum(t.leaveDays) : '1'),
     );
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 8,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'แก้ไขลางาน (SuperAdmin)',
-                style: GoogleFonts.kanit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'แก้ไขลางาน (SuperAdmin)',
+                  style: GoogleFonts.kanit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'ผู้ลา: ${_displayNamesForEmployeeIds(t.employeeIds)}',
-                style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.black54),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reasonCtrl,
-                decoration: InputDecoration(
-                  labelText: 'เหตุผล',
-                  labelStyle: GoogleFonts.kanit(),
+                const SizedBox(height: 6),
+                Text(
+                  'ผู้ลา: ${_displayNamesForEmployeeIds(t.employeeIds)}',
+                  style: GoogleFonts.kanit(
+                    fontSize: 12.5,
+                    color: Colors.black54,
+                  ),
                 ),
-                style: GoogleFonts.kanit(fontSize: 15),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: daysCtrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'เหตุผล',
+                    labelStyle: GoogleFonts.kanit(),
+                  ),
+                  style: GoogleFonts.kanit(fontSize: 15),
                 ),
-                decoration: InputDecoration(
-                  labelText: 'จำนวนวัน',
-                  labelStyle: GoogleFonts.kanit(),
+                const SizedBox(height: 12),
+                Text(
+                  'ระยะเวลาลา',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: const Color(0xFF314C6D),
+                  ),
                 ),
-                style: GoogleFonts.kanit(fontSize: 15),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () async {
-                  final reason = reasonCtrl.text.trim();
-                  final days = double.tryParse(daysCtrl.text.trim()) ?? 0;
-                  if (reason.isEmpty) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'กรุณากรอกเหตุผล',
-                          style: GoogleFonts.kanit(),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(value: false, label: Text('เต็มวัน')),
+                      ButtonSegment<bool>(value: true, label: Text('ครึ่งวัน')),
+                    ],
+                    selected: {adminLeaveIsHalf},
+                    onSelectionChanged: (next) {
+                      if (next.isEmpty) return;
+                      setModal(() {
+                        adminLeaveIsHalf = next.first;
+                        if (adminLeaveIsHalf) {
+                          daysCtrl.text = '0.5';
+                          adminLeaveHalfPart = 'morning';
+                        } else if (daysCtrl.text.trim() == '0.5') {
+                          daysCtrl.text = '1';
+                        }
+                      });
+                    },
+                    style: ButtonStyle(
+                      textStyle: WidgetStatePropertyAll(
+                        GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
                         ),
                       ),
-                    );
-                    return;
-                  }
-                  if (days <= 0) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'จำนวนวันต้องมากกว่า 0',
-                          style: GoogleFonts.kanit(),
+                    ),
+                  ),
+                ),
+                if (adminLeaveIsHalf) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'ช่วงครึ่งวัน',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: const Color(0xFF314C6D),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment<String>(
+                          value: 'morning',
+                          label: Text('ครึ่งเช้า'),
+                        ),
+                        ButtonSegment<String>(
+                          value: 'afternoon',
+                          label: Text('ครึ่งบ่าย'),
+                        ),
+                      ],
+                      selected: {adminLeaveHalfPart},
+                      onSelectionChanged: (next) {
+                        if (next.isEmpty) return;
+                        setModal(() => adminLeaveHalfPart = next.first);
+                      },
+                      style: ButtonStyle(
+                        textStyle: WidgetStatePropertyAll(
+                          GoogleFonts.kanit(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    );
-                    return;
-                  }
-                  final sub = (t.subCategory ?? 'Personal').trim();
-                  final typeTh = sub == 'Sick' ? 'ป่วย' : 'กิจ';
-                  final saved = t.copyWith(
-                    leaveReason: reason,
-                    leaveDays: days,
-                    description: _appendRecorder('ลา$typeTh: $reason'),
-                  );
-                  try {
-                    await _persist(saved);
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'บันทึกการแก้ไขแล้ว',
-                          style: GoogleFonts.kanit(),
-                        ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                if (!adminLeaveIsHalf)
+                  TextField(
+                    controller: daysCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'จำนวนวัน',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  )
+                else
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFA5D6A7)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
                       ),
-                    );
-                    await _loadModuleTransactions(forceRefresh: true);
-                  } catch (e) {
-                    if (ctx.mounted) {
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_outlined,
+                            color: Colors.teal.shade700,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'จำนวน 0.5 วัน (ครึ่งวัน — ${adminLeaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})',
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: const Color(0xFF1B5E20),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () async {
+                    final reason = reasonCtrl.text.trim();
+                    if (reason.isEmpty) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'บันทึกไม่สำเร็จ: $e',
+                            'กรุณากรอกเหตุผล',
                             style: GoogleFonts.kanit(),
                           ),
                         ),
                       );
+                      return;
                     }
-                  }
-                },
-                child: Text('บันทึก', style: GoogleFonts.kanit()),
-              ),
-            ],
+                    if (adminLeaveIsHalf) {
+                      if (adminLeaveHalfPart != 'morning' &&
+                          adminLeaveHalfPart != 'afternoon') {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                    }
+                    final days =
+                        adminLeaveIsHalf
+                            ? 0.5
+                            : (double.tryParse(daysCtrl.text.trim()) ?? 0);
+                    if (!adminLeaveIsHalf && days <= 0) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'จำนวนวันต้องมากกว่า 0',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    final sub = (t.subCategory ?? 'Personal').trim();
+                    final typeTh = sub == 'Sick' ? 'ป่วย' : 'กิจ';
+                    final halfTh = adminLeaveIsHalf
+                        ? (adminLeaveHalfPart == 'morning'
+                              ? 'ครึ่งเช้า'
+                              : 'ครึ่งบ่าย')
+                        : '';
+                    final halfMeta = adminLeaveIsHalf
+                        ? (adminLeaveHalfPart == 'morning'
+                              ? _leaveHalfMorningMeta
+                              : _leaveHalfAfternoonMeta)
+                        : '';
+                    final descCore = 'ลา$typeTh: $reason';
+                    final desc = adminLeaveIsHalf
+                        ? '$descCore (ครึ่งวัน — $halfTh)'
+                        : descCore;
+                    final saved = t.copyWith(
+                      leaveReason: reason,
+                      leaveDays: days,
+                      workDetails: adminLeaveIsHalf ? halfMeta : '',
+                      description: _appendRecorder(desc),
+                    );
+                    try {
+                      await _persist(saved);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'บันทึกการแก้ไขแล้ว',
+                            style: GoogleFonts.kanit(),
+                          ),
+                        ),
+                      );
+                      await _loadModuleTransactions(forceRefresh: true);
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'บันทึกไม่สำเร็จ: $e',
+                              style: GoogleFonts.kanit(),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: Text('บันทึก', style: GoogleFonts.kanit()),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -6837,6 +7025,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildLaborLeaveFormCard() {
     final employees = _sortedEmployeesForOt();
     final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
+    final summaryDuration = _leaveIsHalfDay
+        ? 'ครึ่งวัน (${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})'
+        : (days == days.roundToDouble()
+              ? '${days.round()} วัน'
+              : '$days วัน');
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -6896,6 +7089,80 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               },
             ),
           ),
+          const SizedBox(height: 12),
+          Text(
+            'ระยะเวลาลา',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF314C6D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment<bool>(value: false, label: Text('เต็มวัน')),
+                ButtonSegment<bool>(value: true, label: Text('ครึ่งวัน')),
+              ],
+              selected: {_leaveIsHalfDay},
+              onSelectionChanged: (next) {
+                if (next.isEmpty) return;
+                setState(() {
+                  _leaveIsHalfDay = next.first;
+                  if (_leaveIsHalfDay) {
+                    _leaveDaysController.text = '0.5';
+                    _leaveHalfPart = 'morning';
+                  } else if (_leaveDaysController.text.trim() == '0.5') {
+                    _leaveDaysController.text = '1';
+                  }
+                });
+              },
+              style: ButtonStyle(
+                textStyle: WidgetStatePropertyAll(
+                  GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ),
+          ),
+          if (_leaveIsHalfDay) ...[
+            const SizedBox(height: 10),
+            Text(
+              'ช่วงครึ่งวัน',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: const Color(0xFF314C6D),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment<String>(
+                    value: 'morning',
+                    label: Text('ครึ่งเช้า'),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'afternoon',
+                    label: Text('ครึ่งบ่าย'),
+                  ),
+                ],
+                selected: {_leaveHalfPart},
+                onSelectionChanged: (next) {
+                  if (next.isEmpty) return;
+                  setState(() => _leaveHalfPart = next.first);
+                },
+                style: ButtonStyle(
+                  textStyle: WidgetStatePropertyAll(
+                    GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             'วันเริ่มลา',
@@ -6958,27 +7225,74 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   }).toList(),
                 ),
           const SizedBox(height: 10),
-          _AnimatedInputField(
-            controller: _leaveDaysController,
-            decoration: const InputDecoration(
-              labelText: 'จำนวนวัน',
-              prefixIcon: Icon(Icons.timelapse_outlined),
+          if (!_leaveIsHalfDay) ...[
+            Text(
+              'จำนวนวัน',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: const Color(0xFF314C6D),
+              ),
             ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            readOnly: true,
-            onTap: () => _openNumericPad(
+            const SizedBox(height: 6),
+            _AnimatedInputField(
               controller: _leaveDaysController,
-              label: 'จำนวนวันลา',
-              allowDecimal: true,
-              maxDecimalPlaces: 1,
-              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'จำนวนวัน',
+                prefixIcon: Icon(Icons.timelapse_outlined),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              readOnly: true,
+              onTap: () => _openNumericPad(
+                controller: _leaveDaysController,
+                label: 'จำนวนวันลา',
+                allowDecimal: true,
+                maxDecimalPlaces: 1,
+                onChanged: (_) => setState(() {}),
+              ),
+              style: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1D2A3A),
+              ),
             ),
-            style: GoogleFonts.kanit(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1D2A3A),
+          ] else ...[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA5D6A7)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_outlined,
+                      color: Colors.teal.shade700,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'จำนวน 0.5 วัน (ครึ่งวัน — ${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: const Color(0xFF1B5E20),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _leaveReasonController,
@@ -6992,7 +7306,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             maxLines: 5,
             onChanged: (_) => setState(() {}),
           ),
-          if (days > 0 || _selectedLeaveEmpIds.isNotEmpty)
+          if (_leaveIsHalfDay ||
+              days > 0 ||
+              _selectedLeaveEmpIds.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: DecoratedBox(
@@ -7004,7 +7320,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: Padding(
                   padding: const EdgeInsets.all(10),
                   child: Text(
-                    'สรุป: ${_selectedLeaveEmpIds.length} คน · เริ่ม ${_formatDate(_leaveStartDate)} · $days วัน',
+                    'สรุป: ${_selectedLeaveEmpIds.length} คน · เริ่ม ${_formatDate(_leaveStartDate)} · $summaryDuration',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,

@@ -1083,30 +1083,30 @@ function App() {
         resolve?.(note);
     }, []);
 
-    const handleSave = async (t: Transaction) => {
+    const handleSave = async (t: Transaction): Promise<boolean> => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
-            return;
+            return false;
         }
         const existingTx = transactions.find(x => x.id === t.id);
         const wasUpdate = !!existingTx;
         if (!wasUpdate && !canCreateTransactions) {
             setToast('ไม่มีสิทธิ์สร้างรายการ (Create)');
             setTimeout(() => setToast(null), 3000);
-            return;
+            return false;
         }
         if (wasUpdate && !canEditTransactions) {
             setToast('ไม่มีสิทธิ์แก้ไขรายการ (Edit)');
             setTimeout(() => setToast(null), 3000);
-            return;
+            return false;
         }
 
         let signedTx = t;
         if (currentAdmin) {
             const sigNote = await requestTransactionSignature(currentAdmin);
             if (sigNote === null) {
-                return;
+                return false;
             }
             signedTx = { ...t, note: sigNote };
         }
@@ -1123,7 +1123,7 @@ function App() {
             if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
                 setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้แก้ข้อมูลย้อนหลัง`);
                 setTimeout(() => setToast(null), 4500);
-                return;
+                return false;
             }
         }
         setTransactions(p => {
@@ -1140,7 +1140,7 @@ function App() {
             enqueueTransaction(txToSave);
             setToast('บันทึกในเครื่องแล้ว (ออฟไลน์) จะซิงก์อัตโนมัติเมื่อออนไลน์');
             setTimeout(() => setToast(null), 3500);
-            return;
+            return true;
         }
         ok = await db.saveTransaction(txToSave);
         if (ok) {
@@ -1150,7 +1150,7 @@ function App() {
             enqueueTransaction(txToSave);
             setToast('ซิงก์ไม่สำเร็จ บันทึกไว้ในเครื่องแล้ว จะลองซิงก์อีกครั้งอัตโนมัติ');
             setTimeout(() => setToast(null), 3500);
-            return;
+            return true;
         }
         if (offlineSync.queueSize > 0) {
             void syncOfflineQueue();
@@ -1180,6 +1180,7 @@ function App() {
 
         setToast(ok ? 'ซิงก์แล้ว' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
         setTimeout(() => setToast(null), 3000);
+        return true;
     };
 
     // --- Wrapped setters that persist to Supabase ---

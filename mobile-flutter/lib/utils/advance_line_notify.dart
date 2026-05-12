@@ -207,6 +207,9 @@ String _leaveKindTh(String? subCategory) {
   return 'ลากิจ';
 }
 
+const _leaveHalfMorningMeta = 'leave_half:morning';
+const _leaveHalfAfternoonMeta = 'leave_half:afternoon';
+
 String _formatLeaveDays(double? value) {
   if (value == null || value.isNaN || value <= 0) return '—';
   final v = value;
@@ -233,6 +236,17 @@ String buildLeaveLineText(AppTransaction tx, List<Employee> employees) {
   final reason = (tx.leaveReason ?? '').trim();
   final reasonLine = reason.isNotEmpty ? reason : '—';
   final daysStr = _formatLeaveDays(tx.leaveDays);
+  final wd = (tx.workDetails ?? '').trim();
+  var dayLine = '$daysStr วัน';
+  if (tx.leaveDays != null && (tx.leaveDays! - 0.5).abs() < 1e-6) {
+    if (wd == _leaveHalfMorningMeta) {
+      dayLine = '0.5 วัน (ครึ่งเช้า)';
+    } else if (wd == _leaveHalfAfternoonMeta) {
+      dayLine = '0.5 วัน (ครึ่งบ่าย)';
+    } else {
+      dayLine = '0.5 วัน (ครึ่งวัน)';
+    }
+  }
   final namesLine = names.isEmpty ? '—' : names;
   final dateLine = '${_formatDateThaiBE(tx.date)} (${tx.date})';
   final lines = <String>[
@@ -250,7 +264,7 @@ String buildLeaveLineText(AppTransaction tx, List<Employee> employees) {
     namesLine,
     '',
     'จำนวนวัน :',
-    '$daysStr วัน',
+    dayLine,
     '',
     'เหตุผล :',
     reasonLine,

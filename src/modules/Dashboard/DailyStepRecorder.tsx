@@ -53,7 +53,8 @@ interface DailyStepRecorderProps {
     /** step ที่ต้องการเปิดทันที (จากเมนูตรวจสอบ) */
     initialStep?: number;
     dateFilter?: { start: string; end: string };
-    onSaveTransaction: (t: Transaction) => void;
+    /** คืน false เมื่อผู้ใช้ยกเลิกลายเซ็น / ไม่มีสิทธิ์บันทึก — ให้ผู้เรียก await แล้วไม่รีเซ็ตฟอร์ม */
+    onSaveTransaction: (t: Transaction) => void | Promise<boolean | void>;
     onDeleteTransaction?: (id: string) => void;
     ensureEmployeeWage?: (emp: Employee) => Promise<number>;
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
@@ -1597,13 +1598,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         }
         const ok = await sessionConfirm(`พบข้อมูลเมื่อวาน ${fromYesterday.length} รายการ ต้องการคัดลอกมาวันนี้หรือไม่?`, { title: 'คัดลอกจากเมื่อวาน' });
         if (!ok) return;
-        fromYesterday.slice(0, 50).forEach((tx, idx) => {
-            onSaveTransaction({
-                ...tx,
-                id: `${Date.now()}_cpy_${idx}`,
-                date: todayNorm,
-            });
-        });
+        const slice = fromYesterday.slice(0, 50);
+        for (let idx = 0; idx < slice.length; idx += 1) {
+            const tx = slice[idx];
+            const r = await Promise.resolve(
+                onSaveTransaction({
+                    ...tx,
+                    id: `${Date.now()}_cpy_${idx}`,
+                    date: todayNorm,
+                })
+            );
+            if (r === false) break;
+        }
         await sessionAlert(`คัดลอกสำเร็จ ${Math.min(fromYesterday.length, 50)} รายการ`);
     };
     useEffect(() => {
@@ -2449,9 +2455,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                     if (!proceed) return;
                                                 }
-                                                onSaveTransaction({
-                                                    ...candidateOtTx,
-                                                } as Transaction);
+                                                const otSaved = await Promise.resolve(
+                                                    onSaveTransaction({
+                                                        ...candidateOtTx,
+                                                    } as Transaction)
+                                                );
+                                                if (otSaved === false) return;
                                                 setSelectedEmps([]); setOtRate(''); setOtHours(''); setOtDesc(''); setLaborStatus('Work');
                                             }} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-base font-bold rounded-xl transition-colors">
                                                 บันทึก
@@ -2784,7 +2793,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                     if (!proceed) return;
                                                 }
-                                                onSaveTransaction(t as any); setSelectedEmps([]); setWorkAssignments({}); setLaborGeneralWorkNotes(''); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
+                                                const laborSaved = await Promise.resolve(onSaveTransaction(t as any));
+                                                if (laborSaved === false) return;
+                                                setSelectedEmps([]); setWorkAssignments({}); setLaborGeneralWorkNotes(''); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
                                                 <CheckCircle2 size={18} className="mr-2" /> {(dayTransactions.some(tx => tx.category === 'Labor' && tx.subCategory === 'Attendance' && tx.laborStatus === 'Work') ? 'อัปเดตค่าแรง' : 'บันทึกค่าแรง')} ({[...new Set([
                                                     ...Object.values(normalizedWorkAssignments).flat(),
@@ -2981,12 +2992,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (!(await shouldContinueWithWarning(vehicleWarnings, 'ตรวจพบรายการรถที่อาจไม่ถูกต้อง'))) return;
                                         const dayLabel = vehWorkType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
                                         const id = editingVehicleTxId || Date.now().toString();
-                                        onSaveTransaction({
-                                            id, date, type: 'Expense', category: 'Vehicle',
-                                            description: `รถ: ${vehCar} (${vehDetails}) [${dayLabel}]`, amount: Number(vehWage) + Number(vehMachineWage),
-                                            vehicleId: vehCar, driverId: vehDriver, vehicleWage: Number(vehMachineWage), driverWage: Number(vehWage),
-                                            workDetails: vehDetails, location: vehLocation, workType: vehWorkType
-                                        } as Transaction);
+                                        const vehSaved = await Promise.resolve(
+                                            onSaveTransaction({
+                                                id, date, type: 'Expense', category: 'Vehicle',
+                                                description: `รถ: ${vehCar} (${vehDetails}) [${dayLabel}]`, amount: Number(vehWage) + Number(vehMachineWage),
+                                                vehicleId: vehCar, driverId: vehDriver, vehicleWage: Number(vehMachineWage), driverWage: Number(vehWage),
+                                                workDetails: vehDetails, location: vehLocation, workType: vehWorkType
+                                            } as Transaction)
+                                        );
+                                        if (vehSaved === false) return;
                                         setEditingVehicleTxId(null);
                                         setVehCar(''); setVehDetails(''); setVehWage(''); setVehMachineWage(defaultVehicleMachineWage); setVehWorkType('FullDay');
                                     }} className="w-full bg-amber-500 hover:bg-amber-600 focus-ring-strong" data-hotkey-primary="true">{editingVehicleTxId ? 'อัปเดตรายการรถ' : 'บันทึกรายการรถ'}</Button>
@@ -3294,33 +3308,40 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         const nPer = perTripEntries.length;
                                         const tripsPerCar = nPer > 0 ? Math.floor(totalTrips / nPer) : 0;
                                         const remainder = nPer > 0 ? totalTrips % nPer : 0;
-                                        lumpEntries.forEach((entry) => {
+                                        for (const entry of lumpEntries) {
                                             const driverName = employees.find(e => e.id === entry.driver)?.nickname || employees.find(e => e.id === entry.driver)?.name || '';
                                             const cubic = Number(entry.lumpSumCubic) || 0;
-                                            onSaveTransaction({
-                                                id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
-                                                description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: เหมา ${cubic} คิว - ${entry.work}`, amount: 0,
-                                                vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'LumpSum',
-                                                tripCount: 0, tripMorning: 0, tripAfternoon: 0, cubicPerTrip: 0, totalCubic: cubic,
-                                                perCarTrips: 0, perCarCubic: cubic,
-                                                workDetails: entry.work
-                                            } as Transaction);
-                                        });
-                                        perTripEntries.forEach((entry, idx) => {
+                                            const ok = await Promise.resolve(
+                                                onSaveTransaction({
+                                                    id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
+                                                    description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: เหมา ${cubic} คิว - ${entry.work}`, amount: 0,
+                                                    vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'LumpSum',
+                                                    tripCount: 0, tripMorning: 0, tripAfternoon: 0, cubicPerTrip: 0, totalCubic: cubic,
+                                                    perCarTrips: 0, perCarCubic: cubic,
+                                                    workDetails: entry.work
+                                                } as Transaction)
+                                            );
+                                            if (ok === false) return;
+                                        }
+                                        for (let idx = 0; idx < perTripEntries.length; idx += 1) {
+                                            const entry = perTripEntries[idx];
                                             const driverName = employees.find(e => e.id === entry.driver)?.nickname || '';
                                             const carTrips = tripsPerCar + (idx < remainder ? 1 : 0);
                                             const carCubicPerTrip = Number(entry.cubicPerTrip) || detectDefaultCubicPerTrip(entry.vehicle, 3);
                                             const carCubic = carTrips * carCubicPerTrip;
-                                            onSaveTransaction({
-                                                id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
-                                                description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: ${carTrips} เที่ยว × ${carCubicPerTrip} คิว = ${carCubic} คิว - ${entry.work}`, amount: 0,
-                                                vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'PerTrip', tripCount: totalTrips,
-                                                tripMorning: Number(tripMorning) || 0, tripAfternoon: Number(tripAfternoon) || 0,
-                                                cubicPerTrip: carCubicPerTrip, totalCubic: carCubic,
-                                                perCarTrips: carTrips, perCarCubic: carCubic,
-                                                workDetails: entry.work
-                                            } as Transaction);
-                                        });
+                                            const ok = await Promise.resolve(
+                                                onSaveTransaction({
+                                                    id: Date.now().toString() + entry.id, date, type: 'Expense', category: 'DailyLog', subCategory: 'VehicleTrip',
+                                                    description: `${entry.vehicle}${driverName ? ` (${driverName})` : ''}: ${carTrips} เที่ยว × ${carCubicPerTrip} คิว = ${carCubic} คิว - ${entry.work}`, amount: 0,
+                                                    vehicleId: entry.vehicle, driverId: entry.driver, tripBillingMode: 'PerTrip', tripCount: totalTrips,
+                                                    tripMorning: Number(tripMorning) || 0, tripAfternoon: Number(tripAfternoon) || 0,
+                                                    cubicPerTrip: carCubicPerTrip, totalCubic: carCubic,
+                                                    perCarTrips: carTrips, perCarCubic: carCubic,
+                                                    workDetails: entry.work
+                                                } as Transaction)
+                                            );
+                                            if (ok === false) return;
+                                        }
                                         setTripEntries([emptyWizardTripEntry()]);
                                         setTripMorning(''); setTripAfternoon('');
                                     }} className="w-full bg-amber-600 hover:bg-amber-700 py-3 text-base">
@@ -3699,37 +3720,46 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             sandEveningEnd: sandEveningEnd || undefined
                                         };
                                         if (sand1Total > 0) {
-                                            onSaveTransaction({
-                                                id: Date.now().toString() + '_s1', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
-                                                description: `ล้างทราย เครื่องร่อน 1 (เก่า)${opNames1 ? ` [${opNames1}]` : ''}`, amount: 0,
-                                                sandMorning: Number(sand1Morning) || 0, sandAfternoon: Number(sand1Afternoon) || 0,
-                                                sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
-                                                drumsWashedAtHome: drumsHomeToday,
-                                                sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
-                                                ...timePayload
-                                            } as Transaction);
+                                            const ok = await Promise.resolve(
+                                                onSaveTransaction({
+                                                    id: Date.now().toString() + '_s1', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    description: `ล้างทราย เครื่องร่อน 1 (เก่า)${opNames1 ? ` [${opNames1}]` : ''}`, amount: 0,
+                                                    sandMorning: Number(sand1Morning) || 0, sandAfternoon: Number(sand1Afternoon) || 0,
+                                                    sandOperators: sand1Operators, sandMachineType: 'Old', drumsObtained: drumsToday,
+                                                    drumsWashedAtHome: drumsHomeToday,
+                                                    sandBatchId: batchIdFinal || undefined,
+                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    ...timePayload
+                                                } as Transaction)
+                                            );
+                                            if (ok === false) return;
                                         }
                                         if (sand2Total > 0) {
-                                            onSaveTransaction({
-                                                id: Date.now().toString() + '_s2', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
-                                                description: `ล้างทราย เครื่องร่อน 2 (ใหม่)${opNames2 ? ` [${opNames2}]` : ''}`, amount: 0,
-                                                sandMorning: Number(sand2Morning) || 0, sandAfternoon: Number(sand2Afternoon) || 0,
-                                                sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
-                                                drumsWashedAtHome: drumsHomeToday,
-                                                sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
-                                                ...timePayload
-                                            } as Transaction);
+                                            const ok = await Promise.resolve(
+                                                onSaveTransaction({
+                                                    id: Date.now().toString() + '_s2', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    description: `ล้างทราย เครื่องร่อน 2 (ใหม่)${opNames2 ? ` [${opNames2}]` : ''}`, amount: 0,
+                                                    sandMorning: Number(sand2Morning) || 0, sandAfternoon: Number(sand2Afternoon) || 0,
+                                                    sandOperators: sand2Operators, sandMachineType: 'New', drumsObtained: drumsToday,
+                                                    drumsWashedAtHome: drumsHomeToday,
+                                                    sandBatchId: batchIdFinal || undefined,
+                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    ...timePayload
+                                                } as Transaction)
+                                            );
+                                            if (ok === false) return;
                                         }
                                         if (sandGrandTotal === 0 && drumsToday > 0) {
-                                            onSaveTransaction({
-                                                id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
-                                                description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
-                                                sandBatchId: batchIdFinal || undefined,
-                                                sandHomeBatchUsages: homeBatchUsages,
-                                                ...timePayload
-                                            } as Transaction);
+                                            const ok = await Promise.resolve(
+                                                onSaveTransaction({
+                                                    id: Date.now().toString() + '_drums', date, type: 'Expense', category: 'DailyLog', subCategory: 'Sand',
+                                                    description: 'จำนวนถังที่ได้วันนี้', amount: 0, drumsObtained: drumsToday, drumsWashedAtHome: drumsHomeToday,
+                                                    sandBatchId: batchIdFinal || undefined,
+                                                    sandHomeBatchUsages: homeBatchUsages,
+                                                    ...timePayload
+                                                } as Transaction)
+                                            );
+                                            if (ok === false) return;
                                         }
                                         setSand1Morning(''); setSand1Afternoon(''); setSand2Morning(''); setSand2Afternoon('');
                                         setSand1Operators([]); setSand2Operators([]); setSandDrumsObtained('');
@@ -3923,14 +3953,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (amount > 200000) fuelWarnings.push('ยอดซื้อน้ำมันสูงกว่าปกติมาก');
                                         if (!(await shouldContinueWithWarning(fuelWarnings, 'ตรวจพบรายการซื้อน้ำมันที่อาจซ้ำ/ผิดปกติ'))) return;
                                         const unitLabel = fuelUnit === 'แกลลอน' ? 'gallon' : 'L';
-                                        onSaveTransaction({
-                                            id: Date.now().toString(), date, type: 'Expense', category: 'Fuel',
-                                            description: `ซื้อน้ำมัน ${fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${fuelLiters || 0} ${fuelUnit} ${fuelAmount} บาท${fuelDetails ? ` - ${fuelDetails}` : ''}`,
-                                            amount: Number(fuelAmount),
-                                            quantity: Number(fuelLiters), unit: unitLabel, fuelType,
-                                            workDetails: fuelDetails,
-                                            fuelMovement: 'stock_in'
-                                        } as Transaction);
+                                        const okIn = await Promise.resolve(
+                                            onSaveTransaction({
+                                                id: Date.now().toString(), date, type: 'Expense', category: 'Fuel',
+                                                description: `ซื้อน้ำมัน ${fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'}: ${fuelLiters || 0} ${fuelUnit} ${fuelAmount} บาท${fuelDetails ? ` - ${fuelDetails}` : ''}`,
+                                                amount: Number(fuelAmount),
+                                                quantity: Number(fuelLiters), unit: unitLabel, fuelType,
+                                                workDetails: fuelDetails,
+                                                fuelMovement: 'stock_in'
+                                            } as Transaction)
+                                        );
+                                        if (okIn === false) return;
                                         setFuelAmount(''); setFuelLiters(''); setFuelDetails('');
                                     }} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-base font-bold rounded-xl transition-colors focus-ring-strong" data-hotkey-primary="true">
                                         บันทึกซื้อน้ำมันเข้า
@@ -4009,21 +4042,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         if (liters > 5000) fuelVehicleWarnings.push('ปริมาณน้ำมันที่ใช้สูงกว่าปกติมาก');
                                         if (!(await shouldContinueWithWarning(fuelVehicleWarnings, 'ตรวจพบรายการใช้น้ำมันรายรถที่อาจซ้ำ/ผิดปกติ'))) return;
                                         const timePart = fuelVehicleDetails.trim() ? ` เวลา ${fuelVehicleDetails}` : '';
-                                        onSaveTransaction({
-                                            id: `fuel_car_${Date.now()}`,
-                                            date,
-                                            type: 'Expense',
-                                            category: 'Fuel',
-                                            subCategory: 'VehicleUsage',
-                                            description: `ใช้น้ำมันรถ ${fuelVehicle}: ${Number(fuelVehicleLiters)} ลิตร (${fuelVehicleType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'})${timePart}`,
-                                            amount,
-                                            quantity: Number(fuelVehicleLiters),
-                                            unit: 'L',
-                                            fuelType: fuelVehicleType,
-                                            fuelMovement: 'stock_out',
-                                            vehicleId: fuelVehicle,
-                                            workDetails: fuelVehicleDetails.trim() || undefined
-                                        } as Transaction);
+                                        const okOut = await Promise.resolve(
+                                            onSaveTransaction({
+                                                id: `fuel_car_${Date.now()}`,
+                                                date,
+                                                type: 'Expense',
+                                                category: 'Fuel',
+                                                subCategory: 'VehicleUsage',
+                                                description: `ใช้น้ำมันรถ ${fuelVehicle}: ${Number(fuelVehicleLiters)} ลิตร (${fuelVehicleType === 'Diesel' ? 'ดีเซล' : 'เบนซิน'})${timePart}`,
+                                                amount,
+                                                quantity: Number(fuelVehicleLiters),
+                                                unit: 'L',
+                                                fuelType: fuelVehicleType,
+                                                fuelMovement: 'stock_out',
+                                                vehicleId: fuelVehicle,
+                                                workDetails: fuelVehicleDetails.trim() || undefined
+                                            } as Transaction)
+                                        );
+                                        if (okOut === false) return;
                                         setFuelVehicleLiters('');
                                         setFuelVehicleDetails('');
                                     }} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-base font-bold rounded-xl transition-colors">
@@ -4207,17 +4243,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             await sessionAlert('กรุณากรอกประเภทรายรับและยอดรวม');
                                             return;
                                         }
-                                        onSaveTransaction({
-                                            id: Date.now().toString(),
-                                            date,
-                                            type: 'Income',
-                                            category: 'Income',
-                                            description: incomeType,
-                                            amount: Number(incomeTotal) || 0,
-                                            quantity: incomeQty ? Number(incomeQty) : undefined,
-                                            unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
-                                            incomePaymentStatus: incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
-                                        } as Transaction);
+                                        const okInc = await Promise.resolve(
+                                            onSaveTransaction({
+                                                id: Date.now().toString(),
+                                                date,
+                                                type: 'Income',
+                                                category: 'Income',
+                                                description: incomeType,
+                                                amount: Number(incomeTotal) || 0,
+                                                quantity: incomeQty ? Number(incomeQty) : undefined,
+                                                unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
+                                                incomePaymentStatus: incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
+                                            } as Transaction)
+                                        );
+                                        if (okInc === false) return;
                                         setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal(''); setIncomePaymentStatus('Paid');
                                     }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <Wallet size={16} className="mr-1" /> บันทึกรายรับ
@@ -4327,11 +4366,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             await sessionAlert('กรุณาระบุรายละเอียดเหตุการณ์');
                                             return;
                                         }
-                                        onSaveTransaction({
-                                            id: Date.now().toString(), date, type: 'Expense', category: 'DailyLog', subCategory: 'Event',
-                                            description: eventDesc.trim(), amount: 0,
-                                            eventType, eventPriority
-                                        } as Transaction);
+                                        const okEv = await Promise.resolve(
+                                            onSaveTransaction({
+                                                id: Date.now().toString(), date, type: 'Expense', category: 'DailyLog', subCategory: 'Event',
+                                                description: eventDesc.trim(), amount: 0,
+                                                eventType, eventPriority
+                                            } as Transaction)
+                                        );
+                                        if (okEv === false) return;
                                         setEventDesc(''); setEventType('info'); setEventPriority('normal');
                                     }} className="w-full bg-orange-500 hover:bg-orange-600 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <AlertTriangle size={16} className="mr-1" /> บันทึกเหตุการณ์
