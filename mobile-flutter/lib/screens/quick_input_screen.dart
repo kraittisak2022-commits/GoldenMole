@@ -1179,7 +1179,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isLaborMode) {
-      final t = txs.first;
+      final dayKey = _quickYmd(_selectedDate);
+      final moduleCat = widget.initialCategory?.trim() ?? 'ค่าแรง';
+      AppTransaction? laborRow;
+      for (final x in txs) {
+        if (x.category == 'Labor' &&
+            transactionMatchesDailyModule(x, dayKey, moduleCat)) {
+          laborRow = x;
+          break;
+        }
+      }
+      if (laborRow == null) {
+        for (final x in txs) {
+          if (x.category == 'ค่าแรง') {
+            laborRow = x;
+            break;
+          }
+        }
+      }
+      final t = laborRow ?? txs.first;
       _laborTxId = t.id;
       _selectedLaborEmpIds
         ..clear()
@@ -8385,6 +8403,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildLaborFormCard() {
+    final assigned = _collectLaborAssignedIds().length;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -8404,18 +8423,72 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'บันทึกค่าแรง',
-            style: GoogleFonts.kanit(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F5FAF),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'บันทึกค่าแรง',
+                      style: GoogleFonts.kanit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0F5FAF),
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'เลือกพนักงานตามกลุ่มตำแหน่ง → จัดลงกล่องงาน → บันทึก',
+                      style: GoogleFonts.kanit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF5C6B7F),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (assigned > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFA5D6A7)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.assignment_turned_in_outlined,
+                        size: 18,
+                        color: Colors.green.shade800,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$assigned คนในงาน',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFF1B5E20),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
           _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _LaborCanvasSection(child: _buildLaborCanvasBoard()),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
@@ -8423,7 +8496,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               icon: const Icon(Icons.save_outlined),
               label: Text('บันทึกค่าแรง', style: GoogleFonts.kanit()),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: const Size.fromHeight(52),
               ),
             ),
           ),
@@ -10271,26 +10344,35 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
   }) {
     final selected = _poolKind == kind;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: selected ? const Color(0xFFE3EFFF) : const Color(0xFFF4F7FB),
-        borderRadius: BorderRadius.circular(12),
+        color: selected ? const Color(0xFFE8F1FF) : const Color(0xFFF6F8FC),
+        borderRadius: BorderRadius.circular(14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: selected
+                ? const Color(0xFF1565C0)
+                : const Color(0xFFE1E8F0),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           onTap: () => setState(() => _poolKind = kind),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   icon,
-                  size: 22,
+                  size: 24,
                   color: selected
                       ? const Color(0xFF1565C0)
                       : const Color(0xFF5B6D83),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -10298,7 +10380,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                       Text(
                         title,
                         style: GoogleFonts.kanit(
-                          fontSize: 13.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF1D2A3A),
                         ),
@@ -10306,10 +10388,10 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                       Text(
                         subtitle,
                         style: GoogleFonts.kanit(
-                          fontSize: 11,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                           color: Colors.black54,
-                          height: 1.2,
+                          height: 1.25,
                         ),
                       ),
                     ],
@@ -10318,7 +10400,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 if (selected)
                   const Icon(
                     Icons.check_circle_rounded,
-                    size: 20,
+                    size: 22,
                     color: Color(0xFF1565C0),
                   ),
               ],
@@ -10345,12 +10427,12 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         final isHovering = candidateData.isNotEmpty;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
           decoration: BoxDecoration(
             color: isHovering
                 ? const Color(0xFFDDEBFA)
                 : const Color(0xFFF8FAFD),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isHovering
                   ? const Color(0xFF73A6E8)
@@ -10359,20 +10441,20 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           ),
           child: available.isEmpty
               ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
                     'ไม่มีพนักงานในกลุ่มนี้ (หรือจัดลงกล่องงานหมดแล้ว)',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
-                      fontSize: 12.5,
+                      fontSize: 13,
                       color: Colors.black54,
-                      height: 1.25,
+                      height: 1.3,
                     ),
                   ),
                 )
               : Wrap(
                   spacing: 8,
-                  runSpacing: 8,
+                  runSpacing: 10,
                   children: available.map((e) {
                     final id = e.id;
                     final selected = widget.pickedIds.contains(id);
@@ -10380,25 +10462,40 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                     return LongPressDraggable<String>(
                       data: id,
                       feedback: Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(20),
                         color: Colors.transparent,
                         child: Chip(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                           label: Text(
                             name,
                             style: GoogleFonts.kanit(
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
+                              fontSize: 14,
                             ),
                           ),
-                          backgroundColor: const Color(0xFF3C78C8),
+                          backgroundColor: const Color(0xFF1565C0),
                         ),
                       ),
                       childWhenDragging: Opacity(
                         opacity: 0.35,
                         child: FilterChip(
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 4,
+                          ),
                           label: Text(
                             name,
                             style: GoogleFonts.kanit(
                               fontWeight: FontWeight.w700,
+                              fontSize: 14,
                             ),
                           ),
                           selected: selected,
@@ -10406,9 +10503,22 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                         ),
                       ),
                       child: FilterChip(
+                        labelPadding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 4,
+                        ),
+                        showCheckmark: true,
+                        selectedColor: const Color(0xFFBBDEFB),
+                        checkmarkColor: const Color(0xFF0D47A1),
                         label: Text(
                           name,
-                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                         selected: selected,
                         onSelected: (_) => setState(() {
@@ -10431,7 +10541,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
   Widget build(BuildContext context) {
     final assignedIds = _collectAssigned();
     final mq = MediaQuery.sizeOf(context);
-    final sideBySide = mq.width >= 620;
+    final sideBySide = mq.width >= 660;
 
     final available =
         widget.employees
@@ -10484,8 +10594,8 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
     }
 
     Widget bucketsGrid(double maxWidth) {
-      const spacing = 8.0;
-      final nCol = maxWidth >= 480 ? 3 : 2;
+      const spacing = 10.0;
+      final nCol = maxWidth >= 520 ? 3 : 2;
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
       return Wrap(
         spacing: spacing,
@@ -10513,28 +10623,29 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'เลือกพนักงาน',
+              'พูลพนักงาน',
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
-                fontSize: 15,
-                color: const Color(0xFF205A9A),
+                fontSize: 16,
+                color: const Color(0xFF0D47A1),
               ),
             ),
             const SizedBox(height: 2),
             Text(
-              'กรองจากตำแหน่ง — เลื่อนพร้อมกล่องงาน',
+              'สลับกลุ่มตามตำแหน่ง — เลื่อนดูร่วมกับกล่องงานด้านขวา',
               style: GoogleFonts.kanit(
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.black45,
+                color: const Color(0xFF64748B),
+                height: 1.3,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _poolKindTile(
               kind: _LaborEmpPoolKind.sandSieve,
               icon: Icons.water_drop_outlined,
@@ -10553,30 +10664,87 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
               title: 'พนักงานทั่วไป',
               subtitle: 'นอกกลุ่มบน',
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFFE082)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 9,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.touch_app_outlined,
+                      size: 20,
+                      color: Colors.amber.shade900,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'แตะชื่อเพื่อเลือกหลายคน · กดค้างแล้วลากไปกล่อง หรือกดปุ่ม «ย้ายมาที่นี่» ในกล่องงาน',
+                        style: GoogleFonts.kanit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF5D4037),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    'ลากไปกล่องงาน →',
+                    'รายชื่อในกลุ่ม',
                     style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      color: const Color(0xFF475569),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: const Color(0xFF334155),
                     ),
                   ),
                 ),
-                Text(
-                  '${widget.pickedIds.length} เลือก',
-                  style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: const Color(0xFF5B6D83),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: widget.pickedIds.isEmpty
+                        ? const Color(0xFFF1F5F9)
+                        : const Color(0xFFE3F2FD),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: widget.pickedIds.isEmpty
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFF64B5F6),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    child: Text(
+                      '${widget.pickedIds.length} เลือก',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                        color: widget.pickedIds.isEmpty
+                            ? const Color(0xFF64748B)
+                            : const Color(0xFF0D47A1),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _employeePoolCard(available),
           ],
         ),
@@ -10587,68 +10755,127 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'กล่องงาน (ลากวาง)',
+          'กล่องงาน',
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w800,
-            fontSize: 15,
-            color: const Color(0xFF205A9A),
+            fontSize: 16,
+            color: const Color(0xFF0D47A1),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 2),
+        Text(
+          'ลากชื่อมาวาง หรือเลือกแล้วกดย้ายในแต่ละกล่อง',
+          style: GoogleFonts.kanit(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 10),
         LayoutBuilder(
           builder: (context, constraints) {
             return bucketsGrid(constraints.maxWidth);
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F8FD),
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: assignedIds.isNotEmpty
+                  ? const [
+                      Color(0xFFE8F5E9),
+                      Color(0xFFC8E6C9),
+                    ]
+                  : const [
+                      Color(0xFFF1F5F9),
+                      Color(0xFFE2E8F0),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: assignedIds.isNotEmpty
-                  ? const Color(0xFFBFD8F4)
-                  : const Color(0xFFE2EAF4),
+                  ? const Color(0xFF81C784)
+                  : const Color(0xFFCBD5E1),
             ),
           ),
-          child: Text(
-            'พนักงานที่จัดลงงานแล้ว ${assignedIds.length} คน',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                assignedIds.isNotEmpty
+                    ? Icons.groups_rounded
+                    : Icons.info_outline_rounded,
+                size: 22,
+                color: assignedIds.isNotEmpty
+                    ? const Color(0xFF2E7D32)
+                    : const Color(0xFF64748B),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  assignedIds.isNotEmpty
+                      ? 'จัดลงงานแล้ว ${assignedIds.length} คน'
+                      : 'ยังไม่มีคนในกล่องงาน — เลือกจากพูลด้านซ้าย',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: assignedIds.isNotEmpty
+                        ? const Color(0xFF1B5E20)
+                        : const Color(0xFF475569),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCE7F3)),
-      ),
-      child: SingleChildScrollView(
-        child: sideBySide
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(width: 300, child: poolColumn),
-                  const SizedBox(width: 12),
-                  Expanded(child: canvasColumn),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  poolColumn,
-                  const SizedBox(height: 14),
-                  canvasColumn,
-                ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : mq.width;
+        final poolW = (w * 0.36).clamp(272.0, 384.0);
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F6FC),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFC5D9EF)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
-      ),
+            ],
+          ),
+          child: sideBySide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: poolW, child: poolColumn),
+                    const SizedBox(width: 14),
+                    Expanded(child: canvasColumn),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    poolColumn,
+                    const SizedBox(height: 16),
+                    canvasColumn,
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -10699,6 +10926,24 @@ class _LaborBucketCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8, top: 2),
+                    child: Container(
+                      width: 4,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: category.color,
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: category.color.withValues(alpha: 0.35),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: Tooltip(
                       message: category.label,
@@ -10708,7 +10953,7 @@ class _LaborBucketCard extends StatelessWidget {
                         softWrap: true,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
-                          fontSize: 11.5,
+                          fontSize: 13,
                           height: 1.3,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF1F2B3A),
@@ -10797,20 +11042,36 @@ class _LaborBucketCard extends StatelessWidget {
                             childWhenDragging: Opacity(
                               opacity: 0.35,
                               child: InputChip(
+                                labelPadding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                  horizontal: 2,
+                                ),
                                 label: Text(
                                   label,
                                   style: GoogleFonts.kanit(
                                     fontWeight: FontWeight.w700,
+                                    fontSize: 13,
                                   ),
                                 ),
                                 onDeleted: null,
                               ),
                             ),
                             child: InputChip(
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 2,
+                              ),
                               label: Text(
                                 label,
                                 style: GoogleFonts.kanit(
                                   fontWeight: FontWeight.w700,
+                                  fontSize: 13,
                                 ),
                               ),
                               onDeleted: () => onDeleteEmployee(empId),
@@ -10821,22 +11082,39 @@ class _LaborBucketCard extends StatelessWidget {
                     : Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'ลากคนมาวางที่ช่องนี้',
+                          'ลากชื่อมาวาง หรือกดย้ายด้านล่าง',
                           style: GoogleFonts.kanit(
                             fontSize: 12.5,
-                            color: const Color(0xFF5B6D83),
+                            color: const Color(0xFF64748B),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
               ),
-              const SizedBox(height: 6),
-              OutlinedButton.icon(
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
                 onPressed: onMovePickedHere,
-                icon: const Icon(Icons.south_west_rounded, size: 16),
+                icon: Icon(
+                  Icons.arrow_downward_rounded,
+                  size: 18,
+                  color: onMovePickedHere != null
+                      ? category.color.withValues(alpha: 0.95)
+                      : null,
+                ),
                 label: Text(
-                  'ย้ายคนที่เลือกมาที่กล่องนี้',
-                  style: GoogleFonts.kanit(fontSize: 12),
+                  onMovePickedHere != null
+                      ? 'ย้ายคนที่เลือกมาที่นี่'
+                      : 'เลือกชื่อจากพูลก่อน',
+                  style: GoogleFonts.kanit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(42),
+                  alignment: Alignment.center,
+                  foregroundColor: const Color(0xFF1E293B),
+                  backgroundColor: Colors.white.withValues(alpha: 0.75),
                 ),
               ),
             ],
