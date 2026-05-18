@@ -141,13 +141,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _LaborWorkCategory(
       id: 'wash_old',
       label: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
-      shortTitle: 'ร่อน 1 (เก่า)',
+      shortTitle: 'เครื่องร่อน 1 (เก่า)',
       color: Color(0xFF4A90E2),
     ),
     _LaborWorkCategory(
       id: 'wash_new',
       label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
-      shortTitle: 'ร่อน 2 (ใหม่)',
+      shortTitle: 'เครื่องร่อน 2 (ใหม่)',
       color: Color(0xFF24A7B8),
     ),
     _LaborWorkCategory(
@@ -6089,7 +6089,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'ช่วงเวลาการทำงาน',
+                      'เวลาเริ่มงาน / หยุดล้าง',
                       style: GoogleFonts.kanit(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w700,
@@ -6097,57 +6097,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F8FF),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFD9E9FA)),
-                  ),
-                  child: Row(
-                    children: [
-                      _TimelineDot(
-                        icon: Icons.wb_sunny_outlined,
-                        label: 'เช้า',
-                        color: const Color(0xFF1F9CF0),
-                      ),
-                      const Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 18),
-                          child: Divider(
-                            color: Color(0xFFBFD8F2),
-                            thickness: 1.4,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                      _TimelineDot(
-                        icon: Icons.wb_twilight_outlined,
-                        label: 'บ่าย',
-                        color: const Color(0xFF2FB6B0),
-                      ),
-                      const Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 18),
-                          child: Divider(
-                            color: Color(0xFFBFD8F2),
-                            thickness: 1.4,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                      _TimelineDot(
-                        icon: Icons.nightlight_round_outlined,
-                        label: 'เย็น',
-                        color: const Color(0xFF5D74E7),
-                      ),
-                    ],
-                  ),
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -6167,29 +6116,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           hour: 8,
                           minute: 20,
                         ),
-                        decoration: deco('เช้าเริ่ม', Icons.wb_sunny_outlined),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _AnimatedInputField(
-                        controller: _sandAfternoonStartController,
-                        style: GoogleFonts.kanit(
-                          color: const Color(0xFF1D2A3A),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        textInputAction: TextInputAction.next,
-                        readOnly: true,
-                        onTap: () => _pickSandTime(
-                          controller: _sandAfternoonStartController,
-                          hour: 13,
-                          minute: 0,
-                        ),
-                        decoration: deco(
-                          'บ่ายเริ่ม',
-                          Icons.wb_twilight_outlined,
-                        ),
+                        decoration: deco('เริ่มงาน', Icons.play_arrow_rounded),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -6209,8 +6136,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           minute: 20,
                         ),
                         decoration: deco(
-                          'เย็นหยุด',
-                          Icons.nightlight_round_outlined,
+                          'หยุดล้าง',
+                          Icons.stop_circle_outlined,
                         ),
                       ),
                     ),
@@ -11635,46 +11562,6 @@ class _VehicleTripFormSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(child: child);
-  }
-}
-
-class _TimelineDot extends StatelessWidget {
-  const _TimelineDot({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Icon(icon, size: 14, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: GoogleFonts.kanit(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF35506E),
-          ),
-        ),
-      ],
-    );
   }
 }
 

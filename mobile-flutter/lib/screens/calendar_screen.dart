@@ -288,12 +288,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ...day.userHolidayDescriptions,
                   ],
                 ),
-              if (day.leaveNames.isNotEmpty)
-                _infoBlock(
-                  title: 'รายการลา',
-                  color: const Color(0xFFFFB74D),
-                  lines: day.leaveNames,
-                ),
+              if (day.leaveDetails.isNotEmpty)
+                _leaveDetailsBlock(day.leaveDetails),
               if (day.homeSandLines.isNotEmpty)
                 _infoBlock(
                   title: 'ทรายที่ล้างที่บ้าน',
@@ -687,6 +683,72 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Widget _leaveDetailsBlock(List<CalendarLeaveDetail> details) {
+    const color = Color(0xFFFFB74D);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'รายการลา',
+            style: GoogleFonts.kanit(color: color, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ...details.map((item) {
+            final reason = item.reason.trim();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.headline,
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                      height: 1.3,
+                    ),
+                  ),
+                  if (item.spanNote != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.spanNote!,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        color: Colors.black54,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    reason.isNotEmpty
+                        ? 'เหตุผล: $reason'
+                        : 'เหตุผล: ยังไม่ระบุ',
+                    style: GoogleFonts.kanit(
+                      fontSize: 13.5,
+                      color: reason.isNotEmpty
+                          ? const Color(0xFF5D4037)
+                          : Colors.black45,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _infoBlock({
     required String title,
     required Color color,
@@ -1056,18 +1118,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final leaveRows = transactions.where((t) {
         return isLaborLeaveRecord(t) && laborLeaveCoversCalendarDay(t, dateStr);
       }).toList();
-      final leaveEmpIds = <String>{};
-      for (final row in leaveRows) {
-        leaveEmpIds.addAll(row.employeeIds);
-      }
-      final leaveNames = leaveEmpIds.map((id) {
-        final emp = employees
-            .where((e) => e.id == id)
-            .cast<Employee?>()
-            .firstWhere((e) => e != null, orElse: () => null);
-        if (emp == null) return 'ไม่ทราบชื่อ';
-        return emp.nickname.isNotEmpty ? emp.nickname : emp.name;
-      }).toList();
+      final leaveNames = calendarLeaveNames(leaveRows, employees);
+      final leaveDetails = calendarLeaveDetails(
+        leaveRows,
+        employees,
+        viewingDayKey: dateStr,
+      );
 
       final dailyEventLines = dayTx
           .where(_isDailyEventTransaction)
@@ -1085,6 +1141,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           weeklyOffLine: weeklyOffLine,
           weeklyOffMoveReason: dtPlain.weekday == offWd ? moveReason : null,
           leaveNames: leaveNames,
+          leaveDetails: leaveDetails,
           homeSandLines: homeSandLines,
           dailyEventLines: dailyEventLines,
         ),
@@ -1158,6 +1215,7 @@ class _CalendarDay {
     required this.thaiPublicHolidayNames,
     required this.userHolidayDescriptions,
     required this.leaveNames,
+    required this.leaveDetails,
     required this.dailyEventLines,
     this.weeklyOffLine,
     this.weeklyOffMoveReason,
@@ -1171,6 +1229,7 @@ class _CalendarDay {
   final String? weeklyOffLine;
   final String? weeklyOffMoveReason;
   final List<String> leaveNames;
+  final List<CalendarLeaveDetail> leaveDetails;
   final List<String> homeSandLines;
   final List<String> dailyEventLines;
 
@@ -1182,7 +1241,7 @@ class _CalendarDay {
       thaiPublicHolidayNames.isNotEmpty ||
       weeklyOffLine != null ||
       userHolidayDescriptions.isNotEmpty ||
-      leaveNames.isNotEmpty ||
+      leaveDetails.isNotEmpty ||
       homeSandLines.isNotEmpty ||
       dailyEventLines.isNotEmpty;
 }

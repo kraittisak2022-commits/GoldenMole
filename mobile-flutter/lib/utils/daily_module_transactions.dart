@@ -1,4 +1,5 @@
 import '../models/app_transaction.dart';
+import '../models/employee.dart';
 
 /// รถแม็คโคร (เมนูแยกจากรถดรัม/เที่ยว) — สอดคล้องกับชื่อรถในการตั้งค่า
 bool isMacroVehicleId(String? raw) {
@@ -50,6 +51,146 @@ bool laborLeaveCoversCalendarDay(AppTransaction t, String dayKey) {
   final span = leaveInclusiveDayCount(t);
   final end = start.add(Duration(days: span - 1));
   return !needle.isBefore(start) && !needle.isAfter(end);
+}
+
+/// รายละเอียดการลาสำหรับปฏิทิน (ชื่อ + เหตุผล)
+class CalendarLeaveDetail {
+  const CalendarLeaveDetail({
+    required this.headline,
+    required this.reason,
+    this.spanNote,
+  });
+
+  final String headline;
+  final String reason;
+  final String? spanNote;
+}
+
+String calendarEmployeeDisplayName(String id, List<Employee> employees) {
+  for (final e in employees) {
+    if (e.id == id) {
+      if (e.nickname.trim().isNotEmpty) return e.nickname.trim();
+      if (e.name.trim().isNotEmpty) return e.name.trim();
+      break;
+    }
+  }
+  return id.trim().isEmpty ? 'ไม่ทราบชื่อ' : id;
+}
+
+String leaveKindLabelTh(AppTransaction t) {
+  final sub = (t.subCategory ?? '').trim().toLowerCase();
+  final ls = (t.laborStatus ?? '').trim().toLowerCase();
+  if (sub == 'sick' || ls == 'sick') return 'ลาป่วย';
+  if (sub == 'personal' || ls == 'personal') return 'ลากิจ';
+  if (t.category.trim() == 'Leave') {
+    if (sub == 'sick') return 'ลาป่วย';
+    if (sub == 'personal' || sub == 'leave') return 'ลากิจ';
+  }
+  return 'ลางาน';
+}
+
+String resolvedLeaveReason(AppTransaction t) {
+  final direct = (t.leaveReason ?? '').trim();
+  if (direct.isNotEmpty) return direct;
+
+  final desc = t.description.trim();
+  final colon = RegExp(r'ลา(?:กิจ|ป่วย|งาน)?\s*:\s*(.+)', caseSensitive: false);
+  final m1 = colon.firstMatch(desc);
+  if (m1 != null) {
+    var tail = m1.group(1)?.trim() ?? '';
+    tail = tail.replaceFirst(RegExp(r'\s*\(ครึ่งวัน[^)]*\)\s*$'), '').trim();
+    if (tail.isNotEmpty) return tail;
+  }
+
+  final note = (t.note ?? '').trim();
+  if (note.isNotEmpty && !note.contains('signedBy')) return note;
+
+  if (desc.isNotEmpty && desc != 'ลางาน') return desc;
+  return '';
+}
+
+String leaveDurationLabelTh(AppTransaction t) {
+  final days = t.leaveDays;
+  if (days == null || days <= 0) return '';
+  final wd = (t.workDetails ?? '').trim().toLowerCase();
+  if ((days - 0.5).abs() < 1e-6) {
+    if (wd.contains('morning')) return 'ครึ่งวัน (เช้า)';
+    if (wd.contains('afternoon')) return 'ครึ่งวัน (บ่าย)';
+    return 'ครึ่งวัน';
+  }
+  if (days == days.roundToDouble()) return '${days.round()} วัน';
+  return '$days วัน';
+}
+
+String _formatYmdThaiBe(String ymd) {
+  final parts = ymd.trim().split('-');
+  if (parts.length != 3) return ymd;
+  final y = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  final d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null) return ymd;
+  return '${d.toString().padLeft(2, '0')}/${m.toString().padLeft(2, '0')}/${y + 543}';
+}
+
+/// รายการลาพร้อมเหตุผล — ใช้ใน bottom sheet เมื่อเลือกวันที่
+List<CalendarLeaveDetail> calendarLeaveDetails(
+  List<AppTransaction> leaveRows,
+  List<Employee> employees, {
+  String? viewingDayKey,
+}) {
+  final sorted = List<AppTransaction>.from(leaveRows)
+    ..sort((a, b) {
+      final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tb.compareTo(ta);
+    });
+
+  final out = <CalendarLeaveDetail>[];
+  for (final t in sorted) {
+    final names = t.employeeIds
+        .map((id) => calendarEmployeeDisplayName(id, employees))
+        .where((s) => s.isNotEmpty && s != 'ไม่ทราบชื่อ')
+        .toList();
+    if (names.isEmpty && t.employeeIds.isEmpty) continue;
+    final displayNames = names.isEmpty ? 'ไม่ทราบชื่อ' : names.join(', ');
+
+    final kind = leaveKindLabelTh(t);
+    final duration = leaveDurationLabelTh(t);
+    final headline = duration.isEmpty
+        ? '$displayNames — $kind'
+        : '$displayNames — $kind ($duration)';
+
+    String? spanNote;
+    final viewKey = viewingDayKey?.trim();
+    final startKey = t.date.trim();
+    if (viewKey != null &&
+        viewKey.isNotEmpty &&
+        startKey.isNotEmpty &&
+        viewKey != startKey) {
+      spanNote = 'เริ่มลาวันที่ ${_formatYmdThaiBe(startKey)}';
+    }
+
+    out.add(
+      CalendarLeaveDetail(
+        headline: headline,
+        reason: resolvedLeaveReason(t),
+        spanNote: spanNote,
+      ),
+    );
+  }
+  return out;
+}
+
+/// ชื่อผู้ลาที่ไม่ซ้ำ (แสดงบนเซลล์ปฏิทิน)
+List<String> calendarLeaveNames(
+  List<AppTransaction> leaveRows,
+  List<Employee> employees,
+) {
+  final ids = <String>{};
+  for (final row in leaveRows) {
+    ids.addAll(row.employeeIds);
+  }
+  return ids.map((id) => calendarEmployeeDisplayName(id, employees)).toList();
 }
 
 /// แถวบันทึก «ตัดรอบล้างทรายที่บ้าน» (ไม่นับเป็นจำนวนถังที่ล้าง)
