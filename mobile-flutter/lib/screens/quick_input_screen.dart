@@ -194,7 +194,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _sandDrumsObtainedController = TextEditingController();
   final _drumsWashedAtHomeController = TextEditingController();
   final _sandMorningStartController = TextEditingController();
-  final _sandAfternoonStartController = TextEditingController();
   final _sandEveningEndController = TextEditingController();
   final _vehicleIdController = TextEditingController();
   final _driverIdController = TextEditingController();
@@ -667,7 +666,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _sand2AfternoonController.clear();
       _sandDrumsObtainedController.clear();
       _sandMorningStartController.clear();
-      _sandAfternoonStartController.clear();
       _sandEveningEndController.clear();
       _sand1OperatorNames = const [];
       _sand2OperatorNames = const [];
@@ -1051,9 +1049,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (t.sandMorningStart?.isNotEmpty == true) {
         _sandMorningStartController.text = t.sandMorningStart!;
       }
-      if (t.sandAfternoonStart?.isNotEmpty == true) {
-        _sandAfternoonStartController.text = t.sandAfternoonStart!;
-      }
       if (t.sandEveningEnd?.isNotEmpty == true) {
         _sandEveningEndController.text = t.sandEveningEnd!;
       }
@@ -1218,7 +1213,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _sandDrumsObtainedController.dispose();
     _drumsWashedAtHomeController.dispose();
     _sandMorningStartController.dispose();
-    _sandAfternoonStartController.dispose();
     _sandEveningEndController.dispose();
     _vehicleIdController.dispose();
     _driverIdController.dispose();
@@ -1759,9 +1753,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         // Keep category aligned with web Daily Wizard schema.
         final commonCategory = 'DailyLog';
         final commonSub = 'Sand';
-        final morningStart = _sandMorningStartController.text.trim();
-        final afternoonStart = _sandAfternoonStartController.text.trim();
-        final eveningEnd = _sandEveningEndController.text.trim();
+        final workStart = _sandMorningStartController.text.trim();
+        final workEnd = _sandEveningEndController.text.trim();
 
         Future<void> saveMachine({
           required String suffix,
@@ -1790,9 +1783,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             drumsObtained: drums,
             drumsWashedAtHome: 0,
             note: _activeSignatureNote,
-            sandMorningStart: morningStart.isEmpty ? null : morningStart,
-            sandAfternoonStart: afternoonStart.isEmpty ? null : afternoonStart,
-            sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
+            sandMorningStart: workStart.isEmpty ? null : workStart,
+            sandEveningEnd: workEnd.isEmpty ? null : workEnd,
           );
           await _persist(tx);
         }
@@ -1833,11 +1825,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               drumsObtained: drums,
               drumsWashedAtHome: 0,
               note: _activeSignatureNote,
-              sandMorningStart: morningStart.isEmpty ? null : morningStart,
-              sandAfternoonStart: afternoonStart.isEmpty
-                  ? null
-                  : afternoonStart,
-              sandEveningEnd: eveningEnd.isEmpty ? null : eveningEnd,
+              sandMorningStart: workStart.isEmpty ? null : workStart,
+              sandEveningEnd: workEnd.isEmpty ? null : workEnd,
             ),
           );
         }
@@ -1848,7 +1837,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _sand2AfternoonController.clear();
         _sandDrumsObtainedController.clear();
         _sandMorningStartController.clear();
-        _sandAfternoonStartController.clear();
         _sandEveningEndController.clear();
       },
     );
@@ -5755,9 +5743,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildSandWashFormCard() {
     if (_sandMorningStartController.text.trim().isEmpty) {
       _sandMorningStartController.text = '08.20';
-    }
-    if (_sandAfternoonStartController.text.trim().isEmpty) {
-      _sandAfternoonStartController.text = '13.00';
     }
     if (_sandEveningEndController.text.trim().isEmpty) {
       _sandEveningEndController.text = '16.20';
