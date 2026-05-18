@@ -15,6 +15,7 @@ import '../services/project_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
+import '../utils/mobile_error_screen_tracker.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/page_loading_view.dart';
 import '../widgets/record_module_card.dart';
@@ -74,77 +75,77 @@ const List<_DailyModuleDef> _kDailyModules = [
     icon: Icons.water_drop_outlined,
     category: 'บันทึกการร่อนทราย',
     quickInputTitle: 'บันทึกการร่อนทราย',
-    color: Color(0xFFFF4FA3),
+    color: Color(0xFFFF2D97),
   ),
   _DailyModuleDef(
     title: 'บันทึกรถดรัมและจำนวนเที่ยว',
     icon: Icons.fire_truck_outlined,
     category: 'จำนวนเที่ยวรถ',
     quickInputTitle: 'บันทึกรถดรัมและจำนวนเที่ยว',
-    color: Color(0xFF00B8D9),
+    color: Color(0xFF00D4F5),
   ),
   _DailyModuleDef(
     title: 'การใช้รถแม็คโคร',
     icon: Icons.front_loader,
     category: 'การใช้รถแม็คโคร',
     quickInputTitle: 'บันทึกการใช้รถแม็คโคร',
-    color: Color(0xFFFF8F00),
+    color: Color(0xFFFFA020),
   ),
   _DailyModuleDef(
     title: 'น้ำมัน',
     icon: Icons.oil_barrel_outlined,
     category: 'น้ำมัน',
     quickInputTitle: 'บันทึกน้ำมัน',
-    color: Color(0xFFFF9800),
+    color: Color(0xFFFFAB00),
   ),
   _DailyModuleDef(
     title: 'ทรายที่ล้างที่บ้าน',
     icon: Icons.waves_outlined,
     category: 'ทรายที่ล้างที่บ้าน',
     quickInputTitle: 'ทรายที่ล้างที่บ้าน',
-    color: Color(0xFF4A6FFF),
+    color: Color(0xFF3D6CFF),
   ),
   _DailyModuleDef(
     title: 'เหตุการณ์',
     icon: Icons.warning_amber_rounded,
     category: 'เหตุการณ์',
     quickInputTitle: 'เหตุการณ์สำคัญประจำวัน',
-    color: Color(0xFFFF6D00),
+    color: Color(0xFFFF7A1A),
   ),
   _DailyModuleDef(
     title: 'บันทึกการทำงาน',
     icon: Icons.payments_outlined,
     category: 'ค่าแรง',
     quickInputTitle: 'บันทึกการทำงาน',
-    color: Color(0xFF7E3FF2),
+    color: Color(0xFF9145FF),
   ),
   _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
     icon: Icons.groups_2_outlined,
     category: 'OT',
     quickInputTitle: 'บันทึกการทำงานล่วงเวลา',
-    color: Color(0xFFFF4D6D),
+    color: Color(0xFFFF3D6B),
   ),
   _DailyModuleDef(
     title: 'ลางาน',
     icon: Icons.event_busy_outlined,
     category: 'ลางาน',
     quickInputTitle: 'บันทึกลางาน',
-    color: Color(0xFF00897B),
+    color: Color(0xFF00A896),
   ),
   _DailyModuleDef(
     title: 'เบิกเงิน',
     icon: Icons.savings_outlined,
     category: 'เบิกเงิน',
     quickInputTitle: 'ส่งคำขอเบิกเงิน',
-    color: Color(0xFFFF6F00),
+    color: Color(0xFFFF8500),
   ),
   _DailyModuleDef(
     title: 'รายรับ-รายจ่าย',
     icon: Icons.account_balance_wallet_outlined,
     category: 'รายจ่ายรายรับ',
     quickInputTitle: 'รายรับ-รายจ่าย',
-    color: Color(0xFF5C6BC0),
+    color: Color(0xFF6370E8),
   ),
 ];
 
@@ -232,6 +233,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(page: 'หน้าหลัก (แดชบอร์ด)');
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome());
   }
@@ -1244,7 +1246,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                 children: [
                                   const Icon(
                                     Icons.calendar_today,
-                                    color: Color(0xFF0D7284),
+                                    color: Color(0xFF00A8C4),
                                     size: 14,
                                   ),
                                   const SizedBox(width: 4),
@@ -1255,7 +1257,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.start,
                                       style: const TextStyle(
-                                        color: Color(0xFF0D7284),
+                                        color: Color(0xFF00A8C4),
                                         fontWeight: FontWeight.w800,
                                         fontSize: 16,
                                       ),

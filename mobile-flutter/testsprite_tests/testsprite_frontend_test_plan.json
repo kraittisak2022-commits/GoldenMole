@@ -1,0 +1,2211 @@
+[
+  {
+    "id": "TC001",
+    "title": "Access the dashboard after signing in",
+    "description": "Verifies that an admin can sign in and land on the dashboard with operational summaries visible.",
+    "category": "Authentication and Session Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify operational summary content is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Admin can log in and reach the dashboard",
+    "description": "Verifies an admin can sign in successfully and land on the dashboard with operational summaries available.",
+    "category": "Authentication/session management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify operational summary content is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Land on the dashboard after signing in",
+    "description": "Verifies that an authenticated admin can sign in and reach the dashboard with operational summaries visible.",
+    "category": "DashboardScreen load",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify operational summary content is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Sign out of the application",
+    "description": "Verifies that an authenticated user can log out and is returned to a signed-out state.",
+    "category": "Authentication/session management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the account or menu options"
+      },
+      {
+        "type": "action",
+        "description": "Log out of the application"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the sign-in screen is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify protected dashboard content is not visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Logged-in user can log out from the app",
+    "description": "Verifies an authenticated user can end the session and is returned to the login screen.",
+    "category": "Authentication/session management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the account or navigation menu"
+      },
+      {
+        "type": "action",
+        "description": "Log out of the app"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the login screen is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify protected content is no longer visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Open quick daily entry from the dashboard",
+    "description": "Verifies that an authenticated user can start a quick daily field entry from the dashboard and reach the quick input screen.",
+    "category": "DashboardScreen load",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry flow from the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the quick input screen is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify quick entry fields are visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Admin can open quick field entry from the dashboard",
+    "description": "Verifies an authenticated admin can navigate from the dashboard to the quick daily entry screen used for field data capture.",
+    "category": "QuickInputScreen",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry screen from the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the quick entry screen is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard shortcuts are no longer the active view"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Create a daily field record from quick entry",
+    "description": "Verifies that a user can submit a valid daily operation record from quick input and see the dashboard totals refresh.",
+    "category": "Quick Daily Data Entry",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open a daily module card from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Fill in all required daily record fields with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Submit the quick input form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a successful record confirmation is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard totals are updated"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC009",
+    "title": "Keep the session on the device after signing in",
+    "description": "Verifies that an admin can opt to stay signed in and return to the dashboard with the session preserved.",
+    "category": "Authentication/session management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Enable the keep me signed in option"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the session remains available after navigation within the app"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC010",
+    "title": "Admin can keep the session on the device after login",
+    "description": "Verifies an admin can opt to stay signed in and return to the dashboard without being asked to log in again during the same browser session.",
+    "category": "Authentication/session management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Enable the stay signed in option"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user remains authenticated"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC011",
+    "title": "Reject invalid sign in credentials",
+    "description": "Verifies that invalid credentials are rejected and the user remains on the sign-in screen with an error message.",
+    "category": "Authentication and Session Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with invalid credentials"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with invalid credentials"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a login error message is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the sign-in screen remains visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC012",
+    "title": "Admin can submit a daily machine work log and see dashboard totals update",
+    "description": "Verifies a quick machine work record can be created from the dashboard flow and the dashboard reflects the new daily total afterward.",
+    "category": "QuickInputScreen",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Select the machine work entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a valid quantity or duration for the work log"
+      },
+      {
+        "type": "action",
+        "description": "Submit the daily entry"
+      },
+      {
+        "type": "action",
+        "description": "Return to the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new machine work total is reflected on the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a successful submission confirmation is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC013",
+    "title": "Create a machine work log from the dashboard",
+    "description": "This verifies that an admin can open quick entry from the dashboard, submit a machine work log, and see it reflected in the dashboard totals.",
+    "category": "Daily Logs for Machine Work, Sand Production, and Events",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily input screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the machine work log entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid machine work details including machine, hours, work type, and trip data"
+      },
+      {
+        "type": "action",
+        "description": "Submit the machine log"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new machine log is reflected in the dashboard totals"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC014",
+    "title": "Submit a machine work log from quick input",
+    "description": "Verifies that a user can create a machine work daily log from quick input and see the dashboard reflect the new activity.",
+    "category": "DashboardScreen load",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry flow from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the machine work entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the required machine work details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a success confirmation is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify dashboard totals reflect the new log"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC015",
+    "title": "Stay signed in on the device",
+    "description": "Verifies that enabling session persistence keeps the user signed in after login and returns them to the dashboard on a fresh visit.",
+    "category": "Authentication and Session Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Enable keeping the session on this device"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the session remains active after sign in"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC016",
+    "title": "Admin can submit a daily sand production log and see dashboard totals update",
+    "description": "Verifies a quick sand production record can be created from the dashboard flow and the dashboard reflects the new total afterward.",
+    "category": "QuickInputScreen",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Select the sand production entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a valid quantity for the production log"
+      },
+      {
+        "type": "action",
+        "description": "Submit the daily entry"
+      },
+      {
+        "type": "action",
+        "description": "Return to the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new sand production total is reflected on the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a successful submission confirmation is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC017",
+    "title": "Log out of an active session",
+    "description": "Verifies that an authenticated user can log out and is returned to the sign-in screen.",
+    "category": "Authentication and Session Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the account menu"
+      },
+      {
+        "type": "action",
+        "description": "Log out of the app"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the sign-in screen is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the session is cleared"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC018",
+    "title": "Submit a sand production log from quick input",
+    "description": "Verifies that a user can create a sand production daily log from quick input and see the dashboard reflect the new activity.",
+    "category": "DashboardScreen load",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry flow from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the sand production entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the required sand production details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a success confirmation is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify dashboard totals reflect the new log"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC019",
+    "title": "Admin can lock a payroll period and prevent further edits",
+    "description": "Verifies a payroll period can be locked and that edit controls are blocked for that period afterward.",
+    "category": "Payroll Generation and Period Lock",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the payroll screen"
+      },
+      {
+        "type": "action",
+        "description": "Generate payroll for a valid period"
+      },
+      {
+        "type": "action",
+        "description": "Lock the payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to edit the locked payroll snapshot"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the payroll period is shown as locked"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify editing controls are blocked"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC020",
+    "title": "Create a sand production log from the dashboard",
+    "description": "This verifies that an admin can record sand production from quick input and see the updated totals on the dashboard.",
+    "category": "Daily Logs for Machine Work, Sand Production, and Events",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily input screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the sand production log entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid morning and afternoon sand quantities"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sand production log"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the sand production totals are updated on the dashboard"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC021",
+    "title": "Admin can generate payroll for a period",
+    "description": "Verifies an admin can generate a payroll snapshot for a period and review the pay components for that period.",
+    "category": "Payroll Generation and Period Lock",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the payroll screen"
+      },
+      {
+        "type": "action",
+        "description": "Start generating payroll for a valid period"
+      },
+      {
+        "type": "action",
+        "description": "Select the employees to include"
+      },
+      {
+        "type": "action",
+        "description": "Generate the payroll snapshot"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify payroll details for the selected period are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify pay components are visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC022",
+    "title": "Submit an event log from quick input",
+    "description": "Verifies that a user can create an event daily log from quick input and see the dashboard reflect the new activity.",
+    "category": "DashboardScreen load",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily entry flow from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the event entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the required event details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a success confirmation is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify dashboard totals reflect the new log"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC023",
+    "title": "Super admin can unlock a locked payroll period",
+    "description": "Verifies a super admin can reopen a locked payroll period so edits become possible again.",
+    "category": "Payroll Generation and Period Lock",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the payroll screen"
+      },
+      {
+        "type": "action",
+        "description": "Select a locked payroll period"
+      },
+      {
+        "type": "action",
+        "description": "Unlock the payroll period"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the payroll period is shown as unlocked"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify editing controls are available"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC024",
+    "title": "Admin can create an income transaction",
+    "description": "Verifies an admin can add a new income transaction and see it appear in the transactions list.",
+    "category": "Transactions Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new transaction"
+      },
+      {
+        "type": "action",
+        "description": "Select the income transaction type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a valid category"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a valid amount"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a description"
+      },
+      {
+        "type": "action",
+        "description": "Save the transaction"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new transaction appears in the transactions list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the created income transaction is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC025",
+    "title": "Admin can create a new employee profile",
+    "description": "Verifies an admin can add an employee profile and see it appear in the employee list.",
+    "category": "Employee and Labor Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the employees screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new employee profile"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a valid employee name"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid wage type"
+      },
+      {
+        "type": "action",
+        "description": "Select a valid employee status"
+      },
+      {
+        "type": "action",
+        "description": "Save the employee profile"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new employee appears in the employee list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the created employee profile is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC026",
+    "title": "Create a general event log from the dashboard",
+    "description": "This verifies that an admin can submit an operational event log and see it added to the dashboard summary.",
+    "category": "Daily Logs for Machine Work, Sand Production, and Events",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily input screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the event log entry type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid event details including category, priority, time, and notes"
+      },
+      {
+        "type": "action",
+        "description": "Submit the event log"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the event log appears in the dashboard summary"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC027",
+    "title": "Admin can update an existing transaction",
+    "description": "Verifies an admin can edit a transaction and see the updated details in the transaction view.",
+    "category": "Transactions Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions screen"
+      },
+      {
+        "type": "action",
+        "description": "Create a new transaction with valid details"
+      },
+      {
+        "type": "action",
+        "description": "Open the created transaction for editing"
+      },
+      {
+        "type": "action",
+        "description": "Change the amount or category"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the transaction details are updated"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the edited transaction remains in the list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC028",
+    "title": "Create a vehicle expense and view it in the list",
+    "description": "This verifies that a finance or operations user can record a vehicle expense and confirm it appears in the expense list.",
+    "category": "Vehicle and Maintenance Expenses",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the vehicle expenses screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new vehicle expense"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid vehicle cost details and the expense date"
+      },
+      {
+        "type": "action",
+        "description": "Submit the vehicle expense"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new vehicle expense appears in the list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC029",
+    "title": "Admin can update an employee profile",
+    "description": "Verifies an admin can edit an employee profile and see the updated information reflected in the employee record.",
+    "category": "Employee and Labor Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the employees screen"
+      },
+      {
+        "type": "action",
+        "description": "Create a new employee profile with valid details"
+      },
+      {
+        "type": "action",
+        "description": "Open the employee profile for editing"
+      },
+      {
+        "type": "action",
+        "description": "Change the role, salary, or status"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the employee profile is updated"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated employee remains in the list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC030",
+    "title": "Create a maintenance entry and view it in the list",
+    "description": "This verifies that a user can record a maintenance entry with a date and description and see it saved in the maintenance list.",
+    "category": "Vehicle and Maintenance Expenses",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the maintenance screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new maintenance entry"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid maintenance type, date, and description details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the maintenance entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new maintenance entry appears in the list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC031",
+    "title": "Admin can delete an unlocked transaction",
+    "description": "Verifies an admin can remove an existing transaction and the record disappears from the list.",
+    "category": "Transactions Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions screen"
+      },
+      {
+        "type": "action",
+        "description": "Create a new transaction with valid details"
+      },
+      {
+        "type": "action",
+        "description": "Open the transaction actions menu"
+      },
+      {
+        "type": "action",
+        "description": "Delete the transaction"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the transaction no longer appears in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a deletion confirmation is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC032",
+    "title": "View and update organization settings",
+    "description": "Verifies that a super admin can review organization settings, change them, and see the saved configuration reflected in the UI.",
+    "category": "Settings, Master Data, and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the settings screen"
+      },
+      {
+        "type": "action",
+        "description": "Edit a configurable organization setting"
+      },
+      {
+        "type": "action",
+        "description": "Save the settings"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated settings are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the saved configuration is reflected"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC033",
+    "title": "Block submission when required quick entry fields are missing",
+    "description": "Verifies that quick entry validation prevents submission when required fields are omitted and shows validation feedback.",
+    "category": "Quick Daily Data Entry",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open a daily module card from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Leave a required quick entry field empty"
+      },
+      {
+        "type": "action",
+        "description": "Submit the quick input form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the record is not submitted"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC034",
+    "title": "Admin sees a validation error when payroll source data is incomplete",
+    "description": "Verifies payroll generation is blocked and a correction prompt appears when the source data is incomplete or the period is invalid.",
+    "category": "Payroll Generation and Period Lock",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the payroll screen"
+      },
+      {
+        "type": "action",
+        "description": "Start generating payroll for a period with incomplete source data or an invalid selection"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to generate the payroll snapshot"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the payroll form remains open"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a payroll validation message is visible"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC035",
+    "title": "Create a daily plan item",
+    "description": "Verifies that a user can create a new daily plan with a valid scope, work type, and task details and see it listed as todo.",
+    "category": "Planning and Task Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the planning and task management screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new plan"
+      },
+      {
+        "type": "action",
+        "description": "Select the daily scope"
+      },
+      {
+        "type": "action",
+        "description": "Select a lane or work type"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the task details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the plan"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new plan is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the plan is shown with todo status"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC036",
+    "title": "Update an existing vehicle expense",
+    "description": "This verifies that a user can correct an existing vehicle expense and see the updated values in the record view.",
+    "category": "Vehicle and Maintenance Expenses",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the vehicle expenses screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Create a new vehicle expense with valid details"
+      },
+      {
+        "type": "action",
+        "description": "Open the created vehicle expense for editing"
+      },
+      {
+        "type": "action",
+        "description": "Update the amount or description with corrected values"
+      },
+      {
+        "type": "action",
+        "description": "Save the changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the vehicle expense shows the updated values"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC037",
+    "title": "Create a new admin account",
+    "description": "Verifies that a super admin can create an admin user and see the new account listed in administration.",
+    "category": "Settings, Master Data, and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the admin management screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new admin account"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the required admin account details"
+      },
+      {
+        "type": "action",
+        "description": "Save the admin account"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new admin account appears in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the administration list is updated"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC038",
+    "title": "Create a land project in deposit status",
+    "description": "This verifies that a super admin or authorized operations user can create a land project and see it listed in deposit status.",
+    "category": "Land Project Tracking",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the land projects screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new land project"
+      },
+      {
+        "type": "action",
+        "description": "Fill in valid seller, deed, area, payment, and notes details"
+      },
+      {
+        "type": "action",
+        "description": "Submit the land project"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new project appears in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the project is in deposit status"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC039",
+    "title": "Mark a plan item as done",
+    "description": "Verifies that a user can update an existing plan status to done and see the updated state on the plan detail screen.",
+    "category": "Planning and Task Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the planning and task management screen"
+      },
+      {
+        "type": "action",
+        "description": "Create a valid plan item"
+      },
+      {
+        "type": "action",
+        "description": "Open the created plan item"
+      },
+      {
+        "type": "action",
+        "description": "Change the plan status to done"
+      },
+      {
+        "type": "action",
+        "description": "Save the plan changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the plan is displayed with done status"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the plan detail shows the updated status"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC040",
+    "title": "Admin sees validation errors when creating an invalid transaction",
+    "description": "Verifies the transactions form blocks submission and shows field-level errors when required data is missing or invalid.",
+    "category": "Transactions Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the transactions screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new transaction"
+      },
+      {
+        "type": "action",
+        "description": "Leave a required field empty or enter an invalid amount"
+      },
+      {
+        "type": "action",
+        "description": "Save the transaction"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the form remains open"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify validation errors are visible"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC041",
+    "title": "Add a new master data category",
+    "description": "Verifies that a super admin can create a new category value and see it appear in the master data list.",
+    "category": "Settings, Master Data, and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the master data management screen"
+      },
+      {
+        "type": "action",
+        "description": "Start adding a new category"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a new category value"
+      },
+      {
+        "type": "action",
+        "description": "Save the category"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new category appears in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the master data list is updated"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC042",
+    "title": "View monthly plans and carry-over work",
+    "description": "Verifies that a user can open monthly planning data and review incomplete work history on the calendar screen.",
+    "category": "Planning and Task Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the planning and task management screen"
+      },
+      {
+        "type": "action",
+        "description": "Switch to the monthly planning view"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify monthly plans are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify carry-over or unfinished work history is visible"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC043",
+    "title": "Update a land project to paid full and transferred",
+    "description": "This verifies that a user can advance a land project through paid full and transferred status changes and see the final status saved.",
+    "category": "Land Project Tracking",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the land projects screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Create a new land project with valid details"
+      },
+      {
+        "type": "action",
+        "description": "Open the created project for editing"
+      },
+      {
+        "type": "action",
+        "description": "Change the project status to paid full"
+      },
+      {
+        "type": "action",
+        "description": "Save the update"
+      },
+      {
+        "type": "action",
+        "description": "Reopen the project for editing"
+      },
+      {
+        "type": "action",
+        "description": "Change the project status to transferred and add transfer notes"
+      },
+      {
+        "type": "action",
+        "description": "Save the update"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the project shows transferred status"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC044",
+    "title": "Admin sees validation errors when employee data is incomplete",
+    "description": "Verifies the employee form blocks saving and shows errors when required information is missing or invalid.",
+    "category": "Employee and Labor Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login username field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the employees screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new employee profile"
+      },
+      {
+        "type": "action",
+        "description": "Leave the name empty or choose an invalid wage type"
+      },
+      {
+        "type": "action",
+        "description": "Save the employee profile"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the form remains open"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify employee validation errors are visible"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC045",
+    "title": "Prevent restricted admin management changes",
+    "description": "Verifies that a non-super-admin user is blocked from creating admin accounts and sees access denied feedback.",
+    "category": "Settings, Master Data, and Administration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the admin management screen"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access denied feedback is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify admin creation controls are unavailable"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC046",
+    "title": "Block machine log submission with missing required details",
+    "description": "This verifies that an admin cannot save a machine log when required details are missing and a validation error is shown instead.",
+    "category": "Daily Logs for Machine Work, Sand Production, and Events",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the quick daily input screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Choose the machine work log entry type"
+      },
+      {
+        "type": "action",
+        "description": "Leave the required machine work details incomplete"
+      },
+      {
+        "type": "action",
+        "description": "Submit the machine log"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation error is shown"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the machine log is not saved"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC047",
+    "title": "See validation feedback when creating an invalid plan",
+    "description": "Verifies that the calendar screen prevents saving a plan when required fields or scope are invalid and shows validation feedback.",
+    "category": "Planning and Task Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the planning and task management screen"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new plan"
+      },
+      {
+        "type": "action",
+        "description": "Leave the required task details empty"
+      },
+      {
+        "type": "action",
+        "description": "Submit the plan"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the plan is not created"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC048",
+    "title": "Block maintenance submission with invalid details",
+    "description": "This verifies that a user cannot save a maintenance entry when required fields are missing or the date is invalid and validation feedback is shown.",
+    "category": "Vehicle and Maintenance Expenses",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the maintenance screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new maintenance entry"
+      },
+      {
+        "type": "action",
+        "description": "Leave the required maintenance details incomplete or invalid"
+      },
+      {
+        "type": "action",
+        "description": "Submit the maintenance entry"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation message is shown"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the maintenance entry is not saved"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC049",
+    "title": "Block land project submission with missing required details",
+    "description": "This verifies that a user cannot save a land project when seller or area details are missing and validation feedback is shown.",
+    "category": "Land Project Tracking",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the login credentials with {{LOGIN_USER}} and {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the land projects screen from the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Start creating a new land project"
+      },
+      {
+        "type": "action",
+        "description": "Leave the seller or area details incomplete"
+      },
+      {
+        "type": "action",
+        "description": "Submit the land project"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a project form validation error is shown"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the project is not saved"
+      }
+    ],
+    "priority": "Low"
+  }
+]

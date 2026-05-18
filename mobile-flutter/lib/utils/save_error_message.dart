@@ -78,3 +78,47 @@ Never failSave(
 }) {
   throw UserSaveException(message, context: context, field: field);
 }
+
+/// ข้อมูลบริบทสำหรับส่งรายงานไปเว็บ (`mobile_error_reports`)
+class SaveErrorReportFields {
+  const SaveErrorReportFields({
+    this.page,
+    this.action,
+    this.button,
+    this.field,
+    required this.cause,
+  });
+
+  final String? page;
+  final String? action;
+  final String? button;
+  final String? field;
+  final String cause;
+}
+
+SaveErrorReportFields extractSaveErrorReportFields(
+  Object error, {
+  SaveErrorContext? context,
+}) {
+  final ctx = error is UserSaveException ? error.context : context;
+  final field = error is UserSaveException ? error.field : null;
+  final cause = error is UserSaveException
+      ? error.message
+      : error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+  return SaveErrorReportFields(
+    page: ctx?.page,
+    action: ctx?.action,
+    button: ctx?.button,
+    field: field,
+    cause: cause,
+  );
+}
+
+String buildSaveErrorReportSummary(SaveErrorReportFields f) {
+  final parts = <String>['บันทึกไม่สำเร็จ'];
+  if (f.page != null && f.page!.trim().isNotEmpty) {
+    parts.add(f.page!.trim());
+  }
+  if (f.cause.trim().isNotEmpty) parts.add(f.cause.trim());
+  return parts.join(' · ');
+}

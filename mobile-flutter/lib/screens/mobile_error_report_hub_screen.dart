@@ -123,6 +123,22 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
     return '$v';
   }
 
+  String? _contextLine(Map<String, dynamic> r) {
+    final page = '${r['screen_page'] ?? ''}'.trim();
+    final action = '${r['screen_action'] ?? ''}'.trim();
+    final button = '${r['screen_button'] ?? ''}'.trim();
+    final field = '${r['error_field'] ?? ''}'.trim();
+    if (page.isEmpty && action.isEmpty && button.isEmpty && field.isEmpty) {
+      return null;
+    }
+    final parts = <String>[];
+    if (page.isNotEmpty) parts.add('หน้า: $page');
+    if (action.isNotEmpty) parts.add('รายการ: $action');
+    if (button.isNotEmpty) parts.add('ปุ่ม: $button');
+    if (field.isNotEmpty) parts.add('จุด: $field');
+    return parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -284,6 +300,18 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
                               ),
                           ],
                         ),
+                        if (_contextLine(r) != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _contextLine(r)!,
+                            style: GoogleFonts.kanit(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1565C0),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         Text(
                           '${_fmt(r['created_at'])} · ${_fmt(r['source'])} · v${_fmt(r['app_version'])}',

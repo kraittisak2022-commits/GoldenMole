@@ -4,19 +4,19 @@ import 'package:flutter/material.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 
-/// ไอคอน outline บนพื้นขาว: คงโทนเมนูจาก [accent] แต่ผสมกับสีหมึกเข้มตามความสว่างเพื่อคอนทราสต์
+/// ไอคอน outline: โทน [accent] สดขึ้นเล็กน้อย ผสมหมึกพอให้อ่านบนพื้นขาว
 Color _readableMenuIconColor(Color accent) {
   const ink = Color(0xFF1C2834);
   final l = accent.computeLuminance();
   final double mix;
   if (l >= 0.72) {
-    mix = 0.62;
+    mix = 0.36;
   } else if (l >= 0.5) {
-    mix = 0.48;
+    mix = 0.24;
   } else if (l >= 0.32) {
-    mix = 0.34;
+    mix = 0.14;
   } else {
-    mix = 0.2;
+    mix = 0.05;
   }
   return Color.lerp(accent, ink, mix)!;
 }
@@ -91,8 +91,16 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final accent = widget.tileColor;
     final isSandWashTitle = widget.title.contains('บันทึกการร่อนทราย');
     final cardTint = Colors.white;
-    final borderColor = const Color(0xFFE4EAF2);
-    final iconBg = const Color(0xFFF5F8FC);
+    final borderColor = Color.lerp(
+      const Color(0xFFE4EAF2),
+      accent,
+      0.12,
+    )!;
+    final iconBg = Color.lerp(
+      const Color(0xFFF8FAFD),
+      accent,
+      0.22,
+    )!;
     final iconColor = _readableMenuIconColor(accent);
 
     return LayoutBuilder(
@@ -113,7 +121,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
             color: iconBg,
             borderRadius: BorderRadius.circular(corner),
             border: Border.all(
-              color: const Color(0xFFE0E7F0),
+              color: accent.withValues(alpha: 0.36),
               width: 1,
             ),
             boxShadow: useLiteChrome
@@ -146,8 +154,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                   offset: const Offset(0, 2),
                 ),
                 BoxShadow(
-                  color: accent.withValues(alpha: 0.06),
-                  blurRadius: 12,
+                  color: accent.withValues(alpha: 0.12),
+                  blurRadius: 14,
                   spreadRadius: -2,
                   offset: const Offset(0, 6),
                 ),
@@ -185,7 +193,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                 ),
                 BoxShadow(
                   color: accent.withValues(
-                    alpha: _hovered ? 0.14 : 0.08,
+                    alpha: _hovered ? 0.2 : 0.14,
                   ),
                   blurRadius: _hovered ? 28 : 20,
                   spreadRadius: -6,

@@ -6,6 +6,12 @@ import Input from '../../components/ui/Input';
 import { AppSettings, AdminUser, AdminUiTheme, Employee, Transaction, LandProject, AdminLog } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { runBackup } from '../../services/backupService';
+import type { MobileErrorReportRow } from '../../types/mobileErrorReport';
+import {
+    mobileErrorContextFromRow,
+    mobileErrorHasContext,
+    mobileErrorSourceLabel,
+} from '../../utils/mobileErrorReportDisplay';
 
 interface SettingsModuleProps {
     settings: AppSettings;
@@ -44,26 +50,6 @@ const TAB_HELP: Record<string, string> = {
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
-
-type MobileErrorReportRow = {
-    id: string;
-    created_at: string;
-    platform?: string | null;
-    reported_by_username?: string | null;
-    reported_by_name?: string | null;
-    app_version?: string | null;
-    device_info?: string | null;
-    error_summary: string;
-    error_detail?: string | null;
-    user_note?: string | null;
-    source?: string | null;
-    reviewed?: boolean | null;
-    reviewed_at?: string | null;
-    reviewed_by?: string | null;
-    resolved?: boolean | null;
-    resolved_at?: string | null;
-    resolved_by?: string | null;
-};
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 type TableDiagnostic = { table: string; read: StatusState; write: StatusState; note?: string };
@@ -162,13 +148,30 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     const [mobileLoading, setMobileLoading] = useState(false);
     const [mobileLoadErr, setMobileLoadErr] = useState<string | null>(null);
     const [mobileUnreadCount, setMobileUnreadCount] = useState<number | null>(null);
+    const [mobileResolvingId, setMobileResolvingId] = useState<string | null>(null);
+    const [mobileResolvedSupported, setMobileResolvedSupported] = useState(true);
+    const [mobileActionNotice, setMobileActionNotice] = useState<{
+        type: 'ok' | 'err' | 'warn';
+        text: string;
+    } | null>(null);
+
+    const patchMobileErrorRow = (id: string, patch: Partial<MobileErrorReportRow>) => {
+        setMobileErrors((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    };
+
+    const isMissingResolvedColumnError = (message: string) =>
+        /resolved|schema cache|column/i.test(message);
 
     const refreshMobileUnreadCount = async () => {
         try {
-            const { count, error } = await supabase
+            let query = supabase
                 .from('mobile_error_reports')
                 .select('id', { count: 'exact', head: true })
                 .eq('reviewed', false);
+            if (mobileResolvedSupported) {
+                query = query.eq('resolved', false);
+            }
+            const { count, error } = await query;
             if (error) throw error;
             setMobileUnreadCount(count ?? 0);
         } catch {
@@ -180,6 +183,16 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         setMobileLoading(true);
         setMobileLoadErr(null);
         try {
+            const probe = await supabase
+                .from('mobile_error_reports')
+                .select('id, resolved')
+                .limit(1);
+            if (probe.error && isMissingResolvedColumnError(probe.error.message || '')) {
+                setMobileResolvedSupported(false);
+            } else if (!probe.error) {
+                setMobileResolvedSupported(true);
+            }
+
             const { data, error } = await supabase
                 .from('mobile_error_reports')
                 .select('*')
@@ -188,7 +201,9 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             if (error) throw error;
             const rows = (data || []) as MobileErrorReportRow[];
             setMobileErrors(rows);
-            setMobileUnreadCount(rows.filter((r) => !r.reviewed).length);
+            setMobileUnreadCount(
+                rows.filter((r) => !r.reviewed && !r.resolved).length,
+            );
         } catch (err: any) {
             setMobileLoadErr(err?.message || 'โหลดไม่สำเร็จ');
             setMobileErrors([]);
@@ -198,41 +213,107 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     };
 
     const markMobileErrorReviewed = async (id: string) => {
+        if (mobileResolvingId) return;
+        setMobileResolvingId(id);
+        setMobileActionNotice(null);
+        const now = new Date().toISOString();
+        const who = currentAdmin?.username || 'web';
+        const patch = {
+            reviewed: true,
+            reviewed_at: now,
+            reviewed_by: who,
+        };
         try {
-            const { error } = await supabase.from('mobile_error_reports').update({
-                reviewed: true,
-                reviewed_at: new Date().toISOString(),
-                reviewed_by: currentAdmin?.username || 'web',
-            }).eq('id', id);
+            const { data, error } = await supabase
+                .from('mobile_error_reports')
+                .update(patch)
+                .eq('id', id)
+                .select('id, reviewed, reviewed_at, reviewed_by')
+                .maybeSingle();
             if (error) throw error;
-            await loadMobileAndroidErrors();
+            if (!data) {
+                throw new Error('ไม่พบรายการในฐานข้อมูล — กดรีเฟรชแล้วลองอีกครั้ง');
+            }
+            patchMobileErrorRow(id, data as Partial<MobileErrorReportRow>);
+            setMobileActionNotice({ type: 'ok', text: 'ทำเครื่องหมายอ่านแล้ว' });
             await refreshMobileUnreadCount();
+            void loadMobileAndroidErrors();
         } catch (err: any) {
-            alert(err?.message || 'อัปเดตไม่สำเร็จ');
+            setMobileActionNotice({
+                type: 'err',
+                text: err?.message || 'อัปเดตไม่สำเร็จ',
+            });
+        } finally {
+            setMobileResolvingId(null);
         }
     };
 
     const markMobileErrorResolved = async (id: string) => {
+        if (mobileResolvingId) return;
+        setMobileResolvingId(id);
+        setMobileActionNotice(null);
+        const row = mobileErrors.find((r) => r.id === id);
+        const now = new Date().toISOString();
+        const who = currentAdmin?.username || 'web';
+        const patch: Record<string, string | boolean> = {
+            resolved: true,
+            resolved_at: now,
+            resolved_by: who,
+            reviewed: true,
+        };
+        if (!row?.reviewed) {
+            patch.reviewed_at = now;
+            patch.reviewed_by = who;
+        }
+
         try {
-            const row = mobileErrors.find((r) => r.id === id);
-            const now = new Date().toISOString();
-            const who = currentAdmin?.username || 'web';
-            const patch: Record<string, string | boolean> = {
+            if (!mobileResolvedSupported) {
+                throw new Error(
+                    'ฐานข้อมูลยังไม่มีคอลัมน์ resolved — รัน migration supabase/migrations/20260518120000_mobile_error_reports_resolved.sql บน Supabase ก่อน',
+                );
+            }
+
+            const { data, error } = await supabase
+                .from('mobile_error_reports')
+                .update(patch)
+                .eq('id', id)
+                .select(
+                    'id, resolved, resolved_at, resolved_by, reviewed, reviewed_at, reviewed_by',
+                )
+                .maybeSingle();
+
+            if (error) {
+                if (isMissingResolvedColumnError(error.message || '')) {
+                    setMobileResolvedSupported(false);
+                    throw new Error(
+                        'ฐานข้อมูลยังไม่มีคอลัมน์ resolved — รัน migration 20260518120000_mobile_error_reports_resolved.sql บน Supabase',
+                    );
+                }
+                throw error;
+            }
+            if (!data) {
+                throw new Error('ไม่พบรายการในฐานข้อมูล — กดรีเฟรชแล้วลองอีกครั้ง');
+            }
+
+            patchMobileErrorRow(id, {
+                ...(data as Partial<MobileErrorReportRow>),
                 resolved: true,
                 resolved_at: now,
                 resolved_by: who,
                 reviewed: true,
-            };
-            if (!row?.reviewed) {
-                patch.reviewed_at = now;
-                patch.reviewed_by = who;
-            }
-            const { error } = await supabase.from('mobile_error_reports').update(patch).eq('id', id);
-            if (error) throw error;
-            await loadMobileAndroidErrors();
+                reviewed_at: (data as MobileErrorReportRow).reviewed_at ?? now,
+                reviewed_by: (data as MobileErrorReportRow).reviewed_by ?? who,
+            });
+            setMobileActionNotice({ type: 'ok', text: 'บันทึกสถานะแก้ไขเรียบร้อยแล้ว' });
             await refreshMobileUnreadCount();
+            void loadMobileAndroidErrors();
         } catch (err: any) {
-            alert(err?.message || 'อัปเดตไม่สำเร็จ');
+            setMobileActionNotice({
+                type: 'err',
+                text: err?.message || 'อัปเดตไม่สำเร็จ',
+            });
+        } finally {
+            setMobileResolvingId(null);
         }
     };
 
@@ -1319,6 +1400,27 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                 </div>
                             )}
 
+                            {!mobileResolvedSupported && (
+                                <div className="rounded-xl px-4 py-3 text-sm border bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-100">
+                                    ยังไม่ได้ติดตั้งคอลัมน์ <code className="font-mono text-xs">resolved</code> บน Supabase — รัน migration{' '}
+                                    <code className="font-mono text-xs">20260518120000_mobile_error_reports_resolved.sql</code> ก่อนใช้ปุ่ม「แก้ไขเรียบร้อย」
+                                </div>
+                            )}
+
+                            {mobileActionNotice && (
+                                <div
+                                    className={`rounded-xl px-4 py-3 text-sm border ${
+                                        mobileActionNotice.type === 'ok'
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-100'
+                                            : mobileActionNotice.type === 'warn'
+                                              ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-100'
+                                              : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-500/10 dark:border-red-500/30 dark:text-red-200'
+                                    }`}
+                                >
+                                    {mobileActionNotice.text}
+                                </div>
+                            )}
+
                             {mobileLoading && mobileErrors.length === 0 ? (
                                 <p className="text-sm text-slate-500">กำลังโหลดรายการ...</p>
                             ) : mobileErrors.length === 0 ? (
@@ -1359,14 +1461,41 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                             )}
                                                             <span className="text-xs text-slate-500">{when}</span>
                                                             {row.source && (
-                                                                <span className="text-xs font-mono text-slate-500 truncate max-w-[12rem]" title={row.source}>
-                                                                    {row.source}
+                                                                <span
+                                                                    className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                                                                    title={row.source}
+                                                                >
+                                                                    {mobileErrorSourceLabel(row.source)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                         <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
                                                             {row.error_summary}
                                                         </p>
+                                                        {(() => {
+                                                            const ctx = mobileErrorContextFromRow(row);
+                                                            if (!mobileErrorHasContext(ctx)) return null;
+                                                            const items: { label: string; value: string }[] = [];
+                                                            if (ctx.page) items.push({ label: 'หน้า', value: ctx.page });
+                                                            if (ctx.action) items.push({ label: 'รายการ', value: ctx.action });
+                                                            if (ctx.button) items.push({ label: 'ปุ่ม', value: ctx.button });
+                                                            if (ctx.field) items.push({ label: 'จุดที่ผิด', value: ctx.field });
+                                                            return (
+                                                                <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50/90 dark:border-sky-500/35 dark:bg-sky-500/10 p-3">
+                                                                    <p className="text-[11px] font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200 mb-2">
+                                                                        ตำแหน่งในแอป (ช่วยแก้บั๊ก)
+                                                                    </p>
+                                                                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                                                        {items.map((item) => (
+                                                                            <div key={item.label} className="min-w-0">
+                                                                                <dt className="font-semibold text-sky-900/80 dark:text-sky-100/80">{item.label}</dt>
+                                                                                <dd className="text-slate-800 dark:text-slate-100 break-words font-medium">{item.value}</dd>
+                                                                            </div>
+                                                                        ))}
+                                                                    </dl>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         <p className="text-xs text-slate-600 dark:text-slate-400">
                                                             {(row.reported_by_username || row.reported_by_name) && (
                                                                 <>
@@ -1382,20 +1511,31 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                     <div className="flex flex-wrap gap-2 shrink-0">
                                                         {unread && (
                                                             <Button
+                                                                type="button"
                                                                 variant="outline"
                                                                 className="h-8 text-xs"
+                                                                disabled={!!mobileResolvingId}
                                                                 onClick={() => void markMobileErrorReviewed(row.id)}
                                                             >
-                                                                ทำเครื่องหมายอ่านแล้ว
+                                                                {mobileResolvingId === row.id
+                                                                    ? 'กำลังบันทึก...'
+                                                                    : 'ทำเครื่องหมายอ่านแล้ว'}
                                                             </Button>
                                                         )}
                                                         {!resolved && (
                                                             <Button
+                                                                type="button"
                                                                 variant="outline"
                                                                 className="h-8 text-xs border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-500/50 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+                                                                disabled={
+                                                                    !!mobileResolvingId ||
+                                                                    !mobileResolvedSupported
+                                                                }
                                                                 onClick={() => void markMobileErrorResolved(row.id)}
                                                             >
-                                                                แก้ไขเรียบร้อย
+                                                                {mobileResolvingId === row.id
+                                                                    ? 'กำลังบันทึก...'
+                                                                    : 'แก้ไขเรียบร้อย'}
                                                             </Button>
                                                         )}
                                                     </div>
@@ -1421,9 +1561,12 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                         {row.reviewed_by ? ` โดย ${row.reviewed_by}` : ''}
                                                     </p>
                                                 )}
-                                                {resolved && row.resolved_at && (
+                                                {resolved && (
                                                     <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-300">
-                                                        แก้ไขเรียบร้อยเมื่อ {new Date(row.resolved_at).toLocaleString('th-TH')}
+                                                        แก้ไขเรียบร้อย
+                                                        {row.resolved_at
+                                                            ? `เมื่อ ${new Date(row.resolved_at).toLocaleString('th-TH')}`
+                                                            : ''}
                                                         {row.resolved_by ? ` โดย ${row.resolved_by}` : ''}
                                                     </p>
                                                 )}

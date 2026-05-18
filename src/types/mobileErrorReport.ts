@@ -1,0 +1,23 @@
+export type MobileErrorReportRow = {
+    id: string;
+    created_at: string;
+    platform?: string | null;
+    reported_by_username?: string | null;
+    reported_by_name?: string | null;
+    app_version?: string | null;
+    device_info?: string | null;
+    error_summary: string;
+    error_detail?: string | null;
+    user_note?: string | null;
+    source?: string | null;
+    screen_page?: string | null;
+    screen_action?: string | null;
+    screen_button?: string | null;
+    error_field?: string | null;
+    reviewed?: boolean | null;
+    reviewed_at?: string | null;
+    reviewed_by?: string | null;
+    resolved?: boolean | null;
+    resolved_at?: string | null;
+    resolved_by?: string | null;
+};

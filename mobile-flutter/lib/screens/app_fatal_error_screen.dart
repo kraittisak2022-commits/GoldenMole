@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/admin_user.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
 
 /// หน้าเมื่อเกิด error ร้ายแรงที่ไม่ได้จับ — ให้ส่งรายงานเข้าเว็บ (ตาราง mobile_error_reports)
 class AppFatalErrorScreen extends StatefulWidget {
@@ -59,6 +60,8 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
         source: widget.source,
         userNote: _note.text,
         reporter: _reporter,
+        screenPage: MobileErrorScreenTracker.page,
+        screenAction: MobileErrorScreenTracker.module,
       );
       if (!mounted) return;
       setState(() {

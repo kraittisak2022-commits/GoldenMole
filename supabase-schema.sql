@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS employees (
     start_date TEXT,
     salary_history JSONB DEFAULT '[]'::jsonb,
     kpi_history JSONB DEFAULT '[]'::jsonb,
+    inactive BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -142,6 +143,8 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS org_profile JSONB DEFAULT '{}'
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_defaults JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS position TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS positions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS inactive BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS line_user_id TEXT;
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_movement TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS work_type_by_employee JSONB;
@@ -291,7 +294,11 @@ CREATE TABLE IF NOT EXISTS mobile_error_reports (
     reviewed_by TEXT,
     resolved BOOLEAN NOT NULL DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
-    resolved_by TEXT
+    resolved_by TEXT,
+    screen_page TEXT,
+    screen_action TEXT,
+    screen_button TEXT,
+    error_field TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_mobile_error_reports_created_at

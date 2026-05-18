@@ -14,11 +14,15 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/thai_bank_brand_icon.dart';
+import '../widgets/thai_text_pad.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
+import '../services/mobile_error_report_service.dart';
+import '../services/session_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/save_error_message.dart';
 
 class QuickInputScreen extends StatefulWidget {
@@ -401,6 +405,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   @override
   void initState() {
     super.initState();
+    final pageTitle = widget.appBarTitle?.trim();
+    final category = widget.initialCategory?.trim();
+    MobileErrorScreenTracker.set(
+      page: (pageTitle != null && pageTitle.isNotEmpty)
+          ? pageTitle
+          : ((category != null && category.isNotEmpty)
+                ? category
+                : 'บันทึกข้อมูล'),
+      module: category,
+    );
     final reduceMotion = WidgetsBinding
         .instance
         .platformDispatcher
@@ -1554,11 +1568,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _showSaveError(Object error, {SaveErrorContext? context}) {
     if (!mounted) return;
+    final ctx = context ?? _activeSaveErrorContext;
     showSaveErrorSnackBar(
       this.context,
       error: error,
-      saveContext: context ?? _activeSaveErrorContext,
+      saveContext: ctx,
     );
+    _reportSaveErrorToServer(error, ctx);
+  }
+
+  void _reportSaveErrorToServer(Object error, SaveErrorContext? ctx) {
+    unawaited(() async {
+      try {
+        final reporter = await SessionService().getSavedAdmin();
+        await MobileErrorReportService(Supabase.instance.client).submit(
+          error: error,
+          source: 'save_failed',
+          saveContext: ctx,
+          reporter: reporter,
+        );
+      } catch (_) {}
+    }());
   }
 
   void _showSuperAdminHistorySaveError(
@@ -6544,6 +6574,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     onChanged?.call(result);
   }
 
+  Future<void> _openThaiTextPad({
+    required TextEditingController controller,
+    required String label,
+    VoidCallback? onChanged,
+    int? minLines,
+    int? maxLines,
+  }) async {
+    if (!mounted) return;
+    final result = await showThaiTextPad(
+      context: context,
+      label: label,
+      initialText: controller.text,
+      minLines: minLines ?? 2,
+      maxLines: maxLines ?? 4,
+    );
+    if (!mounted || result == null) return;
+    if (controller.text != result) {
+      controller.text = result;
+    }
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    onChanged?.call();
+  }
+
   Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
     final initial = TimeOfDay.now();
     final t = await showTimePicker(
@@ -7868,11 +7923,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       pickedIds: _laborPickedIds,
       bucketExpanded: _laborBucketExpanded,
       laborEmpPoolKind: _laborEmpPoolKindFor,
+      openThaiTextPad: _openThaiTextPad,
     );
   }
 
   double _laborPoolPinHeight(BuildContext context) {
-    return (MediaQuery.sizeOf(context).height * 0.38).clamp(280.0, 420.0);
+    // 4 กลุ่มตำแหน่ง + คำแนะนำ — ต้องสูงพอไม่ให้ Column ล้น (เคย overflow ~24px ที่ 420)
+    return (MediaQuery.sizeOf(context).height * 0.42).clamp(360.0, 500.0);
   }
 
   double _laborPoolAsideWidth(BuildContext context) {
@@ -8011,6 +8068,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 pickedIds: _laborPickedIds,
                 bucketExpanded: _laborBucketExpanded,
                 laborEmpPoolKind: _laborEmpPoolKindFor,
+                openThaiTextPad: _openThaiTextPad,
               ),
             ),
           ),
@@ -11063,6 +11121,7 @@ class _LaborDragBoard extends StatefulWidget {
     required this.pickedIds,
     required this.bucketExpanded,
     required this.laborEmpPoolKind,
+    required this.openThaiTextPad,
   });
 
   final _LaborDragBoardLayout layout;
@@ -11080,6 +11139,13 @@ class _LaborDragBoard extends StatefulWidget {
   final Set<String> pickedIds;
   final Map<String, bool> bucketExpanded;
   final _LaborEmpPoolKind? Function(Employee e) laborEmpPoolKind;
+  final Future<void> Function({
+    required TextEditingController controller,
+    required String label,
+    VoidCallback? onChanged,
+    int? minLines,
+    int? maxLines,
+  }) openThaiTextPad;
 
   @override
   State<_LaborDragBoard> createState() => _LaborDragBoardState();
@@ -11102,7 +11168,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
   }) {
     final selected = widget.poolKind == kind;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: selected ? const Color(0xFFE8F1FF) : const Color(0xFFF6F8FC),
         shape: RoundedRectangleBorder(
@@ -11118,7 +11184,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onPoolKindChanged(kind),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -11450,7 +11516,15 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 const SizedBox(height: 6),
                 TextField(
                   controller: job.nameController,
-                  onChanged: (_) => widget.onGeneralJobNameChanged(),
+                  readOnly: true,
+                  showCursor: false,
+                  onTap: () => widget.openThaiTextPad(
+                    controller: job.nameController,
+                    label: 'รายละเอียดงาน',
+                    onChanged: widget.onGeneralJobNameChanged,
+                    minLines: 2,
+                    maxLines: 4,
+                  ),
                   style: GoogleFonts.kanit(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
@@ -11463,10 +11537,15 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF64748B),
                     ),
-                    hintText: 'เช่น ทำรั้วสแสลม / ปลูกต้นไม้',
+                    hintText: 'แตะเพื่อเปิดแป้นพิมพ์ภาษาไทย',
                     hintStyle: GoogleFonts.kanit(
                       fontSize: 12.5,
                       color: Colors.black38,
+                    ),
+                    suffixIcon: Icon(
+                      Icons.keyboard_alt_outlined,
+                      size: 20,
+                      color: parentColor.withValues(alpha: 0.75),
                     ),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFD),
@@ -11709,115 +11788,120 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 height: 1.3,
               ),
             ),
-            const SizedBox(height: 10),
-            _poolKindTile(
-              kind: _LaborEmpPoolKind.sandSieve,
-              icon: Icons.water_drop_outlined,
-              title: 'พนักงานร่อนทราย',
-              subtitle: 'ตำแหน่งมีคำว่า «ร่อน»',
-            ),
-            _poolKindTile(
-              kind: _LaborEmpPoolKind.excavatorMac,
-              icon: Icons.precision_manufacturing_outlined,
-              title: 'คนขับรถแม็คโคร',
-              subtitle: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
-            ),
-            _poolKindTile(
-              kind: _LaborEmpPoolKind.nightWatch,
-              icon: Icons.nightlight_round,
-              title: 'เฝ้ากลางคืน',
-              subtitle: 'ตำแหน่งเวร/เฝ้ากลางคืน',
-            ),
-            _poolKindTile(
-              kind: _LaborEmpPoolKind.generalLabor,
-              icon: Icons.groups_2_outlined,
-              title: 'พนักงานทั่วไป',
-              subtitle: 'เฉพาะตำแหน่งพนักงานทั่วไป',
-            ),
-            const SizedBox(height: 10),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFE082)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 9,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(
-                      Icons.touch_app_outlined,
-                      size: 20,
-                      color: Colors.amber.shade900,
+                    _poolKindTile(
+                      kind: _LaborEmpPoolKind.sandSieve,
+                      icon: Icons.water_drop_outlined,
+                      title: 'พนักงานร่อนทราย',
+                      subtitle: 'ตำแหน่งมีคำว่า «ร่อน»',
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'แตะชื่อเพื่อเลือกหลายคน · กดค้างแล้วลากไปกล่อง หรือกดปุ่ม «ย้ายมาที่นี่» ในกล่องงาน',
-                        style: GoogleFonts.kanit(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF5D4037),
-                          height: 1.35,
+                    _poolKindTile(
+                      kind: _LaborEmpPoolKind.excavatorMac,
+                      icon: Icons.precision_manufacturing_outlined,
+                      title: 'คนขับรถแม็คโคร',
+                      subtitle: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
+                    ),
+                    _poolKindTile(
+                      kind: _LaborEmpPoolKind.nightWatch,
+                      icon: Icons.nightlight_round,
+                      title: 'เฝ้ากลางคืน',
+                      subtitle: 'ตำแหน่งเวร/เฝ้ากลางคืน',
+                    ),
+                    _poolKindTile(
+                      kind: _LaborEmpPoolKind.generalLabor,
+                      icon: Icons.groups_2_outlined,
+                      title: 'พนักงานทั่วไป',
+                      subtitle: 'เฉพาะตำแหน่งพนักงานทั่วไป',
+                    ),
+                    const SizedBox(height: 8),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFFE082)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.touch_app_outlined,
+                              size: 18,
+                              color: Colors.amber.shade900,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'แตะชื่อเพื่อเลือกหลายคน · กดค้างแล้วลากไปกล่อง หรือกดปุ่ม «ย้ายมาที่นี่» ในกล่องงาน',
+                                style: GoogleFonts.kanit(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF5D4037),
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'รายชื่อในกลุ่ม',
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: const Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: widget.pickedIds.isEmpty
+                                ? const Color(0xFFF1F5F9)
+                                : const Color(0xFFE3F2FD),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: widget.pickedIds.isEmpty
+                                  ? const Color(0xFFCBD5E1)
+                                  : const Color(0xFF64B5F6),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            child: Text(
+                              '${widget.pickedIds.length} เลือก',
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12.5,
+                                color: widget.pickedIds.isEmpty
+                                    ? const Color(0xFF64748B)
+                                    : const Color(0xFF0D47A1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _employeePoolCard(available),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'รายชื่อในกลุ่ม',
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: const Color(0xFF334155),
-                    ),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: widget.pickedIds.isEmpty
-                        ? const Color(0xFFF1F5F9)
-                        : const Color(0xFFE3F2FD),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: widget.pickedIds.isEmpty
-                          ? const Color(0xFFCBD5E1)
-                          : const Color(0xFF64B5F6),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    child: Text(
-                      '${widget.pickedIds.length} เลือก',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12.5,
-                        color: widget.pickedIds.isEmpty
-                            ? const Color(0xFF64748B)
-                            : const Color(0xFF0D47A1),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: SingleChildScrollView(
-                child: _employeePoolCard(available),
               ),
             ),
           ],
@@ -11978,9 +12062,13 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      poolColumn,
+                      Flexible(
+                        flex: 5,
+                        child: poolColumn,
+                      ),
                       const SizedBox(height: 12),
-                      Expanded(
+                      Flexible(
+                        flex: 6,
                         child: SingleChildScrollView(
                           child: canvasColumn,
                         ),

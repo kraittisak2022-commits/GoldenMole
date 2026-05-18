@@ -49,3 +49,7 @@ mobile-flutter/linux/flutter/ephemeral/
 mobile-flutter/macos/Flutter/ephemeral/
 mobile-flutter/windows/flutter/ephemeral/
 mobile-flutter/.env
+
+# TestSprite local run artifacts (may contain API keys)
+testsprite_tests/tmp/
+mobile-flutter/testsprite_tests/tmp/

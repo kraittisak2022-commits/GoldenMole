@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
+import '../utils/save_error_message.dart';
 
 /// บันทึกรายงานข้อผิดพลาดจากแอป Android ลง Supabase (`mobile_error_reports`)
 class MobileErrorReportService {
@@ -53,11 +54,36 @@ class MobileErrorReportService {
     required String source,
     String userNote = '',
     AdminUser? reporter,
+    SaveErrorContext? saveContext,
+    String? screenPage,
+    String? screenAction,
+    String? screenButton,
+    String? errorField,
   }) async {
     final id = 'mer_${DateTime.now().millisecondsSinceEpoch}';
-    final summary = _clip(error.toString(), _maxSummary);
+    final fields = extractSaveErrorReportFields(error, context: saveContext);
+    final page = _nonEmpty(screenPage) ?? fields.page;
+    final action = _nonEmpty(screenAction) ?? fields.action;
+    final button = _nonEmpty(screenButton) ?? fields.button;
+    final field = _nonEmpty(errorField) ?? fields.field;
+    final cause = fields.cause;
+
+    final summary = source == 'save_failed'
+        ? _clip(buildSaveErrorReportSummary(fields), _maxSummary)
+        : _clip(
+            page != null ? '$page · $cause' : cause,
+            _maxSummary,
+          );
+
+    final contextLines = <String>[
+      if (page != null) 'หน้า: $page',
+      if (action != null) 'รายการ: $action',
+      if (button != null) 'ปุ่ม: $button',
+      if (field != null) 'จุดที่ผิด: $field',
+      'สาเหตุ: $cause',
+    ];
     final stackStr = stackTrace?.toString() ?? '';
-    final combined = '$summary\n\n$stackStr'.trim();
+    final combined = '${contextLines.join('\n')}\n\n$stackStr'.trim();
     final detail = _clip(combined, _maxDetail);
     final note = userNote.trim().isEmpty ? null : _clip(userNote, 2000);
 
@@ -72,11 +98,21 @@ class MobileErrorReportService {
       'error_detail': detail,
       'user_note': note,
       'source': source,
+      'screen_page': page,
+      'screen_action': action,
+      'screen_button': button,
+      'error_field': field,
       'reviewed': false,
     };
 
     await _client.from(_table).insert(row);
     return id;
+  }
+
+  String? _nonEmpty(String? s) {
+    if (s == null) return null;
+    final t = s.trim();
+    return t.isEmpty ? null : t;
   }
 
   Future<List<Map<String, dynamic>>> listRecent({int limit = 80}) async {
