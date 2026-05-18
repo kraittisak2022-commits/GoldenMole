@@ -8,6 +8,15 @@ const advanceExcludedPositionTitles = <String>{
   'รายจ้างรายวัน',
 };
 
+/// ตำแหน่งที่ไม่ให้เลือกในฟอร์มบันทึกลางาน (เดียวกับเบิกเงิน)
+const leaveExcludedPositionTitles = advanceExcludedPositionTitles;
+
+/// ตำแหน่งที่ไม่ให้เลือกในฟอร์มบันทึก OT
+const otExcludedPositionTitles = <String>{
+  ...advanceExcludedPositionTitles,
+  'เฝ้ากลางคืน',
+};
+
 final RegExp _positionPartSplit = RegExp(r'[,;/|、]');
 
 String normalizePositionTitle(String raw) =>
@@ -43,18 +52,38 @@ List<String> collectEmployeePositionTokens(Employee e) {
   return out;
 }
 
-bool isExcludedPositionToken(String token) {
+bool _isExcludedByPositionSet(String token, Set<String> excluded) {
   final n = normalizePositionTitle(token);
   if (n.isEmpty) return false;
-  return advanceExcludedPositionTitles.contains(n);
+  return excluded.contains(n);
+}
+
+bool isExcludedPositionToken(String token) =>
+    _isExcludedByPositionSet(token, advanceExcludedPositionTitles);
+
+bool _isExcludedFromPicker(Employee e, Set<String> excluded) {
+  final tokens = collectEmployeePositionTokens(e);
+  if (tokens.isEmpty) return false;
+  return tokens.any((t) => _isExcludedByPositionSet(t, excluded));
 }
 
 /// ซ่อนจากรายการเบิกเมื่อมีอย่างน้อย 1 ตำแหน่งที่อยู่ในรายการยกเว้น
-bool isExcludedFromAdvanceEmployeePicker(Employee e) {
-  final tokens = collectEmployeePositionTokens(e);
-  if (tokens.isEmpty) return false;
-  return tokens.any(isExcludedPositionToken);
-}
+bool isExcludedFromAdvanceEmployeePicker(Employee e) =>
+    _isExcludedFromPicker(e, advanceExcludedPositionTitles);
 
 bool employeeEligibleForAdvancePicker(Employee e) =>
     !e.inactive && !isExcludedFromAdvanceEmployeePicker(e);
+
+/// ซ่อนจากรายการลางานเมื่อมีอย่างน้อย 1 ตำแหน่งที่อยู่ในรายการยกเว้น
+bool isExcludedFromLeaveEmployeePicker(Employee e) =>
+    _isExcludedFromPicker(e, leaveExcludedPositionTitles);
+
+bool employeeEligibleForLeavePicker(Employee e) =>
+    !e.inactive && !isExcludedFromLeaveEmployeePicker(e);
+
+/// ซ่อนจากรายการ OT เมื่อมีอย่างน้อย 1 ตำแหน่งที่อยู่ในรายการยกเว้น
+bool isExcludedFromOtEmployeePicker(Employee e) =>
+    _isExcludedFromPicker(e, otExcludedPositionTitles);
+
+bool employeeEligibleForOtPicker(Employee e) =>
+    !e.inactive && !isExcludedFromOtEmployeePicker(e);

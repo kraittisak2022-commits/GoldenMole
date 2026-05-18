@@ -305,13 +305,19 @@ const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
     generalLabor: 'พนักงานทั่วไป',
 };
 const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
+const LABOR_BUCKET_FIXED_CATEGORY_IDS: Record<LaborEmployeeBucket, string[]> = {
+    sifter: ['wash1', 'wash2', 'pierWatch'],
+    excavatorMac: ['digHaul'],
+    nightWatch: ['nightShift'],
+    generalLabor: [],
+};
 const getEmployeePositionBlob = (emp: Employee) => {
     const parts = [...(emp.positions || [])];
     if (emp.position && !parts.includes(emp.position)) parts.push(emp.position);
     return parts.join(' ').toLowerCase();
 };
 /** จัดกลุ่มพนักงานในขั้นค่าแรง — กรองตามตำแหน่งงาน */
-const classifyLaborEmployeeBucket = (emp: Employee): LaborEmployeeBucket => {
+const classifyLaborEmployeeBucket = (emp: Employee): LaborEmployeeBucket | null => {
     const blob = getEmployeePositionBlob(emp);
     if (blob.includes('แม็คโคร') || blob.includes('แมคโคร')) return 'excavatorMac';
     if (blob.includes('ร่อน') || blob.includes('ร่อนทราย')) return 'sifter';
@@ -323,7 +329,10 @@ const classifyLaborEmployeeBucket = (emp: Employee): LaborEmployeeBucket => {
     ) {
         return 'nightWatch';
     }
-    return 'generalLabor';
+    if (blob.includes('พนักงานทั่วไป') || /\bทั่วไป\b/.test(blob)) {
+        return 'generalLabor';
+    }
+    return null;
 };
 
 const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
@@ -761,7 +770,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const laborBucketCounts = useMemo(() => {
         const counts: Record<LaborEmployeeBucket, number> = { sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
         for (const e of employees) {
-            counts[classifyLaborEmployeeBucket(e)] += 1;
+            const bucket = classifyLaborEmployeeBucket(e);
+            if (bucket) counts[bucket] += 1;
         }
         return counts;
     }, [employees]);
@@ -782,6 +792,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         () => filteredLaborEmployees,
         [filteredLaborEmployees]
     );
+    const laborFixedCanvasCategories = useMemo(() => {
+        const ids = new Set(LABOR_BUCKET_FIXED_CATEGORY_IDS[laborEmployeeBucket]);
+        return FIXED_LABOR_CANVAS_CATEGORIES.filter((c) => ids.has(c.id));
+    }, [laborEmployeeBucket]);
     const latestLaborDrumsWashedAtHome = useMemo(() => {
         if (!latestLaborAttendance) return 0;
         return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
@@ -2563,9 +2577,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
                                         {/* Work Category Canvas Boxes */}
                                         <div className="flex-1 overflow-y-auto mb-3">
+                                            {laborFixedCanvasCategories.length > 0 && (
+                                                <>
                                             <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
                                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
-                                                {FIXED_LABOR_CANVAS_CATEGORIES.map(cat => {
+                                                {laborFixedCanvasCategories.map(cat => {
                                                     const assigned = workAssignments[cat.id] || [];
                                                     return (
                                                         <div key={cat.id}
@@ -2653,6 +2669,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                 })}
                                             </div>
+                                            </>
+                                            )}
                                             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
                                                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                                     <span className="text-sm font-bold text-slate-600">งานทั่วไป (ชื่องาน)</span>

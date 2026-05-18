@@ -2517,6 +2517,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (_selectedLeaveEmpIds.isEmpty) {
           _failSave('กรุณาเลือกพนักงาน');
         }
+        final blockedLeave = _selectedLeaveEmpIds.where((id) {
+          final e = _employeesById[id];
+          return e != null && isExcludedFromLeaveEmployeePicker(e);
+        }).toList();
+        if (blockedLeave.isNotEmpty) {
+          _failSave('ไม่สามารถบันทึกลาให้คนขับรถหรือรับจ้างรายวันได้');
+        }
         final reason = _leaveReasonController.text.trim();
         if (reason.isEmpty) {
           _failSave('กรุณากรอกเหตุผลการลา', field: 'เหตุผลการลา');
@@ -2666,6 +2673,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final ids = g.employeeIds.toList();
         if (ids.isEmpty) {
           _failSave('กรุณาเลือกพนักงาน');
+        }
+        final blockedOt = ids.where((id) {
+          final e = _employeesById[id];
+          return e != null && isExcludedFromOtEmployeePicker(e);
+        }).toList();
+        if (blockedOt.isNotEmpty) {
+          _failSave(
+            'ไม่สามารถบันทึก OT ให้คนขับรถ เฝ้ากลางคืน หรือรับจ้างรายวัน',
+          );
         }
         if (hours <= 0) {
           _failSave('กรุณาระบุชั่วโมง OT');
@@ -7790,14 +7806,47 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  _LaborEmpPoolKind _laborEmpPoolKindFor(Employee e) {
+  String _employeePositionBlob(Employee e) =>
+      _employeePositionTokens(e).join(' ').toLowerCase();
+
+  bool _isNightWatchPoolEmployee(Employee e) {
+    final blob = _employeePositionBlob(e);
+    return blob.contains('เฝ้ากลางคืน') ||
+        blob.contains('เวรกลางคืน') ||
+        blob.contains('กลางคืน') ||
+        blob.contains('night');
+  }
+
+  bool _isSandSievePoolEmployee(Employee e) {
+    for (final p in _employeePositionTokens(e)) {
+      if (p.contains('ร่อน')) return true;
+    }
+    return false;
+  }
+
+  /// กลุ่ม «พนักงานทั่วไป» — เฉพาะตำแหน่งที่ระบุว่าเป็นพนักงานทั่วไป
+  bool _isGeneralLaborPoolEmployee(Employee e) {
+    for (final p in _employeePositionTokens(e)) {
+      final t = p.trim();
+      if (t.contains('พนักงานทั่วไป') || t == 'ทั่วไป') return true;
+    }
+    return false;
+  }
+
+  _LaborEmpPoolKind? _laborEmpPoolKindFor(Employee e) {
     if (_isMacroExcavatorDriverEmployee(e)) {
       return _LaborEmpPoolKind.excavatorMac;
     }
-    for (final p in _employeePositionTokens(e)) {
-      if (p.contains('ร่อน')) return _LaborEmpPoolKind.sandSieve;
+    if (_isSandSievePoolEmployee(e)) {
+      return _LaborEmpPoolKind.sandSieve;
     }
-    return _LaborEmpPoolKind.generalLabor;
+    if (_isNightWatchPoolEmployee(e)) {
+      return _LaborEmpPoolKind.nightWatch;
+    }
+    if (_isGeneralLaborPoolEmployee(e)) {
+      return _LaborEmpPoolKind.generalLabor;
+    }
+    return null;
   }
 
   Widget _buildLaborCanvasBoard({
@@ -8003,7 +8052,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildLaborLeaveFormCard() {
-    final employees = _sortedEmployeesForOt();
+    final employees = _employeesForLeavePicker();
     final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
     final summaryDuration = _leaveIsHalfDay
         ? 'ครึ่งวัน (${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})'
@@ -8170,12 +8219,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF314C6D),
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'ไม่แสดงตำแหน่ง: คนขับรถ, รับจ้างรายวัน',
+            style: GoogleFonts.kanit(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
+              height: 1.3,
+            ),
+          ),
           const SizedBox(height: 6),
           employees.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    'ยังไม่มีรายการพนักงานในระบบ',
+                    'ยังไม่มีพนักงานที่เลือกได้ (ยกเว้นคนขับรถและรับจ้างรายวัน)',
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF8A6A2C),
@@ -9157,16 +9215,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return s.toLowerCase();
   }
 
-  List<Employee> _dedupedEmployeesByDisplayName() {
+  List<Employee> _employeesForOtPicker() {
     final seen = <String>{};
     final out = <Employee>[];
     for (final e in _sortedEmployeesForOt()) {
+      if (!employeeEligibleForOtPicker(e)) continue;
       if (seen.add(_employeeDisplayDedupeKey(e))) {
         out.add(e);
       }
     }
     return out;
   }
+
+  List<Employee> _employeesForLeavePicker() =>
+      _sortedEmployeesForOt().where(employeeEligibleForLeavePicker).toList();
 
   List<Employee> _employeesForAdvancePicker() {
     final seen = <String>{};
@@ -9190,7 +9252,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildOtEmployeeChips(_OtGroupDraft group) {
-    final list = _dedupedEmployeesByDisplayName();
+    final list = _employeesForOtPicker();
     if (list.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(10),
@@ -9200,7 +9262,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           border: Border.all(color: const Color(0xFFF3DEB8)),
         ),
         child: Text(
-          'ยังไม่มีรายการพนักงานในระบบ',
+          'ยังไม่มีพนักงานที่เลือกได้ (ยกเว้นคนขับรถ เฝ้ากลางคืน รับจ้างรายวัน)',
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w700,
             color: const Color(0xFF8A6A2C),
@@ -9325,6 +9387,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
                     color: const Color(0xFF314C6D),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ไม่แสดงตำแหน่ง: คนขับรถ, เฝ้ากลางคืน, รับจ้างรายวัน',
+                  style: GoogleFonts.kanit(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                    height: 1.3,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -10962,7 +11033,16 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
   }
 }
 
-enum _LaborEmpPoolKind { sandSieve, excavatorMac, generalLabor }
+enum _LaborEmpPoolKind { sandSieve, excavatorMac, nightWatch, generalLabor }
+
+const _sandSievePoolCategoryIds = {
+  'wash_old',
+  'wash_new',
+  'washHome',
+  'sand_watch',
+};
+const _excavatorMacPoolCategoryIds = {'dig_haul'};
+const _nightWatchPoolCategoryIds = {'night_shift', 'night_patrol'};
 
 enum _LaborDragBoardLayout { combined, poolOnly, canvasOnly }
 
@@ -10999,7 +11079,7 @@ class _LaborDragBoard extends StatefulWidget {
   final Map<String, Set<String>> assignments;
   final Set<String> pickedIds;
   final Map<String, bool> bucketExpanded;
-  final _LaborEmpPoolKind Function(Employee e) laborEmpPoolKind;
+  final _LaborEmpPoolKind? Function(Employee e) laborEmpPoolKind;
 
   @override
   State<_LaborDragBoard> createState() => _LaborDragBoardState();
@@ -11540,6 +11620,24 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       );
     }
 
+    List<_LaborWorkCategory> categoriesForPool(_LaborEmpPoolKind kind) {
+      final Set<String> ids;
+      switch (kind) {
+        case _LaborEmpPoolKind.sandSieve:
+          ids = _sandSievePoolCategoryIds;
+          break;
+        case _LaborEmpPoolKind.excavatorMac:
+          ids = _excavatorMacPoolCategoryIds;
+          break;
+        case _LaborEmpPoolKind.nightWatch:
+          ids = _nightWatchPoolCategoryIds;
+          break;
+        case _LaborEmpPoolKind.generalLabor:
+          return const [];
+      }
+      return widget.categories.where((c) => ids.contains(c.id)).toList();
+    }
+
     Widget bucketsGrid(double maxWidth) {
       const spacing = 10.0;
       const minCardWidth = 172.0;
@@ -11547,21 +11645,28 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           .floor()
           .clamp(1, 3);
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
+      final visibleCategories = categoriesForPool(widget.poolKind);
+      final showGeneralOnly = widget.poolKind == _LaborEmpPoolKind.generalLabor;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
-            children: widget.categories
-                .map(
-                  (category) =>
-                      SizedBox(width: itemWidth, child: bucketCard(category)),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 12),
-          generalWorkSection(maxWidth),
+          if (visibleCategories.isNotEmpty)
+            Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: visibleCategories
+                  .map(
+                    (category) => SizedBox(
+                      width: itemWidth,
+                      child: bucketCard(category),
+                    ),
+                  )
+                  .toList(),
+            ),
+          if (visibleCategories.isNotEmpty && !showGeneralOnly)
+            const SizedBox(height: 12),
+          if (showGeneralOnly || widget.poolKind != _LaborEmpPoolKind.generalLabor)
+            generalWorkSection(maxWidth),
         ],
       );
     }
@@ -11585,7 +11690,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'พูลพนักงาน',
+              'เลือกพนักงาน',
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
@@ -11595,7 +11700,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
             const SizedBox(height: 2),
             Text(
               widget.layout == _LaborDragBoardLayout.poolOnly
-                  ? 'ตำแหน่งล็อกไว้ — เลื่อนหน้าจอแล้วพูลยังอยู่ที่เดิม'
+                  ? 'ตำแหน่งล็อกไว้ — เลื่อนหน้าจอแล้วรายการยังอยู่ที่เดิม'
                   : 'สลับกลุ่มตามตำแหน่ง — ลากลงกล่องงาน',
               style: GoogleFonts.kanit(
                 fontSize: 12,
@@ -11618,10 +11723,16 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
               subtitle: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
             ),
             _poolKindTile(
+              kind: _LaborEmpPoolKind.nightWatch,
+              icon: Icons.nightlight_round,
+              title: 'เฝ้ากลางคืน',
+              subtitle: 'ตำแหน่งเวร/เฝ้ากลางคืน',
+            ),
+            _poolKindTile(
               kind: _LaborEmpPoolKind.generalLabor,
               icon: Icons.groups_2_outlined,
               title: 'พนักงานทั่วไป',
-              subtitle: 'นอกกลุ่มบน',
+              subtitle: 'เฉพาะตำแหน่งพนักงานทั่วไป',
             ),
             const SizedBox(height: 10),
             DecoratedBox(
@@ -11727,7 +11838,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         ),
         const SizedBox(height: 2),
         Text(
-          'เลือกจากพูลซ้าย → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง',
+          'เลือกพนักงานด้านซ้าย → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง',
           style: GoogleFonts.kanit(
             fontSize: 12.5,
             height: 1.35,
@@ -11784,7 +11895,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 child: Text(
                   assignedIds.isNotEmpty
                       ? 'จัดลงงานแล้ว ${assignedIds.length} คน'
-                      : 'ยังไม่มีคนในกล่องงาน — เลือกจากพูลด้านซ้าย',
+                      : 'ยังไม่มีคนในกล่องงาน — เลือกพนักงานด้านซ้าย',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
@@ -12175,7 +12286,7 @@ class _LaborBucketCard extends StatelessWidget {
                           icon: const Icon(Icons.person_search_outlined,
                               size: 17),
                           label: Text(
-                            'เลือกจากพูล',
+                            'เลือกพนักงาน',
                             style: GoogleFonts.kanit(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,

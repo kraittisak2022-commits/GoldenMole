@@ -44,4 +44,41 @@ void main() {
     );
     expect(tokens, ['ร่อนทราย']);
   });
+
+  test('OT excludes driver night watch and daily hire', () {
+    expect(isExcludedFromOtEmployeePicker(_emp(positions: ['คนขับรถ'])), isTrue);
+    expect(
+      isExcludedFromOtEmployeePicker(_emp(positions: ['เฝ้ากลางคืน'])),
+      isTrue,
+    );
+    expect(
+      isExcludedFromOtEmployeePicker(_emp(position: 'รับจ้างรายวัน')),
+      isTrue,
+    );
+    expect(
+      employeeEligibleForOtPicker(_emp(positions: ['ร่อนทราย'])),
+      isTrue,
+    );
+  });
+
+  test('OT still shows night watch for advance picker only', () {
+    final e = _emp(positions: ['ร่อนทราย', 'เฝ้ากลางคืน']);
+    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
+    expect(isExcludedFromOtEmployeePicker(e), isTrue);
+  });
+
+  test('leave excludes driver and daily hire like advance', () {
+    expect(
+      isExcludedFromLeaveEmployeePicker(_emp(positions: ['คนขับรถ'])),
+      isTrue,
+    );
+    expect(
+      employeeEligibleForLeavePicker(_emp(positions: ['เฝ้ากลางคืน'])),
+      isTrue,
+    );
+    expect(
+      isExcludedFromLeaveEmployeePicker(_emp(position: 'รับจ้างรายวัน')),
+      isTrue,
+    );
+  });
 }
