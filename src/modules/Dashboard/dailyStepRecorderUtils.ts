@@ -16,9 +16,14 @@ export const getTransactionRecencyScore = (tx: Transaction, dayItems: Transactio
     return idxFallback;
 };
 
+/** แถวบันทึก «ตัดรอบล้างทรายที่บ้าน» — ไม่นับเป็นจำนวนถังที่ล้าง */
+export const isHomeSandRoundCloseRow = (t: any): boolean =>
+    String(t.description ?? '').includes('ตัดรอบล้างทรายที่บ้าน');
+
 /** แถวบันทึกจาก Quick Input / Wizard สำหรับ “ทรายที่ล้างที่บ้าน” เท่านั้น — ยึดเป็นค่าถังล้างที่บ้านจริง */
 const isDedicatedHomeSandRow = (t: any): boolean =>
-    String(t.description ?? '').includes('ทรายที่ล้างที่บ้าน');
+    String(t.description ?? '').includes('ทรายที่ล้างที่บ้าน') &&
+    !isHomeSandRoundCloseRow(t);
 
 /**
  * ถังล้างที่บ้านจากรายการ Sand ของวันเดียวกัน
