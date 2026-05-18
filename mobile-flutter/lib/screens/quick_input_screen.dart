@@ -7392,7 +7392,62 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
             ),
           ),
+          if (_homeSandRoundTxId != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF81C784)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.flag_outlined, color: Color(0xFF2E7D32)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'วันนี้ตัดรอบล้างทรายที่บ้านแล้ว',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF2E7D32),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _saving ? null : _saveHomeSandWashAllEntry,
+                  icon: const Icon(Icons.cleaning_services_outlined),
+                  label: Text('ล้างทั้งหมด', style: GoogleFonts.kanit()),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: const Color(0xFF00897B),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _saving ? null : _saveHomeSandRoundCloseEntry,
+                  icon: const Icon(Icons.flag_outlined),
+                  label: Text('ตัดรอบ', style: GoogleFonts.kanit()),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: const Color(0xFF5D4037),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _saving ? null : _saveQuickEntry,
             icon: const Icon(Icons.save_outlined),
