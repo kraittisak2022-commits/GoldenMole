@@ -111,8 +111,8 @@ double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
   return maxH;
 }
 
-/// ข้อความสั้นสำหรับปฏิทินเมื่อวันนั้นมีบันทึกล้างทรายที่บ้าน
-String? calendarHomeSandLine(List<AppTransaction> dayTransactions) {
+/// ข้อความสั้นสำหรับปฏิทินเมื่อวันนั้นมีบันทึกล้างทรายที่บ้าน / ตัดรอบ
+List<String> calendarHomeSandLines(List<AppTransaction> dayTransactions) {
   final sandTx = dayTransactions
       .where(
         (t) =>
@@ -120,14 +120,20 @@ String? calendarHomeSandLine(List<AppTransaction> dayTransactions) {
             (t.subCategory ?? '').trim() == 'Sand',
       )
       .toList();
-  if (sandTx.isEmpty) return null;
-  final hasDedicated = sandTx.any(_isDedicatedHomeSandRow);
+  if (sandTx.isEmpty) return const [];
+  final lines = <String>[];
+  final hasDedicated = sandTx.any(isDedicatedHomeSandWashRow);
   final home = persistedSandHomeDrumsForDay(sandTx);
-  if (!hasDedicated && home <= 0) return null;
-  final n = home == home.roundToDouble()
-      ? '${home.round()}'
-      : home.toStringAsFixed(1);
-  return 'ล้างทรายที่บ้าน $n ถัง';
+  if (hasDedicated || home > 0) {
+    final n = home == home.roundToDouble()
+        ? '${home.round()}'
+        : home.toStringAsFixed(1);
+    lines.add('ล้างทรายที่บ้าน $n ถัง');
+  }
+  if (sandTx.any(isHomeSandRoundCloseRow)) {
+    lines.add('ตัดรอบล้างทรายที่บ้าน');
+  }
+  return lines;
 }
 
 bool transactionAppliesToDashboardDay(
@@ -408,7 +414,8 @@ bool transactionMatchesDailyModule(
   }
 
   bool homeSandLike() {
-    return t.description.contains('ทรายที่ล้างที่บ้าน') ||
+    if (isHomeSandRoundCloseRow(t)) return true;
+    return isDedicatedHomeSandWashRow(t) ||
         ((t.drumsWashedAtHome ?? 0) > 0 && t.description.contains('ล้างที่บ้าน'));
   }
 

@@ -300,6 +300,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<String> _sand2OperatorNames = const [];
   String? _laborTxId;
   String? _homeSandTxId;
+  String? _homeSandRoundTxId;
   String? _genericTxId;
   bool get _isSandWashMode =>
       (widget.initialCategory ?? '').contains('ร่อนทราย');
@@ -452,6 +453,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _laborTxId = null;
     _laborLeaveTxId = null;
     _homeSandTxId = null;
+    _homeSandRoundTxId = null;
     _genericTxId = null;
   }
 
@@ -1090,9 +1092,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isHomeSandMode) {
-      final t = txs.first;
-      _homeSandTxId = t.id;
-      _drumsWashedAtHomeController.text = _strNum(t.drumsWashedAtHome);
+      AppTransaction? washRow;
+      AppTransaction? roundRow;
+      for (final t in txs) {
+        if (isHomeSandRoundCloseRow(t)) {
+          roundRow = t;
+        } else if (isDedicatedHomeSandWashRow(t)) {
+          washRow = t;
+        }
+      }
+      if (washRow != null) {
+        _homeSandTxId = washRow.id;
+        _drumsWashedAtHomeController.text = _strNum(washRow.drumsWashedAtHome);
+      }
+      if (roundRow != null) _homeSandRoundTxId = roundRow.id;
       return;
     }
 
@@ -1841,46 +1854,160 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  double _homeSandMaxWashableToday() => _homeSandAvailable;
+
+  Future<void> _persistHomeSandWashRow(double drumsHome) async {
+    final maxWashable = _homeSandMaxWashableToday();
+    if (drumsHome < 0) {
+      throw 'จำนวนถังที่ล้างที่บ้านต้องไม่ติดลบ';
+    }
+    if (drumsHome > maxWashable) {
+      throw 'จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)';
+    }
+    final y = _selectedDate.year.toString().padLeft(4, '0');
+    final m = _selectedDate.month.toString().padLeft(2, '0');
+    final d = _selectedDate.day.toString().padLeft(2, '0');
+    final homeId =
+        _homeSandTxId ?? '${DateTime.now().millisecondsSinceEpoch}_home_sand';
+    _homeSandTxId = homeId;
+    await _persist(
+      AppTransaction(
+        id: homeId,
+        date: '$y-$m-$d',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: _appendRecorder('ทรายที่ล้างที่บ้าน'),
+        amount: 0,
+        drumsObtained: 0,
+        drumsWashedAtHome: drumsHome,
+        note: _activeSignatureNote,
+      ),
+    );
+    await _refreshHomeSandStock();
+  }
+
   Future<void> _saveHomeSandEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกทรายที่ล้างที่บ้านสำเร็จ',
       body: () async {
-        final maxWashable = _homeSandAvailable;
         final rawHome = _drumsWashedAtHomeController.text.trim();
         if (rawHome.isEmpty) {
           throw 'กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้ (กรอก 0 ได้หากไม่ล้าง)';
         }
         final drumsHome = double.tryParse(rawHome) ?? 0;
-        if (drumsHome < 0) {
-          throw 'จำนวนถังที่ล้างที่บ้านต้องไม่ติดลบ';
+        await _persistHomeSandWashRow(drumsHome);
+        _drumsWashedAtHomeController.clear();
+      },
+    );
+  }
+
+  Future<bool> _confirmHomeSandDialog({
+    required String title,
+    required String message,
+    String confirmLabel = 'ยืนยัน',
+  }) async {
+    if (!mounted) return false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(title, style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+        content: Text(message, style: GoogleFonts.kanit()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('ยกเลิก', style: GoogleFonts.kanit()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(confirmLabel, style: GoogleFonts.kanit()),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _saveHomeSandWashAllEntry() async {
+    final qty = _homeSandMaxWashableToday();
+    if (qty <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ไม่มีทรายคงเหลือให้ล้างในวันนี้',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+      return;
+    }
+    final ok = await _confirmHomeSandDialog(
+      title: 'ล้างทั้งหมด',
+      message:
+          'บันทึกล้างทรายที่บ้านทั้งหมด ${qty.toStringAsFixed(0)} ถัง (คงเหลือก่อนวันนี้ + ได้เพิ่มวันนี้) ใช่หรือไม่?',
+      confirmLabel: 'ล้างทั้งหมด',
+    );
+    if (!ok) return;
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกล้างทรายที่บ้านทั้งหมดสำเร็จ',
+      stayOnPage: true,
+      body: () async {
+        await _persistHomeSandWashRow(qty);
+        if (mounted) {
+          _drumsWashedAtHomeController.text = _strNum(qty);
         }
-        if (drumsHome > maxWashable) {
-          throw 'จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)';
-        }
+      },
+    );
+  }
+
+  Future<void> _saveHomeSandRoundCloseEntry() async {
+    final rawHome = _drumsWashedAtHomeController.text.trim();
+    final parsedHome = double.tryParse(rawHome);
+    final homeForSummary = rawHome.isEmpty
+        ? _homeSandTodayHomeSaved
+        : (parsedHome ?? 0);
+    final remain =
+        (_homeSandBeforeToday + _homeSandTodayObtained - homeForSummary)
+            .clamp(0, 999999)
+            .toDouble();
+    var message = 'ยืนยันตัดรอบล้างทรายที่บ้านสำหรับวันนี้?';
+    if (remain > 0) {
+      message =
+          'ยังมีทรายคงเหลือประมาณ ${remain.toStringAsFixed(0)} ถัง\n\nต้องการตัดรอบอยู่หรือไม่? (แนะนำใช้ «ล้างทั้งหมด» ก่อนหากต้องการล้างให้หมด)';
+    }
+    final ok = await _confirmHomeSandDialog(
+      title: 'ตัดรอบ',
+      message: message,
+      confirmLabel: 'ตัดรอบ',
+    );
+    if (!ok) return;
+    await _runSaveWithPopups(
+      successMessage: 'ตัดรอบล้างทรายที่บ้านสำเร็จ',
+      stayOnPage: true,
+      body: () async {
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
-        final homeId =
-            _homeSandTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_home_sand';
-        _homeSandTxId = homeId;
+        final roundId =
+            _homeSandRoundTxId ??
+            '${DateTime.now().millisecondsSinceEpoch}_home_sand_round';
+        _homeSandRoundTxId = roundId;
         await _persist(
           AppTransaction(
-            id: homeId,
+            id: roundId,
             date: '$y-$m-$d',
             type: 'Expense',
-            // Keep category aligned with web Daily Wizard schema.
             category: 'DailyLog',
             subCategory: 'Sand',
-            description: _appendRecorder('ทรายที่ล้างที่บ้าน'),
+            description: _appendRecorder('ตัดรอบล้างทรายที่บ้าน'),
             amount: 0,
             drumsObtained: 0,
-            drumsWashedAtHome: drumsHome,
+            drumsWashedAtHome: 0,
             note: _activeSignatureNote,
           ),
         );
-        _drumsWashedAtHomeController.clear();
-        await _refreshHomeSandStock();
       },
     );
   }
@@ -6380,6 +6507,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool _isVehicleTripHydrateSource(AppTransaction t) {
     if (isMacroVehicleTransaction(t)) return false;
     if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
+    if (isHomeSandRoundCloseRow(t)) return false;
     if (t.category == 'DailyLog' &&
         (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
       return true;

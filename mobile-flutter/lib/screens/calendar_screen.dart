@@ -294,11 +294,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: const Color(0xFFFFB74D),
                   lines: day.leaveNames,
                 ),
-              if (day.homeSandLine != null)
+              if (day.homeSandLines.isNotEmpty)
                 _infoBlock(
                   title: 'ทรายที่ล้างที่บ้าน',
                   color: const Color(0xFF00897B),
-                  lines: [day.homeSandLine!],
+                  lines: day.homeSandLines,
                 ),
               if (day.dailyEventLines.isNotEmpty)
                 _infoBlock(
@@ -1074,7 +1074,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           .map(_formatDailyEventLine)
           .where((s) => s.isNotEmpty)
           .toList();
-      final homeSandLine = calendarHomeSandLine(dayTx);
+      final homeSandLines = calendarHomeSandLines(dayTx);
 
       result.add(
         _CalendarDay(
@@ -1085,7 +1085,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           weeklyOffLine: weeklyOffLine,
           weeklyOffMoveReason: dtPlain.weekday == offWd ? moveReason : null,
           leaveNames: leaveNames,
-          homeSandLine: homeSandLine,
+          homeSandLines: homeSandLines,
           dailyEventLines: dailyEventLines,
         ),
       );
@@ -1161,7 +1161,7 @@ class _CalendarDay {
     required this.dailyEventLines,
     this.weeklyOffLine,
     this.weeklyOffMoveReason,
-    this.homeSandLine,
+    this.homeSandLines = const [],
   });
 
   final int day;
@@ -1171,11 +1171,11 @@ class _CalendarDay {
   final String? weeklyOffLine;
   final String? weeklyOffMoveReason;
   final List<String> leaveNames;
-  final String? homeSandLine;
+  final List<String> homeSandLines;
   final List<String> dailyEventLines;
 
   bool get hasWeeklyOff => weeklyOffLine != null;
-  bool get hasHomeSand => homeSandLine != null;
+  bool get hasHomeSand => homeSandLines.isNotEmpty;
   bool get hasDailyEvents => dailyEventLines.isNotEmpty;
 
   bool get hasAnyPlannerEntry =>
@@ -1183,7 +1183,7 @@ class _CalendarDay {
       weeklyOffLine != null ||
       userHolidayDescriptions.isNotEmpty ||
       leaveNames.isNotEmpty ||
-      homeSandLine != null ||
+      homeSandLines.isNotEmpty ||
       dailyEventLines.isNotEmpty;
 }
 
@@ -1392,11 +1392,11 @@ class _DayCell extends StatelessWidget {
                     ],
                   ),
                 ),
-              if (day.homeSandLine != null)
+              if (day.homeSandLines.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    day.homeSandLine!,
+                    day.homeSandLines.join(' • '),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
