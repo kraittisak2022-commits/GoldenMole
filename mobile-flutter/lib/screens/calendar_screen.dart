@@ -248,7 +248,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF4F6F9),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -259,58 +259,109 @@ class _CalendarScreenState extends State<CalendarScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '${_thaiWeekdayLong(_selectedDate)} • ${_formatDateThai(_selectedDate)}',
-                style: GoogleFonts.kanit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
+              _dayDetailHeader(day),
+              const SizedBox(height: 12),
               if (day.thaiPublicHolidayNames.isNotEmpty)
-                _infoBlock(
-                  title:
-                      'นักขัตฤกษ์ (ประมาณการ — แจ้งเตือนทางปฏิทิน ไม่ได้หมายว่าองค์กรหยุดครบถ้วน)',
+                _daySectionCard(
+                  icon: Icons.star_outline_rounded,
+                  title: 'นักขัตฤกษ์ (ประมาณการ)',
+                  subtitle: 'แจ้งเตือนทางปฏิทิน — ไม่ได้หมายว่าองค์กรหยุดครบถ้วน',
                   color: const Color(0xFF5C7C9F),
-                  lines: day.thaiPublicHolidayNames,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final name in day.thaiPublicHolidayNames)
+                        _dayBulletLine(name),
+                    ],
+                  ),
                 ),
               if (day.weeklyOffLine != null ||
                   day.userHolidayDescriptions.isNotEmpty)
-                _infoBlock(
-                  title:
-                      '${day.weeklyOffLine != null ? 'หยุดรายสัปดาห์ / ' : ''}วันหยุด · กิจกรรมที่บันทึกไว้',
+                _daySectionCard(
+                  icon: Icons.event_busy_outlined,
+                  title: 'วันหยุด / กิจกรรม',
                   color: const Color(0xFFE57373),
-                  lines: [
-                    if (day.weeklyOffLine != null) day.weeklyOffLine!,
-                    if (day.weeklyOffMoveReason != null &&
-                        day.weeklyOffMoveReason!.isNotEmpty)
-                      'เหตุผลเลื่อนหยุด: ${day.weeklyOffMoveReason}',
-                    ...day.userHolidayDescriptions,
-                  ],
-                ),
-              if (day.leaveDetails.isNotEmpty)
-                _leaveDetailsBlock(day.leaveDetails),
-              if (day.homeSandLines.isNotEmpty)
-                _infoBlock(
-                  title: 'ทรายที่ล้างที่บ้าน',
-                  color: const Color(0xFF00897B),
-                  lines: day.homeSandLines,
-                ),
-              if (day.dailyEventLines.isNotEmpty)
-                _infoBlock(
-                  title: 'เหตุการณ์ประจำวัน',
-                  color: const Color(0xFFE65100),
-                  lines: day.dailyEventLines,
-                ),
-              if (!day.hasAnyPlannerEntry)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'ไม่มีข้อมูลวันหยุด ลา ล้างทรายที่บ้าน เหตุการณ์ หรือการแจ้งเตือนนักขัตฤกษ์ในวันนี้',
-                    style: GoogleFonts.kanit(color: Colors.black54),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (day.weeklyOffLine != null)
+                        _dayBulletLine(day.weeklyOffLine!),
+                      if (day.weeklyOffMoveReason != null &&
+                          day.weeklyOffMoveReason!.isNotEmpty)
+                        _dayBulletLine(
+                          'เลื่อนหยุด: ${day.weeklyOffMoveReason}',
+                          muted: true,
+                        ),
+                      for (final desc in day.userHolidayDescriptions)
+                        _dayBulletLine(desc),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 10),
+              if (day.leaveDetails.isNotEmpty)
+                _daySectionCard(
+                  icon: Icons.person_off_outlined,
+                  title: 'รายการลา (${day.leaveDetails.length})',
+                  color: const Color(0xFFFFB74D),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < day.leaveDetails.length; i++) ...[
+                        if (i > 0)
+                          const Divider(height: 20, color: Color(0xFFE8ECF0)),
+                        _dayLeaveCard(day.leaveDetails[i]),
+                      ],
+                    ],
+                  ),
+                ),
+              if (day.homeSandLines.isNotEmpty)
+                _daySectionCard(
+                  icon: Icons.waves_outlined,
+                  title: 'ทรายที่ล้างที่บ้าน',
+                  color: const Color(0xFF00897B),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final line in day.homeSandLines)
+                        _dayBulletLine(line),
+                    ],
+                  ),
+                ),
+              if (day.dailyEventLines.isNotEmpty)
+                _daySectionCard(
+                  icon: Icons.flag_outlined,
+                  title: 'เหตุการณ์ประจำวัน',
+                  color: const Color(0xFFE65100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final line in day.dailyEventLines)
+                        _dayBulletLine(line),
+                    ],
+                  ),
+                ),
+              if (!day.hasAnyPlannerEntry)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  alignment: Alignment.center,
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.event_available_outlined,
+                        size: 40,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'ไม่มีรายการในวันนี้',
+                        style: GoogleFonts.kanit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.of(context).pop();
@@ -318,7 +369,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 },
                 icon: const Icon(Icons.swap_horiz_rounded),
                 label: Text(
-                  'ย้ายหยุดรายสัปดาห์ของสัปดาห์นี้',
+                  'ย้ายหยุดรายสัปดาห์',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -335,6 +386,200 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _dayDetailHeader(_CalendarDay day) {
+    final tags = day.allTags();
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE3E8EF)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _thaiWeekdayLong(_selectedDate),
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          Text(
+            _formatDateThai(_selectedDate),
+            style: GoogleFonts.kanit(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A2A3C),
+              height: 1.15,
+            ),
+          ),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: tags
+                  .map((t) => _CalendarTagChip(tag: t, compact: false))
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _daySectionCard({
+    required IconData icon,
+    required String title,
+    required Color color,
+    required Widget child,
+    String? subtitle,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(15),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: color.withValues(alpha: 0.95),
+                        ),
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle,
+                          style: GoogleFonts.kanit(
+                            fontSize: 11,
+                            color: Colors.black54,
+                            height: 1.25,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dayBulletLine(String text, {bool muted = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: muted ? Colors.black26 : const Color(0xFF90A4AE),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.kanit(
+                fontSize: 14,
+                height: 1.35,
+                color: muted ? Colors.black54 : const Color(0xFF37474F),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dayLeaveCard(CalendarLeaveDetail item) {
+    final reason = item.reason.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          item.headline,
+          style: GoogleFonts.kanit(
+            fontWeight: FontWeight.w800,
+            fontSize: 14.5,
+            color: const Color(0xFF1A2A3C),
+            height: 1.3,
+          ),
+        ),
+        if (item.spanNote != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            item.spanNote!,
+            style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+          ),
+        ],
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8E1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFFFE082)),
+          ),
+          child: Text(
+            reason.isNotEmpty ? reason : 'ยังไม่ระบุเหตุผล',
+            style: GoogleFonts.kanit(
+              fontSize: 13.5,
+              height: 1.35,
+              color: reason.isNotEmpty
+                  ? const Color(0xFF5D4037)
+                  : Colors.black45,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -683,102 +928,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _leaveDetailsBlock(List<CalendarLeaveDetail> details) {
-    const color = Color(0xFFFFB74D);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'รายการลา',
-            style: GoogleFonts.kanit(color: color, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          ...details.map((item) {
-            final reason = item.reason.trim();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.headline,
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                      height: 1.3,
-                    ),
-                  ),
-                  if (item.spanNote != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      item.spanNote!,
-                      style: GoogleFonts.kanit(
-                        fontSize: 12,
-                        color: Colors.black54,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    reason.isNotEmpty
-                        ? 'เหตุผล: $reason'
-                        : 'เหตุผล: ยังไม่ระบุ',
-                    style: GoogleFonts.kanit(
-                      fontSize: 13.5,
-                      color: reason.isNotEmpty
-                          ? const Color(0xFF5D4037)
-                          : Colors.black45,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoBlock({
-    required String title,
-    required Color color,
-    required List<String> lines,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: GoogleFonts.kanit(color: color, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          ...lines.map(
-            (e) =>
-                Text('• $e', style: GoogleFonts.kanit(color: Colors.black87)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final y = _monthCursor.year;
@@ -870,54 +1019,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          'เลือก: $selectedLabel',
-                          style: GoogleFonts.kanit(
-                            color: const Color(0xFF1A1A1A),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedLabel,
+                        style: GoogleFonts.kanit(
+                          color: const Color(0xFF1A2A3C),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _legendChip(
+                            color: const Color(0xFFE57373),
+                            label: 'หยุด',
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 1,
-                          height: 22,
-                          color: const Color(0xFFE0E4E8),
-                        ),
-                        const SizedBox(width: 10),
-                        _legendChip(
-                          color: const Color(0xFFE57373),
-                          label: 'หยุดรายสัปดาห์ · บันทึกวันหยุด',
-                        ),
-                        const SizedBox(width: 6),
-                        _legendChip(
-                          color: const Color(0xFF5C7C9F),
-                          label: 'นักขัตฤกษ์ (ประมาณการ)',
-                        ),
-                        const SizedBox(width: 6),
-                        _legendChip(
-                          color: const Color(0xFFFFB74D),
-                          label: 'ลางาน',
-                        ),
-                        const SizedBox(width: 6),
-                        _legendChip(
-                          color: const Color(0xFF00897B),
-                          label: 'ล้างทรายที่บ้าน',
-                        ),
-                        const SizedBox(width: 6),
-                        _legendChip(
-                          color: const Color(0xFFE65100),
-                          label: 'เหตุการณ์ประจำวัน',
-                        ),
-                      ],
-                    ),
+                          _legendChip(
+                            color: const Color(0xFF5C7C9F),
+                            label: 'นักขัตฤกษ์',
+                          ),
+                          _legendChip(
+                            color: const Color(0xFFFFB74D),
+                            label: 'ลา',
+                          ),
+                          _legendChip(
+                            color: const Color(0xFF00897B),
+                            label: 'ทรายบ้าน',
+                          ),
+                          _legendChip(
+                            color: const Color(0xFFE65100),
+                            label: 'เหตุการณ์',
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 const Divider(
@@ -1244,6 +1385,152 @@ class _CalendarDay {
       leaveDetails.isNotEmpty ||
       homeSandLines.isNotEmpty ||
       dailyEventLines.isNotEmpty;
+
+  int get activityCount {
+    var n = 0;
+    if (hasWeeklyOff) n++;
+    if (userHolidayDescriptions.isNotEmpty) n++;
+    if (leaveNames.isNotEmpty) n++;
+    if (hasHomeSand) n++;
+    if (hasDailyEvents) n++;
+    if (thaiPublicHolidayNames.isNotEmpty) n++;
+    return n;
+  }
+
+  /// ป้ายสรุปทุกประเภท (ใช้ใน bottom sheet)
+  List<_CalendarDayTag> allTags() {
+    final tags = <_CalendarDayTag>[];
+    if (hasWeeklyOff || userHolidayDescriptions.isNotEmpty) {
+      final n =
+          (hasWeeklyOff ? 1 : 0) + userHolidayDescriptions.length;
+      tags.add(
+        _CalendarDayTag(
+          color: const Color(0xFFE57373),
+          label: n > 1 ? 'หยุด · $n' : 'หยุด',
+          icon: Icons.event_busy_outlined,
+        ),
+      );
+    }
+    if (leaveNames.isNotEmpty) {
+      tags.add(
+        _CalendarDayTag(
+          color: const Color(0xFFFFB74D),
+          label: 'ลา ${leaveNames.length}',
+          icon: Icons.person_off_outlined,
+        ),
+      );
+    }
+    if (hasHomeSand) {
+      tags.add(
+        const _CalendarDayTag(
+          color: Color(0xFF00897B),
+          label: 'ทรายบ้าน',
+          icon: Icons.waves_outlined,
+        ),
+      );
+    }
+    if (hasDailyEvents) {
+      tags.add(
+        _CalendarDayTag(
+          color: const Color(0xFFE65100),
+          label: dailyEventLines.length > 1
+              ? 'เหตุ ${dailyEventLines.length}'
+              : 'เหตุการณ์',
+          icon: Icons.flag_outlined,
+        ),
+      );
+    }
+    if (thaiPublicHolidayNames.isNotEmpty) {
+      tags.add(
+        const _CalendarDayTag(
+          color: Color(0xFF5C7C9F),
+          label: 'นักขัตฤกษ์',
+          icon: Icons.star_outline_rounded,
+        ),
+      );
+    }
+    return tags;
+  }
+
+  /// ป้ายบนเซลล์ — สูงสุด [max] ป้าย + ตัวนับส่วนเกิน
+  List<_CalendarDayTag> cellTags({int max = 2}) {
+    final all = allTags();
+    if (all.length <= max) return all;
+    return [
+      ...all.take(max),
+      _CalendarDayTag(
+        color: const Color(0xFF78909C),
+        label: '+${all.length - max}',
+        icon: Icons.more_horiz_rounded,
+      ),
+    ];
+  }
+
+  List<Color> markerDotColors({int max = 4}) {
+    return allTags().map((t) => t.color).take(max).toList();
+  }
+
+  Color? primaryAccentColor() {
+    if (hasWeeklyOff || userHolidayDescriptions.isNotEmpty) {
+      return const Color(0xFFE57373);
+    }
+    if (leaveNames.isNotEmpty) return const Color(0xFFFFB74D);
+    if (hasHomeSand) return const Color(0xFF00897B);
+    if (hasDailyEvents) return const Color(0xFFE65100);
+    if (thaiPublicHolidayNames.isNotEmpty) return const Color(0xFF5C7C9F);
+    return null;
+  }
+}
+
+class _CalendarDayTag {
+  const _CalendarDayTag({
+    required this.color,
+    required this.label,
+    required this.icon,
+  });
+
+  final Color color;
+  final String label;
+  final IconData icon;
+}
+
+class _CalendarTagChip extends StatelessWidget {
+  const _CalendarTagChip({required this.tag, this.compact = true});
+
+  final _CalendarDayTag tag;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final fs = compact ? 9.0 : 12.0;
+    final iconSize = compact ? 11.0 : 14.0;
+    final vPad = compact ? 2.0 : 4.0;
+    final hPad = compact ? 5.0 : 8.0;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+      decoration: BoxDecoration(
+        color: tag.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(compact ? 6 : 999),
+        border: Border.all(color: tag.color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(tag.icon, size: iconSize, color: tag.color),
+          const SizedBox(width: 3),
+          Text(
+            tag.label,
+            style: GoogleFonts.kanit(
+              fontSize: fs,
+              fontWeight: FontWeight.w700,
+              color: tag.color.withValues(alpha: 0.95),
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DayCell extends StatelessWidget {
@@ -1258,231 +1545,135 @@ class _DayCell extends StatelessWidget {
   final bool today;
   final VoidCallback onTap;
 
-  static const _strongRed = Color(0xFFE57373);
-  static const _thaiHint = Color(0xFF5C7C9F);
-  static const _leaveOrange = Color(0xFFFFB74D);
-  static const _homeSandTeal = Color(0xFF00897B);
-  static const _eventOrange = Color(0xFFE65100);
-
   @override
   Widget build(BuildContext context) {
-    final strongOff =
-        day.hasWeeklyOff || day.userHolidayDescriptions.isNotEmpty;
-    final thaiOnly = day.thaiPublicHolidayNames.isNotEmpty && !strongOff;
-    final hasLeave = day.leaveNames.isNotEmpty;
-    final hasHomeSand = day.hasHomeSand;
-    final hasEvents = day.hasDailyEvents;
+    final accent = day.primaryAccentColor();
+    final tags = day.cellTags(max: 2);
+    final dots = day.markerDotColors(max: 4);
+    final hasActivity = day.activityCount > 0;
 
-    Color borderColor;
-    double borderW;
-    if (selected) {
-      borderColor = const Color(0xFF1E88E5);
-      borderW = 1.6;
-    } else if (strongOff) {
-      borderColor = _strongRed;
-      borderW = 1.3;
-    } else if (thaiOnly) {
-      borderColor = _thaiHint.withValues(alpha: 0.45);
-      borderW = 1;
-    } else if (hasLeave) {
-      borderColor = _leaveOrange.withValues(alpha: 0.75);
-      borderW = 1;
-    } else if (hasHomeSand) {
-      borderColor = _homeSandTeal.withValues(alpha: 0.75);
-      borderW = 1;
-    } else if (hasEvents) {
-      borderColor = _eventOrange.withValues(alpha: 0.7);
-      borderW = 1.1;
-    } else if (today) {
-      borderColor = const Color(0xFFE5E8ED);
-      borderW = 1;
-    } else {
-      borderColor = const Color(0xFFE8ECF0);
-      borderW = 1;
-    }
-
-    final cellBg = selected
-        ? const Color(0xFFEFF6FF)
-        : strongOff
-        ? const Color(0xFFFFF5F5)
-        : thaiOnly
-        ? const Color(0xFFF7F9FC)
-        : hasHomeSand
-        ? const Color(0xFFE0F2F1)
-        : hasEvents
-        ? const Color(0xFFFFF8E1)
-        : Colors.white;
+    final borderColor = selected
+        ? const Color(0xFF1E88E5)
+        : today
+        ? const Color(0xFF90A4AE)
+        : const Color(0xFFE8ECF0);
+    final borderW = selected ? 1.8 : 1.0;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.fromLTRB(7, 7, 7, 6),
           decoration: BoxDecoration(
-            color: cellBg,
-            borderRadius: BorderRadius.circular(14),
+            color: selected ? const Color(0xFFF0F7FF) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(width: borderW, color: borderColor),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF1E88E5).withValues(alpha: 0.12),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  if (today)
-                    Container(
-                      width: 36,
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFF1565C0)
-                            : const Color(0xFF1A1A1A),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${day.day}',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16.5,
-                          color: Colors.white,
-                          height: 1,
-                        ),
-                      ),
-                    )
-                  else
-                    Text(
-                      '${day.day}',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 19,
-                        height: 1.02,
-                        color: selected
-                            ? const Color(0xFF1565C0)
-                            : const Color(0xFF2C333A),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              if (strongOff) ...[
-                if (day.hasWeeklyOff)
-                  Text(
-                    'หยุดรายสัปดาห์',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red.shade700,
-                      height: 1.15,
-                    ),
-                  ),
-                if (day.userHolidayDescriptions.isNotEmpty)
-                  Text(
-                    day.userHolidayDescriptions.length > 1
-                        ? 'บันทึก ${day.userHolidayDescriptions.length} รายการ'
-                        : day.userHolidayDescriptions.first,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: 10.5,
-                      color: Colors.red.shade700,
-                      height: 1.15,
-                    ),
-                  ),
-              ],
-              if (!strongOff && day.thaiPublicHolidayNames.isNotEmpty)
-                Text(
-                  day.thaiPublicHolidayNames.first,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.kanit(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: _thaiHint,
-                    height: 1.2,
-                  ),
-                ),
-              if (strongOff && day.thaiPublicHolidayNames.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    day.thaiPublicHolidayNames.first,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: 9.5,
-                      color: _thaiHint.withValues(alpha: 0.95),
-                      height: 1.15,
+              if (accent != null)
+                Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(10),
                     ),
                   ),
                 ),
-              if (day.leaveNames.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(5, 5, 5, 4),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'ลา ${day.leaveNames.length}',
-                        style: GoogleFonts.kanit(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.deepOrange.shade700,
-                          height: 1.15,
-                        ),
+                      Row(
+                        children: [
+                          if (today)
+                            Container(
+                              width: 26,
+                              height: 26,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? const Color(0xFF1565C0)
+                                    : const Color(0xFF263238),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '${day.day}',
+                                style: GoogleFonts.kanit(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13,
+                                  color: Colors.white,
+                                  height: 1,
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              '${day.day}',
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                height: 1,
+                                color: selected
+                                    ? const Color(0xFF1565C0)
+                                    : const Color(0xFF37474F),
+                              ),
+                            ),
+                          const Spacer(),
+                          if (dots.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final c in dots)
+                                  Container(
+                                    width: 5,
+                                    height: 5,
+                                    margin: const EdgeInsets.only(left: 2),
+                                    decoration: BoxDecoration(
+                                      color: c,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          day.leaveNames.take(4).join(', '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.kanit(
-                            fontSize: 9.5,
-                            color: Colors.black54,
-                            height: 1.1,
+                      if (hasActivity) ...[
+                        const SizedBox(height: 3),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: Wrap(
+                              spacing: 3,
+                              runSpacing: 3,
+                              children: [
+                                for (final tag in tags)
+                                  _CalendarTagChip(tag: tag),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ] else
+                        const Spacer(),
                     ],
                   ),
                 ),
-              if (day.homeSandLines.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    day.homeSandLines.join(' • '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: _homeSandTeal,
-                      height: 1.15,
-                    ),
-                  ),
-                ),
-              if (day.dailyEventLines.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    day.dailyEventLines.length > 1
-                        ? 'เหตุการณ์ ${day.dailyEventLines.length} รายการ'
-                        : day.dailyEventLines.first,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: _eventOrange,
-                      height: 1.15,
-                    ),
-                  ),
-                ),
+              ),
             ],
           ),
         ),

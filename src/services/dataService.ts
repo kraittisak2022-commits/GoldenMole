@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan } from '../types';
+import { coercePositionSources } from '../utils/advanceEmployeeFilter';
 import { visibleIncomeTypes } from '../utils/incomeTypes';
 
 // ============================================
@@ -34,10 +35,16 @@ export const transactionFromDbRow = (row: Record<string, unknown>): Transaction 
 // ============================================
 // EMPLOYEES
 // ============================================
+const normalizeEmployeeRow = (row: Record<string, unknown>): Employee => {
+    const emp = keysToCamel(row) as Employee;
+    const positions = coercePositionSources(emp.positions, emp.position);
+    return { ...emp, positions };
+};
+
 export const fetchEmployees = async (): Promise<Employee[]> => {
     const { data, error } = await supabase.from('employees').select('*').order('created_at');
     if (error) { console.error('fetchEmployees error:', error); return []; }
-    return (data || []).map(keysToCamel);
+    return (data || []).map(normalizeEmployeeRow);
 };
 
 export const saveEmployee = async (emp: Employee): Promise<boolean> => {

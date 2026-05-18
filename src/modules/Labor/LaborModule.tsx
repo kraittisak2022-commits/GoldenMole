@@ -7,6 +7,10 @@ import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
 import { decodeAdvanceGm, encodeAdvanceGm, type AdvancePayoutSlot, type AdvancePaymentMethod } from '../../utils/advanceGmWorkDetails';
 import { THAI_BANK_NAMES } from '../../utils/thaiBanks';
+import {
+    employeeEligibleForAdvancePicker,
+    isExcludedFromAdvanceEmployeePicker,
+} from '../../utils/advanceEmployeeFilter';
 import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 import {
     LABOR_MENU_WORK_CATEGORY_ID,
@@ -96,7 +100,28 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
         }
     }, [formDate, activeTab, dayLaborAttendance.length, dayLeave.length, editingId, settings.jobDescriptions]);
 
-    const filteredEmps = employees.filter((e: Employee) => e.name.toLowerCase().includes(empSearch.toLowerCase()) || e.nickname?.toLowerCase().includes(empSearch.toLowerCase()));
+    useEffect(() => {
+        if (activeTab !== 'Advance') return;
+        setSelectedIds(prev =>
+            prev.filter(id => {
+                const e = employees.find(emp => emp.id === id);
+                return e != null && employeeEligibleForAdvancePicker(e);
+            })
+        );
+    }, [activeTab, employees]);
+
+    const filteredEmps = useMemo(() => {
+        const pool =
+            activeTab === 'Advance'
+                ? employees.filter((e: Employee) => employeeEligibleForAdvancePicker(e))
+                : employees;
+        const q = empSearch.trim().toLowerCase();
+        if (!q) return pool;
+        return pool.filter(
+            (e: Employee) =>
+                e.name.toLowerCase().includes(q) || (e.nickname ?? '').toLowerCase().includes(q)
+        );
+    }, [employees, empSearch, activeTab]);
 
     const triggerSuccess = () => { setSuccessAnim(true); setTimeout(() => setSuccessAnim(false), 1000); };
 
@@ -250,6 +275,15 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
             }
             const perAmt = Number(advanceAmount);
             if (!perAmt || perAmt <= 0) return alert('กรุณากรอกจำนวนเงินที่ขอเบิก (มากกว่า 0)');
+            if (selectedIds.length === 0) return alert('กรุณาเลือกพนักงาน');
+            if (
+                selectedIds.some(id => {
+                    const e = employees.find(emp => emp.id === id);
+                    return e != null && isExcludedFromAdvanceEmployeePicker(e);
+                })
+            ) {
+                return alert('ไม่สามารถเบิกให้คนขับรถหรือรับจ้างรายวันได้');
+            }
             const slotTh = advancePayoutSlot === 'evening' ? 'ช่วงเย็น' : 'ช่วงกลางวัน';
             const payTh = advancePaymentMethod === 'transfer' ? 'เงินโอน' : 'เงินสด';
             const meta = {
@@ -401,7 +435,7 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
                     {activeTab === 'Advance' && (
                         <>
                             <p className="text-xs text-slate-600 leading-relaxed">
-                                แต่ละคนที่เลือกจะถูกบันทึกเป็นคำขอแยกคนละรายการ และแจ้ง LINE ทีละคน — ไม่ดึงค่าแรงจากพนักงานมาแสดงหรือเติมอัตโนมัติ กรอกยอดที่ขอเบิกเอง
+                                แต่ละคนที่เลือกจะถูกบันทึกเป็นคำขอแยกคนละรายการ และแจ้ง LINE ทีละคน — ไม่ดึงค่าแรงจากพนักงานมาแสดงหรือเติมอัตโนมัติ กรอกยอดที่ขอเบิกเอง (รายชื่อไม่แสดงคนขับรถและรับจ้างรายวัน)
                             </p>
                             <Input type="number" value={advanceAmount} onChange={(e: any) => setAdvanceAmount(e.target.value)} label="จำนวนเงินที่ขอเบิก (บาทต่อคน)" className="input-highlight text-red-600 border-red-200" />
                             <div className="space-y-2">

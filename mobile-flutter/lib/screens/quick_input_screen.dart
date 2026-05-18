@@ -14,10 +14,12 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/thai_bank_brand_icon.dart';
+import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
+import '../utils/save_error_message.dart';
 
 class QuickInputScreen extends StatefulWidget {
   const QuickInputScreen({
@@ -307,6 +309,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('เที่ยวรถ');
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
   bool get _isMacroVehicleMode => widget.initialCategory == 'การใช้รถแม็คโคร';
+
+  _MacroVehicleDraft get _activeMacroVehicleDraft {
+    if (_macroVehicleDrafts.isEmpty) {
+      _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
+    }
+    return _macroVehicleDrafts.first;
+  }
+
+  void _resetActiveMacroVehicleDraft() {
+    _disposeMacroVehicleDrafts();
+    _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
+  }
+
+  int get _macroSavedVehicleCountToday => _moduleDayTransactions.length;
+
   bool get _isHomeSandMode =>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [
@@ -340,6 +357,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       widget.initialCategory == 'ค่าแรง' ||
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
   bool get _isOtMode => (widget.initialCategory ?? '').contains('OT');
+
+  _OtGroupDraft get _activeOtGroup {
+    if (_otGroups.isEmpty) {
+      _otGroups.add(_OtGroupDraft.empty());
+    }
+    return _otGroups.first;
+  }
+
+  void _resetActiveOtGroup() {
+    for (final g in _otGroups) {
+      g.dispose();
+    }
+    _otGroups
+      ..clear()
+      ..add(_OtGroupDraft.empty());
+  }
+
+  int get _otSavedGroupCountToday => _moduleDayTransactions.length;
   bool get _isDailyEventMode => widget.initialCategory == 'เหตุการณ์';
   bool get _isLaborLeaveMode => widget.initialCategory == 'ลางาน';
   bool get _isLaborAdvanceMode => widget.initialCategory == 'เบิกเงิน';
@@ -517,6 +552,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (!mounted) return;
         await _loadModuleTransactions(forceRefresh: true);
         if (!mounted) return;
+        setState(_resetActiveMacroVehicleDraft);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
@@ -725,11 +761,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _advanceAccountController.clear();
       _advanceAmountPerPersonController.clear();
     } else if (_isOtMode) {
-      for (final g in _otGroups) {
-        g.dispose();
-      }
-      _otGroups.clear();
-      _otGroups.add(_OtGroupDraft.empty());
+      _resetActiveOtGroup();
       _otDescController.clear();
     } else if (_isDailyEventMode) {
       _dailyEventDescController.clear();
@@ -1107,35 +1139,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isVehicleTripMode) {
-      final pool = dayTransactions ?? txs;
-      final sources = pool.where(_isVehicleTripHydrateSource).toList()
-        ..sort((a, b) {
-          final ca = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final cb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return ca.compareTo(cb);
-        });
-      final drafts = sources.map(_vehicleTripDraftFromAppTransaction).toList();
-      _replaceVehicleDrafts(drafts);
+      // ฟอร์มว่างสำหรับเพิ่ม/แก้ไขทีละคัน — รายการที่บันทึกแล้วแสดงด้านล่าง
+      _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
       return;
     }
 
     if (_isMacroVehicleMode) {
-      final pool = dayTransactions ?? txs;
-      final drafts = <_MacroVehicleDraft>[];
-      for (final t in pool) {
-        if (!isMacroVehicleTransaction(t)) continue;
-        final draft = _MacroVehicleDraft.empty();
-        draft.txId = t.id;
-        draft.vehicleId = (t.vehicleId ?? '').trim();
-        draft.driverId = (t.driverId ?? '').trim();
-        final wt = (t.workType ?? '').trim();
-        draft.workType = wt == 'HalfDay' ? 'HalfDay' : 'FullDay';
-        draft.workDetailsController.text = _stripRecorderSuffix(
-          t.workDetails ?? '',
-        );
-        drafts.add(draft);
-      }
-      _replaceMacroVehicleDrafts(drafts);
+      // ฟอร์มว่าง — เลือกรถทีละคัน ถ้าซ้ำในวันเดียวกันจะโหลดมาแก้ไข
+      _replaceMacroVehicleDrafts(const []);
       return;
     }
 
@@ -1525,6 +1536,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   static const Duration _successPopupHold = Duration(milliseconds: 1400);
 
+  SaveErrorContext? _activeSaveErrorContext;
+
+  String get _saveErrorPageTitle {
+    final custom = widget.appBarTitle?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    final cat = widget.initialCategory?.trim();
+    if (cat != null && cat.isNotEmpty) return cat;
+    return 'บันทึกข้อมูล';
+  }
+
+  Never _failSave(String message, {String? field}) {
+    final ctx = _activeSaveErrorContext;
+    if (ctx == null) throw message;
+    return failSave(message, context: ctx, field: field);
+  }
+
+  void _showSaveError(Object error, {SaveErrorContext? context}) {
+    if (!mounted) return;
+    showSaveErrorSnackBar(
+      this.context,
+      error: error,
+      saveContext: context ?? _activeSaveErrorContext,
+    );
+  }
+
+  void _showSuperAdminHistorySaveError(
+    BuildContext sheetContext, {
+    required Object error,
+    required String page,
+    required String action,
+    String button = 'บันทึก',
+  }) {
+    if (!sheetContext.mounted) return;
+    showSaveErrorSnackBar(
+      sheetContext,
+      error: error,
+      saveContext: SaveErrorContext(
+        page: page,
+        action: action,
+        button: button,
+      ),
+    );
+  }
+
   void _showSavingPopup() {
     showDialog<void>(
       context: context,
@@ -1608,10 +1663,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _runSaveWithPopups({
     required Future<void> Function() body,
     required String successMessage,
+    required String saveActionLabel,
+    required String saveButtonLabel,
     bool requireSignature = true,
     bool stayOnPage = false,
   }) async {
     if (!mounted) return;
+    final saveCtx = SaveErrorContext(
+      page: _saveErrorPageTitle,
+      action: saveActionLabel,
+      button: saveButtonLabel,
+    );
     if (requireSignature) {
       final signature = await _requestSignatureBeforeSave();
       if (signature == null) return;
@@ -1621,6 +1683,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     setState(() => _saving = true);
     var savingDialogOpen = false;
+    _activeSaveErrorContext = saveCtx;
     try {
       _showSavingPopup();
       savingDialogOpen = true;
@@ -1638,12 +1701,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
     } catch (error) {
       if (savingDialogOpen && mounted) _dismissSavingPopup();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
-      }
+      _showSaveError(error, context: saveCtx);
     } finally {
+      _activeSaveErrorContext = null;
       _activeSignatureNote = null;
       if (mounted) setState(() => _saving = false);
     }
@@ -1706,6 +1766,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     await _runSaveWithPopups(
       successMessage: 'บันทึกข้อมูลสำเร็จ',
+      saveActionLabel: 'บันทึกรายการทั่วไป',
+      saveButtonLabel: 'บันทึก',
       body: () async {
         final description = _appendRecorder(_descriptionController.text.trim());
 
@@ -1735,6 +1797,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveSandWashEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกล้างทรายสำเร็จ',
+      saveActionLabel: 'บันทึกการร่อนทราย / ล้างทราย',
+      saveButtonLabel: 'บันทึก',
       body: () async {
         final s1m = double.tryParse(_sand1MorningController.text.trim()) ?? 0;
         final s1a = double.tryParse(_sand1AfternoonController.text.trim()) ?? 0;
@@ -1745,7 +1809,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final total = s1m + s1a + s2m + s2a;
         final hadPriorSandRows = _sandRowIdsByKey.isNotEmpty;
         if (total <= 0 && drums <= 0 && !hadPriorSandRows) {
-          throw 'กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง';
+          _failSave('กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง');
         }
 
         final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -1849,10 +1913,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _persistHomeSandWashRow(double drumsHome) async {
     final maxWashable = _homeSandMaxWashableToday();
     if (drumsHome < 0) {
-      throw 'จำนวนถังที่ล้างที่บ้านต้องไม่ติดลบ';
+            _failSave('จำนวนถังที่ล้างที่บ้านต้องไม่ติดลบ');
     }
     if (drumsHome > maxWashable) {
-      throw 'จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)';
+            _failSave('จำนวนถังที่ล้างเกินจำนวนคงเหลือ (${maxWashable.toStringAsFixed(0)} ถัง)');
     }
     final y = _selectedDate.year.toString().padLeft(4, '0');
     final m = _selectedDate.month.toString().padLeft(2, '0');
@@ -1880,10 +1944,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveHomeSandEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกทรายที่ล้างที่บ้านสำเร็จ',
+      saveActionLabel: 'บันทึกทรายที่ล้างที่บ้าน',
+      saveButtonLabel: 'บันทึก',
       body: () async {
         final rawHome = _drumsWashedAtHomeController.text.trim();
         if (rawHome.isEmpty) {
-          throw 'กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้ (กรอก 0 ได้หากไม่ล้าง)';
+          _failSave('กรุณาระบุจำนวนถังที่ล้างที่บ้านวันนี้ (กรอก 0 ได้หากไม่ล้าง)');
         }
         final drumsHome = double.tryParse(rawHome) ?? 0;
         await _persistHomeSandWashRow(drumsHome);
@@ -1919,32 +1985,49 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return ok == true;
   }
 
-  Future<void> _saveHomeSandWashAllEntry() async {
+  Future<void> _persistHomeSandRoundCloseRow() async {
+    final y = _selectedDate.year.toString().padLeft(4, '0');
+    final m = _selectedDate.month.toString().padLeft(2, '0');
+    final d = _selectedDate.day.toString().padLeft(2, '0');
+    final roundId =
+        _homeSandRoundTxId ??
+        '${DateTime.now().millisecondsSinceEpoch}_home_sand_round';
+    _homeSandRoundTxId = roundId;
+    await _persist(
+      AppTransaction(
+        id: roundId,
+        date: '$y-$m-$d',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: _appendRecorder('ตัดรอบล้างทรายที่บ้าน'),
+        amount: 0,
+        drumsObtained: 0,
+        drumsWashedAtHome: 0,
+        note: _activeSignatureNote,
+      ),
+    );
+  }
+
+  Future<void> _saveHomeSandWashAllAndRoundCloseEntry() async {
     final qty = _homeSandMaxWashableToday();
-    if (qty <= 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'ไม่มีทรายคงเหลือให้ล้างในวันนี้',
-            style: GoogleFonts.kanit(),
-          ),
-        ),
-      );
-      return;
-    }
+    final message = qty > 0
+        ? 'บันทึกล้างทรายที่บ้านทั้งหมด ${qty.toStringAsFixed(0)} ถัง แล้วตัดรอบล้างทรายที่บ้าน ใช่หรือไม่?'
+        : 'ไม่มีทรายคงเหลือให้ล้าง — ตัดรอบล้างทรายที่บ้านสำหรับวันนี้ใช่หรือไม่?';
     final ok = await _confirmHomeSandDialog(
-      title: 'ล้างทั้งหมด',
-      message:
-          'บันทึกล้างทรายที่บ้านทั้งหมด ${qty.toStringAsFixed(0)} ถัง (คงเหลือก่อนวันนี้ + ได้เพิ่มวันนี้) ใช่หรือไม่?',
-      confirmLabel: 'ล้างทั้งหมด',
+      title: 'ล้างทั้งหมดแล้ว ตัดรอบ',
+      message: message,
+      confirmLabel: 'ล้างทั้งหมดแล้ว ตัดรอบ',
     );
     if (!ok) return;
     await _runSaveWithPopups(
-      successMessage: 'บันทึกล้างทรายที่บ้านทั้งหมดสำเร็จ',
+      successMessage: 'ล้างทรายที่บ้านทั้งหมดและตัดรอบสำเร็จ',
+      saveActionLabel: 'ล้างทรายที่บ้านทั้งหมดและตัดรอบ',
+      saveButtonLabel: 'ล้างทั้งหมดแล้ว ตัดรอบ',
       stayOnPage: true,
       body: () async {
         await _persistHomeSandWashRow(qty);
+        await _persistHomeSandRoundCloseRow();
         if (mounted) {
           _drumsWashedAtHomeController.text = _strNum(qty);
         }
@@ -1952,59 +2035,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Future<void> _saveHomeSandRoundCloseEntry() async {
-    final rawHome = _drumsWashedAtHomeController.text.trim();
-    final parsedHome = double.tryParse(rawHome);
-    final homeForSummary = rawHome.isEmpty
-        ? _homeSandTodayHomeSaved
-        : (parsedHome ?? 0);
-    final remain =
-        (_homeSandBeforeToday + _homeSandTodayObtained - homeForSummary)
-            .clamp(0, 999999)
-            .toDouble();
-    var message = 'ยืนยันตัดรอบล้างทรายที่บ้านสำหรับวันนี้?';
-    if (remain > 0) {
-      message =
-          'ยังมีทรายคงเหลือประมาณ ${remain.toStringAsFixed(0)} ถัง\n\nต้องการตัดรอบอยู่หรือไม่? (แนะนำใช้ «ล้างทั้งหมด» ก่อนหากต้องการล้างให้หมด)';
-    }
-    final ok = await _confirmHomeSandDialog(
-      title: 'ตัดรอบ',
-      message: message,
-      confirmLabel: 'ตัดรอบ',
-    );
-    if (!ok) return;
-    await _runSaveWithPopups(
-      successMessage: 'ตัดรอบล้างทรายที่บ้านสำเร็จ',
-      stayOnPage: true,
-      body: () async {
-        final y = _selectedDate.year.toString().padLeft(4, '0');
-        final m = _selectedDate.month.toString().padLeft(2, '0');
-        final d = _selectedDate.day.toString().padLeft(2, '0');
-        final roundId =
-            _homeSandRoundTxId ??
-            '${DateTime.now().millisecondsSinceEpoch}_home_sand_round';
-        _homeSandRoundTxId = roundId;
-        await _persist(
-          AppTransaction(
-            id: roundId,
-            date: '$y-$m-$d',
-            type: 'Expense',
-            category: 'DailyLog',
-            subCategory: 'Sand',
-            description: _appendRecorder('ตัดรอบล้างทรายที่บ้าน'),
-            amount: 0,
-            drumsObtained: 0,
-            drumsWashedAtHome: 0,
-            note: _activeSignatureNote,
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _saveVehicleTripEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
+      saveActionLabel: 'บันทึกรถดรัมและจำนวนเที่ยว',
+      saveButtonLabel: 'บันทึกรถคันนี้',
       stayOnPage: true,
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
@@ -2021,7 +2056,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               lumpFilled;
         }).toList();
         if (activeRows.isEmpty) {
-          throw 'กรุณาระบุข้อมูลรถอย่างน้อย 1 คัน';
+          _failSave('กรุณาระบุข้อมูลรถอย่างน้อย 1 คัน');
         }
 
         final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -2031,17 +2066,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
         for (final row in activeRows) {
           if (row.vehicleId.trim().isEmpty || row.driverId.trim().isEmpty) {
-            throw 'กรุณาระบุรถและคนขับให้ครบทุกคัน';
+            _failSave('กรุณาระบุรถและคนขับให้ครบทุกคัน');
           }
         }
 
-        final seenVehicleDriver = <String>{};
+        final seenVehicle = <String>{};
         for (final row in activeRows) {
           final vehicle = row.vehicleId.trim();
-          final driver = row.driverId.trim();
-          final pairKey = '$vehicle|$driver';
-          if (!seenVehicleDriver.add(pairKey)) {
-            throw 'พบรายการซ้ำในฟอร์ม: รถ "$vehicle" กับคนขับคนเดียวกันซ้ำมากกว่า 1 แถว — ลบหรือแก้แถวซ้ำก่อนบันทึก';
+          if (!seenVehicle.add(vehicle)) {
+            _failSave('พบรถ "$vehicle" ซ้ำในฟอร์ม — แก้ไขที่แถวเดิมแทน');
           }
         }
 
@@ -2051,17 +2084,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
         for (final row in activeRows) {
           final vehicle = row.vehicleId.trim();
-          final driver = row.driverId.trim();
           final selfId = row.tripTxId?.trim();
           for (final t in serverDayRows) {
             if (!_isVehicleTripHydrateSource(t)) continue;
             if (selfId != null && selfId.isNotEmpty && t.id == selfId) {
               continue;
             }
-            if ((t.vehicleId ?? '').trim() == vehicle &&
-                (t.driverId ?? '').trim() == driver) {
-              final driverLabel = _employeeLabelFromIdOrName(driver);
-              throw 'มีบันทึกรถดรัมชุดนี้ในวันนี้แล้ว: รถ "$vehicle" / $driverLabel — ไม่บันทึกซ้ำ (แก้ไขที่แถวที่โหลดมาแทน หรือลบรายการซ้ำในระบบ)';
+            if ((t.vehicleId ?? '').trim() == vehicle) {
+              _failSave('มีบันทึกรถ "$vehicle" ในวันนี้แล้ว — เลือกรถคันนี้จากรายการอีกครั้งเพื่อโหลดมาแก้ไข');
             }
           }
         }
@@ -2083,7 +2113,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final totalTrips = tripMorning + tripAfternoon;
           final cubicPerTrip = double.tryParse(row.cubicPerTrip.trim()) ?? 0;
           if (row.workType == 'Hourly' && hourlyHours <= 0) {
-            throw 'กรุณาระบุชั่วโมงทำงานสำหรับรายการรายชั่วโมง';
+            _failSave('กรุณาระบุชั่วโมงทำงานสำหรับรายการรายชั่วโมง');
           }
           final detailsWithHours = row.workType == 'Hourly'
               ? (details.isEmpty
@@ -2100,7 +2130,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             final lumpCubic =
                 double.tryParse(row.lumpSumTotalCubic.trim()) ?? 0;
             if (lumpCubic <= 0) {
-              throw 'กรุณาระบุรวมคิว (เหมา) ให้มากกว่า 0 สำหรับรถที่เลือกเหมา';
+              _failSave('กรุณาระบุรวมคิว (เหมา) ให้มากกว่า 0 สำหรับรถที่เลือกเหมา');
             }
             await _persist(
               AppTransaction(
@@ -2134,10 +2164,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
 
           if (totalTrips <= 0) {
-            throw 'กรุณาระบุจำนวนเที่ยวรวม (เช้า+บ่าย) ให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว';
+            _failSave('กรุณาระบุจำนวนเที่ยวรวม (เช้า+บ่าย) ให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว');
           }
           if (cubicPerTrip <= 0) {
-            throw 'กรุณาระบุคิวต่อเที่ยวให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว';
+            _failSave('กรุณาระบุคิวต่อเที่ยวให้มากกว่า 0 สำหรับรถที่คิดเป็นเที่ยว');
           }
           final totalCubic = totalTrips * cubicPerTrip;
           await _persist(
@@ -2169,70 +2199,157 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           );
         }
-        _replaceVehicleDrafts(const []);
+        _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
       },
     );
   }
 
+  AppTransaction? _findLatestVehicleTripForDay(String vehicleId) {
+    final vehicle = vehicleId.trim();
+    if (vehicle.isEmpty) return null;
+    final ymd = _quickYmd(_selectedDate);
+    final seenIds = <String>{};
+    final pool = <AppTransaction>[];
+    for (final t in [
+      ..._moduleDayAllTransactions,
+      ..._moduleDayTransactions,
+    ]) {
+      if (seenIds.add(t.id)) pool.add(t);
+    }
+    AppTransaction? best;
+    for (final t in pool) {
+      if (!_isVehicleTripHydrateSource(t)) continue;
+      if (t.date.trim() != ymd) continue;
+      if ((t.vehicleId ?? '').trim() != vehicle) continue;
+      if (best == null) {
+        best = t;
+        continue;
+      }
+      final tb = t.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final tab = best.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      if (tb.isAfter(tab)) best = t;
+    }
+    return best;
+  }
+
+  void _mergeVehicleTripDraftFrom(
+    _VehicleTripDraft target,
+    _VehicleTripDraft source,
+  ) {
+    target.tripTxId = source.tripTxId;
+    target.vehicleId = source.vehicleId;
+    target.driverId = source.driverId;
+    target.workType = source.workType;
+    target.tripBillingMode = source.tripBillingMode;
+    target.hourlyHours = source.hourlyHours;
+    target.workDetails = source.workDetails;
+    target.tripMorning = source.tripMorning;
+    target.tripAfternoon = source.tripAfternoon;
+    target.cubicPerTrip = source.cubicPerTrip;
+    target.lumpSumTotalCubic = source.lumpSumTotalCubic;
+    target.workDetailsController.text = source.workDetails;
+    target.hourlyHoursController.text = source.hourlyHours;
+    target.tripMorningController.text = source.tripMorning;
+    target.tripAfternoonController.text = source.tripAfternoon;
+    target.cubicPerTripController.text = source.cubicPerTrip;
+    target.lumpSumTotalCubicController.text = source.lumpSumTotalCubic;
+  }
+
+  void _hydrateVehicleRowFromExistingIfDuplicate(
+    _VehicleTripDraft row,
+    String vehicleId,
+  ) {
+    final vehicle = vehicleId.trim();
+    row.vehicleId = vehicle;
+    if (vehicle.isEmpty) {
+      row.tripTxId = null;
+      return;
+    }
+    _applyDefaultCubicForVehicleRow(row, vehicle);
+    final existing = _findLatestVehicleTripForDay(vehicle);
+    if (existing == null) {
+      row.tripTxId = null;
+      return;
+    }
+    final loaded = _vehicleTripDraftFromAppTransaction(existing);
+    _mergeVehicleTripDraftFrom(row, loaded);
+    loaded.dispose();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'โหลดข้อมูลรถ "$vehicle" ที่บันทึกแล้วมาแก้ไข',
+          style: GoogleFonts.kanit(),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    _scheduleUiRefresh();
+  }
+
+  void _loadVehicleTripIntoForm(AppTransaction t) {
+    if (_vehicleTripDrafts.isEmpty) {
+      _vehicleTripDrafts.add(_VehicleTripDraft.empty());
+    }
+    final loaded = _vehicleTripDraftFromAppTransaction(t);
+    _mergeVehicleTripDraftFrom(_vehicleTripDrafts.first, loaded);
+    loaded.dispose();
+    _scheduleUiRefresh();
+  }
+
   Future<void> _saveMacroVehicleUsageEntries() async {
+    final row = _activeMacroVehicleDraft;
+    final isUpdate = row.txId?.trim().isNotEmpty == true;
     await _runSaveWithPopups(
-      successMessage: 'บันทึกการใช้รถแม็คโครสำเร็จ',
+      successMessage: isUpdate
+          ? 'อัปเดตรถคันนี้สำเร็จ — เลือกรถคันถัดไปได้'
+          : 'บันทึกคันนี้สำเร็จ — เลือกรถคันถัดไปได้',
+      saveActionLabel: 'บันทึกการใช้รถแม็คโคร',
+      saveButtonLabel: 'บันทึกคันนี้ / อัปเดตคันนี้',
+      stayOnPage: true,
       body: () async {
         final macroCars = _fuelMacroCars();
         if (macroCars.isEmpty) {
-          throw 'ยังไม่พบรถแม็คโครในตั้งค่าแอพ';
+          _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
         }
-        final activeRows = _macroVehicleDrafts.where((row) {
-          return row.vehicleId.trim().isNotEmpty ||
-              row.driverId.trim().isNotEmpty ||
-              row.workDetailsController.text.trim().isNotEmpty;
-        }).toList();
-        if (activeRows.isEmpty) {
-          throw 'กรุณาระบุข้อมูลอย่างน้อย 1 คัน';
+        final vehicle = row.vehicleId.trim();
+        final driver = row.driverId.trim();
+        final details = row.workDetailsController.text.trim();
+        if (vehicle.isEmpty || driver.isEmpty) {
+          _failSave('กรุณาเลือกรถแม็คโครและคนขับ');
+        }
+        if (!_macroDriverEmployees.any((e) => e.id == driver)) {
+          _failSave('เลือกคนขับจากรายชื่อตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น');
+        }
+        if (!macroCars.contains(vehicle)) {
+          _failSave('เลือกรถได้เฉพาะรถแม็คโคร');
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-
-        for (var i = 0; i < activeRows.length; i++) {
-          final row = activeRows[i];
-          final vehicle = row.vehicleId.trim();
-          final driver = row.driverId.trim();
-          final details = row.workDetailsController.text.trim();
-          if (vehicle.isEmpty || driver.isEmpty) {
-            throw 'กรุณาระบุรถแม็คโครและคนขับให้ครบทุกคัน';
-          }
-          if (!_macroDriverEmployees.any((e) => e.id == driver)) {
-            throw 'เลือกคนขับจากรายชื่อตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น (คัน ${i + 1})';
-          }
-          if (!macroCars.contains(vehicle)) {
-            throw 'เลือกรถได้เฉพาะรถแม็คโคร (คัน ${i + 1})';
-          }
-          final dayLabel = row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
-          final txId =
-              row.txId ??
-              '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle_$i';
-          row.txId = txId;
-          await _persist(
-            AppTransaction(
-              id: txId,
-              date: date,
-              type: 'Expense',
-              category: 'Vehicle',
-              description: _appendRecorder(
-                'รถ: $vehicle (${details.isEmpty ? '—' : details}) [$dayLabel]',
-              ),
-              amount: 0,
-              note: _activeSignatureNote,
-              vehicleId: vehicle,
-              driverId: driver,
-              workDetails: details.isEmpty ? null : _appendRecorder(details),
-              workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+        final dayLabel = row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+        final txId =
+            row.txId ??
+            '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle';
+        await _persist(
+          AppTransaction(
+            id: txId,
+            date: date,
+            type: 'Expense',
+            category: 'Vehicle',
+            description: _appendRecorder(
+              'รถ: $vehicle (${details.isEmpty ? '—' : details}) [$dayLabel]',
             ),
-          );
-        }
-        _replaceMacroVehicleDrafts(const []);
+            amount: 0,
+            note: _activeSignatureNote,
+            vehicleId: vehicle,
+            driverId: driver,
+            workDetails: details.isEmpty ? null : _appendRecorder(details),
+            workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+          ),
+        );
+        _resetActiveMacroVehicleDraft();
       },
     );
   }
@@ -2240,11 +2357,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveFuelVehicleUsageEntries() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
+      saveActionLabel: 'บันทึกการใช้น้ำมันรายรถ',
+      saveButtonLabel: 'บันทึก',
       stayOnPage: true,
       body: () async {
         final fuelCars = _fuelMacroCars();
         if (fuelCars.isEmpty) {
-          throw 'ยังไม่พบรถแม็คโครในตั้งค่าแอพ';
+          _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
         }
         final activeRows = _fuelVehicleDrafts.where((row) {
           return row.vehicleId.trim().isNotEmpty ||
@@ -2252,7 +2371,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               row.time.trim().isNotEmpty;
         }).toList();
         if (activeRows.isEmpty) {
-          throw 'กรุณาระบุข้อมูลการใช้น้ำมันอย่างน้อย 1 คัน';
+          _failSave('กรุณาระบุข้อมูลการใช้น้ำมันอย่างน้อย 1 คัน');
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
@@ -2263,13 +2382,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final row = activeRows[i];
           final vehicle = row.vehicleId.trim();
           final liters = double.tryParse(row.liters.trim()) ?? 0;
-          if (vehicle.isEmpty) throw 'กรุณาเลือกรถให้ครบทุกคัน';
-          if (!fuelCars.contains(vehicle)) {
-            throw 'เลือกรถได้เฉพาะรถแม็คโคร';
+          if (vehicle.isEmpty) {
+            _failSave('กรุณาเลือกรถให้ครบทุกคัน', field: 'เลือกรถ');
           }
-          if (liters <= 0) throw 'กรุณาระบุปริมาณน้ำมันให้มากกว่า 0';
+          if (!fuelCars.contains(vehicle)) {
+            _failSave('เลือกรถได้เฉพาะรถแม็คโคร');
+          }
+          if (liters <= 0) {
+            _failSave('กรุณาระบุปริมาณน้ำมันให้มากกว่า 0', field: 'ปริมาณน้ำมัน (ลิตร)');
+          }
           if (row.time.trim().isEmpty) {
-            throw 'กรุณาระบุเวลาเติมน้ำมัน (คัน ${i + 1})';
+            _failSave('กรุณาระบุเวลาเติมน้ำมัน (คัน ${i + 1})');
           }
           final txId =
               row.txId ??
@@ -2304,14 +2427,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveLaborEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกค่าแรงสำเร็จ',
+      saveActionLabel: 'บันทึกการทำงาน / ค่าแรง',
+      saveButtonLabel: 'บันทึก',
       body: () async {
         final assignedIds = _collectLaborAssignedIds();
-        if (assignedIds.isEmpty) throw 'กรุณาเลือกพนักงานลงกล่องงาน';
+        if (assignedIds.isEmpty) {
+          _failSave('กรุณาเลือกพนักงานลงกล่องงาน', field: 'กล่องงาน canvas');
+        }
         for (final job in _generalSubJobs) {
           final key = _generalSubJobAssignmentKey(job.id);
           final count = _laborAssignments[key]?.length ?? 0;
           if (count > 0 && job.nameController.text.trim().isEmpty) {
-            throw 'กรุณาระบุรายละเอียดงานสำหรับกล่องย่อยในงานทั่วไปที่มีพนักงาน';
+            _failSave('กรุณาระบุรายละเอียดงานสำหรับกล่องย่อยในงานทั่วไปที่มีพนักงาน');
           }
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -2384,19 +2511,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveLaborLeaveEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกลางานสำเร็จ',
+      saveActionLabel: 'บันทึกลางาน',
+      saveButtonLabel: 'บันทึก',
       body: () async {
         if (_selectedLeaveEmpIds.isEmpty) {
-          throw 'กรุณาเลือกพนักงาน';
+          _failSave('กรุณาเลือกพนักงาน');
         }
         final reason = _leaveReasonController.text.trim();
-        if (reason.isEmpty) throw 'กรุณากรอกเหตุผลการลา';
+        if (reason.isEmpty) {
+          _failSave('กรุณากรอกเหตุผลการลา', field: 'เหตุผลการลา');
+        }
         final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
         if (_leaveIsHalfDay) {
           if (_leaveHalfPart != 'morning' && _leaveHalfPart != 'afternoon') {
-            throw 'กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย';
+            _failSave('กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย');
           }
         } else if (days <= 0) {
-          throw 'กรุณากรอกจำนวนวันให้มากกว่า 0';
+          _failSave('กรุณากรอกจำนวนวันให้มากกว่า 0');
         }
         final effectiveDays = _leaveIsHalfDay ? 0.5 : days;
         final halfTh = _leaveIsHalfDay
@@ -2443,20 +2574,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveLaborAdvanceEntry() async {
     await _runSaveWithPopups(
       successMessage: 'ส่งคำขอเบิกเงินแล้ว',
+      saveActionLabel: 'คำขอเบิกเงิน',
+      saveButtonLabel: 'ส่งคำขอเบิกเงิน',
       body: () async {
         if (_selectedAdvanceEmpIds.isEmpty) {
-          throw 'กรุณาเลือกพนักงาน';
+          _failSave('กรุณาเลือกพนักงาน');
+        }
+        final blocked = _selectedAdvanceEmpIds.where((id) {
+          final e = _employeesById[id];
+          return e != null && isExcludedFromAdvanceEmployeePicker(e);
+        }).toList();
+        if (blocked.isNotEmpty) {
+          _failSave('ไม่สามารถเบิกให้คนขับรถหรือรับจ้างรายวันได้');
         }
         final per =
             double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
         if (per <= 0) {
-          throw 'กรุณากรอกจำนวนเงินที่ขอเบิกต่อคนให้มากกว่า 0';
+          _failSave('กรุณากรอกจำนวนเงินที่ขอเบิกต่อคนให้มากกว่า 0');
         }
         if (_advancePaymentMethod == AdvanceGmMeta.transfer) {
           final bank = _advanceBank.trim();
           final acct = _advanceAccountController.text.trim();
-          if (bank.isEmpty) throw 'กรุณาเลือกธนาคาร';
-          if (acct.isEmpty) throw 'กรุณากรอกเลขบัญชี';
+          if (bank.isEmpty) {
+            _failSave('กรุณาเลือกธนาคาร', field: 'ธนาคาร');
+          }
+          if (acct.isEmpty) {
+            _failSave('กรุณากรอกเลขบัญชี', field: 'เลขบัญชี');
+          }
         }
         final meta = AdvanceGmMeta(
           payoutSlot: _advancePayoutSlot,
@@ -2511,61 +2655,49 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveOtEntry() async {
     await _runSaveWithPopups(
-      successMessage: 'บันทึก OT สำเร็จ',
+      successMessage: 'บันทึกกลุ่ม OT สำเร็จ — กรอกกลุ่มถัดไปได้',
+      saveActionLabel: 'บันทึกการทำงานล่วงเวลา (OT)',
+      saveButtonLabel: 'บันทึกกลุ่มนี้',
       requireSignature: false,
+      stayOnPage: true,
       body: () async {
+        final g = _activeOtGroup;
+        final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
+        final ids = g.employeeIds.toList();
+        if (ids.isEmpty) {
+          _failSave('กรุณาเลือกพนักงาน');
+        }
+        if (hours <= 0) {
+          _failSave('กรุณาระบุชั่วโมง OT');
+        }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
         final desc = _otDescController.text.trim();
-        var savedCount = 0;
+        final groupNum = _otSavedGroupCountToday + 1;
         final baseTs = DateTime.now().millisecondsSinceEpoch;
-        for (var gi = 0; gi < _otGroups.length; gi++) {
-          final g = _otGroups[gi];
-          final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
-          final ids = g.employeeIds.toList();
-          final hasEmployees = ids.isNotEmpty;
-          final hasHours = hours > 0;
-          if (!hasEmployees && !hasHours) continue;
-          if (!hasEmployees) {
-            throw 'กลุ่มที่ ${gi + 1}: กรุณาเลือกพนักงาน';
-          }
-          if (!hasHours || hours <= 0) {
-            throw 'กลุ่มที่ ${gi + 1}: กรุณาระบุชั่วโมง OT';
-          }
-          final id = g.persistedId ?? '${baseTs}_ot_${gi}_$savedCount';
-          g.persistedId = id;
-          await _persist(
-            AppTransaction(
-              id: id,
-              date: date,
-              type: 'Expense',
-              category: 'Labor',
-              subCategory: 'OT',
-              laborStatus: 'OT',
-              employeeIds: ids,
-              amount: 0,
-              note: _activeSignatureNote,
-              otAmount: 0,
-              otHours: hours,
-              otDescription: desc,
-              description: _appendRecorder(
-                'OT $desc (${hours.toStringAsFixed(1)}ชม.) กลุ่มที่ ${savedCount + 1} (${ids.length} คน)',
-              ),
+        final id = g.persistedId ?? '${baseTs}_ot_$groupNum';
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'OT',
+            laborStatus: 'OT',
+            employeeIds: ids,
+            amount: 0,
+            note: _activeSignatureNote,
+            otAmount: 0,
+            otHours: hours,
+            otDescription: desc,
+            description: _appendRecorder(
+              'OT $desc (${hours.toStringAsFixed(1)}ชม.) กลุ่มที่ $groupNum (${ids.length} คน)',
             ),
-          );
-          savedCount++;
-        }
-        if (savedCount == 0) {
-          throw 'กรุณาเลือกพนักงานและระบุชั่วโมงอย่างน้อยหนึ่งกลุ่ม';
-        }
-        for (final g in _otGroups) {
-          g.dispose();
-        }
-        _otGroups.clear();
-        _otGroups.add(_OtGroupDraft.empty());
-        _otDescController.clear();
+          ),
+        );
+        _resetActiveOtGroup();
       },
     );
   }
@@ -2573,11 +2705,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveDailyEventEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกเหตุการณ์สำเร็จ',
+      saveActionLabel: 'บันทึกเหตุการณ์ประจำวัน',
+      saveButtonLabel: 'บันทึก',
       stayOnPage: true,
       body: () async {
         final text = _dailyEventDescController.text.trim();
         if (text.isEmpty) {
-          throw 'กรุณาระบุรายละเอียดเหตุการณ์';
+          _failSave('กรุณาระบุรายละเอียดเหตุการณ์');
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
@@ -3131,16 +3265,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         );
                         await _loadModuleTransactions(forceRefresh: true);
                       } catch (e) {
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'บันทึกไม่สำเร็จ: $e',
-                                style: GoogleFonts.kanit(),
-                              ),
-                            ),
-                          );
-                        }
+                        if (!ctx.mounted) return;
+                        _showSuperAdminHistorySaveError(
+                          ctx,
+                          error: e,
+                          page: 'แก้ไขเหตุการณ์ (SuperAdmin)',
+                          action: 'แก้ไขประวัติเหตุการณ์',
+                        );
                       }
                     },
                     child: Text('บันทึก', style: GoogleFonts.kanit()),
@@ -3419,16 +3550,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       );
                       await _loadModuleTransactions(forceRefresh: true);
                     } catch (e) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'บันทึกไม่สำเร็จ: $e',
-                              style: GoogleFonts.kanit(),
-                            ),
-                          ),
-                        );
-                      }
+                      if (!ctx.mounted) return;
+                      _showSuperAdminHistorySaveError(
+                        ctx,
+                        error: e,
+                        page: 'แก้ไขลางาน (SuperAdmin)',
+                        action: 'แก้ไขประวัติการลา',
+                      );
                     }
                   },
                   child: Text('บันทึก', style: GoogleFonts.kanit()),
@@ -3550,16 +3678,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     );
                     await _loadModuleTransactions(forceRefresh: true);
                   } catch (e) {
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'บันทึกไม่สำเร็จ: $e',
-                            style: GoogleFonts.kanit(),
-                          ),
-                        ),
-                      );
-                    }
+                    if (!ctx.mounted) return;
+                    _showSuperAdminHistorySaveError(
+                      ctx,
+                      error: e,
+                      page: 'แก้ไข OT (SuperAdmin)',
+                      action: 'แก้ไขประวัติ OT',
+                    );
                   }
                 },
                 child: Text('บันทึก', style: GoogleFonts.kanit()),
@@ -3674,16 +3799,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       forceRefresh: true,
                     );
                   } catch (e) {
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'บันทึกไม่สำเร็จ: $e',
-                            style: GoogleFonts.kanit(),
-                          ),
-                        ),
-                      );
-                    }
+                    if (!ctx.mounted) return;
+                    _showSuperAdminHistorySaveError(
+                      ctx,
+                      error: e,
+                      page: 'แก้ไขรายจ่ายสาธารณูปโภค (SuperAdmin)',
+                      action: 'แก้ไขประวัติรายจ่ายสาธารณูปโภค',
+                    );
                   }
                 },
                 child: Text('บันทึก', style: GoogleFonts.kanit()),
@@ -3851,16 +3973,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           forceRefresh: true,
                         );
                       } catch (e) {
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'บันทึกไม่สำเร็จ: $e',
-                                style: GoogleFonts.kanit(),
-                              ),
-                            ),
-                          );
-                        }
+                        if (!ctx.mounted) return;
+                        _showSuperAdminHistorySaveError(
+                          ctx,
+                          error: e,
+                          page: 'แก้ไขรายรับประจำวัน (SuperAdmin)',
+                          action: 'แก้ไขประวัติรายรับประจำวัน',
+                        );
                       }
                     },
                     child: Text('บันทึก', style: GoogleFonts.kanit()),
@@ -4034,16 +4153,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   );
                   await _loadModuleTransactions(forceRefresh: true);
                 } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'บันทึกไม่สำเร็จ: $e',
-                          style: GoogleFonts.kanit(),
-                        ),
-                      ),
-                    );
-                  }
+                  if (!ctx.mounted) return;
+                  _showSuperAdminHistorySaveError(
+                    ctx,
+                    error: e,
+                    page: 'แก้ไขคำขอเบิก (SuperAdmin)',
+                    action: 'แก้ไขประวัติคำขอเบิกเงิน',
+                  );
                 }
               }
 
@@ -4869,14 +4985,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                         const EdgeInsets.only(
                                                           right: 10,
                                                         ),
-                                                    child:
-                                                        _LaborCanvasSection(
-                                                      child:
-                                                          _buildLaborCanvasBoard(
-                                                        layout:
-                                                            _LaborDragBoardLayout
-                                                                .poolOnly,
-                                                      ),
+                                                    child: LayoutBuilder(
+                                                      builder: (context, c) {
+                                                        final poolH = c
+                                                                .maxHeight
+                                                                .isFinite
+                                                            ? c.maxHeight
+                                                            : MediaQuery.sizeOf(
+                                                                    context,
+                                                                  ).height *
+                                                                  0.72;
+                                                        return SizedBox(
+                                                          height: poolH,
+                                                          child:
+                                                              _LaborCanvasSection(
+                                                            child:
+                                                                _buildLaborCanvasBoard(
+                                                              layout:
+                                                                  _LaborDragBoardLayout
+                                                                      .poolOnly,
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
                                                     ),
                                                   ),
                                                 ),
@@ -5040,6 +5171,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveUtilitiesExpense() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกสาธารณูปโภคสำเร็จ',
+      saveActionLabel: 'บันทึกรายจ่ายสาธารณูปโภค',
+      saveButtonLabel: 'บันทึกรายจ่าย',
       stayOnPage: true,
       body: () async {
         final sub = _effectiveUtilitySubcategory();
@@ -5047,13 +5180,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final amt =
             double.tryParse(_utilitiesAmountController.text.trim()) ?? 0;
         if (_iuExpenseChoice == null || _iuExpenseChoice!.trim().isEmpty) {
-          throw 'กรุณาเลือกประเภทค่าใช้จ่าย';
+          _failSave('กรุณาเลือกประเภทค่าใช้จ่าย');
         }
         if (sub.isEmpty) {
-          throw 'กรุณาระบุประเภท (เลือกจากรายการหรือระบุเมื่อเลือกอื่นๆ)';
+          _failSave('กรุณาระบุประเภท (เลือกจากรายการหรือระบุเมื่อเลือกอื่นๆ)');
         }
         if (amt <= 0) {
-          throw 'กรุณาระบุจำนวนเงินให้ถูกต้อง';
+          _failSave('กรุณาระบุจำนวนเงินให้ถูกต้อง');
         }
         final desc = extra.isEmpty ? sub : '$sub: $extra';
         final ymd = _quickYmd(_selectedDate);
@@ -5079,6 +5212,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveWizardIncomeEntry() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกรายรับสำเร็จ',
+      saveActionLabel: 'บันทึกรายรับประจำวัน',
+      saveButtonLabel: 'บันทึกรายรับ',
       stayOnPage: true,
       body: () async {
         final incomeType = _effectiveIncomeDescription();
@@ -5088,16 +5223,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final qty = double.tryParse(qtyRaw);
         final unitPrice = double.tryParse(priceRaw);
         if (_iuIncomeChoice == null || _iuIncomeChoice!.trim().isEmpty) {
-          throw 'กรุณาเลือกประเภทรายรับ';
+          _failSave('กรุณาเลือกประเภทรายรับ');
         }
         if (incomeType.isEmpty) {
-          throw 'กรุณาระบุประเภทรายรับ (เลือกจากรายการหรือพิมพ์เมื่อเลือกอื่นๆ)';
+          _failSave('กรุณาระบุประเภทรายรับ (เลือกจากรายการหรือพิมพ์เมื่อเลือกอื่นๆ)');
         }
         if (incomeType.trim() == 'ขายแร่') {
-          throw 'ประเภท "ขายแร่" ไม่ใช้ในระบบแล้ว';
+          _failSave('ประเภท "ขายแร่" ไม่ใช้ในระบบแล้ว');
         }
         if (total <= 0) {
-          throw 'กรุณาระบุยอดรวม (บาท) ให้ถูกต้อง';
+          _failSave('กรุณาระบุยอดรวม (บาท) ให้ถูกต้อง');
         }
         final ymd = _quickYmd(_selectedDate);
         final id = '${DateTime.now().millisecondsSinceEpoch}_income';
@@ -6610,8 +6745,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         padding: const EdgeInsets.only(top: 6),
         child: Text(
           hasHydratedRows
-              ? 'รายการจากเว็บ/ระบบโหลดที่แถวด้านบนแล้ว — แก้ไขแล้วกดบันทึกเพื่ออัปเดต'
-              : 'ยังไม่มีบันทึกรถดรัมในวันที่เลือก',
+              ? 'กำลังแก้ไขรายการด้านบน — กดบันทึกรถคันนี้เพื่ออัปเดต'
+              : 'ยังไม่มีบันทึกรถดรัมในวันที่เลือก — เลือกรถด้านบนเพื่อเพิ่ม',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
         ),
@@ -6633,7 +6768,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ...saved.map(
           (t) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: _vehicleTripSavedDetailCard(t),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  _loadVehicleTripIntoForm(t);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'โหลดรถ "${_vehicleLabelFromId((t.vehicleId ?? "").trim())}" มาแก้ไขด้านบน',
+                        style: GoogleFonts.kanit(),
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: _vehicleTripSavedDetailCard(t),
+              ),
+            ),
           ),
         ),
       ],
@@ -6674,7 +6828,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              'รายการจากเว็บ (บันทึกงานประจำวัน > บันทึกรถและจำนวนเที่ยวรถ) จะโหลดมาแสดงที่แถวด้านบนให้แก้ไข — ช่วงเช้า/บ่าย ไม่บังคับ (ว่าง = 0) — แบบเหมาให้กรอกรวมคิว แบบคิดเป็นเที่ยวต้องมีเที่ยวรวม > 0 และคิวต่อเที่ยว — บันทึกทีละคันหรือกด «เพิ่มรถอีกคัน»',
+              'บันทึกทีละคัน — เลือกรถที่บันทึกแล้วในวันนี้จะโหลดข้อมูลมาแก้ไขอัตโนมัติ หรือแตะการ์ดด้านล่าง — ช่วงเช้า/บ่าย ไม่บังคับ (ว่าง = 0)',
               style: GoogleFonts.kanit(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -6692,6 +6846,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               driverLabelFromId: _driverLabelFromId,
               openNumericPad: _openNumericPad,
               onVehicleTripRowDelete: _handleVehicleTripRowDelete,
+              onVehicleSelected: _hydrateVehicleRowFromExistingIfDuplicate,
               notifyParentRefresh: _scheduleUiRefresh,
             ),
             const SizedBox(height: 12),
@@ -6701,7 +6856,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 onPressed: _saving ? null : _saveQuickEntry,
                 icon: const Icon(Icons.save_outlined),
                 label: Text(
-                  _saving ? 'กำลังบันทึก...' : 'บันทึกรถดรัมและจำนวนเที่ยว',
+                  _saving ? 'กำลังบันทึก...' : 'บันทึกรถคันนี้',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                 ),
                 style: FilledButton.styleFrom(
@@ -6718,9 +6873,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildMacroVehicleFormCard() {
     final macroCars = _fuelMacroCars();
-    if (_macroVehicleDrafts.isEmpty) {
-      _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
-    }
+    final row = _activeMacroVehicleDraft;
+    final savedToday = _macroSavedVehicleCountToday;
+    final isEditing = row.txId?.trim().isNotEmpty == true;
+    final hasDraftData =
+        row.vehicleId.trim().isNotEmpty ||
+        row.driverId.trim().isNotEmpty ||
+        row.workDetailsController.text.trim().isNotEmpty;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -6745,49 +6904,96 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ...List.generate(_macroVehicleDrafts.length, (index) {
-                final row = _macroVehicleDrafts[index];
-                return Container(
-                  key: ObjectKey(row),
-                  margin: EdgeInsets.only(
-                    bottom: index == _macroVehicleDrafts.length - 1 ? 0 : 12,
-                  ),
-                  padding: const EdgeInsets.all(14),
+              Text(
+                'บันทึกการใช้รถแม็คโคร',
+                style: GoogleFonts.kanit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F5FAF),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'บันทึกทีละคัน — เลือกรถ กรอกคนขับและรายละเอียด แล้วกดบันทึก หากรถคันเดิมในวันนี้จะโหลดข้อมูลมาแก้ไข',
+                style: GoogleFonts.kanit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black54,
+                  height: 1.35,
+                ),
+              ),
+              if (savedToday > 0) ...[
+                const SizedBox(height: 8),
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8F0),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFFE0B2)),
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFA5D6A7)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'คันที่ ${index + 1}',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'บันทึกแล้ว $savedToday คันวันนี้',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Container(
+                key: ObjectKey(row),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8F0),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isEditing
+                        ? const Color(0xFF81C784)
+                        : const Color(0xFFFFE0B2),
+                    width: isEditing ? 1.4 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            isEditing
+                                ? 'แก้ไขข้อมูลรถคันนี้ (บันทึกแล้ว)'
+                                : 'กรอกรถคันถัดไป',
                             style: GoogleFonts.kanit(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: const Color(0xFFE65100),
+                              color: isEditing
+                                  ? const Color(0xFF2E7D32)
+                                  : const Color(0xFFE65100),
                             ),
                           ),
-                          const Spacer(),
-                          if (_macroVehicleDrafts.length > 1 ||
-                              (row.txId?.trim().isNotEmpty ?? false))
-                            IconButton(
-                              onPressed: () async {
-                                await _handleMacroVehicleRowDelete(index);
-                              },
-                              icon: const Icon(Icons.delete_outline_rounded),
-                              color: const Color(0xFFD14343),
-                              tooltip: 'ลบคันนี้',
-                            ),
-                        ],
-                      ),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey(
-                          'macro_vehicle_${index}_${row.vehicleId}',
                         ),
+                        if (isEditing || hasDraftData)
+                          IconButton(
+                            onPressed: () async {
+                              await _handleMacroVehicleRowDelete(0);
+                            },
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            color: const Color(0xFFD14343),
+                            tooltip: isEditing
+                                ? 'ลบรายการที่บันทึก'
+                                : 'ล้างฟอร์ม',
+                          ),
+                      ],
+                    ),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('macro_vehicle_${row.vehicleId}'),
                         isExpanded: true,
                         initialValue:
                             row.vehicleId.isEmpty ||
@@ -6811,25 +7017,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               ),
                             )
                             .toList(),
-                        onChanged: (v) async {
-                          row.vehicleId = v ?? '';
-                          await _onMacroVehicleSelected(row);
-                        },
-                      ),
-                      if (macroCars.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
-                            style: GoogleFonts.kanit(
-                              color: const Color(0xFFD14343),
-                              fontWeight: FontWeight.w700,
-                            ),
+                      onChanged: (v) async {
+                        row.vehicleId = v ?? '';
+                        await _onMacroVehicleSelected(row);
+                      },
+                    ),
+                    if (macroCars.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFFD14343),
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      const SizedBox(height: 10),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('macro_driver_${index}_${row.driverId}'),
+                      ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('macro_driver_${row.driverId}'),
                         isExpanded: true,
                         initialValue:
                             row.driverId.isEmpty ||
@@ -6855,24 +7061,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               ),
                             )
                             .toList(),
-                        onChanged: (v) {
-                          row.driverId = v ?? '';
-                          _scheduleUiRefresh();
-                        },
-                      ),
-                      if (_macroDriverEmployees.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
-                            style: GoogleFonts.kanit(
-                              color: const Color(0xFFD14343),
-                              fontWeight: FontWeight.w700,
-                            ),
+                      onChanged: (v) {
+                        row.driverId = v ?? '';
+                        _scheduleUiRefresh();
+                      },
+                    ),
+                    if (_macroDriverEmployees.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
+                          style: GoogleFonts.kanit(
+                            color: const Color(0xFFD14343),
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      const SizedBox(height: 10),
-                      SegmentedButton<String>(
+                      ),
+                    const SizedBox(height: 10),
+                    SegmentedButton<String>(
                         segments: const [
                           ButtonSegment<String>(
                             value: 'FullDay',
@@ -6886,19 +7092,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         selected: {
                           row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
                         },
-                        onSelectionChanged: (selection) {
-                          if (selection.isEmpty) return;
-                          setState(() => row.workType = selection.first);
-                        },
-                        style: ButtonStyle(
-                          textStyle: WidgetStatePropertyAll(
-                            GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                          ),
+                      onSelectionChanged: (selection) {
+                        if (selection.isEmpty) return;
+                        setState(() => row.workType = selection.first);
+                      },
+                      style: ButtonStyle(
+                        textStyle: WidgetStatePropertyAll(
+                          GoogleFonts.kanit(fontWeight: FontWeight.w700),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: row.workDetailsController,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: row.workDetailsController,
                         minLines: 2,
                         maxLines: 4,
                         keyboardType: TextInputType.multiline,
@@ -6909,63 +7115,48 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           fontSize: 17,
                           fontWeight: FontWeight.w600,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'รายละเอียดงาน',
-                          hintText:
-                              'พิมพ์รายละเอียดงานเป็นภาษาไทย หรือกดชิปด้านล่าง',
-                          hintMaxLines: 3,
-                          prefixIcon: Icon(Icons.notes_outlined),
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'รายละเอียดงาน',
+                        hintText:
+                            'พิมพ์รายละเอียดงานเป็นภาษาไทย หรือกดชิปด้านล่าง',
+                        hintMaxLines: 3,
+                        prefixIcon: Icon(Icons.notes_outlined),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'ช่วยกรอกด่วน',
-                        style: GoogleFonts.kanit(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black54,
-                        ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ช่วยกรอกด่วน',
+                      style: GoogleFonts.kanit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black54,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
-                        style: GoogleFonts.kanit(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black45,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black45,
                       ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final s in _kMacroWorkQuickPhrases)
-                            ActionChip(
-                              label: Text(
-                                s,
-                                style: GoogleFonts.kanit(fontSize: 12.5),
-                              ),
-                              onPressed: () => _applyMacroWorkPhrase(row, s),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final s in _kMacroWorkQuickPhrases)
+                          ActionChip(
+                            label: Text(
+                              s,
+                              style: GoogleFonts.kanit(fontSize: 12.5),
                             ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: macroCars.isEmpty
-                    ? null
-                    : () => setState(
-                        () =>
-                            _macroVehicleDrafts.add(_MacroVehicleDraft.empty()),
-                      ),
-                icon: const Icon(Icons.add_rounded),
-                label: Text(
-                  'เพิ่มรถอีกคัน',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                            onPressed: () => _applyMacroWorkPhrase(row, s),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 14),
@@ -6975,7 +7166,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   onPressed: _saving ? null : _saveQuickEntry,
                   icon: const Icon(Icons.save_outlined),
                   label: Text(
-                    _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
+                    _saving
+                        ? 'กำลังบันทึก...'
+                        : (isEditing ? 'อัปเดตคันนี้' : 'บันทึกคันนี้'),
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
                       fontSize: 19,
@@ -7336,32 +7529,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _saveHomeSandWashAllEntry,
-                  icon: const Icon(Icons.cleaning_services_outlined),
-                  label: Text('ล้างทั้งหมด', style: GoogleFonts.kanit()),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: const Color(0xFF00897B),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _saveHomeSandRoundCloseEntry,
-                  icon: const Icon(Icons.flag_outlined),
-                  label: Text('ตัดรอบ', style: GoogleFonts.kanit()),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: const Color(0xFF5D4037),
-                  ),
-                ),
-              ),
-            ],
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _saveHomeSandWashAllAndRoundCloseEntry,
+            icon: const Icon(Icons.done_all_outlined),
+            label: Text(
+              'ล้างทั้งหมดแล้ว ตัดรอบ',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              foregroundColor: const Color(0xFF00897B),
+            ),
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
@@ -7723,35 +7901,40 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       cacheExtent: DevicePerf.isConstrainedDevice
           ? (isLargeTablet ? 380 : 220)
           : (isLargeTablet ? 1200 : 700),
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
       physics: _blockingModuleBootstrap
           ? const NeverScrollableScrollPhysics()
           : const AlwaysScrollableScrollPhysics(),
       slivers: [
-        SliverToBoxAdapter(child: _buildModuleHistorySection()),
-        SliverToBoxAdapter(
-          child: RepaintBoundary(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                border: Border.all(color: const Color(0xFFE7EDF5)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 18,
-                    offset: const Offset(0, 6),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+          sliver: SliverToBoxAdapter(child: _buildModuleHistorySection()),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          sliver: SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
                   ),
-                ],
-              ),
-              child: _buildLaborFormCard(
-                includePool: false,
-                includeCanvas: false,
-                includeSave: false,
-                roundBottom: false,
+                  border: Border.all(color: const Color(0xFFE7EDF5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: _buildLaborFormCard(
+                  includePool: false,
+                  includeCanvas: false,
+                  includeSave: false,
+                  roundBottom: false,
+                ),
               ),
             ),
           ),
@@ -7783,23 +7966,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: RepaintBoundary(
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(24),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
+          sliver: SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(24),
+                  ),
+                  border: Border.all(color: const Color(0xFFE7EDF5)),
                 ),
-                border: Border.all(color: const Color(0xFFE7EDF5)),
-              ),
-              child: _buildLaborFormCard(
-                includePool: false,
-                includeCanvas: true,
-                includeSave: true,
-                headerOnly: true,
-                roundTop: false,
+                child: _buildLaborFormCard(
+                  includePool: false,
+                  includeCanvas: true,
+                  includeSave: true,
+                  headerOnly: true,
+                  roundTop: false,
+                ),
               ),
             ),
           ),
@@ -8208,7 +8394,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const advPrimary = Color(0xFFE65100);
     const advDeep = Color(0xFFBF360C);
     const warmSurface = Color(0xFFFFF8F1);
-    final employees = _dedupedEmployeesByDisplayName();
+    final employees = _employeesForAdvancePicker();
     final nSel = _selectedAdvanceEmpIds.length;
     final per =
         double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
@@ -8360,7 +8546,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   stepLabel(
                     '1',
                     'เลือกพนักงาน',
-                    'เลือกได้หลายคน — แต่ละคนจะได้คำขอแยกเมื่อส่ง',
+                    'เลือกได้หลายคน — ไม่แสดงคนขับรถและรับจ้างรายวัน',
                   ),
                   const SizedBox(height: 10),
                   advancePanel(
@@ -8982,6 +9168,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
+  List<Employee> _employeesForAdvancePicker() {
+    final seen = <String>{};
+    final out = <Employee>[];
+    for (final e in _sortedEmployeesForOt()) {
+      if (!employeeEligibleForAdvancePicker(e)) continue;
+      if (seen.add(_employeeDisplayDedupeKey(e))) {
+        out.add(e);
+      }
+    }
+    return out;
+  }
+
   /// ชื่อบนชิป OT — ตัดส่วนในวงเล็บท้ายชื่อออกเพื่อไม่ซ้ำกับแท็กอื่นของคนเดียวกัน
   String _employeeOtChipLabel(Employee e) {
     var s = _employeeUiDisplayName(e);
@@ -9035,19 +9233,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildOtFormCard() {
-    final employees = _dedupedEmployeesByDisplayName();
-    final summaryLines = <String>[];
-    for (var i = 0; i < _otGroups.length; i++) {
-      final g = _otGroups[i];
-      final h = double.tryParse(g.hoursController.text.trim()) ?? 0;
-      final c = g.employeeIds.length;
-      if (c == 0 && h == 0) continue;
-      if (c > 0 && h > 0) {
-        summaryLines.add('กลุ่ม ${i + 1}: $c คน × ${h.toStringAsFixed(1)} ชม.');
-      }
-    }
-    final summaryKey = summaryLines.join('|');
-    final hasValidPreview = summaryLines.isNotEmpty;
+    final g = _activeOtGroup;
+    final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
+    final empCount = g.employeeIds.length;
+    final hasValidPreview = empCount > 0 && hours > 0;
+    final nextGroupNum = _otSavedGroupCountToday + 1;
+    final savedToday = _otSavedGroupCountToday;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -9078,113 +9269,99 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'แบ่งกลุ่มได้หลายกลุ่ม — แต่ละกลุ่มเลือกคนและชั่วโมง OT แยกกัน',
+            'บันทึกทีละกลุ่ม — กรอกคนและชั่วโมง OT แล้วกดบันทึก จากนั้นกรอกกลุ่มถัดไปได้',
             style: GoogleFonts.kanit(
               fontSize: 13,
               color: const Color(0xFF5B6D83),
             ),
           ),
-          _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 10),
-          ...List.generate(_otGroups.length, (index) {
-            final g = _otGroups[index];
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: index == _otGroups.length - 1 ? 0 : 12,
+          if (savedToday > 0) ...[
+            const SizedBox(height: 8),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFA5D6A7)),
               ),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF9FCFF),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFDCE8F5)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'กลุ่มที่ ${index + 1}',
-                          style: GoogleFonts.kanit(
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF205A9A),
-                          ),
-                        ),
-                        const Spacer(),
-                        if (_otGroups.length > 1)
-                          IconButton(
-                            tooltip: 'ลบกลุ่มนี้',
-                            onPressed: () {
-                              setState(() {
-                                final removed = _otGroups.removeAt(index);
-                                removed.dispose();
-                              });
-                            },
-                            icon: const Icon(
-                              Icons.delete_outline_rounded,
-                              color: Color(0xFFD14343),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'เลือกพนักงาน',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: const Color(0xFF314C6D),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _buildOtEmployeeChips(g),
-                    const SizedBox(height: 10),
-                    _AnimatedInputField(
-                      controller: g.hoursController,
-                      onChanged: (_) => _scheduleUiRefresh(),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      readOnly: true,
-                      onTap: () => _openNumericPad(
-                        controller: g.hoursController,
-                        label: 'ชั่วโมง OT (กลุ่มที่ ${index + 1})',
-                        onChanged: (_) => _scheduleUiRefresh(),
-                        allowDecimal: true,
-                        maxDecimalPlaces: 2,
-                      ),
-                      style: GoogleFonts.kanit(
-                        color: const Color(0xFF1D2A3A),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'จำนวนชั่วโมง OT ของกลุ่มนี้',
-                        prefixIcon: Icon(Icons.timelapse_outlined),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'บันทึกแล้ว $savedToday กลุ่มวันนี้ · กำลังกรอกกลุ่มที่ $nextGroupNum',
+                  style: GoogleFonts.kanit(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF2E7D32),
+                  ),
                 ),
-              ),
-            );
-          }),
-          if (employees.isNotEmpty)
-            OutlinedButton.icon(
-              onPressed: () => setState(() {
-                _otGroups.add(_OtGroupDraft.empty());
-              }),
-              icon: const Icon(Icons.add_rounded),
-              label: Text(
-                'เพิ่มกลุ่ม OT',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
             ),
+          ],
+          _employeeDataLoadProgressBanner(),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FCFF),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFDCE8F5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'กลุ่มที่ $nextGroupNum',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF205A9A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'เลือกพนักงาน',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: const Color(0xFF314C6D),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                _buildOtEmployeeChips(g),
+                const SizedBox(height: 10),
+                _AnimatedInputField(
+                  controller: g.hoursController,
+                  onChanged: (_) => _scheduleUiRefresh(),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  readOnly: true,
+                  onTap: () => _openNumericPad(
+                    controller: g.hoursController,
+                    label: 'ชั่วโมง OT (กลุ่มที่ $nextGroupNum)',
+                    onChanged: (_) => _scheduleUiRefresh(),
+                    allowDecimal: true,
+                    maxDecimalPlaces: 2,
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'จำนวนชั่วโมง OT ของกลุ่มนี้',
+                    prefixIcon: Icon(Icons.timelapse_outlined),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _otDescController,
             decoration: const InputDecoration(
-              labelText: 'รายละเอียดงาน OT (ใช้ร่วมทุกกลุ่ม)',
+              labelText: 'รายละเอียดงาน OT',
               prefixIcon: Icon(Icons.note_alt_outlined),
             ),
             keyboardType: TextInputType.multiline,
@@ -9225,9 +9402,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: summaryLines.isEmpty
+              child: !hasValidPreview
                   ? Text(
-                      'ยังไม่มีกลุ่มที่ครบทั้งคนและชั่วโมง',
+                      'เลือกพนักงานและระบุชั่วโมง OT ก่อนกดบันทึกกลุ่มนี้',
                       key: const ValueKey('ot-empty'),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.kanit(
@@ -9236,8 +9413,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                     )
                   : Text(
-                      summaryLines.join('\n'),
-                      key: ValueKey(summaryKey),
+                      'กลุ่มที่ $nextGroupNum: $empCount คน × ${hours.toStringAsFixed(1)} ชม.',
+                      key: ValueKey('$empCount|$hours'),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                     ),
@@ -9249,7 +9426,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveQuickEntry,
               icon: const Icon(Icons.save_outlined),
-              label: Text('บันทึก OT', style: GoogleFonts.kanit()),
+              label: Text(
+                'บันทึกกลุ่มนี้',
+                style: GoogleFonts.kanit(),
+              ),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),
@@ -10102,6 +10282,7 @@ class _VehicleTripRowsBoard extends StatefulWidget {
     required this.driverLabelFromId,
     required this.openNumericPad,
     required this.onVehicleTripRowDelete,
+    required this.onVehicleSelected,
     required this.notifyParentRefresh,
   });
 
@@ -10113,6 +10294,7 @@ class _VehicleTripRowsBoard extends StatefulWidget {
   final String Function(String driverId) driverLabelFromId;
   final _OpenNumericPad openNumericPad;
   final Future<void> Function(int index) onVehicleTripRowDelete;
+  final void Function(_VehicleTripDraft row, String vehicleId) onVehicleSelected;
   final VoidCallback notifyParentRefresh;
 
   @override
@@ -10189,6 +10371,7 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
             vehicleLabelFromId: widget.vehicleLabelFromId,
             driverLabelFromId: widget.driverLabelFromId,
             openNumericPad: widget.openNumericPad,
+            onVehicleSelected: widget.onVehicleSelected,
             onDelete: () async {
               await widget.onVehicleTripRowDelete(index);
               if (!mounted) return;
@@ -10274,6 +10457,7 @@ class _VehicleTripRowItem extends StatefulWidget {
     required this.vehicleLabelFromId,
     required this.driverLabelFromId,
     required this.openNumericPad,
+    required this.onVehicleSelected,
     required this.onDelete,
     required this.onChanged,
   });
@@ -10287,6 +10471,7 @@ class _VehicleTripRowItem extends StatefulWidget {
   final String Function(String vehicleId) vehicleLabelFromId;
   final String Function(String driverId) driverLabelFromId;
   final _OpenNumericPad openNumericPad;
+  final void Function(_VehicleTripDraft row, String vehicleId) onVehicleSelected;
   final Future<void> Function() onDelete;
   final VoidCallback onChanged;
 
@@ -10325,15 +10510,43 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
         children: [
           Row(
             children: [
-              Text(
-                'คันที่ ${widget.index + 1}',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF205A9A),
+              Flexible(
+                child: Text(
+                  row.tripTxId != null && row.tripTxId!.isNotEmpty
+                      ? 'แก้ไขรายการเดิม'
+                      : 'เพิ่มรถคันใหม่',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF205A9A),
+                  ),
                 ),
               ),
-              const Spacer(),
-              if (widget.canDelete)
+              if (row.tripTxId != null && row.tripTxId!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE3F2FD),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'มีข้อมูลแล้ว',
+                      style: GoogleFonts.kanit(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1565C0),
+                      ),
+                    ),
+                  ),
+                ),
+              if (widget.canDelete) ...[
+                const Spacer(),
                 IconButton(
                   onPressed: () async {
                     await widget.onDelete();
@@ -10342,6 +10555,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                   color: const Color(0xFFD14343),
                   tooltip: 'ลบคันนี้',
                 ),
+              ],
             ],
           ),
           Row(
@@ -10370,10 +10584,8 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                       .toList(),
                   onChanged: (v) {
                     final id = v ?? '';
-                    setState(() {
-                      row.vehicleId = id;
-                      _applyDefaultCubicForVehicleRow(row, id);
-                    });
+                    setState(() => row.vehicleId = id);
+                    widget.onVehicleSelected(row, id);
                     widget.onChanged();
                   },
                 ),
