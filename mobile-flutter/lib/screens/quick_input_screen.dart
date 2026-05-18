@@ -325,6 +325,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   double _homeSandTodayHomeSaved = 0;
   final Set<String> _selectedLaborEmpIds = {};
   final Set<String> _laborPickedIds = {};
+  _LaborEmpPoolKind _laborEmpPoolKind = _LaborEmpPoolKind.sandSieve;
   final Map<String, Set<String>> _laborAssignments = {
     for (final c in _laborCategories) c.id: <String>{},
   };
@@ -693,6 +694,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
       _laborPickedIds.clear();
+      _laborEmpPoolKind = _LaborEmpPoolKind.sandSieve;
       for (final k in _laborAssignments.keys) {
         _laborAssignments[k]?.clear();
       }
@@ -2309,7 +2311,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final key = _generalSubJobAssignmentKey(job.id);
           final count = _laborAssignments[key]?.length ?? 0;
           if (count > 0 && job.nameController.text.trim().isEmpty) {
-            throw 'กรุณาระบุชื่องานสำหรับงานทั่วไปที่มีพนักงาน';
+            throw 'กรุณาระบุรายละเอียดงานสำหรับกล่องย่อยในงานทั่วไปที่มีพนักงาน';
           }
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -4852,90 +4854,92 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       constraints: BoxConstraints(
                                         maxWidth: contentMaxWidth,
                                       ),
-                                      child: ListView(
-                                        keyboardDismissBehavior:
-                                            ScrollViewKeyboardDismissBehavior
-                                                .onDrag,
-                                        cacheExtent:
-                                            DevicePerf.isConstrainedDevice
-                                            ? (isLargeTablet ? 380 : 220)
-                                            : (isLargeTablet ? 1200 : 700),
-                                        padding: const EdgeInsets.fromLTRB(
-                                          14,
-                                          0,
-                                          14,
-                                          28,
-                                        ),
-                                        physics: _blockingModuleBootstrap
-                                            ? const NeverScrollableScrollPhysics()
-                                            : const AlwaysScrollableScrollPhysics(),
-                                        children: [
-                                          _buildModuleHistorySection(),
-                                          RepaintBoundary(
-                                            child: Container(
-                                              padding: const EdgeInsets.all(16),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(24),
-                                                border: Border.all(
-                                                  color: const Color(
-                                                    0xFFE7EDF5,
+                                      child: _isLaborMode &&
+                                              _laborUseSideStickyPool(context)
+                                          ? Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                SizedBox(
+                                                  width: _laborPoolAsideWidth(
+                                                    context,
+                                                  ),
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                          right: 10,
+                                                        ),
+                                                    child:
+                                                        _LaborCanvasSection(
+                                                      child:
+                                                          _buildLaborCanvasBoard(
+                                                        layout:
+                                                            _LaborDragBoardLayout
+                                                                .poolOnly,
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.03,
+                                                Expanded(
+                                                  child: ListView(
+                                                    keyboardDismissBehavior:
+                                                        ScrollViewKeyboardDismissBehavior
+                                                            .onDrag,
+                                                    cacheExtent:
+                                                        DevicePerf
+                                                            .isConstrainedDevice
+                                                        ? (isLargeTablet
+                                                              ? 380
+                                                              : 220)
+                                                        : (isLargeTablet
+                                                              ? 1200
+                                                              : 700),
+                                                    padding:
+                                                        const EdgeInsets.fromLTRB(
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          28,
                                                         ),
-                                                    blurRadius: isLargeTablet
-                                                        ? 14
-                                                        : 18,
-                                                    offset: const Offset(0, 6),
+                                                    physics:
+                                                        _blockingModuleBootstrap
+                                                        ? const NeverScrollableScrollPhysics()
+                                                        : const AlwaysScrollableScrollPhysics(),
+                                                    children:
+                                                        _quickInputScrollChildren(
+                                                      laborFormIncludePool:
+                                                          false,
+                                                    ),
                                                   ),
-                                                ],
-                                              ),
-                                              child: Column(
-                                                children: [
-                                                  (_isIncomeUtilitiesEntryMode
-                                                      ? _buildIncomeUtilitiesEntryCard()
-                                                      : _isSandWashMode
-                                                      ? _buildSandWashFormCard()
-                                                      : _isVehicleTripMode
-                                                      ? _buildVehicleTripFormCard()
-                                                      : _isMacroVehicleMode
-                                                      ? _buildMacroVehicleFormCard()
-                                                      : _isFuelMode
-                                                      ? _buildFuelFormCard()
-                                                      : _isHomeSandMode
-                                                      ? _buildHomeSandFormCard()
-                                                      : _isLaborLeaveMode
-                                                      ? _buildLaborLeaveFormCard()
-                                                      : _isLaborAdvanceMode
-                                                      ? _buildLaborAdvanceFormCard()
-                                                      : _isLaborMode
-                                                      ? _buildLaborFormCard()
-                                                      : _isOtMode
-                                                      ? _buildOtFormCard()
-                                                      : _isDailyEventMode
-                                                      ? _buildDailyEventFormCard()
-                                                      : _buildFormCard()),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
+                                            )
+                                          : _isLaborMode
+                                          ? _buildLaborPinnedScrollView(
+                                              isLargeTablet: isLargeTablet,
+                                            )
+                                          : ListView(
+                                              keyboardDismissBehavior:
+                                                  ScrollViewKeyboardDismissBehavior
+                                                      .onDrag,
+                                              cacheExtent:
+                                                  DevicePerf.isConstrainedDevice
+                                                  ? (isLargeTablet ? 380 : 220)
+                                                  : (isLargeTablet
+                                                        ? 1200
+                                                        : 700),
+                                              padding:
+                                                  const EdgeInsets.fromLTRB(
+                                                    14,
+                                                    0,
+                                                    14,
+                                                    28,
+                                                  ),
+                                              physics: _blockingModuleBootstrap
+                                                  ? const NeverScrollableScrollPhysics()
+                                                  : const AlwaysScrollableScrollPhysics(),
+                                              children: _quickInputScrollChildren(),
                                             ),
-                                          ),
-                                          Builder(
-                                            builder: (context) {
-                                              final kb =
-                                                  MediaQuery.viewInsetsOf(
-                                                    context,
-                                                  ).bottom;
-                                              return SizedBox(height: kb);
-                                            },
-                                          ),
-                                        ],
-                                      ),
                                     ),
                                   ),
                                   Builder(
@@ -7618,8 +7622,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return _LaborEmpPoolKind.generalLabor;
   }
 
-  Widget _buildLaborCanvasBoard() {
+  Widget _buildLaborCanvasBoard({
+    _LaborDragBoardLayout layout = _LaborDragBoardLayout.combined,
+  }) {
     return _LaborDragBoard(
+      layout: layout,
+      poolKind: _laborEmpPoolKind,
+      onPoolKindChanged: (kind) => setState(() => _laborEmpPoolKind = kind),
       categories: _laborCategories,
       generalSubJobs: _generalSubJobs,
       generalCategoryFor: _generalCategoryFor,
@@ -7632,6 +7641,178 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       pickedIds: _laborPickedIds,
       bucketExpanded: _laborBucketExpanded,
       laborEmpPoolKind: _laborEmpPoolKindFor,
+    );
+  }
+
+  double _laborPoolPinHeight(BuildContext context) {
+    return (MediaQuery.sizeOf(context).height * 0.38).clamp(280.0, 420.0);
+  }
+
+  double _laborPoolAsideWidth(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    return (w * 0.36).clamp(272.0, 384.0);
+  }
+
+  bool _laborUseSideStickyPool(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= 660;
+
+  List<Widget> _quickInputScrollChildren({
+    bool laborFormIncludePool = true,
+    bool laborFormIncludeCanvas = true,
+  }) {
+    return [
+      _buildModuleHistorySection(),
+      RepaintBoundary(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFE7EDF5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: _isIncomeUtilitiesEntryMode
+              ? _buildIncomeUtilitiesEntryCard()
+              : _isSandWashMode
+              ? _buildSandWashFormCard()
+              : _isVehicleTripMode
+              ? _buildVehicleTripFormCard()
+              : _isMacroVehicleMode
+              ? _buildMacroVehicleFormCard()
+              : _isFuelMode
+              ? _buildFuelFormCard()
+              : _isHomeSandMode
+              ? _buildHomeSandFormCard()
+              : _isLaborLeaveMode
+              ? _buildLaborLeaveFormCard()
+              : _isLaborAdvanceMode
+              ? _buildLaborAdvanceFormCard()
+              : _isLaborMode
+              ? _buildLaborFormCard(
+                  includePool: laborFormIncludePool,
+                  includeCanvas: laborFormIncludeCanvas,
+                )
+              : _isOtMode
+              ? _buildOtFormCard()
+              : _isDailyEventMode
+              ? _buildDailyEventFormCard()
+              : _buildFormCard(),
+        ),
+      ),
+      Builder(
+        builder: (context) {
+          final kb = MediaQuery.viewInsetsOf(context).bottom;
+          return SizedBox(height: kb);
+        },
+      ),
+    ];
+  }
+
+  Widget _buildLaborPinnedScrollView({
+    required bool isLargeTablet,
+  }) {
+    final poolH = _laborPoolPinHeight(context);
+    return CustomScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      cacheExtent: DevicePerf.isConstrainedDevice
+          ? (isLargeTablet ? 380 : 220)
+          : (isLargeTablet ? 1200 : 700),
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
+      physics: _blockingModuleBootstrap
+          ? const NeverScrollableScrollPhysics()
+          : const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: _buildModuleHistorySection()),
+        SliverToBoxAdapter(
+          child: RepaintBoundary(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                border: Border.all(color: const Color(0xFFE7EDF5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: _buildLaborFormCard(
+                includePool: false,
+                includeCanvas: false,
+                includeSave: false,
+                roundBottom: false,
+              ),
+            ),
+          ),
+        ),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _LaborPoolPinHeaderDelegate(
+            height: poolH,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: _LaborDragBoard(
+                layout: _LaborDragBoardLayout.poolOnly,
+                poolKind: _laborEmpPoolKind,
+                onPoolKindChanged: (kind) =>
+                    setState(() => _laborEmpPoolKind = kind),
+                categories: _laborCategories,
+                generalSubJobs: _generalSubJobs,
+                generalCategoryFor: _generalCategoryFor,
+                onAddGeneralSubJob: () => _addGeneralSubJob(),
+                onRemoveGeneralSubJob: _removeGeneralSubJob,
+                onGeneralJobNameChanged: () => setState(() {}),
+                employees: _employees,
+                employeesById: _employeesById,
+                assignments: _laborAssignments,
+                pickedIds: _laborPickedIds,
+                bucketExpanded: _laborBucketExpanded,
+                laborEmpPoolKind: _laborEmpPoolKindFor,
+              ),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: RepaintBoundary(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
+                border: Border.all(color: const Color(0xFFE7EDF5)),
+              ),
+              child: _buildLaborFormCard(
+                includePool: false,
+                includeCanvas: true,
+                includeSave: true,
+                headerOnly: true,
+                roundTop: false,
+              ),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Builder(
+            builder: (context) {
+              final kb = MediaQuery.viewInsetsOf(context).bottom;
+              return SizedBox(height: kb);
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -8639,27 +8820,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Widget _buildLaborFormCard() {
+  Widget _buildLaborFormCard({
+    bool includePool = true,
+    bool includeCanvas = true,
+    bool includeSave = true,
+    bool headerOnly = false,
+    bool roundTop = true,
+    bool roundBottom = true,
+  }) {
     final assigned = _collectLaborAssignedIds().length;
+    final showHeader = !headerOnly;
+    final borderRadius = BorderRadius.vertical(
+      top: roundTop ? const Radius.circular(18) : Radius.zero,
+      bottom: roundBottom ? const Radius.circular(18) : Radius.zero,
+    );
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: borderRadius,
         border: Border.all(color: const Color(0xFFE3ECF7)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: roundTop && roundBottom
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (showHeader)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -8722,21 +8918,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
             ],
           ),
-          _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 10),
-          _LaborCanvasSection(child: _buildLaborCanvasBoard()),
-          const SizedBox(height: 14),
-          _SmoothPressable(
-            enabled: !_saving,
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _saveQuickEntry,
-              icon: const Icon(Icons.save_outlined),
-              label: Text('บันทึกค่าแรง', style: GoogleFonts.kanit()),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
+          if (showHeader) _employeeDataLoadProgressBanner(),
+          if (showHeader && (includePool || includeCanvas))
+            const SizedBox(height: 10),
+          if (includePool)
+            _LaborCanvasSection(
+              child: _buildLaborCanvasBoard(
+                layout: _LaborDragBoardLayout.poolOnly,
               ),
             ),
-          ),
+          if (includePool && includeCanvas) const SizedBox(height: 14),
+          if (includeCanvas)
+            _LaborCanvasSection(
+              child: _buildLaborCanvasBoard(
+                layout: _LaborDragBoardLayout.canvasOnly,
+              ),
+            ),
+          if (includeSave) ...[
+            const SizedBox(height: 14),
+            _SmoothPressable(
+              enabled: !_saving,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveQuickEntry,
+                icon: const Icon(Icons.save_outlined),
+                label: Text('บันทึกค่าแรง', style: GoogleFonts.kanit()),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -10541,8 +10752,13 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
 
 enum _LaborEmpPoolKind { sandSieve, excavatorMac, generalLabor }
 
+enum _LaborDragBoardLayout { combined, poolOnly, canvasOnly }
+
 class _LaborDragBoard extends StatefulWidget {
   const _LaborDragBoard({
+    this.layout = _LaborDragBoardLayout.combined,
+    required this.poolKind,
+    required this.onPoolKindChanged,
     required this.categories,
     required this.generalSubJobs,
     required this.generalCategoryFor,
@@ -10557,6 +10773,9 @@ class _LaborDragBoard extends StatefulWidget {
     required this.laborEmpPoolKind,
   });
 
+  final _LaborDragBoardLayout layout;
+  final _LaborEmpPoolKind poolKind;
+  final ValueChanged<_LaborEmpPoolKind> onPoolKindChanged;
   final List<_LaborWorkCategory> categories;
   final List<_GeneralSubJob> generalSubJobs;
   final _LaborWorkCategory Function(_GeneralSubJob job) generalCategoryFor;
@@ -10575,8 +10794,6 @@ class _LaborDragBoard extends StatefulWidget {
 }
 
 class _LaborDragBoardState extends State<_LaborDragBoard> {
-  _LaborEmpPoolKind _poolKind = _LaborEmpPoolKind.sandSieve;
-
   Set<String> _collectAssigned() {
     final out = <String>{};
     for (final entry in widget.assignments.values) {
@@ -10591,7 +10808,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
     required String title,
     required String subtitle,
   }) {
-    final selected = _poolKind == kind;
+    final selected = widget.poolKind == kind;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -10607,7 +10824,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () => setState(() => _poolKind = kind),
+          onTap: () => widget.onPoolKindChanged(kind),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             child: Row(
@@ -10795,14 +11012,14 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         widget.employees
             .where((e) => !e.inactive)
             .where((e) => !assignedIds.contains(e.id))
-            .where((e) => widget.laborEmpPoolKind(e) == _poolKind)
+            .where((e) => widget.laborEmpPoolKind(e) == widget.poolKind)
             .toList()
           ..sort(
             (a, b) =>
                 _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b)),
           );
 
-    Widget bucketCard(_LaborWorkCategory category) {
+    Widget bucketCard(_LaborWorkCategory category, {bool compact = false}) {
       final id = category.id;
       final ids = widget.assignments[id] ?? <String>{};
       final expanded = (widget.bucketExpanded[id] ?? false) || ids.isNotEmpty;
@@ -10810,6 +11027,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         category: category,
         ids: ids,
         expanded: expanded,
+        compact: compact,
         employeesById: widget.employeesById,
         onToggleExpanded: () => setState(() {
           widget.bucketExpanded[id] = !expanded;
@@ -10843,127 +11061,269 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
 
     Widget generalWorkSection(double maxWidth) {
       const spacing = 10.0;
-      const minCardWidth = 172.0;
+      const minCardWidth = 168.0;
       final nCol = ((maxWidth + spacing) / (minCardWidth + spacing))
           .floor()
           .clamp(1, 3);
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FE),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFD5DBEF)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'งานทั่วไป (ชื่องาน)',
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: const Color(0xFF3D4F6A),
+      const parentColor = _kGeneralWorkColor;
+      final assignedInGeneral = widget.generalSubJobs.fold<int>(0, (sum, job) {
+        final key = widget.generalCategoryFor(job).id;
+        return sum + (widget.assignments[key]?.length ?? 0);
+      });
+
+      Widget subJobTile(_GeneralSubJob job) {
+        final category = widget.generalCategoryFor(job);
+        final canRemove = widget.generalSubJobs.length > 1;
+        final subAssigned = widget.assignments[category.id]?.length ?? 0;
+        return SizedBox(
+          width: itemWidth,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: parentColor.withValues(alpha: 0.28),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: parentColor.withValues(alpha: 0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.subdirectory_arrow_right_rounded,
+                      size: 18,
+                      color: parentColor.withValues(alpha: 0.85),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'กล่องย่อย',
+                        style: GoogleFonts.kanit(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                    if (subAssigned > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: parentColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$subAssigned คน',
+                          style: GoogleFonts.kanit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: parentColor,
+                          ),
+                        ),
+                      ),
+                    if (canRemove) ...[
+                      const SizedBox(width: 2),
+                      IconButton(
+                        tooltip: 'ลบกล่องย่อย',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
+                        ),
+                        onPressed: () =>
+                            widget.onRemoveGeneralSubJob(job.id),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: job.nameController,
+                  onChanged: (_) => widget.onGeneralJobNameChanged(),
+                  style: GoogleFonts.kanit(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'รายละเอียดงาน',
+                    labelStyle: GoogleFonts.kanit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF64748B),
+                    ),
+                    hintText: 'เช่น ทำรั้วสแสลม / ปลูกต้นไม้',
+                    hintStyle: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      color: Colors.black38,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFD),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: parentColor.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: parentColor.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: parentColor,
+                        width: 1.3,
                       ),
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: widget.onAddGeneralSubJob,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(
-                      'เพิ่มงาน',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                bucketCard(category, compact: true),
+              ],
+            ),
+          ),
+        );
+      }
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: parentColor.withValues(alpha: 0.42),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: parentColor.withValues(alpha: 0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(height: 4, color: parentColor),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'งานทั่วไป',
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15.5,
+                                color: const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'เพิ่มกล่องย่อยด้านใน ระบุรายละเอียดงาน แล้วลากพนักงานลงแต่ละกล่อง',
+                              style: GoogleFonts.kanit(
+                                fontSize: 12,
+                                height: 1.35,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: parentColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${widget.generalSubJobs.length} กล่องย่อย · $assignedInGeneral คน',
+                              style: GoogleFonts.kanit(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: parentColor,
+                              ),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: widget.onAddGeneralSubJob,
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: Text(
+                              'เพิ่มกล่องย่อย',
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F6FD),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: parentColor.withValues(alpha: 0.22),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: widget.generalSubJobs.map(subJobTile).toList(),
                     ),
                   ),
                 ],
               ),
-              Text(
-                'แยกหลายงานได้ เช่น ทำรั้วสแสลม / ปลูกต้นไม้ — ลากพนักงานลงแต่ละกล่อง',
-                style: GoogleFonts.kanit(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: widget.generalSubJobs.map((job) {
-                  final category = widget.generalCategoryFor(job);
-                  final canRemove = widget.generalSubJobs.length > 1;
-                  return SizedBox(
-                    width: itemWidth,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: job.nameController,
-                                onChanged: (_) =>
-                                    widget.onGeneralJobNameChanged(),
-                                style: GoogleFonts.kanit(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  hintText: 'ชื่องาน เช่น ทำรั้วสแสลม',
-                                  hintStyle: GoogleFonts.kanit(
-                                    fontSize: 12.5,
-                                    color: Colors.black38,
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 10,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFD5DBEF),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFD5DBEF),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (canRemove) ...[
-                              const SizedBox(width: 4),
-                              IconButton(
-                                tooltip: 'ลบงานนี้',
-                                onPressed: () =>
-                                    widget.onRemoveGeneralSubJob(job.id),
-                                icon: const Icon(
-                                  Icons.close_rounded,
-                                  size: 20,
-                                  color: Color(0xFF94A3B8),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        bucketCard(category),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -11022,7 +11382,9 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
             ),
             const SizedBox(height: 2),
             Text(
-              'สลับกลุ่มตามตำแหน่ง — เลื่อนดูร่วมกับกล่องงานด้านขวา',
+              widget.layout == _LaborDragBoardLayout.poolOnly
+                  ? 'ตำแหน่งล็อกไว้ — เลื่อนหน้าจอแล้วพูลยังอยู่ที่เดิม'
+                  : 'สลับกลุ่มตามตำแหน่ง — ลากลงกล่องงาน',
               style: GoogleFonts.kanit(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -11130,7 +11492,11 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
               ],
             ),
             const SizedBox(height: 8),
-            _employeePoolCard(available),
+            Flexible(
+              child: SingleChildScrollView(
+                child: _employeePoolCard(available),
+              ),
+            ),
           ],
         ),
       ),
@@ -11223,47 +11589,117 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       ],
     );
 
+    Widget wrapBoardChrome(Widget child, {EdgeInsetsGeometry? padding}) {
+      return Container(
+        padding: padding ?? const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F6FC),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFC5D9EF)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: child,
+      );
+    }
+
+    switch (widget.layout) {
+      case _LaborDragBoardLayout.poolOnly:
+        return wrapBoardChrome(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final h = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                  ? constraints.maxHeight
+                  : mq.height * 0.72;
+              return SizedBox(
+                height: h,
+                child: poolColumn,
+              );
+            },
+          ),
+        );
+      case _LaborDragBoardLayout.canvasOnly:
+        return wrapBoardChrome(canvasColumn);
+      case _LaborDragBoardLayout.combined:
+        break;
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : mq.width;
         final poolW = (w * 0.36).clamp(272.0, 384.0);
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F6FC),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFC5D9EF)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        final boardH = (mq.height * 0.58).clamp(360.0, 640.0);
+        return wrapBoardChrome(
+          SizedBox(
+            height: boardH,
+            child: sideBySide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(width: poolW, child: poolColumn),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: canvasColumn,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      poolColumn,
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: canvasColumn,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
-          child: sideBySide
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: poolW, child: poolColumn),
-                    const SizedBox(width: 14),
-                    Expanded(child: canvasColumn),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    poolColumn,
-                    const SizedBox(height: 16),
-                    canvasColumn,
-                  ],
-                ),
         );
       },
     );
   }
+}
+
+class _LaborPoolPinHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _LaborPoolPinHeaderDelegate({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Material(
+      color: Colors.white,
+      elevation: overlapsContent ? 2 : 0,
+      shadowColor: Colors.black26,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _LaborPoolPinHeaderDelegate oldDelegate) =>
+      oldDelegate.height != height || oldDelegate.child != child;
 }
 
 class _LaborBucketCard extends StatelessWidget {
@@ -11271,6 +11707,7 @@ class _LaborBucketCard extends StatelessWidget {
     required this.category,
     required this.ids,
     required this.expanded,
+    this.compact = false,
     required this.employeesById,
     required this.onToggleExpanded,
     required this.onDropEmployee,
@@ -11281,6 +11718,7 @@ class _LaborBucketCard extends StatelessWidget {
   final _LaborWorkCategory category;
   final Set<String> ids;
   final bool expanded;
+  final bool compact;
   final Map<String, Employee> employeesById;
   final VoidCallback onToggleExpanded;
   final ValueChanged<String> onDropEmployee;
@@ -11326,25 +11764,31 @@ class _LaborBucketCard extends StatelessWidget {
                 color: category.color,
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 6, 0),
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 8 : 10,
+                  compact ? 6 : 8,
+                  compact ? 4 : 6,
+                  0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Tooltip(
-                      message: category.label,
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.kanit(
-                          fontSize: 14,
-                          height: 1.28,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF0F172A),
+                    if (!compact)
+                      Tooltip(
+                        message: category.label,
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.kanit(
+                            fontSize: 14,
+                            height: 1.28,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0F172A),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
+                    if (!compact) const SizedBox(height: 6),
                     Row(
                       children: [
                         Container(
