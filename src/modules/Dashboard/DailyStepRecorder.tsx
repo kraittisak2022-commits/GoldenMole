@@ -133,11 +133,99 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200' },
     { id: 'pierWatch', label: 'เฝ้าท่าทราย', color: 'bg-amber-500', bgLight: 'bg-amber-50 border-amber-200' },
     { id: 'nightShift', label: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200' },
-    { id: 'digHaul', label: 'ขุดขน (รวมกล่อง ควบคุมการขุด + ควบคุมรถขุด)', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200' },
+    { id: 'digHaul', label: 'ขุดขน', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200' },
     { id: 'generalWork', label: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200' },
 ];
+const FIXED_LABOR_CANVAS_CATEGORIES = DEFAULT_WORK_CATEGORIES.filter(c => c.id !== 'generalWork');
 const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
-/** รวมคีย์ประเภทงานเก่า/กำหนดเอง เข้า generalWork เพื่อให้ตรงกับกล่อง canvas ปัจจุบัน */
+const GENERAL_WORK_PREFIX = 'general:';
+type GeneralSubJob = { id: string; title: string };
+const newGeneralSubJobId = () => Date.now().toString(36);
+const generalSubJobAssignmentKey = (subId: string) => `${GENERAL_WORK_PREFIX}${subId}`;
+const isGeneralAssignmentKey = (key: string) =>
+    key === 'generalWork' || key === 'general' || key.startsWith(GENERAL_WORK_PREFIX);
+
+const buildGeneralSubJobsFromAssignments = (
+    wa: Record<string, string[]>,
+    customCategories?: Array<{ id?: string; label?: string }>,
+    legacyNote?: string
+): GeneralSubJob[] => {
+    const labelByKey: Record<string, string> = {};
+    for (const row of customCategories || []) {
+        const id = String(row.id || '').trim();
+        const label = String(row.label || '').trim();
+        if (id && label) labelByKey[id] = label;
+    }
+    const buckets: Array<{ key: string; ids: string[] }> = [];
+    for (const [key, ids] of Object.entries(wa)) {
+        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
+        if (list.length === 0) continue;
+        if (isGeneralAssignmentKey(key) || !DEFAULT_WORK_CATEGORY_IDS.has(key)) {
+            buckets.push({ key, ids: list });
+        }
+    }
+    if (buckets.length === 0) {
+        return [{ id: newGeneralSubJobId(), title: String(legacyNote || '').trim() }];
+    }
+    return buckets.map(bucket => {
+        if (bucket.key.startsWith(GENERAL_WORK_PREFIX)) {
+            return {
+                id: bucket.key.slice(GENERAL_WORK_PREFIX.length),
+                title:
+                    labelByKey[bucket.key] ||
+                    (bucket.key === 'generalWork' || bucket.key === 'general'
+                        ? String(legacyNote || '').trim()
+                        : ''),
+            };
+        }
+        return {
+            id: newGeneralSubJobId(),
+            title:
+                labelByKey[bucket.key] ||
+                (bucket.key === 'generalWork' || bucket.key === 'general'
+                    ? String(legacyNote || '').trim()
+                    : ''),
+        };
+    });
+};
+
+const remapGeneralWorkAssignments = (
+    wa: Record<string, string[]>,
+    subJobs: GeneralSubJob[]
+): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    const pushUnique = (key: string, ids: string[]) => {
+        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
+        if (list.length === 0) return;
+        if (!out[key]) out[key] = [];
+        const seen = new Set(out[key]);
+        for (const id of list) {
+            if (!seen.has(id)) {
+                seen.add(id);
+                out[key].push(id);
+            }
+        }
+    };
+    for (const [k, ids] of Object.entries(wa)) {
+        if (!isGeneralAssignmentKey(k) && DEFAULT_WORK_CATEGORY_IDS.has(k)) {
+            pushUnique(k, ids);
+        }
+    }
+    const generalBuckets = Object.entries(wa).filter(
+        ([k, ids]) =>
+            (isGeneralAssignmentKey(k) || !DEFAULT_WORK_CATEGORY_IDS.has(k)) &&
+            Array.isArray(ids) &&
+            ids.length > 0
+    );
+    generalBuckets.forEach(([, ids], index) => {
+        const job = subJobs[index] || subJobs[subJobs.length - 1];
+        if (!job) return;
+        pushUnique(generalSubJobAssignmentKey(job.id), ids);
+    });
+    return out;
+};
+
+/** รวมคีย์ประเภทงานเก่า/กำหนดเอง — คงกล่อง general:… แยกตามชื่องาน */
 const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | undefined | null): Record<string, string[]> => {
     const base = sanitizeWorkAssignments(raw);
     const out: Record<string, string[]> = {};
@@ -155,6 +243,7 @@ const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | unde
     };
     for (const [k, ids] of Object.entries(base)) {
         if (DEFAULT_WORK_CATEGORY_IDS.has(k)) pushUnique(k, ids);
+        else if (k.startsWith(GENERAL_WORK_PREFIX)) pushUnique(k, ids);
         else if (['wash_home', 'wash_yard_house', 'sift_home', 'washHome'].includes(k)) pushUnique('generalWork', ids);
         else pushUnique('generalWork', ids);
     }
@@ -651,6 +740,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
     const [laborEmployeeBucket, setLaborEmployeeBucket] = useState<LaborEmployeeBucket>('sifter');
     const [laborGeneralWorkNotes, setLaborGeneralWorkNotes] = useState('');
+    const [generalSubJobs, setGeneralSubJobs] = useState<GeneralSubJob[]>([{ id: 'default', title: '' }]);
     const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
@@ -1361,9 +1451,16 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 latest.workAssignments && typeof latest.workAssignments === 'object'
                     ? mergeUnknownLaborCanvasAssignments(latest.workAssignments as Record<string, string[]>)
                     : ({} as Record<string, string[]>);
-            const hasAssignedWorkers = Object.values(mergedWa).some(ids => Array.isArray(ids) && ids.length > 0);
-            setWorkAssignments(hasAssignedWorkers ? mergedWa : {});
-            setLaborGeneralWorkNotes(String(latest.laborGeneralWorkNotes || '').trim());
+            const legacyNote = String(latest.laborGeneralWorkNotes || '').trim();
+            const customCats = Array.isArray((latest as any).customWorkCategories)
+                ? ((latest as any).customWorkCategories as Array<{ id?: string; label?: string }>)
+                : [];
+            const subJobs = buildGeneralSubJobsFromAssignments(mergedWa, customCats, legacyNote);
+            setGeneralSubJobs(subJobs);
+            const remappedWa = remapGeneralWorkAssignments(mergedWa, subJobs);
+            const hasAssignedWorkers = Object.values(remappedWa).some(ids => Array.isArray(ids) && ids.length > 0);
+            setWorkAssignments(hasAssignedWorkers ? remappedWa : {});
+            setLaborGeneralWorkNotes(legacyNote);
             if (latest.workTypeByEmployee) {
                 const half = new Set<string>();
                 Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
@@ -1376,6 +1473,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         } else {
             setWorkAssignments({});
             setLaborGeneralWorkNotes('');
+            setGeneralSubJobs([{ id: newGeneralSubJobId(), title: '' }]);
             setHalfDayEmpIds(new Set());
         }
     }, [date, laborCanvasPersistedPrefillSignature]);
@@ -2467,7 +2565,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <div className="flex-1 overflow-y-auto mb-3">
                                             <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
                                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
-                                                {DEFAULT_WORK_CATEGORIES.map(cat => {
+                                                {FIXED_LABOR_CANVAS_CATEGORIES.map(cat => {
                                                     const assigned = workAssignments[cat.id] || [];
                                                     return (
                                                         <div key={cat.id}
@@ -2519,7 +2617,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 })}
                                                                 {assigned.length === 0 && <span className="text-[11px] text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
                                                             </div>
-                                                            {cat.id === 'generalWork' && (
+                                                            {false && cat.id === 'generalWork' && (
                                                                 <div className="mt-2 space-y-1">
                                                                     <label htmlFor="labor-general-work-notes" className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">รายละเอียดงาน (งานทั่วไป)</label>
                                                                     <textarea
@@ -2555,11 +2653,239 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     );
                                                 })}
                                             </div>
+                                            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="text-sm font-bold text-slate-600">งานทั่วไป (ชื่องาน)</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const id = newGeneralSubJobId();
+                                                            setGeneralSubJobs(prev => [...prev, { id, title: '' }]);
+                                                            setWorkAssignments(prev => ({
+                                                                ...prev,
+                                                                [generalSubJobAssignmentKey(id)]: prev[generalSubJobAssignmentKey(id)] || [],
+                                                            }));
+                                                        }}
+                                                        className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
+                                                    >
+                                                        + เพิ่มงาน
+                                                    </button>
+                                                </div>
+                                                <p className="text-[11px] text-slate-500 mb-2">
+                                                    แยกหลายงานได้ เช่น ทำรั้วสแสลม / ปลูกต้นไม้ — ลากพนักงานลงแต่ละกล่อง
+                                                </p>
+                                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
+                                                    {generalSubJobs.map(job => {
+                                                        const bucketId = generalSubJobAssignmentKey(job.id);
+                                                        const assigned = workAssignments[bucketId] || [];
+                                                        const generalCat = DEFAULT_WORK_CATEGORIES.find(c => c.id === 'generalWork')!;
+                                                        const displayLabel = job.title.trim() || 'งานทั่วไป';
+                                                        return (
+                                                            <div key={job.id} className="space-y-1.5">
+                                                                <div className="flex items-center gap-1">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={job.title}
+                                                                        onChange={e =>
+                                                                            setGeneralSubJobs(prev =>
+                                                                                prev.map(row =>
+                                                                                    row.id === job.id
+                                                                                        ? { ...row, title: e.target.value }
+                                                                                        : row
+                                                                                )
+                                                                            )
+                                                                        }
+                                                                        placeholder="ชื่องาน เช่น ทำรั้วสแสลม"
+                                                                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                    />
+                                                                    {generalSubJobs.length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            title="ลบงานนี้"
+                                                                            onClick={() => {
+                                                                                setGeneralSubJobs(prev =>
+                                                                                    prev.filter(row => row.id !== job.id)
+                                                                                );
+                                                                                setWorkAssignments(prev => {
+                                                                                    const u = { ...prev };
+                                                                                    delete u[bucketId];
+                                                                                    return u;
+                                                                                });
+                                                                            }}
+                                                                            className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
+                                                                        >
+                                                                            ×
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                <div
+                                                                    onDragOver={e => e.preventDefault()}
+                                                                    onDrop={async e => {
+                                                                        e.preventDefault();
+                                                                        if (!dragEmployee) return;
+                                                                        const emp = employees.find(x => x.id === dragEmployee);
+                                                                        const needWage =
+                                                                            emp &&
+                                                                            (emp.baseWage == null || emp.baseWage === 0) &&
+                                                                            ensureEmployeeWage;
+                                                                        if (needWage) {
+                                                                            try {
+                                                                                await ensureEmployeeWage(emp);
+                                                                            } catch {
+                                                                                setDragEmployee(null);
+                                                                                return;
+                                                                            }
+                                                                        }
+                                                                        setWorkAssignments(prev => {
+                                                                            const u = { ...prev };
+                                                                            Object.keys(u).forEach(k => {
+                                                                                u[k] = (u[k] || []).filter(id => id !== dragEmployee);
+                                                                            });
+                                                                            u[bucketId] = [...(u[bucketId] || []), dragEmployee];
+                                                                            return u;
+                                                                        });
+                                                                        setDragEmployee(null);
+                                                                    }}
+                                                                    className={`rounded-xl border-2 border-dashed transition-all p-2.5 ${touchUI ? 'min-h-[96px]' : 'min-h-[76px]'} ${generalCat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
+                                                                >
+                                                                    <div className="mb-1.5">
+                                                                        <span
+                                                                            className={`block w-full rounded-lg px-2 py-1 text-[11px] font-medium leading-snug text-white sm:text-xs ${generalCat.color}`}
+                                                                            title={displayLabel}
+                                                                        >
+                                                                            <span className="block break-words">{displayLabel}</span>
+                                                                        </span>
+                                                                        <div className="mt-1.5 flex items-center justify-end gap-2">
+                                                                            <span className="text-[11px] font-medium text-slate-400">
+                                                                                {assigned.length} คน
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {assigned.map(eid => {
+                                                                            const emp = employees.find(e => e.id === eid);
+                                                                            const isHalf = halfDayEmpIds.has(eid);
+                                                                            return emp ? (
+                                                                                <span
+                                                                                    key={eid}
+                                                                                    className={`flex items-center gap-1 rounded-lg border bg-white font-semibold ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}
+                                                                                >
+                                                                                    {getEmployeeDisplayName(emp)}
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={ev => {
+                                                                                            ev.stopPropagation();
+                                                                                            setHalfDayEmpIds(prev => {
+                                                                                                const n = new Set(prev);
+                                                                                                if (n.has(eid)) n.delete(eid);
+                                                                                                else n.add(eid);
+                                                                                                return n;
+                                                                                            });
+                                                                                        }}
+                                                                                        className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}
+                                                                                        title={
+                                                                                            isHalf
+                                                                                                ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน'
+                                                                                                : 'กดเพื่อกำหนดมาครึ่งวัน'
+                                                                                        }
+                                                                                    >
+                                                                                        ½
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() =>
+                                                                                            setWorkAssignments(prev => ({
+                                                                                                ...prev,
+                                                                                                [bucketId]: (prev[bucketId] || []).filter(
+                                                                                                    id => id !== eid
+                                                                                                ),
+                                                                                            }))
+                                                                                        }
+                                                                                        className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}
+                                                                                    >
+                                                                                        ×
+                                                                                    </button>
+                                                                                </span>
+                                                                            ) : null;
+                                                                        })}
+                                                                        {assigned.length === 0 && (
+                                                                            <span className="text-[11px] text-slate-400 italic">
+                                                                                ลากหรือย้ายคนมาวาง...
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {selectedEmps.length > 0 && (
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                for (const id of selectedEmps) {
+                                                                                    const emp = employees.find(x => x.id === id);
+                                                                                    if (
+                                                                                        emp &&
+                                                                                        (emp.baseWage == null || emp.baseWage === 0) &&
+                                                                                        ensureEmployeeWage
+                                                                                    ) {
+                                                                                        try {
+                                                                                            await ensureEmployeeWage(emp);
+                                                                                        } catch {
+                                                                                            return;
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                setWorkAssignments(prev => {
+                                                                                    const u = { ...prev };
+                                                                                    selectedEmps.forEach(id => {
+                                                                                        Object.keys(u).forEach(k => {
+                                                                                            u[k] = (u[k] || []).filter(eid => eid !== id);
+                                                                                        });
+                                                                                    });
+                                                                                    u[bucketId] = [...(u[bucketId] || []), ...selectedEmps];
+                                                                                    return u;
+                                                                                });
+                                                                                setSelectedEmps([]);
+                                                                            }}
+                                                                            className={`mt-1.5 w-full rounded-lg bg-indigo-100 font-bold text-indigo-700 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+                                                                        >
+                                                                            ⬇️ ย้าย {selectedEmps.length} คน มาที่นี่
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
-                                                const normalizedWa = normalizedWorkAssignments;
+                                                for (const job of generalSubJobs) {
+                                                    const key = generalSubJobAssignmentKey(job.id);
+                                                    const count = (workAssignments[key] || []).length;
+                                                    if (count > 0 && !job.title.trim()) {
+                                                        await sessionAlert('กรุณาระบุชื่องานสำหรับงานทั่วไปที่มีพนักงาน');
+                                                        return;
+                                                    }
+                                                }
+                                                const fixedWa = Object.fromEntries(
+                                                    Object.entries(workAssignments).filter(
+                                                        ([k]) =>
+                                                            DEFAULT_WORK_CATEGORY_IDS.has(k) &&
+                                                            k !== 'generalWork'
+                                                    )
+                                                );
+                                                const generalWa = Object.fromEntries(
+                                                    generalSubJobs
+                                                        .map(job => {
+                                                            const key = generalSubJobAssignmentKey(job.id);
+                                                            const ids = workAssignments[key] || [];
+                                                            return ids.length > 0 ? [key, ids] : null;
+                                                        })
+                                                        .filter(Boolean) as Array<[string, string[]]>
+                                                );
+                                                const normalizedWa = mergeUnknownLaborCanvasAssignments({
+                                                    ...fixedWa,
+                                                    ...generalWa,
+                                                });
                                                 const allAssigned = Object.entries(normalizedWa).flatMap(([, ids]) => ids);
                                                 const driverWorkedToday = dayTransactions
                                                     .filter(t => t.category === 'Vehicle' && !!t.driverId)
@@ -2596,14 +2922,37 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     employeeIds: allEmps,
                                                     createdAt: existingDailyLaborTx?.createdAt || new Date().toISOString(),
                                                 };
-                                                const genNote = laborGeneralWorkNotes.trim();
-                                                const desc = Object.entries(normalizedWa).filter(([, ids]) => ids.length > 0).map(([catId, ids]) => {
-                                                    const cat = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
-                                                    const baseLabel = cat?.label || catId;
-                                                    const labelForLine = catId === 'generalWork' && genNote ? `${baseLabel} (${genNote})` : baseLabel;
-                                                    const names = ids.map(id => employees.find(e => e.id === id)?.nickname || '').join(',');
-                                                    return `${labelForLine}: ${names}`;
-                                                }).join(' | ');
+                                                const genNote =
+                                                    generalSubJobs
+                                                        .filter(
+                                                            job =>
+                                                                (workAssignments[generalSubJobAssignmentKey(job.id)] || [])
+                                                                    .length > 0
+                                                        )
+                                                        .map(job => job.title.trim())
+                                                        .filter(Boolean)
+                                                        .join(', ') || laborGeneralWorkNotes.trim();
+                                                const desc = Object.entries(normalizedWa)
+                                                    .filter(([, ids]) => ids.length > 0)
+                                                    .map(([catId, ids]) => {
+                                                        const cat = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
+                                                        let baseLabel = cat?.label || catId;
+                                                        if (catId.startsWith(GENERAL_WORK_PREFIX)) {
+                                                            const subId = catId.slice(GENERAL_WORK_PREFIX.length);
+                                                            const job = generalSubJobs.find(j => j.id === subId);
+                                                            baseLabel = job?.title.trim() || 'งานทั่วไป';
+                                                        } else if (catId === 'generalWork' && genNote) {
+                                                            baseLabel = `${baseLabel} (${genNote})`;
+                                                        }
+                                                        const names = ids
+                                                            .map(
+                                                                id =>
+                                                                    employees.find(e => e.id === id)?.nickname || ''
+                                                            )
+                                                            .join(',');
+                                                        return `${baseLabel}: ${names}`;
+                                                    })
+                                                    .join(' | ');
                                                 const driverOnlyIds = driverWorkedToday.filter(id => !allAssigned.includes(id));
                                                 const driverOnlyNames = [...new Set(driverOnlyIds)]
                                                     .map(id => getEmployeeDisplayName(employees.find(e => e.id === id)))
@@ -2640,7 +2989,23 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}${driverOnlyNames ? ` [คนขับจากงานใช้รถ: ${driverOnlyNames}]` : ''}`,
                                                     amount: total,
                                                     workAssignments: { ...normalizedWa },
-                                                    customWorkCategories: [],
+                                                    customWorkCategories: [
+                                                        ...FIXED_LABOR_CANVAS_CATEGORIES.map(c => ({
+                                                            id: c.id,
+                                                            label: c.label,
+                                                        })),
+                                                        ...generalSubJobs
+                                                            .filter(
+                                                                job =>
+                                                                    (workAssignments[
+                                                                        generalSubJobAssignmentKey(job.id)
+                                                                    ] || []).length > 0
+                                                            )
+                                                            .map(job => ({
+                                                                id: generalSubJobAssignmentKey(job.id),
+                                                                label: job.title.trim() || 'งานทั่วไป',
+                                                            })),
+                                                    ],
                                                     laborGeneralWorkNotes: genNote,
                                                     ...(drumsHome !== undefined ? { drumsWashedAtHome: drumsHome } : {}),
                                                 };
@@ -2653,7 +3018,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 }
                                                 const laborSaved = await Promise.resolve(onSaveTransaction(t as any));
                                                 if (laborSaved === false) return;
-                                                setSelectedEmps([]); setWorkAssignments({}); setLaborGeneralWorkNotes(''); setHalfDayEmpIds(new Set()); if (drumsHome !== undefined) setDrumsWashedAtHome('');
+                                                setSelectedEmps([]);
+                                                setWorkAssignments({});
+                                                setLaborGeneralWorkNotes('');
+                                                setGeneralSubJobs([{ id: newGeneralSubJobId(), title: '' }]);
+                                                setHalfDayEmpIds(new Set());
+                                                if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
                                                 <CheckCircle2 size={18} className="mr-2" /> {(dayTransactions.some(tx => tx.category === 'Labor' && tx.subCategory === 'Attendance' && tx.laborStatus === 'Work') ? 'อัปเดตค่าแรง' : 'บันทึกค่าแรง')} ({[...new Set([
                                                     ...Object.values(normalizedWorkAssignments).flat(),

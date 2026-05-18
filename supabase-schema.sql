@@ -288,7 +288,10 @@ CREATE TABLE IF NOT EXISTS mobile_error_reports (
     source TEXT NOT NULL DEFAULT 'manual',
     reviewed BOOLEAN NOT NULL DEFAULT FALSE,
     reviewed_at TIMESTAMPTZ,
-    reviewed_by TEXT
+    reviewed_by TEXT,
+    resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    resolved_at TIMESTAMPTZ,
+    resolved_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_mobile_error_reports_created_at

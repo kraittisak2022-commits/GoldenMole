@@ -39,7 +39,7 @@ const TAB_HELP: Record<string, string> = {
     versionNotes: 'สรุปการเปลี่ยนแปลงเวอร์ชันแบบสั้นๆ เพื่อแสดงในหน้าโลโก้และตั้งค่า',
     laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
     aiLogs: 'ประวัติการเรียกใช้งาน AI จากเมนูวางแผนงาน รวมผลลัพธ์สำเร็จ/ผิดพลาด',
-    mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป',
+    mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
 };
 
 const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
@@ -60,6 +60,9 @@ type MobileErrorReportRow = {
     reviewed?: boolean | null;
     reviewed_at?: string | null;
     reviewed_by?: string | null;
+    resolved?: boolean | null;
+    resolved_at?: string | null;
+    resolved_by?: string | null;
 };
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
@@ -201,6 +204,30 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                 reviewed_at: new Date().toISOString(),
                 reviewed_by: currentAdmin?.username || 'web',
             }).eq('id', id);
+            if (error) throw error;
+            await loadMobileAndroidErrors();
+            await refreshMobileUnreadCount();
+        } catch (err: any) {
+            alert(err?.message || 'อัปเดตไม่สำเร็จ');
+        }
+    };
+
+    const markMobileErrorResolved = async (id: string) => {
+        try {
+            const row = mobileErrors.find((r) => r.id === id);
+            const now = new Date().toISOString();
+            const who = currentAdmin?.username || 'web';
+            const patch: Record<string, string | boolean> = {
+                resolved: true,
+                resolved_at: now,
+                resolved_by: who,
+                reviewed: true,
+            };
+            if (!row?.reviewed) {
+                patch.reviewed_at = now;
+                patch.reviewed_by = who;
+            }
+            const { error } = await supabase.from('mobile_error_reports').update(patch).eq('id', id);
             if (error) throw error;
             await loadMobileAndroidErrors();
             await refreshMobileUnreadCount();
@@ -1299,19 +1326,29 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                             ) : (
                                 <div className="space-y-3 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
                                     {mobileErrors.map((row) => {
-                                        const unread = !row.reviewed;
+                                        const resolved = !!row.resolved;
+                                        const unread = !row.reviewed && !resolved;
                                         const when = row.created_at
                                             ? new Date(row.created_at).toLocaleString('th-TH')
                                             : '—';
+                                        const cardTone = resolved
+                                            ? 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-500/40 dark:bg-emerald-500/5'
+                                            : unread
+                                              ? 'border-amber-300 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5'
+                                              : 'border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/40';
                                         return (
                                             <Card
                                                 key={row.id}
-                                                className={`p-4 border ${unread ? 'border-amber-300 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5' : 'border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/40'}`}
+                                                className={`p-4 border ${cardTone}`}
                                             >
                                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                                     <div className="min-w-0 flex-1 space-y-1">
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            {unread ? (
+                                                            {resolved ? (
+                                                                <span className="text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 dark:bg-emerald-500/30 dark:text-emerald-100">
+                                                                    แก้ไขเรียบร้อย
+                                                                </span>
+                                                            ) : unread ? (
                                                                 <span className="text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 dark:bg-amber-500/30 dark:text-amber-100">
                                                                     ยังไม่อ่าน
                                                                 </span>
@@ -1342,15 +1379,26 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                             {row.device_info && <span className="break-words">{row.device_info}</span>}
                                                         </p>
                                                     </div>
-                                                    {unread && (
-                                                        <Button
-                                                            variant="outline"
-                                                            className="h-8 text-xs shrink-0"
-                                                            onClick={() => void markMobileErrorReviewed(row.id)}
-                                                        >
-                                                            ทำเครื่องหมายอ่านแล้ว
-                                                        </Button>
-                                                    )}
+                                                    <div className="flex flex-wrap gap-2 shrink-0">
+                                                        {unread && (
+                                                            <Button
+                                                                variant="outline"
+                                                                className="h-8 text-xs"
+                                                                onClick={() => void markMobileErrorReviewed(row.id)}
+                                                            >
+                                                                ทำเครื่องหมายอ่านแล้ว
+                                                            </Button>
+                                                        )}
+                                                        {!resolved && (
+                                                            <Button
+                                                                variant="outline"
+                                                                className="h-8 text-xs border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-500/50 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+                                                                onClick={() => void markMobileErrorResolved(row.id)}
+                                                            >
+                                                                แก้ไขเรียบร้อย
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 {row.user_note && (
                                                     <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-200 dark:border-white/10 pt-2">
@@ -1367,10 +1415,16 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                         </pre>
                                                     </details>
                                                 )}
-                                                {!unread && row.reviewed_at && (
+                                                {!unread && row.reviewed_at && !resolved && (
                                                     <p className="mt-2 text-[11px] text-slate-500">
                                                         อ่านเมื่อ {new Date(row.reviewed_at).toLocaleString('th-TH')}
                                                         {row.reviewed_by ? ` โดย ${row.reviewed_by}` : ''}
+                                                    </p>
+                                                )}
+                                                {resolved && row.resolved_at && (
+                                                    <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-300">
+                                                        แก้ไขเรียบร้อยเมื่อ {new Date(row.resolved_at).toLocaleString('th-TH')}
+                                                        {row.resolved_by ? ` โดย ${row.resolved_by}` : ''}
                                                     </p>
                                                 )}
                                             </Card>

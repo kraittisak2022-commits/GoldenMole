@@ -953,8 +953,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               // Defensive: some ancestors can report an absurd finite maxWidth.
               final w =
                   layoutW > safeMq ? safeMq : layoutW;
-              final availH =
-                  constraints.maxHeight.clamp(120.0, constraints.maxHeight);
+              final rawMaxH = constraints.maxHeight;
+              // clamp(lower, upper) throws when maxHeight < 120 (e.g. tight layout / animation frame).
+              final availH = !rawMaxH.isFinite
+                  ? 120.0
+                  : rawMaxH <= 0
+                      ? 1.0
+                      : rawMaxH;
               final rows =
                   (visibleModules.length / cross).ceil().clamp(1, 12);
               final usableWidth = w - (sideInset * 2);

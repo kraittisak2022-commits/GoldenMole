@@ -11,6 +11,40 @@ import '../utils/daily_module_transactions.dart';
 import '../utils/thai_holidays.dart';
 import '../widgets/page_loading_view.dart';
 
+String _stripRecorderSuffix(String raw) =>
+    raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
+
+String _dailyEventTypeIcon(String? type) {
+  switch ((type ?? '').trim().toLowerCase()) {
+    case 'warning':
+      return '⚠️';
+    case 'problem':
+      return '🚨';
+    case 'success':
+      return '✅';
+    case 'complaint':
+      return '📢';
+    case 'request':
+      return '📋';
+    default:
+      return 'ℹ️';
+  }
+}
+
+String _formatDailyEventLine(AppTransaction t) {
+  final desc = _stripRecorderSuffix(t.description);
+  if (desc.isEmpty) return 'เหตุการณ์';
+  final icon = _dailyEventTypeIcon(t.eventType);
+  final pri = (t.eventPriority ?? '').trim().toLowerCase();
+  final urgent = pri == 'high' ? ' [ด่วน]' : '';
+  return '$icon $desc$urgent';
+}
+
+bool _isDailyEventTransaction(AppTransaction t) {
+  if (t.category != 'DailyLog') return false;
+  return (t.subCategory ?? '').trim() == 'Event';
+}
+
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
     super.key,
@@ -65,13 +99,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final employees = await widget.employeeService.fetchEmployees(
       forceRefresh: forceRefresh,
     );
-    final weeklyOffByMonday = await _weeklyOffStore.load(
+    final weeklyOff = await _weeklyOffStore.load(
       client: Supabase.instance.client,
     );
     return _CalendarPayload(
       transactions: transactions,
       employees: employees,
-      weeklyOffByMonday: weeklyOffByMonday,
+      weeklyOffByMonday: weeklyOff.weekdayByMonday,
+      weeklyOffMoveReasonByMonday: weeklyOff.moveReasonByMonday,
     );
   }
 
@@ -80,6 +115,49 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _future = _load(forceRefresh: true);
     });
   }
+
+  /// Scrollable body for modal bottom sheets — uses parent [LayoutBuilder] height
+  /// (drag handle / safe area) so content does not overflow by a few pixels.
+  Widget _calendarBottomSheetBody({
+    required BuildContext context,
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.fromLTRB(16, 4, 16, 0),
+    double bottomExtra = 24,
+  }) {
+    final media = MediaQuery.of(context);
+    final resolvedPad = padding.resolve(Directionality.of(context));
+    final scrollPad = EdgeInsets.fromLTRB(
+      resolvedPad.left,
+      resolvedPad.top,
+      resolvedPad.right,
+      resolvedPad.bottom + media.padding.bottom + bottomExtra,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var maxH = constraints.maxHeight;
+        if (!maxH.isFinite || maxH <= 0) {
+          maxH = media.size.height * 0.85;
+        }
+        const chromeSlack = 12.0;
+        maxH = (maxH - chromeSlack).clamp(80.0, media.size.height);
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: SingleChildScrollView(
+            padding: scrollPad,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  static final _compactSegmentedStyle = SegmentedButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+  );
 
   String _ymd(DateTime d) {
     final y = d.year.toString().padLeft(4, '0');
@@ -168,14 +246,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _openDayDetails(_CalendarDay day) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+        return _calendarBottomSheetBody(
+          context: context,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,6 +282,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: const Color(0xFFE57373),
                   lines: [
                     if (day.weeklyOffLine != null) day.weeklyOffLine!,
+                    if (day.weeklyOffMoveReason != null &&
+                        day.weeklyOffMoveReason!.isNotEmpty)
+                      'เหตุผลเลื่อนหยุด: ${day.weeklyOffMoveReason}',
                     ...day.userHolidayDescriptions,
                   ],
                 ),
@@ -212,11 +294,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: const Color(0xFFFFB74D),
                   lines: day.leaveNames,
                 ),
+              if (day.homeSandLine != null)
+                _infoBlock(
+                  title: 'ทรายที่ล้างที่บ้าน',
+                  color: const Color(0xFF00897B),
+                  lines: [day.homeSandLine!],
+                ),
+              if (day.dailyEventLines.isNotEmpty)
+                _infoBlock(
+                  title: 'เหตุการณ์ประจำวัน',
+                  color: const Color(0xFFE65100),
+                  lines: day.dailyEventLines,
+                ),
               if (!day.hasAnyPlannerEntry)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'ไม่มีข้อมูลวันหยุด ลา หรือการแจ้งเตือนนักขัตฤกษ์ในวันนี้',
+                    'ไม่มีข้อมูลวันหยุด ลา ล้างทรายที่บ้าน เหตุการณ์ หรือการแจ้งเตือนนักขัตฤกษ์ในวันนี้',
                     style: GoogleFonts.kanit(color: Colors.black54),
                   ),
                 ),
@@ -249,112 +343,156 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _showMoveWeeklyOffSheet() async {
-    final map = await _weeklyOffStore.load(
+    final weeklyOff = await _weeklyOffStore.load(
       client: Supabase.instance.client,
     );
+    final map = weeklyOff.weekdayByMonday;
+    final reasonMap = weeklyOff.moveReasonByMonday;
     final mondayStr = WeeklyOffCalendarStore.mondayKeyOf(_selectedDate);
+    final reasonCtrl = TextEditingController(
+      text: reasonMap[mondayStr] ?? '',
+    );
 
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) {
-        var sel = map[mondayStr] ?? WeeklyOffCalendarStore.defaultOffWeekday;
-        return StatefulBuilder(
-          builder: (context, setSt) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                4,
-                16,
-                MediaQuery.paddingOf(context).bottom + 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'เลือกวันหยุดประจำสัปดาห์',
-                    style: GoogleFonts.kanit(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    'ค่ามาตรฐาน: วันพุธของทุกสัปดาห์ • จันทร์แรกของสัปดาห์นี้: $mondayStr',
-                    style: GoogleFonts.kanit(
-                      fontSize: 12.5,
-                      color: Colors.black54,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  for (var wd = 1; wd <= 7; wd++)
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        sel == wd
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
-                        color: sel == wd
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.black38,
-                      ),
-                      title: Text(
-                        _thaiWeekdayLongFixed(wd),
-                        style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: wd == WeeklyOffCalendarStore.defaultOffWeekday
-                          ? Text(
-                              'ค่าเริ่มต้น',
-                              style: GoogleFonts.kanit(
-                                fontSize: 11.5,
-                                color: Colors.black45,
-                              ),
-                            )
-                          : null,
-                      onTap: () => setSt(() => sel = wd),
-                    ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () async {
-                      await _weeklyOffStore.setWeekOffWeekday(
-                        _selectedDate,
-                        sel,
-                        client: Supabase.instance.client,
-                      );
-                      if (!ctx.mounted) return;
-                      Navigator.of(ctx).pop();
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            sel == WeeklyOffCalendarStore.defaultOffWeekday
-                                ? 'ใช้หยุดวันพุธตามมาตรฐานสำหรับสัปดาห์นี้แล้ว'
-                                : 'ย้ายหยุดเป็น${_thaiWeekdayLongFixed(sel)} สำหรับสัปดาห์นี้แล้ว',
-                            style: GoogleFonts.kanit(),
-                          ),
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        builder: (ctx) {
+          var sel = map[mondayStr] ?? WeeklyOffCalendarStore.defaultOffWeekday;
+          return StatefulBuilder(
+            builder: (context, setSt) {
+              final needsReason =
+                  sel != WeeklyOffCalendarStore.defaultOffWeekday;
+              return _calendarBottomSheetBody(
+                context: context,
+                bottomExtra: 16,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'ย้ายหยุดรายสัปดาห์',
+                        style: GoogleFonts.kanit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
                         ),
-                      );
-                      _reload();
-                    },
-                    child: Text(
-                      'บันทึก',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+                      ),
+                      Text(
+                        'ค่ามาตรฐาน: วันพุธของทุกสัปดาห์ • จันทร์แรกของสัปดาห์นี้: $mondayStr',
+                        style: GoogleFonts.kanit(
+                          fontSize: 12.5,
+                          color: Colors.black54,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (var wd = 1; wd <= 7; wd++)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            sel == wd
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_off,
+                            color: sel == wd
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.black38,
+                          ),
+                          title: Text(
+                            _thaiWeekdayLongFixed(wd),
+                            style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: wd == WeeklyOffCalendarStore.defaultOffWeekday
+                              ? Text(
+                                  'ค่าเริ่มต้น',
+                                  style: GoogleFonts.kanit(
+                                    fontSize: 11.5,
+                                    color: Colors.black45,
+                                  ),
+                                )
+                              : null,
+                          onTap: () => setSt(() => sel = wd),
+                        ),
+                      if (needsReason) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: reasonCtrl,
+                          minLines: 2,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.done,
+                          decoration: InputDecoration(
+                            labelText: 'เหตุผล / สาเหตุที่ย้ายวันหยุด',
+                            hintText: 'เช่น งานเร่งด่วนวันพุธ, สลับกับทีมอื่น',
+                            labelStyle: GoogleFonts.kanit(),
+                            hintStyle: GoogleFonts.kanit(fontSize: 13),
+                            border: const OutlineInputBorder(),
+                          ),
+                          style: GoogleFonts.kanit(fontSize: 15),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () async {
+                          try {
+                            await _weeklyOffStore.setWeekOffWeekday(
+                              _selectedDate,
+                              sel,
+                              moveReason: needsReason
+                                  ? reasonCtrl.text
+                                  : null,
+                              client: Supabase.instance.client,
+                            );
+                          } on ArgumentError catch (e) {
+                            if (!ctx.mounted) return;
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  e.message ?? 'กรุณาระบุเหตุผล',
+                                  style: GoogleFonts.kanit(),
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          if (!ctx.mounted) return;
+                          Navigator.of(ctx).pop();
+                          if (!mounted) return;
+                          final reasonNote = needsReason
+                              ? ' • ${reasonCtrl.text.trim()}'
+                              : '';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                sel == WeeklyOffCalendarStore.defaultOffWeekday
+                                    ? 'ใช้หยุดวันพุธตามมาตรฐานสำหรับสัปดาห์นี้แล้ว'
+                                    : 'ย้ายหยุดเป็น${_thaiWeekdayLongFixed(sel)} สำหรับสัปดาห์นี้แล้ว$reasonNote',
+                                style: GoogleFonts.kanit(),
+                              ),
+                            ),
+                          );
+                          _reload();
+                        },
+                        child: Text(
+                          'บันทึก',
+                          style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      reasonCtrl.dispose();
+    }
   }
 
   /// ชื่อวัน (จันทร์=1 … อาทิตย์=7)
@@ -401,15 +539,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             final data = snapshot.data;
             return StatefulBuilder(
               builder: (context, setSheetState) {
+                final media = MediaQuery.of(context);
                 return Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    6,
-                    16,
-                    MediaQuery.of(context).viewInsets.bottom + 20,
-                  ),
-                  child: SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+                  child: _calendarBottomSheetBody(
+                    context: context,
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
@@ -421,16 +558,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                         const SizedBox(height: 12),
                         SegmentedButton<String>(
+                          style: _compactSegmentedStyle,
                           segments: const [
                             ButtonSegment(
                               value: 'Holiday',
                               label: Text('วันหยุด/นัดหมาย'),
-                              icon: Icon(Icons.event),
                             ),
                             ButtonSegment(
                               value: 'Leave',
                               label: Text('ลางาน'),
-                              icon: Icon(Icons.badge_outlined),
                             ),
                           ],
                           selected: {_entryMode},
@@ -441,6 +577,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         const SizedBox(height: 10),
                         if (_entryMode == 'Leave') ...[
                           SegmentedButton<String>(
+                            style: _compactSegmentedStyle,
                             segments: const [
                               ButtonSegment(
                                 value: 'Leave',
@@ -663,6 +800,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               data.transactions,
               data.employees,
               data.weeklyOffByMonday,
+              data.weeklyOffMoveReasonByMonday,
             );
             final bottomFabClearance =
                 MediaQuery.of(context).padding.bottom + 42.0;
@@ -705,6 +843,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _legendChip(
                           color: const Color(0xFFFFB74D),
                           label: 'ลางาน',
+                        ),
+                        const SizedBox(width: 6),
+                        _legendChip(
+                          color: const Color(0xFF00897B),
+                          label: 'ล้างทรายที่บ้าน',
+                        ),
+                        const SizedBox(width: 6),
+                        _legendChip(
+                          color: const Color(0xFFE65100),
+                          label: 'เหตุการณ์ประจำวัน',
                         ),
                       ],
                     ),
@@ -868,6 +1016,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     List<AppTransaction> transactions,
     List<Employee> employees,
     Map<String, int> weeklyOffByMonday,
+    Map<String, String> weeklyOffMoveReasonByMonday,
   ) {
     final firstWeekday = DateTime(year, month, 1).weekday % 7;
     final daysInMonth = DateTime(year, month + 1, 0).day;
@@ -899,6 +1048,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final monKey = WeeklyOffCalendarStore.mondayKeyOf(dtPlain);
       final offWd =
           weeklyOffByMonday[monKey] ?? WeeklyOffCalendarStore.defaultOffWeekday;
+      final moveReason = weeklyOffMoveReasonByMonday[monKey];
       final weeklyOffLine = dtPlain.weekday == offWd
           ? _companyWeeklyHolidayLine(offWd)
           : null;
@@ -919,6 +1069,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return emp.nickname.isNotEmpty ? emp.nickname : emp.name;
       }).toList();
 
+      final dailyEventLines = dayTx
+          .where(_isDailyEventTransaction)
+          .map(_formatDailyEventLine)
+          .where((s) => s.isNotEmpty)
+          .toList();
+      final homeSandLine = calendarHomeSandLine(dayTx);
+
       result.add(
         _CalendarDay(
           day: d,
@@ -926,7 +1083,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           thaiPublicHolidayNames: thaiPublicHolidayNames,
           userHolidayDescriptions: userHolidayDescriptions,
           weeklyOffLine: weeklyOffLine,
+          weeklyOffMoveReason: dtPlain.weekday == offWd ? moveReason : null,
           leaveNames: leaveNames,
+          homeSandLine: homeSandLine,
+          dailyEventLines: dailyEventLines,
         ),
       );
     }
@@ -983,10 +1143,12 @@ class _CalendarPayload {
     required this.transactions,
     required this.employees,
     required this.weeklyOffByMonday,
+    required this.weeklyOffMoveReasonByMonday,
   });
   final List<AppTransaction> transactions;
   final List<Employee> employees;
   final Map<String, int> weeklyOffByMonday;
+  final Map<String, String> weeklyOffMoveReasonByMonday;
 }
 
 class _CalendarDay {
@@ -996,7 +1158,10 @@ class _CalendarDay {
     required this.thaiPublicHolidayNames,
     required this.userHolidayDescriptions,
     required this.leaveNames,
+    required this.dailyEventLines,
     this.weeklyOffLine,
+    this.weeklyOffMoveReason,
+    this.homeSandLine,
   });
 
   final int day;
@@ -1004,15 +1169,22 @@ class _CalendarDay {
   final List<String> thaiPublicHolidayNames;
   final List<String> userHolidayDescriptions;
   final String? weeklyOffLine;
+  final String? weeklyOffMoveReason;
   final List<String> leaveNames;
+  final String? homeSandLine;
+  final List<String> dailyEventLines;
 
   bool get hasWeeklyOff => weeklyOffLine != null;
+  bool get hasHomeSand => homeSandLine != null;
+  bool get hasDailyEvents => dailyEventLines.isNotEmpty;
 
   bool get hasAnyPlannerEntry =>
       thaiPublicHolidayNames.isNotEmpty ||
       weeklyOffLine != null ||
       userHolidayDescriptions.isNotEmpty ||
-      leaveNames.isNotEmpty;
+      leaveNames.isNotEmpty ||
+      homeSandLine != null ||
+      dailyEventLines.isNotEmpty;
 }
 
 class _DayCell extends StatelessWidget {
@@ -1030,6 +1202,8 @@ class _DayCell extends StatelessWidget {
   static const _strongRed = Color(0xFFE57373);
   static const _thaiHint = Color(0xFF5C7C9F);
   static const _leaveOrange = Color(0xFFFFB74D);
+  static const _homeSandTeal = Color(0xFF00897B);
+  static const _eventOrange = Color(0xFFE65100);
 
   @override
   Widget build(BuildContext context) {
@@ -1037,6 +1211,8 @@ class _DayCell extends StatelessWidget {
         day.hasWeeklyOff || day.userHolidayDescriptions.isNotEmpty;
     final thaiOnly = day.thaiPublicHolidayNames.isNotEmpty && !strongOff;
     final hasLeave = day.leaveNames.isNotEmpty;
+    final hasHomeSand = day.hasHomeSand;
+    final hasEvents = day.hasDailyEvents;
 
     Color borderColor;
     double borderW;
@@ -1052,6 +1228,12 @@ class _DayCell extends StatelessWidget {
     } else if (hasLeave) {
       borderColor = _leaveOrange.withValues(alpha: 0.75);
       borderW = 1;
+    } else if (hasHomeSand) {
+      borderColor = _homeSandTeal.withValues(alpha: 0.75);
+      borderW = 1;
+    } else if (hasEvents) {
+      borderColor = _eventOrange.withValues(alpha: 0.7);
+      borderW = 1.1;
     } else if (today) {
       borderColor = const Color(0xFFE5E8ED);
       borderW = 1;
@@ -1066,6 +1248,10 @@ class _DayCell extends StatelessWidget {
         ? const Color(0xFFFFF5F5)
         : thaiOnly
         ? const Color(0xFFF7F9FC)
+        : hasHomeSand
+        ? const Color(0xFFE0F2F1)
+        : hasEvents
+        ? const Color(0xFFFFF8E1)
         : Colors.white;
 
     return Material(
@@ -1204,6 +1390,38 @@ class _DayCell extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              if (day.homeSandLine != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    day.homeSandLine!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: _homeSandTeal,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+              if (day.dailyEventLines.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    day.dailyEventLines.length > 1
+                        ? 'เหตุการณ์ ${day.dailyEventLines.length} รายการ'
+                        : day.dailyEventLines.first,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: _eventOrange,
+                      height: 1.15,
+                    ),
                   ),
                 ),
             ],

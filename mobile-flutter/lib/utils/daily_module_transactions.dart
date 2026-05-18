@@ -52,6 +52,84 @@ bool laborLeaveCoversCalendarDay(AppTransaction t, String dayKey) {
   return !needle.isBefore(start) && !needle.isAfter(end);
 }
 
+/// แถวบันทึก «ตัดรอบล้างทรายที่บ้าน» (ไม่นับเป็นจำนวนถังที่ล้าง)
+bool isHomeSandRoundCloseRow(AppTransaction t) =>
+    t.description.contains('ตัดรอบล้างทรายที่บ้าน');
+
+/// แถวบันทึกจำนวนถังล้างที่บ้าน (Quick Input / Wizard)
+bool isDedicatedHomeSandWashRow(AppTransaction t) =>
+    t.description.contains('ทรายที่ล้างที่บ้าน') &&
+    !isHomeSandRoundCloseRow(t);
+
+/// ถังล้างที่บ้านต่อวัน — สอดคล้องกับ `persistedSandHomeDrums` บนเว็บ
+double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
+  if (sandTxs.isEmpty) return 0;
+  double homeVal(AppTransaction t) =>
+      (t.drumsWashedAtHome ?? 0).toDouble().clamp(0, 9999999);
+  bool isMachine(AppTransaction t) {
+    final m = (t.sandMachineType ?? '').trim();
+    return m == 'Old' || m == 'New';
+  }
+
+  final dedicatedHome = sandTxs.where(isDedicatedHomeSandWashRow).toList();
+  if (dedicatedHome.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in dedicatedHome) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
+  }
+
+  final withMachine = sandTxs.where(isMachine).toList();
+  if (withMachine.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in withMachine) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
+  }
+  final drumsOnly = sandTxs.where((t) {
+    if (isMachine(t)) return false;
+    final sm = (t.sandMorning ?? 0) + (t.sandAfternoon ?? 0);
+    return sm == 0;
+  }).toList();
+  if (drumsOnly.isNotEmpty) {
+    var maxH = 0.0;
+    for (final t in drumsOnly) {
+      final h = homeVal(t);
+      if (h > maxH) maxH = h;
+    }
+    return maxH;
+  }
+  var maxH = 0.0;
+  for (final t in sandTxs) {
+    final h = homeVal(t);
+    if (h > maxH) maxH = h;
+  }
+  return maxH;
+}
+
+/// ข้อความสั้นสำหรับปฏิทินเมื่อวันนั้นมีบันทึกล้างทรายที่บ้าน
+String? calendarHomeSandLine(List<AppTransaction> dayTransactions) {
+  final sandTx = dayTransactions
+      .where(
+        (t) =>
+            t.category == 'DailyLog' &&
+            (t.subCategory ?? '').trim() == 'Sand',
+      )
+      .toList();
+  if (sandTx.isEmpty) return null;
+  final hasDedicated = sandTx.any(_isDedicatedHomeSandRow);
+  final home = persistedSandHomeDrumsForDay(sandTx);
+  if (!hasDedicated && home <= 0) return null;
+  final n = home == home.roundToDouble()
+      ? '${home.round()}'
+      : home.toStringAsFixed(1);
+  return 'ล้างทรายที่บ้าน $n ถัง';
+}
+
 bool transactionAppliesToDashboardDay(
   AppTransaction t,
   String dayKey,

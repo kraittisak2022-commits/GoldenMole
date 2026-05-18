@@ -104,69 +104,32 @@ String _normalizeLaborCanvasKey(String key) {
     case 'filter_b':
     case 'house_team':
       return 'general';
+    case 'generalWork':
+      return 'general';
     default:
-      return key;
+      if (key.startsWith('general:')) return key;
+      return 'general';
   }
 }
+
+const String _kGeneralWorkPrefix = 'general:';
+const Color _kGeneralWorkColor = Color(0xFF5F6AD8);
+
+String _newGeneralSubJobId() =>
+    DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+
+String _generalSubJobAssignmentKey(String subId) => '$_kGeneralWorkPrefix$subId';
+
+bool _isGeneralAssignmentKey(String key) =>
+    key == 'general' ||
+    key == 'generalWork' ||
+    key.startsWith(_kGeneralWorkPrefix);
 
 /// คีย์ yyyy-MM-dd — สอดคล้องกับ `normalizeDate` บนเว็บ (ตัด suffix หลังวันที่)
 String _normalizeSandDayKey(String raw) {
   final s = raw.trim();
   if (s.length >= 10) return s.substring(0, 10);
   return s;
-}
-
-bool _isDedicatedHomeSandRow(AppTransaction t) =>
-    t.description.contains('ทรายที่ล้างที่บ้าน');
-
-/// ถังล้างที่บ้านต่อวัน — สอดคล้องกับ `persistedSandHomeDrums` ใน `dailyStepRecorderUtils.ts`
-double persistedSandHomeDrumsForDay(List<AppTransaction> sandTxs) {
-  if (sandTxs.isEmpty) return 0;
-  double homeVal(AppTransaction t) =>
-      (t.drumsWashedAtHome ?? 0).toDouble().clamp(0, 9999999);
-  bool isMachine(AppTransaction t) {
-    final m = (t.sandMachineType ?? '').trim();
-    return m == 'Old' || m == 'New';
-  }
-
-  final dedicatedHome = sandTxs.where(_isDedicatedHomeSandRow).toList();
-  if (dedicatedHome.isNotEmpty) {
-    var maxH = 0.0;
-    for (final t in dedicatedHome) {
-      final h = homeVal(t);
-      if (h > maxH) maxH = h;
-    }
-    return maxH;
-  }
-
-  final withMachine = sandTxs.where(isMachine).toList();
-  if (withMachine.isNotEmpty) {
-    var maxH = 0.0;
-    for (final t in withMachine) {
-      final h = homeVal(t);
-      if (h > maxH) maxH = h;
-    }
-    return maxH;
-  }
-  final drumsOnly = sandTxs.where((t) {
-    if (isMachine(t)) return false;
-    final sm = (t.sandMorning ?? 0) + (t.sandAfternoon ?? 0);
-    return sm == 0;
-  }).toList();
-  if (drumsOnly.isNotEmpty) {
-    var maxH = 0.0;
-    for (final t in drumsOnly) {
-      final h = homeVal(t);
-      if (h > maxH) maxH = h;
-    }
-    return maxH;
-  }
-  var maxH = 0.0;
-  for (final t in sandTxs) {
-    final h = homeVal(t);
-    if (h > maxH) maxH = h;
-  }
-  return maxH;
 }
 
 /// เลือกบันทึกรายจ่ายสาธารณูปโภคหรือรายรับประจำวัน
@@ -178,42 +141,44 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _LaborWorkCategory(
       id: 'wash_old',
       label: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
+      shortTitle: 'ร่อน 1 (เก่า)',
       color: Color(0xFF4A90E2),
     ),
     _LaborWorkCategory(
       id: 'wash_new',
       label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
+      shortTitle: 'ร่อน 2 (ใหม่)',
       color: Color(0xFF24A7B8),
     ),
     _LaborWorkCategory(
       id: 'washHome',
       label: 'ล้างทรายที่บ้าน',
+      shortTitle: 'ล้างทรายที่บ้าน',
       color: Color(0xFF2CB67D),
     ),
     _LaborWorkCategory(
       id: 'sand_watch',
       label: 'เฝ้าท่าทราย',
+      shortTitle: 'เฝ้าท่าทราย',
       color: Color(0xFFE64A9E),
     ),
     _LaborWorkCategory(
       id: 'night_shift',
       label: 'เวรกลางคืน',
+      shortTitle: 'เวรกลางคืน',
       color: Color(0xFF7B5AE6),
     ),
     _LaborWorkCategory(
       id: 'dig_haul',
-      label: 'ขุดขน (รวม ควบคุมการขุด + ควบคุมรถขุด)',
+      label: 'ขุดขน',
+      shortTitle: 'ขุดขน',
       color: Color(0xFF7962E6),
     ),
     _LaborWorkCategory(
       id: 'night_patrol',
       label: 'เฝ้ากลางคืน',
+      shortTitle: 'เฝ้ากลางคืน',
       color: Color(0xFF9C4DCC),
-    ),
-    _LaborWorkCategory(
-      id: 'general',
-      label: 'งานทั่วไป (ระบุรายละเอียดงานได้)',
-      color: Color(0xFF5F6AD8),
     ),
   ];
   static const Color _bg = Color(0xFFFDFEFF);
@@ -366,6 +331,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final Map<String, bool> _laborBucketExpanded = {
     for (final c in _laborCategories) c.id: false,
   };
+  final List<_GeneralSubJob> _generalSubJobs = [];
   final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
 
@@ -434,6 +400,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         );
     _entranceController.forward();
+    _ensureDefaultGeneralSubJob();
     final d = widget.selectedDateForModule ?? DateTime.now();
     _selectedDate = DateTime(d.year, d.month, d.day);
     _leaveStartDate = DateTime(
@@ -732,6 +699,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final k in _laborBucketExpanded.keys) {
         _laborBucketExpanded[k] = false;
       }
+      _resetGeneralSubJobsAfterSave();
       _laborWorkDetailsController.clear();
     } else if (_isLaborLeaveMode) {
       _selectedLeaveEmpIds.clear();
@@ -1203,34 +1171,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ..clear()
         ..addAll(t.employeeIds);
       _laborPickedIds.clear();
-      for (final k in _laborAssignments.keys) {
-        _laborAssignments[k]?.clear();
-      }
-      for (final k in _laborBucketExpanded.keys) {
-        _laborBucketExpanded[k] = false;
-      }
-      final loadedAssignments =
-          t.workAssignments ?? const <String, List<String>>{};
-      if (loadedAssignments.isNotEmpty) {
-        loadedAssignments.forEach((key, ids) {
-          var canon = _normalizeLaborCanvasKey(key);
-          if (!_laborAssignments.containsKey(canon)) {
-            canon = 'general';
-          }
-          _laborAssignments[canon]?.addAll(ids);
-          if ((_laborAssignments[canon]?.isNotEmpty ?? false)) {
-            _laborBucketExpanded[canon] = true;
-          }
-        });
-      } else {
-        _laborAssignments['general']?.addAll(t.employeeIds);
-        if ((_laborAssignments['general']?.isNotEmpty ?? false)) {
-          _laborBucketExpanded['general'] = true;
-        }
-      }
-      _laborWorkDetailsController.text = _stripRecorderSuffix(
-        t.workDetails ?? '',
-      );
+      _loadLaborAssignmentsFromTransaction(t);
       return;
     }
 
@@ -1280,6 +1221,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelVehicleLitersController.dispose();
     _fuelVehicleTimeController.dispose();
     _laborWorkDetailsController.dispose();
+    for (final job in _generalSubJobs) {
+      job.dispose();
+    }
     _leaveReasonController.dispose();
     _leaveDaysController.dispose();
     _advanceAmountPerPersonController.dispose();
@@ -2246,6 +2190,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       body: () async {
         final assignedIds = _collectLaborAssignedIds();
         if (assignedIds.isEmpty) throw 'กรุณาเลือกพนักงานลงกล่องงาน';
+        for (final job in _generalSubJobs) {
+          final key = _generalSubJobAssignmentKey(job.id);
+          final count = _laborAssignments[key]?.length ?? 0;
+          if (count > 0 && job.nameController.text.trim().isEmpty) {
+            throw 'กรุณาระบุชื่องานสำหรับงานทั่วไปที่มีพนักงาน';
+          }
+        }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
@@ -2271,6 +2222,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final laborId =
             _laborTxId ?? '${DateTime.now().millisecondsSinceEpoch}_labor';
         _laborTxId = laborId;
+        final generalWorkDetails = _generalSubJobs
+            .where((job) {
+              final key = _generalSubJobAssignmentKey(job.id);
+              return (_laborAssignments[key]?.isNotEmpty ?? false) &&
+                  job.nameController.text.trim().isNotEmpty;
+            })
+            .map((job) => job.nameController.text.trim())
+            .join(', ');
         await _persist(
           AppTransaction(
             id: laborId,
@@ -2287,6 +2246,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             workAssignments: assignmentPayload,
             customWorkCategories: _laborCategoryPayload(),
+            workDetails:
+                generalWorkDetails.isEmpty ? null : generalWorkDetails,
           ),
         );
         _selectedLaborEmpIds.clear();
@@ -2297,6 +2258,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         for (final k in _laborBucketExpanded.keys) {
           _laborBucketExpanded[k] = false;
         }
+        _resetGeneralSubJobsAfterSave();
         _laborWorkDetailsController.clear();
       },
     );
@@ -7324,13 +7286,183 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
+  void _ensureDefaultGeneralSubJob() {
+    if (_generalSubJobs.isNotEmpty) return;
+    _addGeneralSubJob(notify: false);
+  }
+
+  void _clearGeneralSubJobs() {
+    for (final job in _generalSubJobs) {
+      job.dispose();
+    }
+    _generalSubJobs.clear();
+    for (final key in _laborAssignments.keys
+        .where(_isGeneralAssignmentKey)
+        .toList()) {
+      _laborAssignments.remove(key);
+      _laborBucketExpanded.remove(key);
+    }
+  }
+
+  void _addGeneralSubJob({bool notify = true, String? id, String? title}) {
+    final subId = id ?? _newGeneralSubJobId();
+    final job = _GeneralSubJob(id: subId, name: title ?? '');
+    _generalSubJobs.add(job);
+    final key = _generalSubJobAssignmentKey(subId);
+    _laborAssignments[key] = <String>{};
+    _laborBucketExpanded[key] = false;
+    if (notify) setState(() {});
+  }
+
+  void _removeGeneralSubJob(String subId) {
+    if (_generalSubJobs.length <= 1) return;
+    final key = _generalSubJobAssignmentKey(subId);
+    _laborAssignments.remove(key);
+    _laborBucketExpanded.remove(key);
+    final idx = _generalSubJobs.indexWhere((j) => j.id == subId);
+    if (idx >= 0) {
+      _generalSubJobs[idx].dispose();
+      _generalSubJobs.removeAt(idx);
+    }
+    setState(() {});
+  }
+
+  void _resetGeneralSubJobsAfterSave() {
+    _clearGeneralSubJobs();
+    _addGeneralSubJob(notify: false);
+  }
+
+  String _generalSubJobDisplayLabel(_GeneralSubJob job) {
+    final name = job.nameController.text.trim();
+    return name.isEmpty ? 'งานทั่วไป' : name;
+  }
+
+  _LaborWorkCategory _generalCategoryFor(_GeneralSubJob job) {
+    final label = _generalSubJobDisplayLabel(job);
+    final short =
+        label.length > 18 ? '${label.substring(0, 16)}…' : label;
+    return _LaborWorkCategory(
+      id: _generalSubJobAssignmentKey(job.id),
+      label: label,
+      shortTitle: short,
+      color: _kGeneralWorkColor,
+    );
+  }
+
+  void _loadLaborAssignmentsFromTransaction(AppTransaction t) {
+    for (final key in _laborAssignments.keys.toList()) {
+      if (!_isGeneralAssignmentKey(key)) {
+        _laborAssignments[key]?.clear();
+      }
+    }
+    for (final key in _laborBucketExpanded.keys.toList()) {
+      if (!_isGeneralAssignmentKey(key)) {
+        _laborBucketExpanded[key] = false;
+      }
+    }
+    _clearGeneralSubJobs();
+
+    final loaded = t.workAssignments ?? const <String, List<String>>{};
+    final labelByKey = <String, String>{};
+    for (final row in t.customWorkCategories ?? const []) {
+      final id = row['id']?.trim();
+      final label = row['label']?.trim();
+      if (id != null && label != null && label.isNotEmpty) {
+        labelByKey[id] = label;
+      }
+    }
+
+    final generalBuckets = <String, List<String>>{};
+    if (loaded.isNotEmpty) {
+      loaded.forEach((key, ids) {
+        final list = ids
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (list.isEmpty) return;
+        final canon = _normalizeLaborCanvasKey(key);
+        if (_isGeneralAssignmentKey(canon) ||
+            _isGeneralAssignmentKey(key) ||
+            !_laborAssignments.containsKey(canon)) {
+          final bucketKey = key.startsWith(_kGeneralWorkPrefix)
+              ? key
+              : (canon.startsWith(_kGeneralWorkPrefix) ? canon : canon);
+          generalBuckets[bucketKey] = [
+            ...?generalBuckets[bucketKey],
+            ...list,
+          ];
+          return;
+        }
+        _laborAssignments[canon]!.addAll(list);
+        _laborBucketExpanded[canon] = true;
+      });
+    } else if (t.employeeIds.isNotEmpty) {
+      generalBuckets['general'] = t.employeeIds.toList();
+    }
+
+    final legacyName = _stripRecorderSuffix(
+      t.workDetails ?? _laborWorkDetailsController.text,
+    ).trim();
+
+    if (generalBuckets.isEmpty) {
+      _addGeneralSubJob(
+        notify: false,
+        title: legacyName.isNotEmpty ? legacyName : null,
+      );
+      return;
+    }
+
+    for (final entry in generalBuckets.entries) {
+      late final String subId;
+      late final String assignKey;
+      if (entry.key.startsWith(_kGeneralWorkPrefix)) {
+        subId = entry.key.substring(_kGeneralWorkPrefix.length);
+        assignKey = entry.key;
+      } else {
+        subId = _newGeneralSubJobId();
+        assignKey = _generalSubJobAssignmentKey(subId);
+      }
+      final title =
+          labelByKey[entry.key] ??
+          labelByKey[assignKey] ??
+          ((entry.key == 'general' || entry.key == 'generalWork')
+              ? legacyName
+              : '');
+      _addGeneralSubJob(notify: false, id: subId, title: title);
+      _laborAssignments[assignKey] = entry.value.toSet();
+      _laborBucketExpanded[assignKey] = entry.value.isNotEmpty;
+    }
+    if (_generalSubJobs.isEmpty) {
+      _addGeneralSubJob(
+        notify: false,
+        title: legacyName.isNotEmpty ? legacyName : null,
+      );
+    }
+  }
+
   List<Map<String, String>> _laborCategoryPayload() {
-    return _laborCategories
-        .map((c) => {'id': c.id, 'label': c.label})
-        .toList(growable: false);
+    return [
+      ..._laborCategories.map((c) => {'id': c.id, 'label': c.label}),
+      ..._generalSubJobs.map(
+        (j) => {
+          'id': _generalSubJobAssignmentKey(j.id),
+          'label': _generalSubJobDisplayLabel(j),
+        },
+      ),
+    ];
   }
 
   String _laborCategoryLabel(String id) {
+    if (_isGeneralAssignmentKey(id)) {
+      if (id.startsWith(_kGeneralWorkPrefix)) {
+        final subId = id.substring(_kGeneralWorkPrefix.length);
+        for (final job in _generalSubJobs) {
+          if (job.id == subId) return _generalSubJobDisplayLabel(job);
+        }
+      }
+      final legacy = _laborWorkDetailsController.text.trim();
+      return legacy.isNotEmpty ? legacy : 'งานทั่วไป';
+    }
     for (final c in _laborCategories) {
       if (c.id == id) return c.label;
     }
@@ -7394,6 +7526,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildLaborCanvasBoard() {
     return _LaborDragBoard(
       categories: _laborCategories,
+      generalSubJobs: _generalSubJobs,
+      generalCategoryFor: _generalCategoryFor,
+      onAddGeneralSubJob: () => _addGeneralSubJob(),
+      onRemoveGeneralSubJob: _removeGeneralSubJob,
+      onGeneralJobNameChanged: () => setState(() {}),
       employees: _employees,
       employeesById: _employeesById,
       assignments: _laborAssignments,
@@ -7680,12 +7817,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             decoration: const InputDecoration(
               labelText: 'เหตุผลการลา',
               prefixIcon: Icon(Icons.note_alt_outlined),
+              hintText: 'กด Enter เพื่อบันทึก',
             ),
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            minLines: 2,
-            maxLines: 5,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.done,
+            maxLines: 1,
             onChanged: (_) => setState(() {}),
+            onFieldSubmitted: (_) {
+              if (_saving) return;
+              FocusManager.instance.primaryFocus?.unfocus();
+              _saveQuickEntry();
+            },
           ),
           if (_leaveIsHalfDay ||
               days > 0 ||
@@ -9608,6 +9750,7 @@ class _AnimatedInputField extends StatefulWidget {
     required this.decoration,
     this.keyboardType,
     this.onChanged,
+    this.onFieldSubmitted,
     this.style,
     this.textInputAction,
     this.inputFormatters,
@@ -9621,6 +9764,7 @@ class _AnimatedInputField extends StatefulWidget {
   final InputDecoration decoration;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onFieldSubmitted;
   final TextStyle? style;
   final TextInputAction? textInputAction;
   final List<TextInputFormatter>? inputFormatters;
@@ -10305,6 +10449,11 @@ enum _LaborEmpPoolKind { sandSieve, excavatorMac, generalLabor }
 class _LaborDragBoard extends StatefulWidget {
   const _LaborDragBoard({
     required this.categories,
+    required this.generalSubJobs,
+    required this.generalCategoryFor,
+    required this.onAddGeneralSubJob,
+    required this.onRemoveGeneralSubJob,
+    required this.onGeneralJobNameChanged,
     required this.employees,
     required this.employeesById,
     required this.assignments,
@@ -10314,6 +10463,11 @@ class _LaborDragBoard extends StatefulWidget {
   });
 
   final List<_LaborWorkCategory> categories;
+  final List<_GeneralSubJob> generalSubJobs;
+  final _LaborWorkCategory Function(_GeneralSubJob job) generalCategoryFor;
+  final VoidCallback onAddGeneralSubJob;
+  final void Function(String subId) onRemoveGeneralSubJob;
+  final VoidCallback onGeneralJobNameChanged;
   final List<Employee> employees;
   final Map<String, Employee> employeesById;
   final Map<String, Set<String>> assignments;
@@ -10347,7 +10501,6 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: selected ? const Color(0xFFE8F1FF) : const Color(0xFFF6F8FC),
-        borderRadius: BorderRadius.circular(14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
@@ -10593,19 +10746,156 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       );
     }
 
+    Widget generalWorkSection(double maxWidth) {
+      const spacing = 10.0;
+      const minCardWidth = 172.0;
+      final nCol = ((maxWidth + spacing) / (minCardWidth + spacing))
+          .floor()
+          .clamp(1, 3);
+      final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FE),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD5DBEF)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'งานทั่วไป (ชื่องาน)',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: const Color(0xFF3D4F6A),
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: widget.onAddGeneralSubJob,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(
+                      'เพิ่มงาน',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'แยกหลายงานได้ เช่น ทำรั้วสแสลม / ปลูกต้นไม้ — ลากพนักงานลงแต่ละกล่อง',
+                style: GoogleFonts.kanit(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: widget.generalSubJobs.map((job) {
+                  final category = widget.generalCategoryFor(job);
+                  final canRemove = widget.generalSubJobs.length > 1;
+                  return SizedBox(
+                    width: itemWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: job.nameController,
+                                onChanged: (_) =>
+                                    widget.onGeneralJobNameChanged(),
+                                style: GoogleFonts.kanit(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: 'ชื่องาน เช่น ทำรั้วสแสลม',
+                                  hintStyle: GoogleFonts.kanit(
+                                    fontSize: 12.5,
+                                    color: Colors.black38,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 10,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFD5DBEF),
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFD5DBEF),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (canRemove) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                tooltip: 'ลบงานนี้',
+                                onPressed: () =>
+                                    widget.onRemoveGeneralSubJob(job.id),
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 20,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        bucketCard(category),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     Widget bucketsGrid(double maxWidth) {
       const spacing = 10.0;
-      final nCol = maxWidth >= 520 ? 3 : 2;
+      const minCardWidth = 172.0;
+      final nCol = ((maxWidth + spacing) / (minCardWidth + spacing))
+          .floor()
+          .clamp(1, 3);
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
-      return Wrap(
-        spacing: spacing,
-        runSpacing: spacing,
-        children: widget.categories
-            .map(
-              (category) =>
-                  SizedBox(width: itemWidth, child: bucketCard(category)),
-            )
-            .toList(),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: widget.categories
+                .map(
+                  (category) =>
+                      SizedBox(width: itemWidth, child: bucketCard(category)),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          generalWorkSection(maxWidth),
+        ],
       );
     }
 
@@ -10764,10 +11054,11 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         ),
         const SizedBox(height: 2),
         Text(
-          'ลากชื่อมาวาง หรือเลือกแล้วกดย้ายในแต่ละกล่อง',
+          'เลือกจากพูลซ้าย → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง',
           style: GoogleFonts.kanit(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontSize: 12.5,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
             color: const Color(0xFF64748B),
           ),
         ),
@@ -10909,212 +11200,244 @@ class _LaborBucketCard extends StatelessWidget {
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
         final hasMembers = ids.isNotEmpty;
+        final canMove = onMovePickedHere != null;
+        final title = category.shortTitle;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: EdgeInsets.all(hasMembers ? 10 : 8),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: category.color.withValues(alpha: isHovering ? 0.2 : 0.12),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: category.color.withValues(alpha: isHovering ? 0.85 : 0.45),
-              width: isHovering ? 1.8 : 1.2,
+              color: category.color.withValues(
+                alpha: isHovering ? 0.9 : 0.42,
+              ),
+              width: isHovering ? 2 : 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: category.color.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8, top: 2),
-                    child: Container(
-                      width: 4,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: category.color,
-                        borderRadius: BorderRadius.circular(4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: category.color.withValues(alpha: 0.35),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Tooltip(
+              Container(
+                height: 4,
+                color: category.color,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 6, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Tooltip(
                       message: category.label,
                       child: Text(
-                        category.label,
-                        maxLines: 5,
-                        softWrap: true,
+                        title,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
-                          height: 1.3,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1F2B3A),
+                          fontSize: 14,
+                          height: 1.28,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0F172A),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 52),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 4,
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: category.color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${ids.length} คน',
+                            style: GoogleFonts.kanit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: category.color.withValues(alpha: 0.95),
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          tooltip: expanded ? 'ยุบรายชื่อ' : 'ดูรายชื่อ',
+                          onPressed: onToggleExpanded,
+                          icon: AnimatedRotation(
+                            turns: expanded ? 0.5 : 0,
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutCubic,
+                            child: Icon(
+                              Icons.expand_more_rounded,
+                              size: 22,
+                              color: category.color.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: category.color.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${ids.length} คน',
-                      maxLines: 1,
-                      style: GoogleFonts.kanit(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF314C6D),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 24,
-                      minHeight: 24,
-                    ),
-                    tooltip: expanded ? 'ยุบช่อง' : 'ขยายช่อง',
-                    onPressed: onToggleExpanded,
-                    icon: AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      child: const Icon(
-                        Icons.expand_more_rounded,
-                        size: 20,
-                        color: Color(0xFF314C6D),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.topCenter,
                 child: expanded
-                    ? Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: ids.map((empId) {
-                          final emp = employeesById[empId];
-                          final label = emp == null
-                              ? empId
-                              : _employeeUiDisplayName(emp);
-                          return LongPressDraggable<String>(
-                            data: empId,
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: Chip(
-                                label: Text(
-                                  label,
-                                  style: GoogleFonts.kanit(
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+                        child: hasMembers
+                            ? Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: ids.map((empId) {
+                                  final emp = employeesById[empId];
+                                  final label = emp == null
+                                      ? empId
+                                      : _employeeUiDisplayName(emp);
+                                  return LongPressDraggable<String>(
+                                    data: empId,
+                                    feedback: Material(
+                                      color: Colors.transparent,
+                                      child: Chip(
+                                        label: Text(
+                                          label,
+                                          style: GoogleFonts.kanit(
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        backgroundColor: category.color
+                                            .withValues(alpha: 0.92),
+                                      ),
+                                    ),
+                                    childWhenDragging: Opacity(
+                                      opacity: 0.35,
+                                      child: InputChip(
+                                        labelPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 6,
+                                          horizontal: 2,
+                                        ),
+                                        label: Text(
+                                          label,
+                                          style: GoogleFonts.kanit(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        onDeleted: null,
+                                      ),
+                                    ),
+                                    child: InputChip(
+                                      labelPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                        horizontal: 2,
+                                      ),
+                                      label: Text(
+                                        label,
+                                        style: GoogleFonts.kanit(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      onDeleted: () =>
+                                          onDeleteEmployee(empId),
+                                    ),
+                                  );
+                                }).toList(),
+                              )
+                            : Row(
+                                children: [
+                                  Icon(
+                                    Icons.touch_app_outlined,
+                                    size: 16,
+                                    color: category.color.withValues(
+                                      alpha: 0.7,
+                                    ),
                                   ),
-                                ),
-                                backgroundColor: category.color.withValues(
-                                  alpha: 0.92,
-                                ),
-                              ),
-                            ),
-                            childWhenDragging: Opacity(
-                              opacity: 0.35,
-                              child: InputChip(
-                                labelPadding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                  horizontal: 2,
-                                ),
-                                label: Text(
-                                  label,
-                                  style: GoogleFonts.kanit(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'ว่าง — ลากชื่อมาวาง',
+                                      style: GoogleFonts.kanit(
+                                        fontSize: 12,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                onDeleted: null,
+                                ],
                               ),
-                            ),
-                            child: InputChip(
-                              labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 2,
-                              ),
-                              label: Text(
-                                label,
-                                style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onDeleted: () => onDeleteEmployee(empId),
-                            ),
-                          );
-                        }).toList(),
                       )
-                    : Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'ลากชื่อมาวาง หรือกดย้ายด้านล่าง',
-                          style: GoogleFonts.kanit(
-                            fontSize: 12.5,
-                            color: const Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
+                    : const SizedBox.shrink(),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                child: SizedBox(
+                  height: 36,
+                  width: double.infinity,
+                  child: canMove
+                      ? FilledButton.icon(
+                          onPressed: onMovePickedHere,
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: Text(
+                            'ย้ายมาที่นี่',
+                            style: GoogleFonts.kanit(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: category.color,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                            ),
+                          ),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.person_search_outlined,
+                              size: 17),
+                          label: Text(
+                            'เลือกจากพูล',
+                            style: GoogleFonts.kanit(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF94A3B8),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                            ),
                           ),
                         ),
-                      ),
-              ),
-              const SizedBox(height: 8),
-              FilledButton.tonalIcon(
-                onPressed: onMovePickedHere,
-                icon: Icon(
-                  Icons.arrow_downward_rounded,
-                  size: 18,
-                  color: onMovePickedHere != null
-                      ? category.color.withValues(alpha: 0.95)
-                      : null,
-                ),
-                label: Text(
-                  onMovePickedHere != null
-                      ? 'ย้ายคนที่เลือกมาที่นี่'
-                      : 'เลือกชื่อจากพูลก่อน',
-                  style: GoogleFonts.kanit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(42),
-                  alignment: Alignment.center,
-                  foregroundColor: const Color(0xFF1E293B),
-                  backgroundColor: Colors.white.withValues(alpha: 0.75),
                 ),
               ),
             ],
@@ -11484,12 +11807,24 @@ class _LaborWorkCategory {
   const _LaborWorkCategory({
     required this.id,
     required this.label,
+    required this.shortTitle,
     required this.color,
   });
 
   final String id;
   final String label;
+  final String shortTitle;
   final Color color;
+}
+
+class _GeneralSubJob {
+  _GeneralSubJob({required this.id, String? name})
+    : nameController = TextEditingController(text: name ?? '');
+
+  final String id;
+  final TextEditingController nameController;
+
+  void dispose() => nameController.dispose();
 }
 
 class _AnimatedInputFieldState extends State<_AnimatedInputField> {
@@ -11515,6 +11850,7 @@ class _AnimatedInputFieldState extends State<_AnimatedInputField> {
       controller: widget.controller,
       keyboardType: widget.keyboardType,
       onChanged: widget.onChanged,
+      onFieldSubmitted: widget.onFieldSubmitted,
       enableSuggestions: !widget.readOnly,
       autocorrect: !widget.readOnly,
       minLines: widget.minLines,
