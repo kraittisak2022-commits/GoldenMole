@@ -229,6 +229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// แถบเมนูซ้าย (ไอคอนสควอร์เคิล): true = แสดง, false = ซ่อน — ปัดจากซ้ายไปขวาที่ขอบจอเพื่อเปิด
   bool _navRailOpen = true;
   double _edgeSwipeAccum = 0;
+  Timer? _navRailIntroTimer;
 
   @override
   void initState() {
@@ -236,6 +237,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     MobileErrorScreenTracker.set(page: 'หน้าหลัก (แดชบอร์ด)');
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome());
+    _navRailOpen = true;
+    _scheduleNavRailIntroHide();
+  }
+
+  /// เปิดหน้าบันทึกประจำวัน — แสดงแถบเมนู 3 วินาที แล้วเก็บซ่อน (ปัดขอบซ้ายเปิดได้อีก)
+  void _scheduleNavRailIntroHide() {
+    _navRailIntroTimer?.cancel();
+    _navRailIntroTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted || !_navRailOpen) return;
+      setState(() => _navRailOpen = false);
+      _persistNavRailOpen(false);
+    });
   }
 
   Future<void> _persistNavRailOpen(bool value) async {
@@ -246,6 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _toggleNavRail() {
+    _navRailIntroTimer?.cancel();
     setState(() => _navRailOpen = !_navRailOpen);
     _persistNavRailOpen(_navRailOpen);
   }
@@ -262,7 +276,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
-  void dispose() => super.dispose();
+  void dispose() {
+    _navRailIntroTimer?.cancel();
+    super.dispose();
+  }
 
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     try {
