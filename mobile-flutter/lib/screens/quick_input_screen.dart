@@ -463,7 +463,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? widget.initialCategory!.trim()
           : 'ค่าแรง',
     );
-    _loadEmployees();
+    _loadEmployees(forceRefresh: _isLaborMode);
     _loadAppCars();
     _loadAppExpenseIncomeTypes();
     _loadOtSuggestions();
@@ -1295,7 +1295,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _isLaborAdvanceMode ||
       _isMacroVehicleMode;
 
-  Future<void> _loadEmployees() async {
+  Future<void> _loadEmployees({bool forceRefresh = false}) async {
     _employeesLoadProgressTimer?.cancel();
     _employeesLoadProgressTimer = null;
     final showPct = _showsEmployeeLoadingUi;
@@ -1319,7 +1319,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     try {
-      final list = await widget.employeeService.fetchEmployees();
+      final list = await widget.employeeService.fetchEmployees(
+        forceRefresh: forceRefresh,
+      );
       list.sort((a, b) {
         return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
           b.nickname.isNotEmpty ? b.nickname : b.name,
@@ -1566,6 +1568,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return failSave(message, context: ctx, field: field);
   }
 
+  Future<String?> _submitSaveErrorReport(
+    Object error,
+    SaveErrorContext? ctx,
+  ) async {
+    final reporter = await SessionService().getSavedAdmin();
+    return MobileErrorReportService(Supabase.instance.client).submit(
+      error: error,
+      source: 'save_failed',
+      saveContext: ctx,
+      reporter: reporter,
+    );
+  }
+
   void _showSaveError(Object error, {SaveErrorContext? context}) {
     if (!mounted) return;
     final ctx = context ?? _activeSaveErrorContext;
@@ -1573,22 +1588,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       this.context,
       error: error,
       saveContext: ctx,
+      onSendReport: () => _submitSaveErrorReport(error, ctx),
     );
     _reportSaveErrorToServer(error, ctx);
   }
 
   void _reportSaveErrorToServer(Object error, SaveErrorContext? ctx) {
-    unawaited(() async {
-      try {
-        final reporter = await SessionService().getSavedAdmin();
-        await MobileErrorReportService(Supabase.instance.client).submit(
-          error: error,
-          source: 'save_failed',
-          saveContext: ctx,
-          reporter: reporter,
-        );
-      } catch (_) {}
-    }());
+    unawaited(_submitSaveErrorReport(error, ctx).then((_) {}, onError: (_) {}));
   }
 
   void _showSuperAdminHistorySaveError(
@@ -1599,14 +1605,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     String button = 'บันทึก',
   }) {
     if (!sheetContext.mounted) return;
+    final saveCtx = SaveErrorContext(
+      page: page,
+      action: action,
+      button: button,
+    );
     showSaveErrorSnackBar(
       sheetContext,
       error: error,
-      saveContext: SaveErrorContext(
-        page: page,
-        action: action,
-        button: button,
-      ),
+      saveContext: saveCtx,
+      onSendReport: () => _submitSaveErrorReport(error, saveCtx),
     );
   }
 
@@ -1697,6 +1705,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required String saveButtonLabel,
     bool requireSignature = true,
     bool stayOnPage = false,
+    /// ล้างฟอร์มหลังบันทึกสำเร็จ — ต้องเรียกผ่าน [setState] หลัง [body] เท่านั้น (ห้าม dispose ใน [body])
+    VoidCallback? onStayOnPageCleared,
   }) async {
     if (!mounted) return;
     final saveCtx = SaveErrorContext(
@@ -1722,6 +1732,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _dismissSavingPopup();
       savingDialogOpen = false;
       if (stayOnPage) {
+        if (onStayOnPageCleared != null && mounted) {
+          setState(onStayOnPageCleared);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(successMessage, style: GoogleFonts.kanit())),
         );
@@ -2071,6 +2084,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกรถดรัมและจำนวนเที่ยว',
       saveButtonLabel: 'บันทึกรถคันนี้',
       stayOnPage: true,
+      onStayOnPageCleared: () => _replaceVehicleDrafts([_VehicleTripDraft.empty()]),
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           final lumpFilled =
@@ -2229,7 +2243,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           );
         }
-        _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
       },
     );
   }
@@ -2337,6 +2350,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกการใช้รถแม็คโคร',
       saveButtonLabel: 'บันทึกคันนี้ / อัปเดตคันนี้',
       stayOnPage: true,
+      onStayOnPageCleared: _resetActiveMacroVehicleDraft,
       body: () async {
         final macroCars = _fuelMacroCars();
         if (macroCars.isEmpty) {
@@ -2379,7 +2393,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
           ),
         );
-        _resetActiveMacroVehicleDraft();
       },
     );
   }
@@ -2390,6 +2403,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกการใช้น้ำมันรายรถ',
       saveButtonLabel: 'บันทึก',
       stayOnPage: true,
+      onStayOnPageCleared: () => _replaceFuelVehicleDrafts(const []),
       body: () async {
         final fuelCars = _fuelMacroCars();
         if (fuelCars.isEmpty) {
@@ -2449,7 +2463,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           );
         }
-        _replaceFuelVehicleDrafts(const []);
       },
     );
   }
@@ -2697,6 +2710,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveButtonLabel: 'บันทึกกลุ่มนี้',
       requireSignature: false,
       stayOnPage: true,
+      onStayOnPageCleared: _resetActiveOtGroup,
       body: () async {
         final g = _activeOtGroup;
         final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
@@ -2743,7 +2757,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
         );
-        _resetActiveOtGroup();
       },
     );
   }
@@ -2754,6 +2767,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกเหตุการณ์ประจำวัน',
       saveButtonLabel: 'บันทึก',
       stayOnPage: true,
+      onStayOnPageCleared: () {
+        _dailyEventDescController.clear();
+        _dailyEventType = 'info';
+        _dailyEventPriority = 'normal';
+      },
       body: () async {
         final text = _dailyEventDescController.text.trim();
         if (text.isEmpty) {
@@ -2782,12 +2800,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 : _dailyEventPriority,
           ),
         );
-        if (!mounted) return;
-        setState(() {
-          _dailyEventDescController.clear();
-          _dailyEventType = 'info';
-          _dailyEventPriority = 'normal';
-        });
       },
     );
   }
@@ -4353,6 +4365,157 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  Widget _leaveHistoryListTile(AppTransaction t) {
+    final names = _displayNamesForEmployeeIds(t.employeeIds);
+    final namesLine = names.isEmpty ? '—' : names;
+    final kind = leaveKindLabelTh(t);
+    final duration = leaveDurationLabelTh(t);
+    final reason = resolvedLeaveReason(t);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: const Color(0xFFF5FAFF),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFBBDEFB)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBBDEFB).withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.event_busy_rounded,
+                  color: Color(0xFF1565C0),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      namesLine,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.kanit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0D47A1),
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _leaveMetaChip(kind, Icons.label_outline_rounded),
+                        if (duration.isNotEmpty)
+                          _leaveMetaChip(
+                            duration,
+                            Icons.schedule_rounded,
+                          ),
+                      ],
+                    ),
+                    if (reason.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        reason,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.kanit(
+                          fontSize: 12.5,
+                          color: const Color(0xFF455A64),
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      formatTxnHistoryTime(t.createdAt),
+                      style: GoogleFonts.kanit(
+                        fontSize: 11,
+                        color: Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_superAdminMayManageHistoryRow(t))
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'แก้ไข (SuperAdmin)',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF1565C0),
+                      ),
+                      onPressed: () => _openSuperAdminHistoryEditor(t),
+                    ),
+                    IconButton(
+                      tooltip: 'ลบจากฐานข้อมูล',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: Colors.red.shade700,
+                      ),
+                      onPressed: () => _confirmSuperAdminHardDelete(t),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _leaveMetaChip(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFF90CAF9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF1565C0)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: GoogleFonts.kanit(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF37474F),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _advanceHistoryListTile(AppTransaction t) {
     final names = _displayNamesForEmployeeIds(t.employeeIds);
     final namesLine = names.isEmpty ? '—' : names;
@@ -4631,6 +4794,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   ? 'ซ่อนประวัติ'
                                   : _isLaborAdvanceMode
                                   ? 'ดูประวัติการเบิกวันนี้ ($n รายการ)'
+                                  : _isLaborLeaveMode
+                                  ? 'ดูประวัติการลาวันนี้ ($n รายการ)'
                                   : 'ดูประวัติในวันนี้ ($n รายการ)',
                               key: ValueKey(_moduleHistoryVisible),
                               overflow: TextOverflow.ellipsis,
@@ -4718,6 +4883,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             Text(
                               _isLaborAdvanceMode
                                   ? 'แต่ละรายการ = คนละคำขอ — แสดงชื่อผู้เบิกและยอดที่ขอ'
+                                  : _isLaborLeaveMode
+                                  ? 'แสดงชื่อผู้ลา ประเภท และระยะเวลา — หนึ่งแถวต่อหนึ่งรายการบันทึก'
                                   : 'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
                               style: GoogleFonts.kanit(
                                 fontSize: 12,
@@ -4729,6 +4896,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             ..._moduleDayTransactions.map(
                               (t) => _isLaborAdvanceMode
                                   ? _advanceHistoryListTile(t)
+                                  : _isLaborLeaveMode
+                                  ? _leaveHistoryListTile(t)
                                   : _defaultModuleHistoryListTile(t),
                             ),
                           ],
@@ -5158,19 +5327,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (mounted) setState(() {});
   }
 
-  void _clearIncomeUtilitiesFormValuesOnly() {
-    setState(() {
-      _iuExpenseChoice = null;
-      _iuIncomeChoice = null;
-      _wizardIncomePaymentStatus = 'Paid';
-      _utilitiesTypeController.clear();
-      _utilitiesExtraController.clear();
-      _utilitiesAmountController.clear();
-      _incomeTypeController.clear();
-      _incomeQtyController.clear();
-      _incomeUnitPriceController.clear();
-      _incomeTotalController.clear();
-    });
+  void _applyIncomeUtilitiesFormClear() {
+    _iuExpenseChoice = null;
+    _iuIncomeChoice = null;
+    _wizardIncomePaymentStatus = 'Paid';
+    _utilitiesTypeController.clear();
+    _utilitiesExtraController.clear();
+    _utilitiesAmountController.clear();
+    _incomeTypeController.clear();
+    _incomeQtyController.clear();
+    _incomeUnitPriceController.clear();
+    _incomeTotalController.clear();
   }
 
   String _effectiveUtilitySubcategory() {
@@ -5220,6 +5387,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกรายจ่ายสาธารณูปโภค',
       saveButtonLabel: 'บันทึกรายจ่าย',
       stayOnPage: true,
+      onStayOnPageCleared: _applyIncomeUtilitiesFormClear,
       body: () async {
         final sub = _effectiveUtilitySubcategory();
         final extra = _utilitiesExtraController.text.trim();
@@ -5249,8 +5417,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             note: _activeSignatureNote,
           ),
         );
-        if (!mounted) return;
-        _clearIncomeUtilitiesFormValuesOnly();
       },
     );
   }
@@ -5261,6 +5427,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกรายรับประจำวัน',
       saveButtonLabel: 'บันทึกรายรับ',
       stayOnPage: true,
+      onStayOnPageCleared: _applyIncomeUtilitiesFormClear,
       body: () async {
         final incomeType = _effectiveIncomeDescription();
         final total = double.tryParse(_incomeTotalController.text.trim()) ?? 0;
@@ -5296,8 +5463,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             note: _activeSignatureNote,
           ),
         );
-        if (!mounted) return;
-        _clearIncomeUtilitiesFormValuesOnly();
       },
     );
   }
@@ -7908,6 +8073,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _LaborDragBoardLayout layout = _LaborDragBoardLayout.combined,
   }) {
     return _LaborDragBoard(
+      key: ValueKey('labor_drag_board_${layout.name}'),
       layout: layout,
       poolKind: _laborEmpPoolKind,
       onPoolKindChanged: (kind) => setState(() => _laborEmpPoolKind = kind),
@@ -7923,6 +8089,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       pickedIds: _laborPickedIds,
       bucketExpanded: _laborBucketExpanded,
       laborEmpPoolKind: _laborEmpPoolKindFor,
+      onSharedStateChanged: () => setState(() {}),
       openThaiTextPad: _openThaiTextPad,
     );
   }
@@ -8052,6 +8219,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: _LaborDragBoard(
+                key: const ValueKey('labor_drag_board_pool_pinned'),
                 layout: _LaborDragBoardLayout.poolOnly,
                 poolKind: _laborEmpPoolKind,
                 onPoolKindChanged: (kind) =>
@@ -8068,6 +8236,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 pickedIds: _laborPickedIds,
                 bucketExpanded: _laborBucketExpanded,
                 laborEmpPoolKind: _laborEmpPoolKindFor,
+                onSharedStateChanged: () => setState(() {}),
                 openThaiTextPad: _openThaiTextPad,
               ),
             ),
@@ -9223,19 +9392,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (showHeader) _employeeDataLoadProgressBanner(),
           if (showHeader && (includePool || includeCanvas))
             const SizedBox(height: 10),
-          if (includePool)
+          if (includePool && includeCanvas)
             _LaborCanvasSection(
               child: _buildLaborCanvasBoard(
-                layout: _LaborDragBoardLayout.poolOnly,
+                layout: _LaborDragBoardLayout.combined,
               ),
-            ),
-          if (includePool && includeCanvas) const SizedBox(height: 14),
-          if (includeCanvas)
-            _LaborCanvasSection(
-              child: _buildLaborCanvasBoard(
-                layout: _LaborDragBoardLayout.canvasOnly,
+            )
+          else ...[
+            if (includePool)
+              _LaborCanvasSection(
+                child: _buildLaborCanvasBoard(
+                  layout: _LaborDragBoardLayout.poolOnly,
+                ),
               ),
-            ),
+            if (includePool && includeCanvas) const SizedBox(height: 14),
+            if (includeCanvas)
+              _LaborCanvasSection(
+                child: _buildLaborCanvasBoard(
+                  layout: _LaborDragBoardLayout.canvasOnly,
+                ),
+              ),
+          ],
           if (includeSave) ...[
             const SizedBox(height: 14),
             _SmoothPressable(
@@ -11106,6 +11283,7 @@ enum _LaborDragBoardLayout { combined, poolOnly, canvasOnly }
 
 class _LaborDragBoard extends StatefulWidget {
   const _LaborDragBoard({
+    super.key,
     this.layout = _LaborDragBoardLayout.combined,
     required this.poolKind,
     required this.onPoolKindChanged,
@@ -11121,6 +11299,7 @@ class _LaborDragBoard extends StatefulWidget {
     required this.pickedIds,
     required this.bucketExpanded,
     required this.laborEmpPoolKind,
+    required this.onSharedStateChanged,
     required this.openThaiTextPad,
   });
 
@@ -11139,6 +11318,7 @@ class _LaborDragBoard extends StatefulWidget {
   final Set<String> pickedIds;
   final Map<String, bool> bucketExpanded;
   final _LaborEmpPoolKind? Function(Employee e) laborEmpPoolKind;
+  final VoidCallback onSharedStateChanged;
   final Future<void> Function({
     required TextEditingController controller,
     required String label,
@@ -11152,6 +11332,93 @@ class _LaborDragBoard extends StatefulWidget {
 }
 
 class _LaborDragBoardState extends State<_LaborDragBoard> {
+  void _syncBoard(VoidCallback fn) {
+    setState(fn);
+    widget.onSharedStateChanged();
+  }
+
+  bool get _showsGeneralWorkEditors =>
+      widget.layout != _LaborDragBoardLayout.poolOnly;
+
+  Widget _generalSubJobNameField(_GeneralSubJob job, Color parentColor) {
+    return ListenableBuilder(
+      listenable: job.nameController,
+      builder: (context, _) {
+        final text = job.nameController.text.trim();
+        return Material(
+          color: const Color(0xFFF8FAFD),
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => widget.openThaiTextPad(
+              controller: job.nameController,
+              label: 'รายละเอียดงาน',
+              onChanged: widget.onGeneralJobNameChanged,
+              minLines: 2,
+              maxLines: 4,
+            ),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                isDense: true,
+                labelText: 'รายละเอียดงาน',
+                labelStyle: GoogleFonts.kanit(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+                suffixIcon: Icon(
+                  Icons.edit_note_rounded,
+                  size: 20,
+                  color: parentColor.withValues(alpha: 0.75),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFD),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: parentColor.withValues(alpha: 0.35),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: parentColor.withValues(alpha: 0.28),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: parentColor,
+                    width: 1.3,
+                  ),
+                ),
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  text.isEmpty ? 'รายละเอียดงานที่ทำ' : text,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: text.isEmpty
+                        ? Colors.black38
+                        : const Color(0xFF1D2A3A),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Set<String> _collectAssigned() {
     final out = <String>{};
     for (final entry in widget.assignments.values) {
@@ -11239,7 +11506,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       onWillAcceptWithDetails: (details) => true,
       onAcceptWithDetails: (details) {
         final empId = details.data;
-        setState(() {
+        _syncBoard(() {
           for (final bucket in widget.assignments.values) {
             bucket.remove(empId);
           }
@@ -11344,7 +11611,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                           ),
                         ),
                         selected: selected,
-                        onSelected: (_) => setState(() {
+                        onSelected: (_) => _syncBoard(() {
                           if (selected) {
                             widget.pickedIds.remove(id);
                           } else {
@@ -11387,12 +11654,12 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         expanded: expanded,
         compact: compact,
         employeesById: widget.employeesById,
-        onToggleExpanded: () => setState(() {
+        onToggleExpanded: () => _syncBoard(() {
           widget.bucketExpanded[id] = !expanded;
         }),
         onMovePickedHere: widget.pickedIds.isEmpty
             ? null
-            : () => setState(() {
+            : () => _syncBoard(() {
                 for (final bucket in widget.assignments.values) {
                   bucket.removeAll(widget.pickedIds);
                 }
@@ -11400,7 +11667,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 widget.bucketExpanded[id] = true;
                 widget.pickedIds.clear();
               }),
-        onDropEmployee: (empId) => setState(() {
+        onDropEmployee: (empId) => _syncBoard(() {
           for (final bucket in widget.assignments.values) {
             bucket.remove(empId);
           }
@@ -11408,7 +11675,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           widget.bucketExpanded[id] = true;
           widget.pickedIds.remove(empId);
         }),
-        onDeleteEmployee: (empId) => setState(() {
+        onDeleteEmployee: (empId) => _syncBoard(() {
           widget.assignments[id]?.remove(empId);
           if ((widget.assignments[id]?.isEmpty ?? true)) {
             widget.bucketExpanded[id] = false;
@@ -11514,66 +11781,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                TextField(
-                  controller: job.nameController,
-                  readOnly: true,
-                  showCursor: false,
-                  onTap: () => widget.openThaiTextPad(
-                    controller: job.nameController,
-                    label: 'รายละเอียดงาน',
-                    onChanged: widget.onGeneralJobNameChanged,
-                    minLines: 2,
-                    maxLines: 4,
-                  ),
-                  style: GoogleFonts.kanit(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    labelText: 'รายละเอียดงาน',
-                    labelStyle: GoogleFonts.kanit(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF64748B),
-                    ),
-                    hintText: 'แตะเพื่อเปิดแป้นพิมพ์ภาษาไทย',
-                    hintStyle: GoogleFonts.kanit(
-                      fontSize: 12.5,
-                      color: Colors.black38,
-                    ),
-                    suffixIcon: Icon(
-                      Icons.keyboard_alt_outlined,
-                      size: 20,
-                      color: parentColor.withValues(alpha: 0.75),
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFD),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: parentColor.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: parentColor.withValues(alpha: 0.28),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: parentColor,
-                        width: 1.3,
-                      ),
-                    ),
-                  ),
-                ),
+                _generalSubJobNameField(job, parentColor),
                 const SizedBox(height: 8),
                 bucketCard(category, compact: true),
               ],
@@ -11742,9 +11950,11 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   )
                   .toList(),
             ),
-          if (visibleCategories.isNotEmpty && !showGeneralOnly)
+          if (visibleCategories.isNotEmpty && showGeneralOnly)
             const SizedBox(height: 12),
-          if (showGeneralOnly || widget.poolKind != _LaborEmpPoolKind.generalLabor)
+          if (_showsGeneralWorkEditors &&
+              (showGeneralOnly ||
+                  widget.poolKind == _LaborEmpPoolKind.generalLabor))
             generalWorkSection(maxWidth),
         ],
       );

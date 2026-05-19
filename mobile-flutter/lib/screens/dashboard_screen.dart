@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
+import '../models/employee.dart';
 import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
@@ -187,19 +188,6 @@ List<_DailyModuleDef> _dailyHeaderCountedModules(
   }).toList(growable: false);
 }
 
-/// จำนวนคนที่ลาในวันปฏิทิน [dayKey] — นับรหัสพนักงานไม่ซ้ำจากทุกแถวลาที่ครอบคลุมวันนั้น
-int _leaveHeadcountOnCalendarDay(String dayKey, List<AppTransaction> txs) {
-  final ids = <String>{};
-  for (final t in txs) {
-    if (!laborLeaveCoversCalendarDay(t, dayKey)) continue;
-    for (final id in t.employeeIds) {
-      final s = id.trim();
-      if (s.isNotEmpty) ids.add(s);
-    }
-  }
-  return ids.length;
-}
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -283,15 +271,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     try {
+      final employeeService = EmployeeService(Supabase.instance.client);
       final results = await Future.wait([
         widget.dashboardService.fetchSummary(forceRefresh: forceRefresh),
         _txService.fetchTransactionsForDate(
           _dateKey(_selectedDay),
           forceRefresh: forceRefresh,
         ),
+        employeeService.fetchEmployees(forceRefresh: forceRefresh),
       ]);
       final summary = results[0] as DashboardSummary;
       final dayRows = results[1] as List<AppTransaction>;
+      final employees = results[2] as List<Employee>;
       final dayKey = _dateKey(_selectedDay);
       final allRows =
           await _txService.fetchTransactions(forceRefresh: forceRefresh);
@@ -307,7 +298,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted && !_serverOnline) {
         setState(() => _serverOnline = true);
       }
-      return _HomePayload(summary: summary, dayTransactions: dayTransactions);
+      return _HomePayload(
+        summary: summary,
+        dayTransactions: dayTransactions,
+        employees: employees,
+      );
     } catch (_) {
       if (mounted && _serverOnline) {
         setState(() => _serverOnline = false);
@@ -800,10 +795,15 @@ class _SquircleNavIcon extends StatelessWidget {
 }
 
 class _HomePayload {
-  const _HomePayload({required this.summary, required this.dayTransactions});
+  const _HomePayload({
+    required this.summary,
+    required this.dayTransactions,
+    required this.employees,
+  });
 
   final DashboardSummary summary;
   final List<AppTransaction> dayTransactions;
+  final List<Employee> employees;
 }
 
 class _DailyHomeContent extends StatefulWidget {
@@ -1056,8 +1056,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       showLightStyle: index.isOdd,
                       fillStatus: fill,
                       completeStatusLabelOverride: m.category == 'ลางาน'
-                          ? 'ลา ${_leaveHeadcountOnCalendarDay(dayKey, widget.data.dayTransactions)} คน'
+                          ? dailyLeaveModuleStatusLabel(
+                              dayKey,
+                              widget.data.dayTransactions,
+                              widget.data.employees,
+                            )
                           : null,
+                      statusMaxLines: m.category == 'ลางาน' ? 3 : 2,
                       onTap: () => widget.onOpenModule(m),
                     );
                     if (_gridEntranceCompleted) {

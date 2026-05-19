@@ -150,14 +150,6 @@ class _ThaiTextPadPanelState extends State<_ThaiTextPadPanel> {
                 ),
               ],
             ),
-            Text(
-              'แป้นพิมพ์ภาษาไทย',
-              style: GoogleFonts.kanit(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1565C0),
-              ),
-            ),
             const SizedBox(height: 8),
             TextField(
               controller: _controller,
@@ -174,7 +166,7 @@ class _ThaiTextPadPanelState extends State<_ThaiTextPadPanel> {
                 color: const Color(0xFF1D2A3A),
               ),
               decoration: InputDecoration(
-                hintText: 'พิมพ์รายละเอียดงานเป็นภาษาไทย',
+                hintText: 'รายละเอียดงานที่ทำ',
                 hintStyle: GoogleFonts.kanit(
                   fontSize: 14,
                   color: Colors.black45,

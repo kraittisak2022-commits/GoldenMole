@@ -193,6 +193,33 @@ List<String> calendarLeaveNames(
   return ids.map((id) => calendarEmployeeDisplayName(id, employees)).toList();
 }
 
+/// ชื่อผู้ลาไม่ซ้ำในวันปฏิทิน [dayKey]
+List<String> dailyLeaveEmployeeNamesOnDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+  List<Employee> employees,
+) {
+  final rows = transactions
+      .where((t) => laborLeaveCoversCalendarDay(t, dayKey))
+      .toList();
+  return calendarLeaveNames(rows, employees);
+}
+
+/// ข้อความสถานะการ์ดเมนู «ลางาน» บนหน้าบันทึกประจำวัน
+String dailyLeaveModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+  List<Employee> employees, {
+  int maxNames = 2,
+}) {
+  final names = dailyLeaveEmployeeNamesOnDay(dayKey, transactions, employees);
+  final n = names.length;
+  if (n == 0) return 'ยังไม่มีรายการลา';
+  final head = 'ลา $n คน';
+  if (n <= maxNames) return '$head · ${names.join(', ')}';
+  return '$head · ${names.take(maxNames).join(', ')} +${n - maxNames}';
+}
+
 /// แถวบันทึก «ตัดรอบล้างทรายที่บ้าน» (ไม่นับเป็นจำนวนถังที่ล้าง)
 bool isHomeSandRoundCloseRow(AppTransaction t) =>
     t.description.contains('ตัดรอบล้างทรายที่บ้าน');

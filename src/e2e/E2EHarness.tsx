@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import DailyStepRecorder from '../modules/Dashboard/DailyStepRecorder';
 import DataVerificationModule from '../modules/DataQuality/DataVerificationModule';
 import { AppSettings, Transaction } from '../types';
-import { getDayTransactionFingerprint, writeWizardDraftForDate, clearAllWizardDrafts, WizardDraftPayload } from '../modules/Dashboard/wizardDraftUtils';
 import { normalizeDate } from '../utils';
 
 const baseSettings: AppSettings = {
@@ -16,62 +15,6 @@ const baseSettings: AppSettings = {
     maintenanceTypes: [],
     locations: ['หน้างาน'],
     landGroups: [],
-};
-
-const basePayload: WizardDraftPayload = {
-    step: 2,
-    laborSearch: '',
-    selectedEmps: [],
-    laborStatus: 'Work',
-    halfDayEmpIds: [],
-    drumsWashedAtHome: '',
-    otHours: '',
-    otDesc: '',
-    otRate: '',
-    workAssignments: {},
-    customCategories: [],
-    newCategoryName: '',
-    laborEmployeeBucket: 'sifter',
-    laborGeneralWorkNotes: '',
-    vehCar: 'รถ A',
-    vehDriver: '',
-    vehWage: '200',
-    vehMachineWage: '3000',
-    vehDetails: 'ทดสอบจาก draft',
-    vehWorkType: 'FullDay',
-    editingVehicleTxId: null,
-    tripEntries: [{ id: 't1', vehicle: '', driver: '', work: '', cubicPerTrip: '', billingMode: 'PerTrip', lumpSumCubic: '' }],
-    tripMorning: '',
-    tripAfternoon: '',
-    sand1Morning: '',
-    sand1Afternoon: '',
-    sand2Morning: '',
-    sand2Afternoon: '',
-    sand1Operators: [],
-    sand2Operators: [],
-    sandDrumsObtained: '',
-    sandMorningStart: '',
-    sandAfternoonStart: '',
-    sandEveningEnd: '',
-    fuelAmount: '',
-    fuelLiters: '',
-    fuelType: 'Diesel',
-    fuelUnit: 'ลิตร',
-    fuelDetails: '',
-    fuelVehicle: '',
-    fuelVehicleLiters: '',
-    fuelVehicleType: 'Diesel',
-    fuelVehicleDetails: '',
-    incomeType: '',
-    incomeQty: '',
-    incomeUnitPrice: '',
-    incomeTotal: '',
-    newIncomeType: '',
-    incomeTypeAddOpen: false,
-    incomePaymentStatus: 'Paid',
-    eventDesc: '',
-    eventType: 'info',
-    eventPriority: 'normal',
 };
 
 export default function E2EHarness() {
@@ -108,10 +51,6 @@ export default function E2EHarness() {
         },
     });
     const e2eDate = normalizeDate('2026-04-22');
-    const txFingerprint = useMemo(
-        () => getDayTransactionFingerprint(transactions.filter(t => normalizeDate(t.date) === e2eDate)),
-        [transactions, e2eDate]
-    );
 
     return (
         <div className="mx-auto max-w-6xl space-y-4 p-4">
@@ -135,33 +74,6 @@ export default function E2EHarness() {
                     }}
                 >
                     Add Transaction
-                </button>
-                <button
-                    type="button"
-                    className="rounded border px-3 py-1"
-                    onClick={() => {
-                        writeWizardDraftForDate(e2eDate, basePayload, txFingerprint);
-                    }}
-                >
-                    Seed Matching Draft
-                </button>
-                <button
-                    type="button"
-                    className="rounded border px-3 py-1"
-                    onClick={() => {
-                        writeWizardDraftForDate(e2eDate, basePayload, '0:stale');
-                    }}
-                >
-                    Seed Conflict Draft
-                </button>
-                <button
-                    type="button"
-                    className="rounded border px-3 py-1"
-                    onClick={() => {
-                        clearAllWizardDrafts();
-                    }}
-                >
-                    Clear All Drafts
                 </button>
             </div>
             <DailyStepRecorder

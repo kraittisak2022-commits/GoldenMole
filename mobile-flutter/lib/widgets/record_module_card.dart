@@ -19,6 +19,7 @@ class RecordModuleCard extends StatefulWidget {
     this.tileColor = const Color(0xFF4FC3F7),
     this.showLightStyle = false,
     this.completeStatusLabelOverride,
+    this.statusMaxLines = 2,
   });
 
   final String title;
@@ -28,6 +29,7 @@ class RecordModuleCard extends StatefulWidget {
   final Color tileColor;
   final bool showLightStyle;
   final String? completeStatusLabelOverride;
+  final int statusMaxLines;
 
   @override
   State<RecordModuleCard> createState() => _RecordModuleCardState();
@@ -83,8 +85,8 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
         final scaleRef = isLandscapeCell
             ? (maxH < maxW ? maxH : maxW)
             : cardW;
-        final iconSize = (scaleRef * (isLandscapeCell ? 0.48 : 0.42))
-            .clamp(isLandscapeCell ? 28.0 : 36.0, isLandscapeCell ? 44.0 : 58.0);
+        final iconSize = (scaleRef * (isLandscapeCell ? 0.54 : 0.5))
+            .clamp(isLandscapeCell ? 32.0 : 40.0, isLandscapeCell ? 50.0 : 66.0);
         final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
         final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
         final statusSize = (scaleRef * 0.09).clamp(10.0, 12.0);
@@ -119,7 +121,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                 child: Text(
                   statusLabel,
                   textAlign: TextAlign.center,
-                  maxLines: 2,
+                  maxLines: widget.statusMaxLines,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: statusSize,

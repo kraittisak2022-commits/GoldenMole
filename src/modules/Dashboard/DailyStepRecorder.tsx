@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, Touchpad } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -11,19 +11,9 @@ import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
 import {
-    DraftSaveError,
-    WizardDraftPayload,
-    WIZARD_DRAFT_STORAGE_KEY,
-    clearAllWizardDrafts,
-    clearWizardDraftForDate,
-    getDayTransactionFingerprint,
-    parseTxFingerprintCount,
-    readWizardDraftEntry,
-    writeWizardDraftForDate,
-} from './wizardDraftUtils';
-import {
     computeSandDrumStockSummary,
     getTransactionRecencyScore,
+    mergeLaborCanvasAssignments,
     pickLatestByDayOrder,
     persistedSandHomeDrums,
     sumWizardDailySpend,
@@ -94,6 +84,151 @@ const EmployeeSelectChip = memo(function EmployeeSelectChip({
     );
 });
 
+type LaborEmployeeBucket = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+
+type LaborCanvasCategoryDef = {
+    id: string;
+    label: string;
+    shortTitle: string;
+    color: string;
+    bgLight: string;
+    accent: string;
+};
+
+const LABOR_POOL_BUCKET_ICON: Record<LaborEmployeeBucket, typeof Droplets> = {
+    sifter: Droplets,
+    excavatorMac: Truck,
+    nightWatch: Moon,
+    generalLabor: Users,
+};
+
+const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
+    cat,
+    assigned,
+    expanded,
+    touchUI,
+    dragActive,
+    selectedCount,
+    employees,
+    halfDayEmpIds,
+    onToggleExpanded,
+    onDropEmployee,
+    onRemoveEmployee,
+    onToggleHalfDay,
+    onMovePickedHere,
+    onDragStartEmployee,
+}: {
+    cat: LaborCanvasCategoryDef;
+    assigned: string[];
+    expanded: boolean;
+    touchUI: boolean;
+    dragActive: boolean;
+    selectedCount: number;
+    employees: Employee[];
+    halfDayEmpIds: Set<string>;
+    onToggleExpanded: () => void;
+    onDropEmployee: (empId: string) => void;
+    onRemoveEmployee: (empId: string) => void;
+    onToggleHalfDay: (empId: string) => void;
+    onMovePickedHere: () => void;
+    onDragStartEmployee: (empId: string | null) => void;
+}) {
+    const showMembers = expanded || assigned.length > 0;
+    return (
+        <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => {
+                e.preventDefault();
+                const empId = e.dataTransfer.getData('text/plain');
+                if (empId) onDropEmployee(empId);
+            }}
+            className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-all ${dragActive ? 'border-indigo-400 ring-2 ring-indigo-200/60' : 'border-slate-200'}`}
+        >
+            <div className="h-1" style={{ backgroundColor: cat.accent }} />
+            <div className="p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-bold leading-snug text-slate-800" title={cat.label}>
+                        {cat.shortTitle}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <span
+                            className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                            style={{ backgroundColor: `${cat.accent}22`, color: cat.accent }}
+                        >
+                            {assigned.length} คน
+                        </span>
+                        <button
+                            type="button"
+                            onClick={onToggleExpanded}
+                            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 touch-manipulation"
+                            title={showMembers ? 'ยุบรายชื่อ' : 'ดูรายชื่อ'}
+                        >
+                            <ChevronDown
+                                size={20}
+                                className={`transition-transform ${showMembers ? 'rotate-180' : ''}`}
+                            />
+                        </button>
+                    </div>
+                </div>
+                {showMembers && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                        {assigned.map(eid => {
+                            const emp = employees.find(e => e.id === eid);
+                            if (!emp) return null;
+                            const isHalf = halfDayEmpIds.has(eid);
+                            return (
+                                <span
+                                    key={eid}
+                                    draggable
+                                    onDragStart={e => {
+                                        e.dataTransfer.setData('text/plain', eid);
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        onDragStartEmployee(eid);
+                                    }}
+                                    onDragEnd={() => onDragStartEmployee(null)}
+                                    className={`flex cursor-grab items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 font-semibold active:cursor-grabbing ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}
+                                >
+                                    {getEmployeeDisplayName(emp)}
+                                    <button
+                                        type="button"
+                                        onClick={ev => {
+                                            ev.stopPropagation();
+                                            onToggleHalfDay(eid);
+                                        }}
+                                        className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200'}`}
+                                        title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}
+                                    >
+                                        ½
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onRemoveEmployee(eid)}
+                                        className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'text-base leading-none'}`}
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            );
+                        })}
+                        {assigned.length === 0 && (
+                            <span className="text-[11px] italic text-slate-400">ลากหรือกดย้ายคนมาวาง...</span>
+                        )}
+                    </div>
+                )}
+                {selectedCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={onMovePickedHere}
+                        className={`mt-2 w-full rounded-lg bg-indigo-100 font-bold text-indigo-800 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+                    >
+                        ย้ายมาที่นี่ ({selectedCount})
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+});
+
 function useMediaQuery(query: string) {
     const [matches, setMatches] = useState(() => (typeof window !== 'undefined' ? window.matchMedia(query).matches : false));
     useEffect(() => {
@@ -129,12 +264,14 @@ const STEPS = [
 
 // Default work categories for labor canvas (fixed set — ไม่มีกล่องอื่นนอกจากรายการนี้)
 const DEFAULT_WORK_CATEGORIES = [
-    { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200' },
-    { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200' },
-    { id: 'pierWatch', label: 'เฝ้าท่าทราย', color: 'bg-amber-500', bgLight: 'bg-amber-50 border-amber-200' },
-    { id: 'nightShift', label: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200' },
-    { id: 'digHaul', label: 'ขุดขน', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200' },
-    { id: 'generalWork', label: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200' },
+    { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', shortTitle: 'เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200', accent: '#4A90E2' },
+    { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', shortTitle: 'เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200', accent: '#24A7B8' },
+    { id: 'washHome', label: 'ล้างทรายที่บ้าน', shortTitle: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200', accent: '#2CB67D' },
+    { id: 'pierWatch', label: 'เฝ้าท่าทราย', shortTitle: 'เฝ้าท่าทราย', color: 'bg-pink-500', bgLight: 'bg-pink-50 border-pink-200', accent: '#E64A9E' },
+    { id: 'nightShift', label: 'เวรกลางคืน', shortTitle: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200', accent: '#7B5AE6' },
+    { id: 'nightPatrol', label: 'เฝ้ากลางคืน', shortTitle: 'เฝ้ากลางคืน', color: 'bg-violet-600', bgLight: 'bg-violet-50 border-violet-200', accent: '#9C4DCC' },
+    { id: 'digHaul', label: 'ขุดขน', shortTitle: 'ขุดขน', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200', accent: '#7962E6' },
+    { id: 'generalWork', label: 'งานทั่วไป', shortTitle: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200', accent: '#5F6AD8' },
 ];
 const FIXED_LABOR_CANVAS_CATEGORIES = DEFAULT_WORK_CATEGORIES.filter(c => c.id !== 'generalWork');
 const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
@@ -226,29 +363,8 @@ const remapGeneralWorkAssignments = (
 };
 
 /** รวมคีย์ประเภทงานเก่า/กำหนดเอง — คงกล่อง general:… แยกตามชื่องาน */
-const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | undefined | null): Record<string, string[]> => {
-    const base = sanitizeWorkAssignments(raw);
-    const out: Record<string, string[]> = {};
-    const pushUnique = (key: string, ids: string[]) => {
-        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
-        if (list.length === 0) return;
-        if (!out[key]) out[key] = [];
-        const seen = new Set(out[key]);
-        for (const id of list) {
-            if (!seen.has(id)) {
-                seen.add(id);
-                out[key].push(id);
-            }
-        }
-    };
-    for (const [k, ids] of Object.entries(base)) {
-        if (DEFAULT_WORK_CATEGORY_IDS.has(k)) pushUnique(k, ids);
-        else if (k.startsWith(GENERAL_WORK_PREFIX)) pushUnique(k, ids);
-        else if (['wash_home', 'wash_yard_house', 'sift_home', 'washHome'].includes(k)) pushUnique('generalWork', ids);
-        else pushUnique('generalWork', ids);
-    }
-    return out;
-};
+const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | undefined | null): Record<string, string[]> =>
+    mergeLaborCanvasAssignments(sanitizeWorkAssignments(raw));
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
 const HIDDEN_WORK_CATEGORY_IDS = new Set(['other']);
 const HIDDEN_WORK_CATEGORY_LABELS = new Set(['ทำอื่นๆ'].map(normalizeCategoryLabel));
@@ -297,18 +413,23 @@ const isEmployeeMatchedBySearch = (emp: Employee, search: string) => {
     return nickname.includes(q) || name.includes(q) || getEmployeeDisplayName(emp).includes(q);
 };
 
-type LaborEmployeeBucket = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
 const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
     sifter: 'พนักงานร่อนทราย',
     excavatorMac: 'คนขับรถแม็คโคร',
     nightWatch: 'เฝ้ากลางคืน',
     generalLabor: 'พนักงานทั่วไป',
 };
+const LABOR_EMPLOYEE_BUCKET_HINT: Record<LaborEmployeeBucket, string> = {
+    sifter: 'ตำแหน่งมีคำว่า «ร่อน»',
+    excavatorMac: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
+    nightWatch: 'ตำแหน่งเวร/เฝ้ากลางคืน',
+    generalLabor: 'เฉพาะตำแหน่งพนักงานทั่วไป',
+};
 const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
 const LABOR_BUCKET_FIXED_CATEGORY_IDS: Record<LaborEmployeeBucket, string[]> = {
-    sifter: ['wash1', 'wash2', 'pierWatch'],
+    sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
     excavatorMac: ['digHaul'],
-    nightWatch: ['nightShift'],
+    nightWatch: ['nightShift', 'nightPatrol'],
     generalLabor: [],
 };
 const getEmployeePositionBlob = (emp: Employee) => {
@@ -767,6 +888,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         [workAssignments]
     );
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
+    const [laborBucketExpanded, setLaborBucketExpanded] = useState<Record<string, boolean>>({});
     const laborBucketCounts = useMemo(() => {
         const counts: Record<LaborEmployeeBucket, number> = { sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
         for (const e of employees) {
@@ -788,14 +910,61 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         () => filteredLaborEmployees.slice(0, otVisibleEmployeeCount),
         [filteredLaborEmployees, otVisibleEmployeeCount]
     );
+    const laborAssignedEmpIds = useMemo(
+        () => new Set(Object.values(workAssignments).flatMap(ids => (Array.isArray(ids) ? ids : []))),
+        [workAssignments]
+    );
     const poolVisibleEmployees = useMemo(
-        () => filteredLaborEmployees,
-        [filteredLaborEmployees]
+        () => filteredLaborEmployees.filter(e => !laborAssignedEmpIds.has(e.id)),
+        [filteredLaborEmployees, laborAssignedEmpIds]
     );
     const laborFixedCanvasCategories = useMemo(() => {
         const ids = new Set(LABOR_BUCKET_FIXED_CATEGORY_IDS[laborEmployeeBucket]);
         return FIXED_LABOR_CANVAS_CATEGORIES.filter((c) => ids.has(c.id));
     }, [laborEmployeeBucket]);
+    const assignEmployeesToLaborBucket = useCallback(
+        async (bucketId: string, empIds: string[]) => {
+            const ids = [...new Set(empIds.map(id => String(id).trim()).filter(Boolean))];
+            if (ids.length === 0) return;
+            for (const id of ids) {
+                const emp = employees.find(x => x.id === id);
+                if (emp && (emp.baseWage == null || emp.baseWage === 0) && ensureEmployeeWage) {
+                    try {
+                        await ensureEmployeeWage(emp);
+                    } catch {
+                        return;
+                    }
+                }
+            }
+            setWorkAssignments(prev => {
+                const u = { ...prev };
+                for (const empId of ids) {
+                    Object.keys(u).forEach(k => {
+                        u[k] = (u[k] || []).filter(eid => eid !== empId);
+                    });
+                }
+                const bucket = [...(u[bucketId] || [])];
+                for (const empId of ids) {
+                    if (!bucket.includes(empId)) bucket.push(empId);
+                }
+                u[bucketId] = bucket;
+                return u;
+            });
+            setLaborBucketExpanded(prev => ({ ...prev, [bucketId]: true }));
+            setDragEmployee(null);
+            setSelectedEmps(prev => prev.filter(id => !ids.includes(id)));
+        },
+        [employees, ensureEmployeeWage]
+    );
+    const removeEmployeeFromLaborBucket = useCallback((bucketId: string, empId: string) => {
+        setWorkAssignments(prev => {
+            const nextList = (prev[bucketId] || []).filter(id => id !== empId);
+            if (nextList.length === 0) {
+                setLaborBucketExpanded(exp => ({ ...exp, [bucketId]: false }));
+            }
+            return { ...prev, [bucketId]: nextList };
+        });
+    }, []);
     const latestLaborDrumsWashedAtHome = useMemo(() => {
         if (!latestLaborAttendance) return 0;
         return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
@@ -1064,295 +1233,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [eventType, setEventType] = useState('info');
     const [eventPriority, setEventPriority] = useState('normal');
     const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
-    const [draftOffer, setDraftOffer] = useState<{
-        payload: WizardDraftPayload;
-        savedAt: number;
-        hasConflict: boolean;
-        conflictDraftTxCount: number;
-        conflictCurrentTxCount: number;
-    } | null>(null);
-    const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [autosaveSavedAt, setAutosaveSavedAt] = useState<number | null>(null);
-    const [autosaveErrorReason, setAutosaveErrorReason] = useState<DraftSaveError>('none');
-    const [draftOfferExpanded, setDraftOfferExpanded] = useState(false);
     const [rightSummaryCompact, setRightSummaryCompact] = useState(false);
-    const [draftMergeSections, setDraftMergeSections] = useState<Record<DraftMergeSection, boolean>>({
-        labor: true,
-        vehicle: true,
-        trip: true,
-        sand: true,
-        fuel: true,
-        income: true,
-        event: true,
-    });
     useEffect(() => {
-        setDraftOfferExpanded(false);
-    }, [draftOffer?.savedAt]);
+        try {
+            localStorage.removeItem('cm_daily_wizard_draft_v2');
+        } catch {
+            /* ignore */
+        }
+    }, []);
     useEffect(() => {
         if (!vehMachineWage) setVehMachineWage(defaultVehicleMachineWage);
     }, [defaultVehicleMachineWage, vehMachineWage]);
-
-    const applyWizardDraft = useCallback((p: WizardDraftPayload, sections: DraftMergeSection[] = ALL_DRAFT_MERGE_SECTIONS) => {
-        const pick = (section: DraftMergeSection) => sections.includes(section);
-        setStep(p.step);
-        if (pick('labor')) {
-            setLaborSearch(p.laborSearch);
-            setSelectedEmps(p.selectedEmps);
-            setLaborStatus(p.laborStatus);
-            setHalfDayEmpIds(new Set(p.halfDayEmpIds));
-            setDrumsWashedAtHome(p.drumsWashedAtHome);
-            setOtHours(p.otHours);
-            setOtDesc(p.otDesc);
-            setOtRate(p.otRate);
-            setWorkAssignments(mergeUnknownLaborCanvasAssignments(p.workAssignments));
-            setLaborEmployeeBucket(
-                p.laborEmployeeBucket === 'excavatorMac' ||
-                    p.laborEmployeeBucket === 'nightWatch' ||
-                    p.laborEmployeeBucket === 'generalLabor'
-                    ? p.laborEmployeeBucket
-                    : 'sifter'
-            );
-            setLaborGeneralWorkNotes(p.laborGeneralWorkNotes || '');
-        }
-        if (pick('vehicle')) {
-            setVehCar(p.vehCar);
-            setVehDriver(p.vehDriver);
-            setVehWage(p.vehWage);
-            setVehMachineWage(p.vehMachineWage || defaultVehicleMachineWage);
-            setVehDetails(p.vehDetails);
-            setVehWorkType(p.vehWorkType);
-            setEditingVehicleTxId(p.editingVehicleTxId);
-        }
-        if (pick('trip')) {
-            setTripEntries(p.tripEntries.length > 0 ? p.tripEntries : [emptyWizardTripEntry()]);
-            setTripMorning(p.tripMorning);
-            setTripAfternoon(p.tripAfternoon);
-        }
-        if (pick('sand')) {
-            setSand1Morning(p.sand1Morning);
-            setSand1Afternoon(p.sand1Afternoon);
-            setSand2Morning(p.sand2Morning);
-            setSand2Afternoon(p.sand2Afternoon);
-            setSand1Operators(p.sand1Operators);
-            setSand2Operators(p.sand2Operators);
-            setSandDrumsObtained(p.sandDrumsObtained);
-            setDrumsWashedAtHome(p.drumsWashedAtHome);
-            setSandMorningStart(p.sandMorningStart);
-            setSandAfternoonStart(p.sandAfternoonStart);
-            setSandEveningEnd(p.sandEveningEnd);
-        }
-        if (pick('fuel')) {
-            setFuelAmount(p.fuelAmount);
-            setFuelLiters(p.fuelLiters);
-            setFuelType(p.fuelType);
-            setFuelUnit(p.fuelUnit);
-            setFuelDetails(p.fuelDetails);
-            setFuelVehicle(p.fuelVehicle);
-            setFuelVehicleLiters(p.fuelVehicleLiters);
-            setFuelVehicleType(p.fuelVehicleType);
-            setFuelVehicleDetails(p.fuelVehicleDetails);
-        }
-        if (pick('income')) {
-            setIncomeType(p.incomeType);
-            setIncomeQty(p.incomeQty);
-            setIncomeUnitPrice(p.incomeUnitPrice);
-            setIncomeTotal(p.incomeTotal);
-            setNewIncomeType(p.newIncomeType);
-            setIncomeTypeAddOpen(p.incomeTypeAddOpen);
-            setIncomePaymentStatus(p.incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid');
-        }
-        if (pick('event')) {
-            setEventDesc(p.eventDesc);
-            setEventType(p.eventType);
-            setEventPriority(p.eventPriority);
-        }
-    }, [defaultVehicleMachineWage]);
-
-    const wizardDraftPayload: WizardDraftPayload = useMemo(
-        () => ({
-            step,
-            laborSearch,
-            selectedEmps,
-            laborStatus,
-            halfDayEmpIds: [...halfDayEmpIds],
-            drumsWashedAtHome,
-            otHours,
-            otDesc,
-            otRate,
-            workAssignments,
-            customCategories: [],
-            newCategoryName: '',
-            laborEmployeeBucket,
-            laborGeneralWorkNotes,
-            vehCar,
-            vehDriver,
-            vehWage,
-            vehMachineWage,
-            vehDetails,
-            vehWorkType,
-            editingVehicleTxId,
-            tripEntries,
-            tripMorning,
-            tripAfternoon,
-            sand1Morning,
-            sand1Afternoon,
-            sand2Morning,
-            sand2Afternoon,
-            sand1Operators,
-            sand2Operators,
-            sandDrumsObtained,
-            sandMorningStart,
-            sandAfternoonStart,
-            sandEveningEnd,
-            fuelAmount,
-            fuelLiters,
-            fuelType,
-            fuelUnit,
-            fuelDetails,
-            fuelVehicle,
-            fuelVehicleLiters,
-            fuelVehicleType,
-            fuelVehicleDetails,
-            incomeType,
-            incomeQty,
-            incomeUnitPrice,
-            incomeTotal,
-            newIncomeType,
-            incomeTypeAddOpen,
-            incomePaymentStatus,
-            eventDesc,
-            eventType,
-            eventPriority,
-        }),
-        [
-            step,
-            laborSearch,
-            selectedEmps,
-            laborStatus,
-            halfDayEmpIds,
-            drumsWashedAtHome,
-            otHours,
-            otDesc,
-            otRate,
-            workAssignments,
-            laborEmployeeBucket,
-            laborGeneralWorkNotes,
-            vehCar,
-            vehDriver,
-            vehWage,
-            vehMachineWage,
-            vehDetails,
-            vehWorkType,
-            editingVehicleTxId,
-            tripEntries,
-            tripMorning,
-            tripAfternoon,
-            sand1Morning,
-            sand1Afternoon,
-            sand2Morning,
-            sand2Afternoon,
-            sand1Operators,
-            sand2Operators,
-            sandDrumsObtained,
-            sandMorningStart,
-            sandAfternoonStart,
-            sandEveningEnd,
-            fuelAmount,
-            fuelLiters,
-            fuelType,
-            fuelUnit,
-            fuelDetails,
-            fuelVehicle,
-            fuelVehicleLiters,
-            fuelVehicleType,
-            fuelVehicleDetails,
-            incomeType,
-            incomeQty,
-            incomeUnitPrice,
-            incomeTotal,
-            newIncomeType,
-            incomeTypeAddOpen,
-            incomePaymentStatus,
-            eventDesc,
-            eventType,
-            eventPriority,
-        ]
-    );
-
-    const dayTxFingerprint = useMemo(() => getDayTransactionFingerprint(dayTransactions), [dayTransactions]);
-
-    const refreshDraftOffer = useCallback(() => {
-        const norm = normalizeDate(date);
-        if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(`cm_draft_dismiss_${norm}`)) {
-            setDraftOffer(null);
-            return false;
-        }
-        const entry = readWizardDraftEntry(norm);
-        if (entry?.payload && entry.payload.step >= 1) {
-            const draftCount = parseTxFingerprintCount(entry.txFingerprint);
-            const currentCount = dayTransactions.length;
-            setDraftOffer({
-                payload: entry.payload,
-                savedAt: entry.savedAt,
-                hasConflict: !!entry.txFingerprint && entry.txFingerprint !== dayTxFingerprint,
-                conflictDraftTxCount: draftCount,
-                conflictCurrentTxCount: currentCount,
-            });
-            setDraftMergeSections({
-                labor: true,
-                vehicle: true,
-                trip: true,
-                sand: true,
-                fuel: true,
-                income: true,
-                event: true,
-            });
-            return true;
-        } else {
-            setDraftOffer(null);
-            return false;
-        }
-    }, [date, dayTxFingerprint, dayTransactions.length]);
-
-    useEffect(() => {
-        refreshDraftOffer();
-    }, [refreshDraftOffer]);
-
-    useEffect(() => {
-        const onStorage = (event: StorageEvent) => {
-            if (event.key !== WIZARD_DRAFT_STORAGE_KEY) return;
-            const hasDraft = refreshDraftOffer();
-            if (hasDraft) {
-                const entry = readWizardDraftEntry(normalizeDate(date));
-                if (entry?.savedAt) {
-                    setAutosaveState('saved');
-                    setAutosaveSavedAt(entry.savedAt);
-                    setAutosaveErrorReason('none');
-                }
-            }
-        };
-        window.addEventListener('storage', onStorage);
-        return () => window.removeEventListener('storage', onStorage);
-    }, [date, refreshDraftOffer]);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        if (viewMode !== 'record' || step < 1) return;
-        const norm = normalizeDate(date);
-        setAutosaveState('saving');
-        setAutosaveErrorReason('none');
-        const tid = window.setTimeout(() => {
-            const result = writeWizardDraftForDate(norm, wizardDraftPayload, dayTxFingerprint);
-            if (result.ok) {
-                setAutosaveState('saved');
-                setAutosaveSavedAt(Date.now());
-            } else {
-                setAutosaveState('error');
-                setAutosaveErrorReason(result.reason);
-            }
-        }, 750);
-        return () => window.clearTimeout(tid);
-    }, [wizardDraftPayload, date, viewMode, step, dayTxFingerprint]);
 
     const stepScrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollStepLeft, setCanScrollStepLeft] = useState(false);
@@ -2010,32 +1901,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
                 <div className={`min-w-0 space-y-6 ${mobileShell ? '' : 'xl:col-span-8'}`}>
                     <Card className={`relative flex flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[500px] p-6'}`}>
-                        {viewMode === 'record' && (
-                            <div className="mb-3 flex items-center justify-end">
-                                <span
-                                    role="status"
-                                    aria-live="polite"
-                                    aria-atomic="true"
-                                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                                        autosaveState === 'saving'
-                                            ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
-                                            : autosaveState === 'saved'
-                                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                              : autosaveState === 'error'
-                                                ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
-                                                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-white/15 dark:bg-white/5 dark:text-slate-300'
-                                    }`}
-                                >
-                                    {autosaveState === 'saving'
-                                        ? 'กำลังบันทึกแบบร่าง...'
-                                        : autosaveState === 'saved'
-                                          ? `บันทึกล่าสุด ${autosaveSavedAt ? new Date(autosaveSavedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`
-                                          : autosaveState === 'error'
-                                            ? `บันทึกแบบร่างไม่สำเร็จ (${autosaveErrorReason === 'quota_exceeded' ? 'พื้นที่เต็ม' : autosaveErrorReason === 'storage_unavailable' ? 'storage ใช้ไม่ได้' : 'ข้อผิดพลาดข้อมูล'})`
-                                            : 'ยังไม่มีการแก้ไขล่าสุด'}
-                                </span>
-                            </div>
-                        )}
                         {viewMode === 'record' && validationChecklist.length > 0 && (
                             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
                                 <p className="mb-2 text-xs font-bold text-amber-800 dark:text-amber-200">Checklist ก่อนบันทึก</p>
@@ -2049,128 +1914,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 </ul>
                             </div>
                         )}
-                        {draftOffer && viewMode === 'record' && (
-                            <div
-                                className={`mb-4 rounded-2xl border p-3 text-sm shadow-sm ${
-                                    draftOffer.hasConflict
-                                        ? 'border-rose-200 bg-rose-50/90 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100'
-                                        : 'border-amber-200 bg-amber-50/90 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-50'
-                                } ${
-                                    mobileShell ? '' : 'mx-0'
-                                }`}
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="font-bold">พบแบบร่างที่ยังไม่เสร็จ (ขั้น {STEPS[draftOffer.payload.step]?.shortLabel || draftOffer.payload.step})</p>
-                                        <p className="mt-1 text-xs opacity-90">
-                                            บันทึกล่าสุด {new Date(draftOffer.savedAt).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-                                        </p>
-                                        {draftOffer.hasConflict && (
-                                            <p className="mt-1 text-xs font-medium opacity-90">
-                                                พบความต่างข้อมูลระหว่างแบบร่างกับข้อมูลล่าสุด
-                                            </p>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDraftOfferExpanded(prev => !prev)}
-                                        className="shrink-0 rounded-lg border border-rose-200/70 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-white dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-100"
-                                    >
-                                        {draftOfferExpanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-                                    </button>
-                                </div>
-                                {draftOfferExpanded && draftOffer.hasConflict && (
-                                    <>
-                                        <p className="mt-1.5 text-xs font-semibold">
-                                            มีข้อมูลรายการของวันนี้เปลี่ยนไปจากตอนที่บันทึกแบบร่าง (เดิม {draftOffer.conflictDraftTxCount} รายการ, ปัจจุบัน {draftOffer.conflictCurrentTxCount} รายการ) อาจเกิดการชนกันของข้อมูล
-                                        </p>
-                                        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
-                                            {[
-                                                ['labor', 'ค่าแรง'],
-                                                ['vehicle', 'ใช้รถ'],
-                                                ['trip', 'เที่ยวรถ'],
-                                                ['sand', 'ล้างทราย'],
-                                                ['fuel', 'น้ำมัน'],
-                                                ['income', 'รายรับ'],
-                                                ['event', 'เหตุการณ์'],
-                                            ].map(([key, label]) => {
-                                                const sectionKey = key as DraftMergeSection;
-                                                return (
-                                                    <label key={key} className="flex items-center gap-1 rounded border border-rose-200/60 bg-white/60 px-2 py-1 dark:border-rose-500/25 dark:bg-rose-500/5">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={draftMergeSections[sectionKey]}
-                                                            onChange={(e) =>
-                                                                setDraftMergeSections(prev => ({ ...prev, [sectionKey]: e.target.checked }))
-                                                            }
-                                                        />
-                                                        <span>{label}</span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    </>
-                                )}
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        className="touch-manipulation"
-                                        onClick={async () => {
-                                            if (draftOffer.hasConflict) {
-                                                const ok = await sessionConfirm('พบความต่างระหว่างแบบร่างกับข้อมูลล่าสุดของวันนี้ ต้องการกู้คืนทับค่าในฟอร์มต่อหรือไม่?', { title: 'ยืนยันกู้คืนแบบร่างที่มี conflict' });
-                                                if (!ok) return;
-                                            }
-                                            const picked = ALL_DRAFT_MERGE_SECTIONS.filter(section => draftMergeSections[section]);
-                                            if (picked.length === 0) {
-                                                await sessionAlert('กรุณาเลือกอย่างน้อย 1 หมวดที่ต้องการกู้คืน');
-                                                return;
-                                            }
-                                            applyWizardDraft(draftOffer.payload, picked);
-                                            setDraftOffer(null);
-                                            if (typeof sessionStorage !== 'undefined') {
-                                                sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
-                                            }
-                                        }}
-                                    >
-                                        กู้คืนแบบร่าง
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        className="touch-manipulation"
-                                        onClick={() => {
-                                            clearWizardDraftForDate(normalizeDate(date));
-                                            setDraftOffer(null);
-                                            setAutosaveState('idle');
-                                            setAutosaveSavedAt(null);
-                                            setAutosaveErrorReason('none');
-                                            if (typeof sessionStorage !== 'undefined') {
-                                                sessionStorage.setItem(`cm_draft_dismiss_${normalizeDate(date)}`, '1');
-                                            }
-                                        }}
-                                    >
-                                        ไม่ใช้แบบร่าง
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        className="touch-manipulation"
-                                        onClick={async () => {
-                                            const ok = await sessionConfirm('ล้างแบบร่างทั้งหมดทุกวันที่เคยบันทึกไว้?', { title: 'ล้างแบบร่างทั้งหมด' });
-                                            if (!ok) return;
-                                            clearAllWizardDrafts();
-                                            setDraftOffer(null);
-                                            setAutosaveState('idle');
-                                            setAutosaveSavedAt(null);
-                                            setAutosaveErrorReason('none');
-                                        }}
-                                    >
-                                        ล้างแบบร่างทั้งหมด
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-
                         {/* Step 0: Date */}
                         {step === 0 && (
                             <div className="flex h-full flex-col items-center justify-center space-y-5 animate-slide-up [@media(orientation:landscape)_and_(max-height:560px)]:justify-start [@media(orientation:landscape)_and_(max-height:560px)]:space-y-3 [@media(orientation:landscape)_and_(max-height:560px)]:pt-1">
@@ -2504,376 +2247,354 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 ย้อนกลับขั้นนี้ ({Math.max(0, laborStepHistory.length - 1)})
                                             </button>
                                         </div>
-                                        {/* Employee Pool - Draggable chips */}
-                                        <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-                                                <span className="text-sm font-bold text-slate-600">👥 เลือกพนักงานเพื่อย้ายลงกล่องงาน</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                                                        {filteredLaborEmployees.length}/{laborBucketCounts[laborEmployeeBucket]} คนในกลุ่ม
-                                                    </span>
-                                                    <input placeholder="ค้นหา..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-36 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300" />
-                                                </div>
-                                            </div>
-                                            <div className="mb-2 flex flex-wrap gap-1.5" role="tablist" aria-label="กลุ่มพนักงาน">
-                                                {LABOR_EMPLOYEE_BUCKET_ORDER.map((b) => (
-                                                    <button
-                                                        key={b}
-                                                        type="button"
-                                                        role="tab"
-                                                        aria-selected={laborEmployeeBucket === b}
-                                                        onClick={() => setLaborEmployeeBucket(b)}
-                                                        className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
-                                                            laborEmployeeBucket === b
-                                                                ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
-                                                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/60'
-                                                        }`}
-                                                    >
-                                                        {LABOR_EMPLOYEE_BUCKET_LABEL[b]} ({laborBucketCounts[b]})
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="grid max-h-[180px] grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-3 sm:p-3 md:max-h-[240px] md:grid-cols-4 lg:grid-cols-5">
-                                                {poolVisibleEmployees.map(emp => {
-                                                    const isAssigned = Object.values(workAssignments).some(ids => ids.includes(emp.id));
-                                                    const isSelected = selectedEmps.includes(emp.id);
-                                                    const saved = dayTransactions.find(t => t.category === 'Labor' && t.employeeIds?.includes(emp.id));
-                                                    const leaveRecord = transactions.find(t => t.category === 'Labor' && (t.laborStatus === 'Leave' || t.laborStatus === 'Sick' || t.laborStatus === 'Personal') && t.employeeIds?.includes(emp.id) && t.date <= date && (t.leaveDays ? new Date(new Date(t.date).getTime() + (t.leaveDays - 1) * 86400000).toISOString().split('T')[0] >= date : t.date === date));
-                                                    const isAbsent = !isAssigned && !saved && !leaveRecord;
-                                                    const displayName = getEmployeeDisplayName(emp);
-                                                    return (
-                                                        <div key={emp.id}
-                                                            draggable onDragStart={() => setDragEmployee(emp.id)} onDragEnd={() => setDragEmployee(null)}
-                                                            onClick={() => setSelectedEmps(prev => prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id])}
-                                                            title={leaveRecord ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}` : isAbsent && saved === undefined ? '' : ''}
-                                                            className={`rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base sm:text-lg' : 'px-2.5 py-2 text-xs sm:text-sm'}
-                                                        ${leaveRecord ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400 ring-1 ring-yellow-200' :
-                                                                    isAssigned ? 'bg-emerald-100 text-emerald-600 border border-emerald-300 opacity-50' :
-                                                                        isSelected ? 'bg-indigo-600 text-white shadow-md scale-105' :
-                                                                            saved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                                                                'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}
-                                                        >
-                                                            {displayName}{leaveRecord ? ' 🏖️ลา' : saved && !isAssigned ? ' ✅' : ''}
+                                        {/* Labor drag board — ตามแอป Android (_LaborDragBoard) */}
+                                        <div className="mb-3 overflow-hidden rounded-2xl border border-[#C5D9EF] bg-[#F0F6FC] p-3 shadow-sm">
+                                            <div
+                                                className={
+                                                    !isTouchLayout
+                                                        ? 'flex min-h-[360px] max-h-[min(58vh,640px)] gap-3.5'
+                                                        : 'flex max-h-[min(85vh,720px)] flex-col gap-3'
+                                                }
+                                            >
+                                                <div
+                                                    className={
+                                                        !isTouchLayout
+                                                            ? 'flex w-[min(36%,384px)] min-w-[272px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            : 'flex max-h-[42vh] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                    }
+                                                >
+                                                    <div className="shrink-0 border-b border-slate-100 p-2.5">
+                                                        <p className="text-sm font-extrabold text-slate-800">เลือกพนักงาน</p>
+                                                        <p className="text-xs font-medium text-slate-500">กลุ่มตามตำแหน่งงาน</p>
+                                                        <div className="mt-2 space-y-1.5" role="tablist" aria-label="กลุ่มพนักงาน">
+                                                            {LABOR_EMPLOYEE_BUCKET_ORDER.map(b => {
+                                                                const Icon = LABOR_POOL_BUCKET_ICON[b];
+                                                                const selected = laborEmployeeBucket === b;
+                                                                return (
+                                                                    <button
+                                                                        key={b}
+                                                                        type="button"
+                                                                        role="tab"
+                                                                        aria-selected={selected}
+                                                                        onClick={() => setLaborEmployeeBucket(b)}
+                                                                        className={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors touch-manipulation ${
+                                                                            selected
+                                                                                ? 'border-[#1565C0] bg-[#E8F1FF]'
+                                                                                : 'border-[#E1E8F0] bg-[#F6F8FC] hover:border-indigo-200'
+                                                                        }`}
+                                                                    >
+                                                                        <Icon
+                                                                            size={22}
+                                                                            className={`mt-0.5 shrink-0 ${selected ? 'text-[#1565C0]' : 'text-[#5B6D83]'}`}
+                                                                        />
+                                                                        <span className="min-w-0 flex-1">
+                                                                            <span className={`block text-sm font-extrabold ${selected ? 'text-[#1D2A3A]' : 'text-slate-800'}`}>
+                                                                                {LABOR_EMPLOYEE_BUCKET_LABEL[b]} ({laborBucketCounts[b]})
+                                                                            </span>
+                                                                            <span className="block text-[11px] font-semibold leading-snug text-slate-500">
+                                                                                {LABOR_EMPLOYEE_BUCKET_HINT[b]}
+                                                                            </span>
+                                                                        </span>
+                                                                    </button>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    );
-                                                })}
-                                                {poolVisibleEmployees.length === 0 && (
-                                                    <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white/70 p-3 text-center text-xs text-slate-500">
-                                                        ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา
-                                                        {laborSearch.trim() && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setLaborSearch('')}
-                                                                className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                                        <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200/80 bg-amber-50 px-2.5 py-2">
+                                                            <Touchpad size={18} className="shrink-0 text-amber-800" />
+                                                            <p className="text-[11px] font-semibold leading-snug text-amber-950">
+                                                                แตะชื่อเพื่อเลือกหลายคน · กดค้างแล้วลากไปกล่อง หรือกดปุ่ม «ย้ายมาที่นี่» ในกล่องงาน
+                                                            </p>
+                                                        </div>
+                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                            <span className="text-xs font-extrabold text-slate-700">รายชื่อในกลุ่ม</span>
+                                                            <span
+                                                                className={`rounded-full border px-2.5 py-0.5 text-xs font-extrabold ${
+                                                                    selectedEmps.length > 0
+                                                                        ? 'border-blue-300 bg-blue-50 text-blue-900'
+                                                                        : 'border-slate-300 bg-slate-100 text-slate-600'
+                                                                }`}
                                                             >
-                                                                ล้างคำค้น
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {selectedEmps.length > 0 && <p className="text-xs text-indigo-600 mt-1.5 font-medium">เลือก {selectedEmps.length} คน — กดปุ่ม "ย้าย" ในกล่องงานด้านล่าง</p>}
-                                        </div>
-
-                                        {/* Work Category Canvas Boxes */}
-                                        <div className="flex-1 overflow-y-auto mb-3">
-                                            {laborFixedCanvasCategories.length > 0 && (
-                                                <>
-                                            <span className="text-sm font-bold text-slate-500 mb-2 block">📋 ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)</span>
-                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
-                                                {laborFixedCanvasCategories.map(cat => {
-                                                    const assigned = workAssignments[cat.id] || [];
-                                                    return (
-                                                        <div key={cat.id}
-                                                            onDragOver={e => e.preventDefault()}
-                                                            onDrop={async e => {
-                                                                e.preventDefault();
-                                                                if (!dragEmployee) return;
-                                                                const emp = employees.find(x => x.id === dragEmployee);
-                                                                const needWage = emp && (emp.baseWage == null || emp.baseWage === 0) && ensureEmployeeWage;
-                                                                if (needWage) {
-                                                                    try {
-                                                                        await ensureEmployeeWage(emp);
-                                                                    } catch {
-                                                                        setDragEmployee(null);
-                                                                        return;
-                                                                    }
-                                                                }
-                                                                setWorkAssignments(prev => {
-                                                                    const u = { ...prev };
-                                                                    Object.keys(u).forEach(k => { u[k] = (u[k] || []).filter(id => id !== dragEmployee); });
-                                                                    u[cat.id] = [...(u[cat.id] || []), dragEmployee];
-                                                                    return u;
-                                                                });
-                                                                setDragEmployee(null);
-                                                            }}
-                                                            className={`rounded-xl border-2 border-dashed transition-all p-2.5 ${touchUI ? 'min-h-[96px]' : 'min-h-[76px]'} ${cat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
-                                                        >
-                                                            <div className="mb-1.5">
-                                                                <span
-                                                                    className={`block w-full rounded-lg px-2 py-1 text-[11px] font-medium leading-snug text-white sm:text-xs ${cat.color}`}
-                                                                    title={cat.label}
-                                                                >
-                                                                    <span className="block break-words">{cat.label}</span>
-                                                                </span>
-                                                                <div className="mt-1.5 flex items-center justify-end gap-2">
-                                                                    <span className="text-[11px] font-medium text-slate-400">{assigned.length} คน</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {assigned.map(eid => {
-                                                                    const emp = employees.find(e => e.id === eid);
-                                                                    const isHalf = halfDayEmpIds.has(eid);
-                                                                    return emp ? (
-                                                                        <span key={eid} className={`flex items-center gap-1 rounded-lg border bg-white font-semibold ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}>
-                                                                            {getEmployeeDisplayName(emp)}
-                                                                            <button type="button" onClick={(ev) => { ev.stopPropagation(); setHalfDayEmpIds(prev => { const n = new Set(prev); if (n.has(eid)) n.delete(eid); else n.add(eid); return n; }); }} className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`} title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}>½</button>
-                                                                            <button type="button" onClick={() => setWorkAssignments(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).filter(id => id !== eid) }))} className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}>×</button>
-                                                                        </span>) : null;
-                                                                })}
-                                                                {assigned.length === 0 && <span className="text-[11px] text-slate-400 italic">ลากหรือย้ายคนมาวาง...</span>}
-                                                            </div>
-                                                            {false && cat.id === 'generalWork' && (
-                                                                <div className="mt-2 space-y-1">
-                                                                    <label htmlFor="labor-general-work-notes" className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">รายละเอียดงาน (งานทั่วไป)</label>
-                                                                    <textarea
-                                                                        id="labor-general-work-notes"
-                                                                        value={laborGeneralWorkNotes}
-                                                                        onChange={e => setLaborGeneralWorkNotes(e.target.value)}
-                                                                        placeholder="ระบุรายละเอียดงานที่ทำ เช่น เก็บกวาด, ขนวัสดุ..."
-                                                                        rows={touchUI ? 3 : 2}
-                                                                        className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {selectedEmps.length > 0 && (
-                                                                <button onClick={async () => {
-                                                                    for (const id of selectedEmps) {
-                                                                        const emp = employees.find(x => x.id === id);
-                                                                        if (emp && (emp.baseWage == null || emp.baseWage === 0) && ensureEmployeeWage) {
-                                                                            try { await ensureEmployeeWage(emp); } catch { return; }
-                                                                        }
-                                                                    }
-                                                                    setWorkAssignments(prev => {
-                                                                        const u = { ...prev };
-                                                                        selectedEmps.forEach(id => { Object.keys(u).forEach(k => { u[k] = (u[k] || []).filter(eid => eid !== id); }); });
-                                                                        u[cat.id] = [...(u[cat.id] || []), ...selectedEmps];
-                                                                        return u;
-                                                                    });
-                                                                    setSelectedEmps([]);
-                                                                }} className={`mt-1.5 w-full rounded-lg bg-indigo-100 font-bold text-indigo-700 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}>
-                                                                    ⬇️ ย้าย {selectedEmps.length} คน มาที่นี่
-                                                                </button>
-                                                            )}
+                                                                {selectedEmps.length} เลือก
+                                                            </span>
+                                                            <input
+                                                                placeholder="ค้นหา..."
+                                                                value={laborSearch}
+                                                                onChange={e => setLaborSearch(e.target.value)}
+                                                                className="ml-auto text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-28 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300"
+                                                            />
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            </>
-                                            )}
-                                            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-                                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="text-sm font-bold text-slate-600">งานทั่วไป (ชื่องาน)</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const id = newGeneralSubJobId();
-                                                            setGeneralSubJobs(prev => [...prev, { id, title: '' }]);
-                                                            setWorkAssignments(prev => ({
-                                                                ...prev,
-                                                                [generalSubJobAssignmentKey(id)]: prev[generalSubJobAssignmentKey(id)] || [],
-                                                            }));
-                                                        }}
-                                                        className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
-                                                    >
-                                                        + เพิ่มงาน
-                                                    </button>
-                                                </div>
-                                                <p className="text-[11px] text-slate-500 mb-2">
-                                                    แยกหลายงานได้ เช่น ทำรั้วสแสลม / ปลูกต้นไม้ — ลากพนักงานลงแต่ละกล่อง
-                                                </p>
-                                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
-                                                    {generalSubJobs.map(job => {
-                                                        const bucketId = generalSubJobAssignmentKey(job.id);
-                                                        const assigned = workAssignments[bucketId] || [];
-                                                        const generalCat = DEFAULT_WORK_CATEGORIES.find(c => c.id === 'generalWork')!;
-                                                        const displayLabel = job.title.trim() || 'งานทั่วไป';
-                                                        return (
-                                                            <div key={job.id} className="space-y-1.5">
-                                                                <div className="flex items-center gap-1">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={job.title}
-                                                                        onChange={e =>
-                                                                            setGeneralSubJobs(prev =>
-                                                                                prev.map(row =>
-                                                                                    row.id === job.id
-                                                                                        ? { ...row, title: e.target.value }
-                                                                                        : row
-                                                                                )
+                                                    </div>
+                                                    <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+                                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
+                                                            {poolVisibleEmployees.map(emp => {
+                                                                const isSelected = selectedEmps.includes(emp.id);
+                                                                const saved = dayTransactions.find(
+                                                                    t => t.category === 'Labor' && t.employeeIds?.includes(emp.id)
+                                                                );
+                                                                const leaveRecord = transactions.find(
+                                                                    t =>
+                                                                        t.category === 'Labor' &&
+                                                                        (t.laborStatus === 'Leave' ||
+                                                                            t.laborStatus === 'Sick' ||
+                                                                            t.laborStatus === 'Personal') &&
+                                                                        t.employeeIds?.includes(emp.id) &&
+                                                                        t.date <= date &&
+                                                                        (t.leaveDays
+                                                                            ? new Date(
+                                                                                  new Date(t.date).getTime() +
+                                                                                      (t.leaveDays - 1) * 86400000
+                                                                              )
+                                                                                  .toISOString()
+                                                                                  .split('T')[0] >= date
+                                                                            : t.date === date)
+                                                                );
+                                                                const displayName = getEmployeeDisplayName(emp);
+                                                                return (
+                                                                    <div
+                                                                        key={emp.id}
+                                                                        draggable
+                                                                        onDragStart={() => setDragEmployee(emp.id)}
+                                                                        onDragEnd={() => setDragEmployee(null)}
+                                                                        onClick={() =>
+                                                                            setSelectedEmps(prev =>
+                                                                                prev.includes(emp.id)
+                                                                                    ? prev.filter(id => id !== emp.id)
+                                                                                    : [...prev, emp.id]
                                                                             )
                                                                         }
-                                                                        placeholder="ชื่องาน เช่น ทำรั้วสแสลม"
-                                                                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                                                                    />
-                                                                    {generalSubJobs.length > 1 && (
+                                                                        title={
+                                                                            leaveRecord
+                                                                                ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}`
+                                                                                : undefined
+                                                                        }
+                                                                        className={`rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-2.5 py-2 text-xs sm:text-sm'}
+                                                                            ${
+                                                                                leaveRecord
+                                                                                    ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400'
+                                                                                    : isSelected
+                                                                                      ? 'bg-indigo-600 text-white shadow-md scale-[1.02]'
+                                                                                      : saved
+                                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                                        : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:shadow-sm'
+                                                                            }`}
+                                                                    >
+                                                                        {displayName}
+                                                                        {leaveRecord ? ' 🏖️' : saved ? ' ✅' : ''}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {poolVisibleEmployees.length === 0 && (
+                                                                <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white/80 p-4 text-center text-xs text-slate-500">
+                                                                    {laborAssignedEmpIds.size > 0 && !laborSearch.trim()
+                                                                        ? 'จัดคนในกลุ่มนี้ลงกล่องงานครบแล้ว'
+                                                                        : 'ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา'}
+                                                                    {laborSearch.trim() && (
                                                                         <button
                                                                             type="button"
-                                                                            title="ลบงานนี้"
-                                                                            onClick={() => {
-                                                                                setGeneralSubJobs(prev =>
-                                                                                    prev.filter(row => row.id !== job.id)
-                                                                                );
-                                                                                setWorkAssignments(prev => {
-                                                                                    const u = { ...prev };
-                                                                                    delete u[bucketId];
-                                                                                    return u;
-                                                                                });
-                                                                            }}
-                                                                            className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
+                                                                            onClick={() => setLaborSearch('')}
+                                                                            className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                                                                         >
-                                                                            ×
+                                                                            ล้างคำค้น
                                                                         </button>
                                                                     )}
                                                                 </div>
-                                                                <div
-                                                                    onDragOver={e => e.preventDefault()}
-                                                                    onDrop={async e => {
-                                                                        e.preventDefault();
-                                                                        if (!dragEmployee) return;
-                                                                        const emp = employees.find(x => x.id === dragEmployee);
-                                                                        const needWage =
-                                                                            emp &&
-                                                                            (emp.baseWage == null || emp.baseWage === 0) &&
-                                                                            ensureEmployeeWage;
-                                                                        if (needWage) {
-                                                                            try {
-                                                                                await ensureEmployeeWage(emp);
-                                                                            } catch {
-                                                                                setDragEmployee(null);
-                                                                                return;
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200/80 bg-white/60 p-2.5 sm:p-3">
+                                                    <p className="text-base font-extrabold text-[#0D47A1]">กล่องงาน</p>
+                                                    <p className="text-xs font-medium leading-snug text-slate-500">
+                                                        เลือกพนักงานด้าน{!isTouchLayout ? 'ซ้าย' : 'บน'} → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง
+                                                    </p>
+                                                    {laborFixedCanvasCategories.length > 0 && (
+                                                        <>
+                                                            <p className="mt-3 text-sm font-bold text-slate-600">
+                                                                ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)
+                                                            </p>
+                                                            <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
+                                                                {laborFixedCanvasCategories.map(cat => {
+                                                                    const assigned = workAssignments[cat.id] || [];
+                                                                    const expanded =
+                                                                        laborBucketExpanded[cat.id] ?? assigned.length > 0;
+                                                                    return (
+                                                                        <LaborCanvasBucketCard
+                                                                            key={cat.id}
+                                                                            cat={cat}
+                                                                            assigned={assigned}
+                                                                            expanded={expanded}
+                                                                            touchUI={touchUI}
+                                                                            dragActive={dragEmployee !== null}
+                                                                            selectedCount={selectedEmps.length}
+                                                                            employees={employees}
+                                                                            halfDayEmpIds={halfDayEmpIds}
+                                                                            onToggleExpanded={() =>
+                                                                                setLaborBucketExpanded(prev => ({
+                                                                                    ...prev,
+                                                                                    [cat.id]: !expanded,
+                                                                                }))
                                                                             }
-                                                                        }
-                                                                        setWorkAssignments(prev => {
-                                                                            const u = { ...prev };
-                                                                            Object.keys(u).forEach(k => {
-                                                                                u[k] = (u[k] || []).filter(id => id !== dragEmployee);
-                                                                            });
-                                                                            u[bucketId] = [...(u[bucketId] || []), dragEmployee];
-                                                                            return u;
-                                                                        });
-                                                                        setDragEmployee(null);
+                                                                            onDropEmployee={empId =>
+                                                                                void assignEmployeesToLaborBucket(cat.id, [empId])
+                                                                            }
+                                                                            onRemoveEmployee={empId =>
+                                                                                removeEmployeeFromLaborBucket(cat.id, empId)
+                                                                            }
+                                                                            onToggleHalfDay={eid =>
+                                                                                setHalfDayEmpIds(prev => {
+                                                                                    const n = new Set(prev);
+                                                                                    if (n.has(eid)) n.delete(eid);
+                                                                                    else n.add(eid);
+                                                                                    return n;
+                                                                                })
+                                                                            }
+                                                                            onMovePickedHere={() =>
+                                                                                void assignEmployeesToLaborBucket(cat.id, selectedEmps)
+                                                                            }
+                                                                            onDragStartEmployee={id => setDragEmployee(id)}
+                                                                        />
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                    {laborEmployeeBucket === 'generalLabor' && (
+                                                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
+                                                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                                <span className="text-sm font-bold text-slate-700">งานทั่วไป (ชื่องาน)</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const id = newGeneralSubJobId();
+                                                                        setGeneralSubJobs(prev => [...prev, { id, title: '' }]);
+                                                                        setWorkAssignments(prev => ({
+                                                                            ...prev,
+                                                                            [generalSubJobAssignmentKey(id)]:
+                                                                                prev[generalSubJobAssignmentKey(id)] || [],
+                                                                        }));
                                                                     }}
-                                                                    className={`rounded-xl border-2 border-dashed transition-all p-2.5 ${touchUI ? 'min-h-[96px]' : 'min-h-[76px]'} ${generalCat.bgLight} ${dragEmployee ? 'border-indigo-400 bg-indigo-50/30' : ''}`}
+                                                                    className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
                                                                 >
-                                                                    <div className="mb-1.5">
-                                                                        <span
-                                                                            className={`block w-full rounded-lg px-2 py-1 text-[11px] font-medium leading-snug text-white sm:text-xs ${generalCat.color}`}
-                                                                            title={displayLabel}
-                                                                        >
-                                                                            <span className="block break-words">{displayLabel}</span>
-                                                                        </span>
-                                                                        <div className="mt-1.5 flex items-center justify-end gap-2">
-                                                                            <span className="text-[11px] font-medium text-slate-400">
-                                                                                {assigned.length} คน
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {assigned.map(eid => {
-                                                                            const emp = employees.find(e => e.id === eid);
-                                                                            const isHalf = halfDayEmpIds.has(eid);
-                                                                            return emp ? (
-                                                                                <span
-                                                                                    key={eid}
-                                                                                    className={`flex items-center gap-1 rounded-lg border bg-white font-semibold ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}
-                                                                                >
-                                                                                    {getEmployeeDisplayName(emp)}
+                                                                    + เพิ่มงาน
+                                                                </button>
+                                                            </div>
+                                                            <p className="mb-2 text-[11px] text-slate-500">
+                                                                แยกหลายงานได้ — ลากพนักงานลงแต่ละกล่อง
+                                                            </p>
+                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                                {generalSubJobs.map(job => {
+                                                                    const bucketId = generalSubJobAssignmentKey(job.id);
+                                                                    const assigned = workAssignments[bucketId] || [];
+                                                                    const generalBase = DEFAULT_WORK_CATEGORIES.find(
+                                                                        c => c.id === 'generalWork'
+                                                                    )!;
+                                                                    const displayTitle = job.title.trim() || 'งานทั่วไป';
+                                                                    const cat: LaborCanvasCategoryDef = {
+                                                                        id: bucketId,
+                                                                        label: displayTitle,
+                                                                        shortTitle:
+                                                                            displayTitle.length > 28
+                                                                                ? `${displayTitle.slice(0, 28)}…`
+                                                                                : displayTitle,
+                                                                        color: generalBase.color,
+                                                                        bgLight: generalBase.bgLight,
+                                                                        accent: generalBase.accent,
+                                                                    };
+                                                                    const expanded =
+                                                                        laborBucketExpanded[bucketId] ?? assigned.length > 0;
+                                                                    return (
+                                                                        <div key={job.id} className="space-y-1.5">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={job.title}
+                                                                                    onChange={e =>
+                                                                                        setGeneralSubJobs(prev =>
+                                                                                            prev.map(row =>
+                                                                                                row.id === job.id
+                                                                                                    ? { ...row, title: e.target.value }
+                                                                                                    : row
+                                                                                            )
+                                                                                        )
+                                                                                    }
+                                                                                    placeholder="ชื่องาน เช่น ทำรั้วสแสลม"
+                                                                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                                />
+                                                                                {generalSubJobs.length > 1 && (
                                                                                     <button
                                                                                         type="button"
-                                                                                        onClick={ev => {
-                                                                                            ev.stopPropagation();
-                                                                                            setHalfDayEmpIds(prev => {
-                                                                                                const n = new Set(prev);
-                                                                                                if (n.has(eid)) n.delete(eid);
-                                                                                                else n.add(eid);
-                                                                                                return n;
+                                                                                        title="ลบงานนี้"
+                                                                                        onClick={() => {
+                                                                                            setGeneralSubJobs(prev =>
+                                                                                                prev.filter(row => row.id !== job.id)
+                                                                                            );
+                                                                                            setWorkAssignments(prev => {
+                                                                                                const u = { ...prev };
+                                                                                                delete u[bucketId];
+                                                                                                return u;
                                                                                             });
                                                                                         }}
-                                                                                        className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}
-                                                                                        title={
-                                                                                            isHalf
-                                                                                                ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน'
-                                                                                                : 'กดเพื่อกำหนดมาครึ่งวัน'
-                                                                                        }
-                                                                                    >
-                                                                                        ½
-                                                                                    </button>
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            setWorkAssignments(prev => ({
-                                                                                                ...prev,
-                                                                                                [bucketId]: (prev[bucketId] || []).filter(
-                                                                                                    id => id !== eid
-                                                                                                ),
-                                                                                            }))
-                                                                                        }
-                                                                                        className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'ml-0.5 text-base leading-none'}`}
+                                                                                        className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
                                                                                     >
                                                                                         ×
                                                                                     </button>
-                                                                                </span>
-                                                                            ) : null;
-                                                                        })}
-                                                                        {assigned.length === 0 && (
-                                                                            <span className="text-[11px] text-slate-400 italic">
-                                                                                ลากหรือย้ายคนมาวาง...
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    {selectedEmps.length > 0 && (
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                for (const id of selectedEmps) {
-                                                                                    const emp = employees.find(x => x.id === id);
-                                                                                    if (
-                                                                                        emp &&
-                                                                                        (emp.baseWage == null || emp.baseWage === 0) &&
-                                                                                        ensureEmployeeWage
-                                                                                    ) {
-                                                                                        try {
-                                                                                            await ensureEmployeeWage(emp);
-                                                                                        } catch {
-                                                                                            return;
-                                                                                        }
-                                                                                    }
+                                                                                )}
+                                                                            </div>
+                                                                            <LaborCanvasBucketCard
+                                                                                cat={cat}
+                                                                                assigned={assigned}
+                                                                                expanded={expanded}
+                                                                                touchUI={touchUI}
+                                                                                dragActive={dragEmployee !== null}
+                                                                                selectedCount={selectedEmps.length}
+                                                                                employees={employees}
+                                                                                halfDayEmpIds={halfDayEmpIds}
+                                                                                onToggleExpanded={() =>
+                                                                                    setLaborBucketExpanded(prev => ({
+                                                                                        ...prev,
+                                                                                        [bucketId]: !expanded,
+                                                                                    }))
                                                                                 }
-                                                                                setWorkAssignments(prev => {
-                                                                                    const u = { ...prev };
-                                                                                    selectedEmps.forEach(id => {
-                                                                                        Object.keys(u).forEach(k => {
-                                                                                            u[k] = (u[k] || []).filter(eid => eid !== id);
-                                                                                        });
-                                                                                    });
-                                                                                    u[bucketId] = [...(u[bucketId] || []), ...selectedEmps];
-                                                                                    return u;
-                                                                                });
-                                                                                setSelectedEmps([]);
-                                                                            }}
-                                                                            className={`mt-1.5 w-full rounded-lg bg-indigo-100 font-bold text-indigo-700 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}
-                                                                        >
-                                                                            ⬇️ ย้าย {selectedEmps.length} คน มาที่นี่
-                                                                        </button>
-                                                                    )}
-                                                                </div>
+                                                                                onDropEmployee={empId =>
+                                                                                    void assignEmployeesToLaborBucket(bucketId, [empId])
+                                                                                }
+                                                                                onRemoveEmployee={empId =>
+                                                                                    removeEmployeeFromLaborBucket(bucketId, empId)
+                                                                                }
+                                                                                onToggleHalfDay={eid =>
+                                                                                    setHalfDayEmpIds(prev => {
+                                                                                        const n = new Set(prev);
+                                                                                        if (n.has(eid)) n.delete(eid);
+                                                                                        else n.add(eid);
+                                                                                        return n;
+                                                                                    })
+                                                                                }
+                                                                                onMovePickedHere={() =>
+                                                                                    void assignEmployeesToLaborBucket(bucketId, selectedEmps)
+                                                                                }
+                                                                                onDragStartEmployee={id => setDragEmployee(id)}
+                                                                            />
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
-                                                        );
-                                                    })}
+                                                        </div>
+                                                    )}
+                                                    <div
+                                                        className={`mt-4 flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-center text-sm font-extrabold ${
+                                                            laborAssignedEmpIds.size > 0
+                                                                ? 'border-green-300 bg-gradient-to-r from-green-50 to-green-100 text-green-900'
+                                                                : 'border-slate-300 bg-gradient-to-r from-slate-100 to-slate-200 text-slate-600'
+                                                        }`}
+                                                    >
+                                                        <Users size={20} className="shrink-0" />
+                                                        {laborAssignedEmpIds.size > 0
+                                                            ? `จัดลงงานแล้ว ${laborAssignedEmpIds.size} คน`
+                                                            : 'ยังไม่มีคนในกล่องงาน — เลือกพนักงานจากรายชื่อ'}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
                                                 for (const job of generalSubJobs) {
@@ -4837,17 +4558,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 )}
 
                                 <Button
-                                    onClick={() => {
-                                        clearWizardDraftForDate(normalizeDate(date));
-                                        setDraftOffer(null);
-                                        setAutosaveState('idle');
-                                        setAutosaveSavedAt(null);
-                                        setAutosaveErrorReason('none');
-                                        if (typeof sessionStorage !== 'undefined') {
-                                            sessionStorage.removeItem(`cm_draft_dismiss_${normalizeDate(date)}`);
-                                        }
-                                        setStep(0);
-                                    }}
+                                    onClick={() => setStep(0)}
                                     className={`mx-auto mt-auto w-full px-8 sm:w-auto ${mobileShell ? 'min-h-[52px] text-base font-bold' : ''}`}
                                 >
                                     {mobileShell ? 'เลือกวันใหม่' : 'เสร็จสิ้น / เริ่มบันทึกวันอื่น'}

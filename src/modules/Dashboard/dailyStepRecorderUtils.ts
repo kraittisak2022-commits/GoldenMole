@@ -201,6 +201,88 @@ export const wizardMonetaryAmount = (t: Transaction, employees?: Employee[]): nu
 export const sumWizardDailySpend = (txs: Transaction[], employees?: Employee[]): number =>
     txs.filter(countsTowardWizardDailySpend).reduce((s, t) => s + wizardMonetaryAmount(t, employees), 0);
 
+export const GENERAL_WORK_ASSIGNMENT_PREFIX = 'general:';
+
+/** คีย์ canvas ค่าแรงบนเว็บ (สอดคล้องขั้นล้างทราย wash1/wash2) */
+export const WEB_LABOR_CANVAS_CATEGORY_IDS = new Set([
+    'wash1',
+    'wash2',
+    'washHome',
+    'pierWatch',
+    'nightShift',
+    'nightPatrol',
+    'digHaul',
+    'generalWork',
+]);
+
+/**
+ * แปลงคีย์จากแอปมือถือ / ข้อมูลเก่า → คีย์มาตรฐานบนเว็บ (สอดคล้อง `_normalizeLaborCanvasKey` ใน Flutter)
+ */
+export const normalizeLaborCanvasKey = (key: string): string => {
+    const k = String(key || '').trim();
+    if (!k) return 'generalWork';
+    if (k.startsWith(GENERAL_WORK_ASSIGNMENT_PREFIX)) return k;
+    if (['wash_home', 'wash_yard_house', 'sift_home', 'washHome'].includes(k)) return 'washHome';
+    switch (k) {
+        case 'wash1':
+        case 'wash_old':
+            return 'wash1';
+        case 'wash2':
+        case 'wash_new':
+            return 'wash2';
+        case 'pierWatch':
+        case 'sand_watch':
+            return 'pierWatch';
+        case 'nightShift':
+        case 'night_shift':
+            return 'nightShift';
+        case 'nightPatrol':
+        case 'night_patrol':
+            return 'nightPatrol';
+        case 'digHaul':
+        case 'dig_haul':
+        case 'excavator_control':
+            return 'digHaul';
+        case 'generalWork':
+        case 'general':
+            return 'generalWork';
+        default:
+            if (WEB_LABOR_CANVAS_CATEGORY_IDS.has(k)) return k;
+            return 'generalWork';
+    }
+};
+
+/** รวม workAssignments จาก DB/มือถือ — คีย์ล้างที่บ้านไม่ถูกยุบเข้างานทั่วไป */
+export const mergeLaborCanvasAssignments = (
+    raw: Record<string, string[]> | undefined | null,
+): Record<string, string[]> => {
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, string[]> = {};
+    const pushUnique = (key: string, ids: string[]) => {
+        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
+        if (list.length === 0) return;
+        if (!out[key]) out[key] = [];
+        const seen = new Set(out[key]);
+        for (const id of list) {
+            if (!seen.has(id)) {
+                seen.add(id);
+                out[key].push(id);
+            }
+        }
+    };
+    for (const [k, ids] of Object.entries(raw)) {
+        const canon = normalizeLaborCanvasKey(k);
+        if (canon.startsWith(GENERAL_WORK_ASSIGNMENT_PREFIX)) {
+            pushUnique(canon, ids);
+        } else if (WEB_LABOR_CANVAS_CATEGORY_IDS.has(canon)) {
+            pushUnique(canon, ids);
+        } else {
+            pushUnique('generalWork', ids);
+        }
+    }
+    return out;
+};
+
 export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems: Transaction[]): T | null => {
     if (items.length === 0) return null;
     const lastIndexById = new Map<string, number>();

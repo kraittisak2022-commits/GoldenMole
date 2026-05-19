@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     computeSandDrumStockSummary,
+    mergeLaborCanvasAssignments,
+    normalizeLaborCanvasKey,
     persistedSandHomeDrums,
     sumWizardDailySpend,
     countsTowardWizardDailySpend,
@@ -331,5 +333,24 @@ describe('computeSandDrumStockSummary', () => {
         expect(s6.cumulativeBeforeToday).toBe(42);
         expect(s6.todayHome).toBe(20);
         expect(s6.cumulativeRemaining).toBe(48);
+    });
+});
+
+describe('normalizeLaborCanvasKey', () => {
+    it('maps Android keys to web canvas ids', () => {
+        expect(normalizeLaborCanvasKey('wash_old')).toBe('wash1');
+        expect(normalizeLaborCanvasKey('wash_new')).toBe('wash2');
+        expect(normalizeLaborCanvasKey('sand_watch')).toBe('pierWatch');
+        expect(normalizeLaborCanvasKey('night_shift')).toBe('nightShift');
+        expect(normalizeLaborCanvasKey('night_patrol')).toBe('nightPatrol');
+        expect(normalizeLaborCanvasKey('dig_haul')).toBe('digHaul');
+    });
+
+    it('keeps washHome separate from general work', () => {
+        expect(normalizeLaborCanvasKey('wash_home')).toBe('washHome');
+        expect(normalizeLaborCanvasKey('wash_yard_house')).toBe('washHome');
+        expect(
+            mergeLaborCanvasAssignments({ wash_home: ['e1'], generalWork: ['e2'] })
+        ).toEqual({ washHome: ['e1'], generalWork: ['e2'] });
     });
 });
