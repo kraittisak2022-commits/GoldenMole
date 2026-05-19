@@ -19,6 +19,7 @@ import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
@@ -79,46 +80,7 @@ void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
   row.cubicPerTripController.text = s;
 }
 
-/// รวมคีย์งานที่บ้านจากรูปแบบเก่า (หลายกล่องบนมือถือ) เป็น `washHome` ให้สอดคล้องเว็บ
-String _normalizeLaborWashHomeKey(String key) {
-  switch (key) {
-    case 'wash_home':
-    case 'wash_yard_house':
-    case 'sift_home':
-    case 'washHome':
-      return 'washHome';
-    default:
-      return key;
-  }
-}
-
-/// รวมคีย์ canvas เก่าเข้ากล่องปัจจุบัน (เว็บ wash1/wash2, กล่องที่ตัดออก → งานทั่วไป)
-String _normalizeLaborCanvasKey(String key) {
-  final homeCanon = _normalizeLaborWashHomeKey(key);
-  if (homeCanon == 'washHome') return 'washHome';
-  switch (key) {
-    case 'wash1':
-      return 'wash_old';
-    case 'wash2':
-      return 'wash_new';
-    case 'excavator_control':
-      return 'dig_haul';
-    case 'wash_yard':
-    case 'new_machine':
-    case 'new_house':
-    case 'filter_a':
-    case 'filter_b':
-    case 'house_team':
-      return 'general';
-    case 'generalWork':
-      return 'general';
-    default:
-      if (key.startsWith('general:')) return key;
-      return 'general';
-  }
-}
-
-const String _kGeneralWorkPrefix = 'general:';
+const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
 const Color _kGeneralWorkColor = Color(0xFF5F6AD8);
 
 String _newGeneralSubJobId() =>
@@ -126,10 +88,7 @@ String _newGeneralSubJobId() =>
 
 String _generalSubJobAssignmentKey(String subId) => '$_kGeneralWorkPrefix$subId';
 
-bool _isGeneralAssignmentKey(String key) =>
-    key == 'general' ||
-    key == 'generalWork' ||
-    key.startsWith(_kGeneralWorkPrefix);
+bool _isGeneralAssignmentKey(String key) => isGeneralLaborAssignmentKey(key);
 
 /// คีย์ yyyy-MM-dd — สอดคล้องกับ `normalizeDate` บนเว็บ (ตัด suffix หลังวันที่)
 String _normalizeSandDayKey(String raw) {
@@ -777,8 +736,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _advanceAccountController.clear();
       _advanceAmountPerPersonController.clear();
     } else if (_isOtMode) {
-      _resetActiveOtGroup();
-      _otDescController.clear();
+      if (!_saving) {
+        _resetActiveOtGroup();
+        _otDescController.clear();
+      }
     } else if (_isDailyEventMode) {
       _dailyEventDescController.clear();
       _dailyEventType = 'info';
@@ -1628,7 +1589,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  void _releaseKeyboardFocus() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _showSavingPopup() {
+    _releaseKeyboardFocus();
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -1664,12 +1630,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _dismissSavingPopup() {
     if (!mounted) return;
+    _releaseKeyboardFocus();
     final nav = Navigator.of(context, rootNavigator: true);
     if (nav.canPop()) nav.pop();
   }
 
   Future<void> _showSuccessPopupAndPopToHome(String message) async {
     if (!mounted) return;
+    _releaseKeyboardFocus();
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -1724,6 +1692,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       action: saveActionLabel,
       button: saveButtonLabel,
     );
+    _releaseKeyboardFocus();
     setState(() => _saving = true);
     var savingDialogOpen = false;
     _activeSaveErrorContext = saveCtx;
@@ -1735,6 +1704,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       } else {
         _activeSignatureNote = null;
       }
+      if (!mounted) return;
+      _releaseKeyboardFocus();
       _showSavingPopup();
       savingDialogOpen = true;
       await body();
@@ -1744,14 +1715,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
       if (stayOnPage) {
-        if (onStayOnPageCleared != null && mounted) {
+        _releaseKeyboardFocus();
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        if (onStayOnPageCleared != null) {
           setState(onStayOnPageCleared);
         }
-        ScaffoldMessenger.of(context).showSnackBar(
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text(successMessage, style: GoogleFonts.kanit())),
         );
         await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
       } else {
+        _releaseKeyboardFocus();
         await _showSuccessPopupAndPopToHome(successMessage);
       }
     } catch (error) {
@@ -2731,6 +2708,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveOtEntry() async {
+    final g = _activeOtGroup;
+    final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
+    final otEmpIds = g.employeeIds.toList();
+    final otDesc = _otDescController.text.trim();
+    final otPersistedId = g.persistedId;
     await _runSaveWithPopups(
       successMessage: 'บันทึกกลุ่ม OT สำเร็จ — กรอกกลุ่มถัดไปได้',
       saveActionLabel: 'บันทึกการทำงานล่วงเวลา (OT)',
@@ -2739,13 +2721,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       stayOnPage: true,
       onStayOnPageCleared: _resetActiveOtGroup,
       body: () async {
-        final g = _activeOtGroup;
-        final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
-        final ids = g.employeeIds.toList();
-        if (ids.isEmpty) {
+        if (otEmpIds.isEmpty) {
           _failSave('กรุณาเลือกพนักงาน');
         }
-        final blockedOt = ids.where((id) {
+        final blockedOt = otEmpIds.where((id) {
           final e = _employeesById[id];
           return e != null && isExcludedFromOtEmployeePicker(e);
         }).toList();
@@ -2761,10 +2740,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-        final desc = _otDescController.text.trim();
         final groupNum = _otSavedGroupCountToday + 1;
         final baseTs = DateTime.now().millisecondsSinceEpoch;
-        final id = g.persistedId ?? '${baseTs}_ot_$groupNum';
+        final id = otPersistedId ?? '${baseTs}_ot_$groupNum';
         await _persist(
           AppTransaction(
             id: id,
@@ -2773,14 +2751,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             category: 'Labor',
             subCategory: 'OT',
             laborStatus: 'OT',
-            employeeIds: ids,
+            employeeIds: otEmpIds,
             amount: 0,
             note: _activeSignatureNote,
             otAmount: 0,
             otHours: hours,
-            otDescription: desc,
+            otDescription: otDesc,
             description: _appendRecorder(
-              'OT $desc (${hours.toStringAsFixed(1)}ชม.) กลุ่มที่ $groupNum (${ids.length} คน)',
+              'OT $otDesc (${hours.toStringAsFixed(1)}ชม.) กลุ่มที่ $groupNum (${otEmpIds.length} คน)',
             ),
           ),
         );
@@ -7922,10 +7900,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             .where((e) => e.isNotEmpty)
             .toList();
         if (list.isEmpty) return;
-        final canon = _normalizeLaborCanvasKey(key);
+        final canon = normalizeLaborCanvasKey(key);
         if (_isGeneralAssignmentKey(canon) ||
             _isGeneralAssignmentKey(key) ||
-            !_laborAssignments.containsKey(canon)) {
+            !isFlutterLaborCanvasCategoryKey(canon)) {
           final bucketKey = key.startsWith(_kGeneralWorkPrefix)
               ? key
               : (canon.startsWith(_kGeneralWorkPrefix) ? canon : canon);
@@ -9655,7 +9633,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'ไม่แสดงตำแหน่ง: คนขับรถ, เฝ้ากลางคืน, รับจ้างรายวัน',
+                  'ไม่แสดงเมื่อทุกตำแหน่งเป็นคนขับรถ / เฝ้ากลางคืน / รับจ้างรายวัน — หลายตำแหน่งยังแสดงถ้ามีตำแหน่งอื่น',
                   style: GoogleFonts.kanit(
                     fontSize: 12,
                     color: const Color(0xFF64748B),
@@ -9759,7 +9737,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
-              onPressed: _saving ? null : _saveQuickEntry,
+              onPressed: _saving
+                  ? null
+                  : () {
+                      _releaseKeyboardFocus();
+                      _saveQuickEntry();
+                    },
               icon: const Icon(Icons.save_outlined),
               label: Text(
                 'บันทึกกลุ่มนี้',

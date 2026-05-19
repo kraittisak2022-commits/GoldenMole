@@ -61,10 +61,23 @@ void main() {
     );
   });
 
-  test('OT still shows night watch for advance picker only', () {
+  test('OT shows employee when any position is not blocked', () {
     final e = _emp(positions: ['ร่อนทราย', 'เฝ้ากลางคืน']);
     expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
+    expect(isExcludedFromOtEmployeePicker(e), isFalse);
+    expect(employeeEligibleForOtPicker(e), isTrue);
+  });
+
+  test('OT shows driver when also has eligible position', () {
+    final e = _emp(positions: ['คนขับรถ', 'ร่อนทราย']);
+    expect(isExcludedFromOtEmployeePicker(e), isFalse);
+    expect(employeeEligibleForOtPicker(e), isTrue);
+  });
+
+  test('OT hides only when every position is blocked', () {
+    final e = _emp(positions: ['คนขับรถ', 'รับจ้างรายวัน']);
     expect(isExcludedFromOtEmployeePicker(e), isTrue);
+    expect(employeeEligibleForOtPicker(e), isFalse);
   });
 
   test('leave excludes driver and daily hire like advance', () {

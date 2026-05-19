@@ -69,6 +69,23 @@ const DEFAULT_ADMINS: AdminUser[] = [
 ];
 
 type ClientSurface = 'select' | 'desktop' | 'mobile';
+
+/** โหมดที่เลือกแล้ว (มือถือ/เดสก์ท็อป) — ใช้ข้ามรีเฟรช; 'select' = ยังไม่เคยเลือก */
+const resolveClientSurfaceFromAdmin = (admin: AdminUser | null | undefined): ClientSurface => {
+    const s = admin?.lastClientSurface;
+    if (s === 'mobile' || s === 'desktop') return s;
+    return 'select';
+};
+
+const readInitialClientSurfaceFromCache = (): ClientSurface => {
+    const cache = readBootstrapCache();
+    if (!cache?.admins?.length) return 'select';
+    const active = cache.admins
+        .filter(a => a.sessionActive)
+        .sort((a, b) => String(b.lastLogin || '').localeCompare(String(a.lastLogin || '')))[0];
+    return resolveClientSurfaceFromAdmin(active);
+};
+
 const MOBILE_PIN_KEY = 'cm_mobile_pin_v1';
 const MOBILE_PIN_LOCK_MS = 90 * 1000;
 const MOBILE_PIN_MAX_FAIL = 5;
@@ -262,8 +279,8 @@ function App() {
     }, []);
     // --- Auth State ---
     const [isLoggedIn, setIsLoggedIn] = useState(false);
-    /** หลังล็อกอิน: เลือกโหมดมือถือหรือเว็บปกติ */
-    const [clientSurface, setClientSurface] = useState<ClientSurface>('select');
+    /** หลังล็อกอิน: เลือกโหมดมือถือหรือเว็บปกติ (ครั้งแรกเท่านั้น ถ้ายังไม่เคยเลือก) */
+    const [clientSurface, setClientSurface] = useState<ClientSurface>(readInitialClientSurfaceFromCache);
     const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
@@ -620,8 +637,7 @@ function App() {
         );
         setCurrentAdmin(matchedAdmin);
         setIsLoggedIn(true);
-        // หลังล็อกอินให้ผู้ใช้เลือกโหมดก่อนทุกครั้ง
-        setClientSurface('select');
+        setClientSurface(resolveClientSurfaceFromAdmin(matchedAdmin));
         applyUiThemeToApp(matchedAdmin.uiTheme);
     }, [isLoading, admins, applyUiThemeToApp]);
 
@@ -783,11 +799,16 @@ function App() {
     }, []);
 
     const finalizeSuccessfulLogin = useCallback(async (updatedAdmin: AdminUser) => {
-        const loggedInAdmin: AdminUser = { ...updatedAdmin, sessionActive: true, lastClientSurface: 'select' };
+        const restoredSurface = resolveClientSurfaceFromAdmin(updatedAdmin);
+        const loggedInAdmin: AdminUser = {
+            ...updatedAdmin,
+            sessionActive: true,
+            lastClientSurface: restoredSurface === 'select' ? 'select' : restoredSurface,
+        };
         const otherActiveAdmins = admins
             .filter(a => a.id !== loggedInAdmin.id && a.sessionActive)
             .map(a => ({ ...a, sessionActive: false as const }));
-        setClientSurface('select');
+        setClientSurface(restoredSurface);
         setAdmins(prev => prev.map(a => {
             if (a.id === loggedInAdmin.id) return loggedInAdmin;
             if (a.sessionActive) return { ...a, sessionActive: false };
@@ -852,7 +873,7 @@ function App() {
         const admin = currentAdminRef.current;
         if (admin) {
             addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
-            void persistAdminSession(admin, false, 'select');
+            void persistAdminSession(admin, false);
         }
         void supabase.auth.signOut();
         setIsLoggedIn(false);
@@ -899,7 +920,7 @@ function App() {
                 setAdminLogs(prev => [log, ...prev]);
                 db.saveAdminLog(log);
             }
-            if (admin) void persistAdminSession(admin, false, 'select');
+            if (admin) void persistAdminSession(admin, false);
             setIsLoggedIn(false);
             setCurrentAdmin(null);
             currentAdminRef.current = null;
