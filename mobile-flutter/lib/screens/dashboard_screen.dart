@@ -942,10 +942,19 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
             ),
             builder: (context, constraints) {
               final visibleModules = _kDailyModules;
-              const cross = 3;
               const gap = 10.0;
               const sideInset = 2.0;
-              final mqW = MediaQuery.sizeOf(context).width;
+              final mq = MediaQuery.sizeOf(context);
+              final mqW = mq.width;
+              final mqH = mq.height;
+              final isLandscape = mqW > mqH;
+              final cross = isLandscape
+                  ? (mqW >= 900
+                        ? 5
+                        : mqW >= 640
+                        ? 4
+                        : 3)
+                  : 3;
               final safeMq =
                   (mqW.isFinite && mqW > 0) ? mqW : 360.0;
               final rawW = constraints.maxWidth;
@@ -969,18 +978,24 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (usableWidth - (gap * (cross - 1))) / cross;
               final fitCellHeight =
                   (availH - (gap * (rows - 1))) / rows;
-              final preferredCellHeight = (cellWidth / 0.76).clamp(
-                150.0,
-                220.0,
-              );
+              // แนวตั้ง: การ์ดจัตุรัส | แนวนอน: สี่เหลี่ยมผืนผ้าเต็มความสูงที่เหลือ
+              final preferredCellHeight = isLandscape
+                  ? fitCellHeight.clamp(64.0, 108.0)
+                  : cellWidth.clamp(96.0, 200.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
-              final menuScrolls = totalNeeded > availH + 0.5;
-              final cellHeight = menuScrolls
-                  ? preferredCellHeight
-                  : (preferredCellHeight > fitCellHeight
-                      ? fitCellHeight
-                      : preferredCellHeight);
+              final menuScrolls = isLandscape
+                  ? totalNeeded > availH + 0.5
+                  : totalNeeded > availH + 0.5;
+              final cellHeight = isLandscape
+                  ? (menuScrolls
+                        ? preferredCellHeight
+                        : fitCellHeight.clamp(64.0, 120.0))
+                  : (menuScrolls
+                        ? preferredCellHeight
+                        : (preferredCellHeight > fitCellHeight
+                              ? fitCellHeight
+                              : preferredCellHeight));
               final contentHeight =
                   (cellHeight * rows) + (gap * (rows - 1));
               final topInset = menuScrolls

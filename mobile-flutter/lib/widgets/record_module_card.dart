@@ -4,24 +4,11 @@ import 'package:flutter/material.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 
-/// ไอคอน outline: โทน [accent] สดขึ้นเล็กน้อย ผสมหมึกพอให้อ่านบนพื้นขาว
-Color _readableMenuIconColor(Color accent) {
-  const ink = Color(0xFF1C2834);
-  final l = accent.computeLuminance();
-  final double mix;
-  if (l >= 0.72) {
-    mix = 0.36;
-  } else if (l >= 0.5) {
-    mix = 0.24;
-  } else if (l >= 0.32) {
-    mix = 0.14;
-  } else {
-    mix = 0.05;
-  }
-  return Color.lerp(accent, ink, mix)!;
+Color _iconTint(Color accent) {
+  return Color.lerp(accent, const Color(0xFF334155), 0.28)!;
 }
 
-/// การ์ดเมนูบันทึกประจำวัน — โทนและโครงสร้างอ้างอิงจาก UI บันทึกประจำวัน (แท็ก, หัวข้อ, ไอคอน, สถานะด้านล่าง)
+/// การ์ดเมนูบันทึกประจำวัน — จัตุรัสในแนวตั้ง / สี่เหลี่ยมผืนผ้าในแนวนอน
 class RecordModuleCard extends StatefulWidget {
   const RecordModuleCard({
     super.key,
@@ -31,7 +18,6 @@ class RecordModuleCard extends StatefulWidget {
     required this.onTap,
     this.tileColor = const Color(0xFF4FC3F7),
     this.showLightStyle = false,
-    /// แทนที่ข้อความ «บันทึกครบแล้ว» เมื่อสถานะครบ (เช่น เมนูลางาน → ลา N คน)
     this.completeStatusLabelOverride,
   });
 
@@ -49,14 +35,12 @@ class RecordModuleCard extends StatefulWidget {
 
 class _RecordModuleCardState extends State<RecordModuleCard> {
   bool _pressed = false;
-  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
         DevicePerf.isConstrainedDevice;
-    final titleColor = const Color(0xFF1A2A3C);
     final status = widget.fillStatus;
     final recorded = status == DailyModuleFillStatus.complete;
     final partial = status == DailyModuleFillStatus.incomplete;
@@ -65,266 +49,207 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final statusLabel = recorded
         ? (overrideComplete != null && overrideComplete.isNotEmpty
             ? overrideComplete
-            : 'บันทึกครบแล้ว')
+            : 'ครบแล้ว')
         : partial
-        ? 'กรอกข้อมูลไม่ครบ'
+        ? 'ยังไม่ครบ'
         : 'แตะเพื่อบันทึก';
 
     final statusColor = recorded
-        ? const Color(0xFF168A45)
+        ? const Color(0xFF15803D)
         : partial
-        ? const Color(0xFFD97706)
-        : const Color(0xFFC73E3E);
-
-    Color badgeBg() {
-      if (recorded) return const Color(0xFF18A352);
-      if (partial) return const Color(0xFFF59E0B);
-      return const Color(0xFFB0BACA);
-    }
-
-    IconData badgeIcon() {
-      if (recorded) return Icons.check_rounded;
-      if (partial) return Icons.more_horiz_rounded;
-      return Icons.remove_rounded;
-    }
+        ? const Color(0xFFB45309)
+        : const Color(0xFF94A3B8);
 
     final accent = widget.tileColor;
-    final isSandWashTitle = widget.title.contains('บันทึกการร่อนทราย');
-    final cardTint = Colors.white;
-    final borderColor = Color.lerp(
-      const Color(0xFFE4EAF2),
-      accent,
-      0.12,
-    )!;
-    final iconBg = Color.lerp(
-      const Color(0xFFF8FAFD),
-      accent,
-      0.22,
-    )!;
-    final iconColor = _readableMenuIconColor(accent);
+    final iconColor = _iconTint(accent);
+    final borderColor = recorded
+        ? const Color(0xFFBBF7D0)
+        : partial
+        ? const Color(0xFFFDE68A)
+        : Color.lerp(const Color(0xFFE8EDF3), accent, 0.2)!;
 
     return LayoutBuilder(
-      builder: (context, cellConstraints) {
-        final cellW = cellConstraints.maxWidth.isFinite &&
-                cellConstraints.maxWidth > 0
-            ? cellConstraints.maxWidth
-            : 104.0;
-        // Column horizontal padding is 8 + 8; keep icon within the grid cell.
-        final iconSide = (cellW - 16).clamp(56.0, 104.0);
-        final iconGlyphSize = (iconSide * 0.556).clamp(36.0, 58.0);
-        final corner = (iconSide * 0.269).clamp(18.0, 28.0);
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : 108.0;
+        final maxH = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : maxW;
+        // ช่องกว้างกว่าสูง = แนวนอน → เติมเต็มช่องเป็นสี่เหลี่ยมผืนผ้า
+        final isLandscapeCell = maxW > maxH * 1.08;
+        final cardW = isLandscapeCell ? maxW : (maxW < maxH ? maxW : maxH);
+        final cardH = isLandscapeCell ? maxH : cardW;
+        final scaleRef = isLandscapeCell
+            ? (maxH < maxW ? maxH : maxW)
+            : cardW;
+        final iconSize = (scaleRef * (isLandscapeCell ? 0.48 : 0.42))
+            .clamp(isLandscapeCell ? 28.0 : 36.0, isLandscapeCell ? 44.0 : 58.0);
+        final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
+        final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
+        final statusSize = (scaleRef * 0.09).clamp(10.0, 12.0);
+        final radius = isLandscapeCell ? 12.0 : 14.0;
+        final textMaxWidth = isLandscapeCell
+            ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)
+            : cardW - (pad * 2);
 
-        final iconSquare = Container(
-          width: iconSide,
-          height: iconSide,
-          decoration: BoxDecoration(
-            color: iconBg,
-            borderRadius: BorderRadius.circular(corner),
-            border: Border.all(
-              color: accent.withValues(alpha: 0.36),
-              width: 1,
-            ),
-            boxShadow: useLiteChrome
-                ? null
-                : [
-                    BoxShadow(
-                      color: const Color(0xFF1A2836).withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-          ),
-          child: Icon(
-            widget.icon,
-            size: iconGlyphSize,
-            color: iconColor,
-          ),
-        );
-
-        final mainPlate = useLiteChrome
-        ? Container(
-            decoration: BoxDecoration(
-              color: cardTint,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: borderColor, width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF1A2836).withValues(alpha: 0.07),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.12),
-                  blurRadius: 14,
-                  spreadRadius: -2,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Center(child: iconSquare),
-              ],
-            ),
-          )
-        : AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              color: cardTint,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: borderColor, width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF1A2836).withValues(
-                    alpha: _hovered ? 0.07 : 0.045,
-                  ),
-                  blurRadius: _hovered ? 6 : 4,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: const Color(0xFF1A2836).withValues(
-                    alpha: _hovered ? 0.14 : 0.09,
-                  ),
-                  blurRadius: _hovered ? 26 : 18,
-                  spreadRadius: -3,
-                  offset: Offset(0, _hovered ? 10 : 7),
-                ),
-                BoxShadow(
-                  color: accent.withValues(
-                    alpha: _hovered ? 0.2 : 0.14,
-                  ),
-                  blurRadius: _hovered ? 28 : 20,
-                  spreadRadius: -6,
-                  offset: Offset(0, _hovered ? 12 : 8),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Center(
-                  child: AnimatedRotation(
-                    turns: _pressed ? -0.014 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: iconSquare,
+        Widget titleBlock() {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: textMaxWidth,
+                child: Text(
+                  widget.title,
+                  textAlign: TextAlign.center,
+                  maxLines: isLandscapeCell ? 2 : 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: titleSize,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1E293B),
+                    height: 1.2,
                   ),
                 ),
-              ],
-            ),
+              ),
+              SizedBox(height: pad * 0.28),
+              SizedBox(
+                width: textMaxWidth,
+                child: Text(
+                  statusLabel,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: statusSize,
+                    fontWeight: FontWeight.w500,
+                    color: statusColor,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ],
           );
-
-    final badge = useLiteChrome
-        ? Container(
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: badgeBg(),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: Icon(
-              badgeIcon(),
-              size: 16,
-              color: Colors.white,
-            ),
-          )
-        : AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: badgeBg(),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: Icon(
-              badgeIcon(),
-              size: 16,
-              color: Colors.white,
-            ),
-          );
-
-    final paddedColumn = Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
-      child: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                mainPlate,
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: badge,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontSize: isSandWashTitle ? 20 : 18,
-              fontWeight: FontWeight.w800,
-              color: titleColor,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            statusLabel,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontSize: 11.8,
-              fontWeight: FontWeight.w600,
-              color: recorded
-                  ? statusColor
-                  : partial
-                  ? statusColor
-                  : const Color(0xFF77859A),
-            ),
-          ),
-        ],
-      ),
-    );
-
-        final ink = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: widget.onTap,
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        borderRadius: BorderRadius.circular(24),
-        child: paddedColumn,
-      ),
-    );
-
-        final scaled = AnimatedScale(
-          scale: _pressed
-              ? 0.96
-              : (useLiteChrome ? 1.0 : (_hovered ? 1.02 : 1)),
-          duration: Duration(milliseconds: useLiteChrome ? 100 : 150),
-          curve: Curves.easeOutCubic,
-          child: ink,
-        );
-
-        if (useLiteChrome) {
-          return scaled;
         }
-        return MouseRegion(
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: scaled,
+
+        Widget centeredContent() {
+          if (isLandscapeCell) {
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: pad * 0.5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    widget.icon,
+                    size: iconSize,
+                    color: iconColor,
+                  ),
+                  SizedBox(width: pad * 0.65),
+                  Flexible(child: titleBlock()),
+                ],
+              ),
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                widget.icon,
+                size: iconSize,
+                color: iconColor,
+              ),
+              SizedBox(height: pad * 0.5),
+              titleBlock(),
+            ],
+          );
+        }
+
+        final shapedCard = SizedBox(
+          width: cardW,
+          height: cardH,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: borderColor, width: 1),
+              boxShadow: useLiteChrome || _pressed
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(child: centeredContent()),
+                Positioned(
+                  top: pad * 0.5,
+                  right: pad * 0.5,
+                  child: _StatusDot(
+                    recorded: recorded,
+                    partial: partial,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        return Align(
+          alignment: Alignment.center,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              onTapDown: (_) => setState(() => _pressed = true),
+              onTapUp: (_) => setState(() => _pressed = false),
+              onTapCancel: () => setState(() => _pressed = false),
+              borderRadius: BorderRadius.circular(radius),
+              child: AnimatedScale(
+                scale: _pressed ? 0.97 : 1,
+                duration: Duration(milliseconds: useLiteChrome ? 80 : 110),
+                curve: Curves.easeOutCubic,
+                child: shapedCard,
+              ),
+            ),
+          ),
         );
       },
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({
+    required this.recorded,
+    required this.partial,
+  });
+
+  final bool recorded;
+  final bool partial;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = recorded
+        ? const Color(0xFF22C55E)
+        : partial
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFFCBD5E1);
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
     );
   }
 }
