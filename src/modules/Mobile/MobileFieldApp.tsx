@@ -57,6 +57,7 @@ interface MobileFieldAppProps {
     onOpenAccount: () => void;
     onSaveTransaction: (t: Transaction) => void;
     onDeleteTransaction: (id: string) => void;
+    onPermanentDeleteTransaction?: (id: string) => void | Promise<void>;
     handleSetTransactions: (updater: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
     ensureEmployeeWage: (emp: Employee) => Promise<number>;
     handleSetSettings: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
@@ -365,6 +366,7 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 transactions={transactions}
                                 onSaveTransaction={onSaveTransaction}
                                 onDeleteTransaction={onDeleteTransaction}
+                                onPermanentDeleteTransaction={onPermanentDeleteTransaction}
                                 ensureEmployeeWage={ensureEmployeeWage}
                                 setSettings={handleSetSettings}
                             />

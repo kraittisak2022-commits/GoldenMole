@@ -17,6 +17,7 @@ import {
     pickLatestByDayOrder,
     persistedSandHomeDrums,
     sumWizardDailySpend,
+    vehicleTripDrumCarOptions,
 } from './dailyStepRecorderUtils';
 
 import {
@@ -52,6 +53,8 @@ interface DailyStepRecorderProps {
     /** คืน false เมื่อผู้ใช้ยกเลิกลายเซ็น / ไม่มีสิทธิ์บันทึก — ให้ผู้เรียก await แล้วไม่รีเซ็ตฟอร์ม */
     onSaveTransaction: (t: Transaction) => void | Promise<boolean | void>;
     onDeleteTransaction?: (id: string) => void;
+    /** ลบถาวรจาก Supabase (ใช้ในแท็บรายงาน — ไม่ซ่อนรายการ) */
+    onPermanentDeleteTransaction?: (id: string) => void | Promise<void>;
     ensureEmployeeWage?: (emp: Employee) => Promise<number>;
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     /** โหมดเว็บมือถือ: ลดรายละเอียด ซ่อนคอลัมน์สรุปขวาและแท็บรายงาน */
@@ -568,7 +571,7 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
-const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
+const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, onPermanentDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
     /** จอสัมผัส / มือถือ: ปุ่มและช่องกดใหญ่ขึ้น */
@@ -582,9 +585,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [date, setDate] = useState(() => normalizeDate(initialDate) || getToday());
     const [viewMode, setViewMode] = useState<'record' | 'report'>('record');
 
-    useEffect(() => {
-        if (mobileShell) setViewMode('record');
-    }, [mobileShell]);
     useEffect(() => {
         const normalized = normalizeDate(initialDate);
         if (!normalized) return;
@@ -1580,6 +1580,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         return Object.entries(byDate).sort(([a], [b]) => b.localeCompare(a));
     }, [transactions, reportStart, reportEnd, dateFilter]);
 
+    const handleReportPermanentDelete = useCallback(
+        async (t: Transaction) => {
+            if (!onPermanentDeleteTransaction) return;
+            const label = [t.category, t.subCategory].filter(Boolean).join(' · ');
+            const detail = String(t.description || '').trim() || '(ไม่มีรายละเอียด)';
+            const ok = await sessionConfirm(
+                `ลบรายการนี้ออกจากฐานข้อมูลถาวร ไม่สามารถกู้คืนได้\n\n${label}\n${detail}`,
+                { title: 'ลบจากฐานข้อมูล' }
+            );
+            if (!ok) return;
+            await onPermanentDeleteTransaction(t.id);
+        },
+        [onPermanentDeleteTransaction, sessionConfirm]
+    );
+
     const formatReportDate = (d: string) =>
         new Date(d + 'T12:00:00').toLocaleDateString('th-TH', {
             weekday: 'long',
@@ -1594,8 +1609,27 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         >
             {/* Header + โหมด บันทึก | รายงาน — โหมดมือถือ: เฉพาะแถบขั้นตอน แตะง่าย */}
             {mobileShell ? (
-                viewMode === 'record' && (
-                    <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200/90 bg-white/95 px-1.5 py-2 shadow-sm backdrop-blur-md md:mb-4 md:px-2 md:py-2.5 [@media(orientation:landscape)_and_(max-height:560px)]:mb-2 [@media(orientation:landscape)_and_(max-height:560px)]:py-1.5 dark:border-white/10 dark:bg-slate-900/95">
+                <div className="sticky top-0 z-10 mb-3 space-y-2 rounded-2xl border border-slate-200/90 bg-white/95 p-2 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/95">
+                    <div className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('record')}
+                            className={`flex flex-1 items-center justify-center gap-2 rounded-lg font-semibold transition-all touch-manipulation min-h-[44px] px-3 text-sm ${viewMode === 'record' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                        >
+                            <ClipboardList size={16} />
+                            บันทึก
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('report')}
+                            className={`flex flex-1 items-center justify-center gap-2 rounded-lg font-semibold transition-all touch-manipulation min-h-[44px] px-3 text-sm ${viewMode === 'report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                        >
+                            <FileText size={16} />
+                            รายงาน
+                        </button>
+                    </div>
+                    {viewMode === 'record' && (
+                    <div className="px-0.5 pb-0.5">
                         <div
                             ref={stepScrollerRef}
                             className="relative overflow-x-auto overscroll-x-contain hide-scrollbar touch-pan-x [-webkit-overflow-scrolling:touch] md:overflow-x-visible"
@@ -1636,7 +1670,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             <p className="mt-1 px-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 md:hidden">ปัดซ้าย/ขวาเพื่อดูขั้นตอนทั้งหมด</p>
                         )}
                     </div>
-                )
+                    )}
+                </div>
             ) : (
                 <div className="mb-3 flex flex-col gap-3 sm:mb-6 sm:gap-4">
                     <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -1693,9 +1728,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 </div>
             )}
 
-            {/* มุมมองรายงาน — บนมือถือ (mobileShell) ใช้เว็บปกติจอใหญ่เท่านั้น เพื่อไม่ให้คอลัมน์แคบเกินไป */}
-            {viewMode === 'report' && !mobileShell && (
-                <div className="space-y-6 animate-fade-in">
+            {/* มุมมองรายงาน — รวมมือถือ/Android (mobileShell) */}
+            {viewMode === 'report' && (
+                <div className={`space-y-6 animate-fade-in ${mobileShell ? 'px-0.5' : ''}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -1888,6 +1923,46 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 </div>
                                             </div>
                                         ) : null}
+                                        {onPermanentDeleteTransaction && txs.length > 0 && (
+                                            <div className="mt-4 border-t border-slate-200 pt-4 dark:border-white/10">
+                                                <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                                    รายการทั้งหมด ({txs.length}) — ลบถาวรจากฐานข้อมูล
+                                                </p>
+                                                <ul className="space-y-2">
+                                                    {txs.map(t => {
+                                                        const label = [t.category, t.subCategory].filter(Boolean).join(' · ');
+                                                        const detail = String(t.description || '').trim() || '(ไม่มีรายละเอียด)';
+                                                        const amountStr =
+                                                            t.amount != null && t.amount !== 0
+                                                                ? `฿${formatDisplayNumber(t.amount)}`
+                                                                : '';
+                                                        return (
+                                                            <li
+                                                                key={t.id}
+                                                                className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.04]"
+                                                            >
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+                                                                    <p className="mt-0.5 truncate text-[11px] text-slate-600 dark:text-slate-300">{detail}</p>
+                                                                    {amountStr && (
+                                                                        <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{amountStr}</p>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void handleReportPermanentDelete(t)}
+                                                                    className="flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs font-semibold text-red-700 touch-manipulation min-h-[44px] dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
+                                                                    aria-label={`ลบถาวร ${label}`}
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                    ลบ
+                                                                </button>
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </div>
+                                        )}
                                     </div>
                                 </Card>
                             );
@@ -3154,7 +3229,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     }));
                                                 }}>
                                                     <option value="">-- เลือกรถ --</option>
-                                                    {settings.cars.map(c => <option key={c}>{c}</option>)}
+                                                    {vehicleTripDrumCarOptions(settings.cars, entry.vehicle).map(c => <option key={c}>{c}</option>)}
                                                 </Select>
                                                 <Select label="คนขับ" value={entry.driver} onChange={(e: any) => updateTripCard(entry.id, 'driver', e.target.value)}>
                                                     <option value="">-- เลือกคนขับ --</option>

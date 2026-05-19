@@ -49,6 +49,15 @@ const valueKey = (v: number, listStep?: number) => {
     return String(Math.round(v));
 };
 
+/** ตัดเลขนำหน้าเป็น 0 เช่น "080" → "80" */
+const normalizeNumericDisplay = (raw: string, listStep?: number): string => {
+    const s = String(raw).trim();
+    if (s === '') return '';
+    const n = parseNum(s);
+    if (!Number.isFinite(n)) return raw;
+    return valueKey(n, listStep);
+};
+
 const NumberPickerInput: React.FC<NumberPickerInputProps> = ({
     value,
     onChange,
@@ -154,6 +163,10 @@ const NumberPickerInput: React.FC<NumberPickerInputProps> = ({
                 value={value}
                 disabled={disabled}
                 onChange={e => onChange(e.target.value)}
+                onBlur={() => {
+                    const next = normalizeNumericDisplay(value, listStep);
+                    if (next !== value) onChange(next);
+                }}
                 onWheel={e => {
                     e.preventDefault();
                     onWheelProp?.(e);

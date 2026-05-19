@@ -53,7 +53,7 @@ String formatSaveErrorMessage(
   return lines.join('\n');
 }
 
-/// ส่งรายงานเมื่อผู้ใช้กดปุ่ม «ส่งข้อมูล» — คืน `id` รายงานถ้าสำเร็จ
+/// ส่งรายงาน error ขึ้นเซิร์ฟเวอร์ — คืน `id` รายงานถ้าสำเร็จ
 typedef SaveErrorReportHandler = Future<String?> Function();
 
 void showSaveErrorSnackBar(
@@ -62,11 +62,32 @@ void showSaveErrorSnackBar(
   SaveErrorContext? saveContext,
   SaveErrorReportHandler? onSendReport,
 }) {
-  _SaveErrorEdgeUi.dismiss();
+  if (!context.mounted) return;
+  // หลังปิด dialog บันทึก element tree อาจยังไม่ stable — รอเฟรมถัดไป
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _presentSaveErrorSnackBar(
+      context,
+      error: error,
+      saveContext: saveContext,
+      onSendReport: onSendReport,
+    );
+  });
+}
 
-  final messenger = ScaffoldMessenger.of(context);
-  final hasEdgeSend = onSendReport != null;
-  final controller = messenger.showSnackBar(
+int _saveErrorPresentSeq = 0;
+
+void _presentSaveErrorSnackBar(
+  BuildContext context, {
+  required Object error,
+  SaveErrorContext? saveContext,
+  SaveErrorReportHandler? onSendReport,
+}) {
+  if (!context.mounted) return;
+
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+
+  messenger.showSnackBar(
     SnackBar(
       content: Text(
         formatSaveErrorMessage(error, context: saveContext),
@@ -74,47 +95,83 @@ void showSaveErrorSnackBar(
       ),
       duration: const Duration(seconds: 8),
       behavior: SnackBarBehavior.floating,
-      margin: hasEdgeSend
-          ? const EdgeInsets.fromLTRB(12, 0, 72, 16)
-          : null,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
     ),
   );
 
-  if (hasEdgeSend) {
-    _SaveErrorEdgeUi.show(
-      context: context,
-      onSendReport: onSendReport,
-      onSent: () {
-        if (!context.mounted) return;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              'ส่งข้อมูลแล้ว',
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
-            ),
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(12, 0, 72, 16),
-          ),
-        );
-      },
-      onFailed: (e) {
-        if (!context.mounted) return;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              'ส่งข้อมูลไม่สำเร็จ',
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
-            ),
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(12, 0, 72, 16),
-          ),
-        );
-      },
-    );
-    controller.closed.then((_) => _SaveErrorEdgeUi.dismiss());
+  if (onSendReport == null) return;
+
+  final session = ++_saveErrorPresentSeq;
+  _runAutoSaveErrorReport(
+    context: context,
+    session: session,
+    onSendReport: onSendReport,
+  );
+}
+
+Future<void> _runAutoSaveErrorReport({
+  required BuildContext context,
+  required int session,
+  required SaveErrorReportHandler onSendReport,
+}) async {
+  try {
+    final id = await onSendReport();
+    if (!context.mounted || session != _saveErrorPresentSeq) return;
+    if (id != null && id.isNotEmpty) {
+      await _showSaveErrorReportSentDialog(context);
+    }
+  } catch (_) {
+    // ส่งไม่สำเร็จ — ไม่รบกวนผู้ใช้ด้วย popup (มี SnackBar ข้อผิดพลาดอยู่แล้ว)
   }
+}
+
+Future<void> _showSaveErrorReportSentDialog(BuildContext context) async {
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    useRootNavigator: true,
+    builder: (dialogCtx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: Colors.green.shade700,
+            size: 30,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'ส่งรายงาน error สำเร็จ',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'ระบบได้ส่งรายงานข้อผิดพลาดไปยังผู้ดูแลแล้ว',
+        style: GoogleFonts.kanit(fontSize: 15, height: 1.4),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogCtx).pop(),
+          child: Text(
+            'ตกลง',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// โยนข้อผิดพลาดพร้อมบริบท (ใช้ภายใน callback ของ [_runSaveWithPopups])
@@ -168,152 +225,4 @@ String buildSaveErrorReportSummary(SaveErrorReportFields f) {
   }
   if (f.cause.trim().isNotEmpty) parts.add(f.cause.trim());
   return parts.join(' · ');
-}
-
-class _SaveErrorEdgeUi {
-  static OverlayEntry? _entry;
-
-  static void dismiss() {
-    _entry?.remove();
-    _entry = null;
-  }
-
-  static void show({
-    required BuildContext context,
-    required SaveErrorReportHandler onSendReport,
-    required VoidCallback onSent,
-    required void Function(Object error) onFailed,
-  }) {
-    dismiss();
-    final overlay = Overlay.of(context, rootOverlay: true);
-    _entry = OverlayEntry(
-      builder: (ctx) => _SaveErrorEdgeSendButton(
-        onSendReport: onSendReport,
-        onSent: () {
-          onSent();
-          dismiss();
-        },
-        onFailed: onFailed,
-      ),
-    );
-    overlay.insert(_entry!);
-  }
-}
-
-class _SaveErrorEdgeSendButton extends StatefulWidget {
-  const _SaveErrorEdgeSendButton({
-    required this.onSendReport,
-    required this.onSent,
-    required this.onFailed,
-  });
-
-  final SaveErrorReportHandler onSendReport;
-  final VoidCallback onSent;
-  final void Function(Object error) onFailed;
-
-  @override
-  State<_SaveErrorEdgeSendButton> createState() =>
-      _SaveErrorEdgeSendButtonState();
-}
-
-class _SaveErrorEdgeSendButtonState extends State<_SaveErrorEdgeSendButton> {
-  bool _sending = false;
-  bool _sent = false;
-
-  Future<void> _handleTap() async {
-    if (_sending || _sent) return;
-    setState(() => _sending = true);
-    try {
-      final id = await widget.onSendReport();
-      if (!mounted) return;
-      if (id != null && id.isNotEmpty) {
-        setState(() {
-          _sending = false;
-          _sent = true;
-        });
-        widget.onSent();
-      } else {
-        setState(() => _sending = false);
-        widget.onFailed(Exception('empty report id'));
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _sending = false);
-      widget.onFailed(e);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewPaddingOf(context).bottom + 20;
-    final label = _sent
-        ? 'ส่งแล้ว'
-        : _sending
-        ? 'กำลังส่ง'
-        : 'ส่งข้อมูล';
-    final bg = _sent ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
-
-    return Positioned(
-      right: 0,
-      bottom: bottom,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: (_sending || _sent) ? null : _handleTap,
-          borderRadius: const BorderRadius.horizontal(
-            left: Radius.circular(18),
-          ),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(18),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 12,
-                  offset: const Offset(-2, 3),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _sending
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Icon(
-                          _sent
-                              ? Icons.check_rounded
-                              : Icons.cloud_upload_outlined,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: GoogleFonts.kanit(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14.5,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

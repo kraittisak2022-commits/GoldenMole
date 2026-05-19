@@ -14,6 +14,18 @@ bool isMacroVehicleId(String? raw) {
 bool isMacroVehicleTransaction(AppTransaction t) =>
     t.category == 'Vehicle' && isMacroVehicleId(t.vehicleId);
 
+/// รถหกล้อ / สิบล้อ — ใช้ในเมนูบันทึกรถดรัมและจำนวนเที่ยว
+bool isSixOrTenWheelVehicleName(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.isEmpty) return false;
+  final compact = s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+  if (compact.contains('หกล้อ') || compact.contains('6ล้อ')) return true;
+  if (RegExp(r'6\s*ล้อ', caseSensitive: false).hasMatch(s)) return true;
+  if (compact.contains('สิบล้อ') || compact.contains('10ล้อ')) return true;
+  if (RegExp(r'10\s*ล้อ', caseSensitive: false).hasMatch(s)) return true;
+  return false;
+}
+
 /// ธุรกรรม «ลา» ที่ใช้ภาพรวมแคลน / ปฏิทิน — ต้องมีรายชื่อพนักงาน
 bool isLaborLeaveRecord(AppTransaction t) {
   final cat = t.category.trim();

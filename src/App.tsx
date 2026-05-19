@@ -1281,6 +1281,68 @@ function App() {
         });
     }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
+    const handlePermanentDeleteTransaction = useCallback(async (id: string) => {
+        if (!canMutateTransactionsInCurrentMenu()) {
+            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
+            setTimeout(() => setToast(null), 3500);
+            return;
+        }
+        if (!canDeleteTransactions) {
+            setToast('ไม่มีสิทธิ์ลบรายการ (Delete)');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        const target = transactions.find(t => t.id === id);
+        if (!target) return;
+        if (target.category !== 'Payroll') {
+            const lockRef = nonHiddenTransactions.find(x =>
+                x.category === 'Payroll' &&
+                x.payrollPeriod &&
+                isDateInRange(target.date, x.payrollPeriod.start, x.payrollPeriod.end)
+            );
+            if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
+                setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้ลบรายการย้อนหลัง`);
+                setTimeout(() => setToast(null), 4500);
+                return;
+            }
+        }
+        const ok = await db.deleteTransaction(id);
+        if (!ok) {
+            setToast('ลบจากฐานข้อมูลไม่สำเร็จ — ลองใหม่อีกครั้ง');
+            setTimeout(() => setToast(null), 4000);
+            return;
+        }
+        setTransactions(prev => prev.filter(t => t.id !== id));
+        const hidden = settings.appDefaults?.hiddenTransactionIds || [];
+        if (hidden.includes(id)) {
+            setSettings(prev => {
+                const next: AppSettings = {
+                    ...prev,
+                    appDefaults: {
+                        ...(prev.appDefaults || {}),
+                        hiddenTransactionIds: hidden.filter(x => x !== id),
+                    },
+                };
+                void db.saveSettings(next);
+                return next;
+            });
+        }
+        if (currentAdmin) {
+            const snap = {
+                id: target.id,
+                date: normalizeDate(target.date),
+                type: target.type,
+                category: target.category,
+                subCategory: target.subCategory,
+                amount: target.amount,
+                description: target.description,
+            };
+            addLog('delete_transaction', `ลบถาวรจากฐานข้อมูล: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | snapshot=${JSON.stringify(snap)}`);
+        }
+        setToast('ลบรายการจากฐานข้อมูลแล้ว');
+        setTimeout(() => setToast(null), 3000);
+    }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
+
     useEffect(() => {
         if (!undoAction) return;
         const ms = Math.max(0, undoAction.expiresAt - Date.now());
@@ -1488,7 +1550,7 @@ function App() {
                     }}
                 />
             );
-            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
+            case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} onPermanentDeleteTransaction={canDeleteTransactions ? handlePermanentDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
             case 'WorkPlanner': return currentAdmin ? (
                 <WorkPlanner
                     adminId={currentAdmin.id}
@@ -1739,6 +1801,7 @@ function App() {
                     onOpenAccount={() => setAccountModalOpen(true)}
                     onSaveTransaction={handleSave}
                     onDeleteTransaction={handleDeleteTransaction}
+                    onPermanentDeleteTransaction={canDeleteTransactions ? handlePermanentDeleteTransaction : undefined}
                     handleSetTransactions={handleSetTransactions}
                     ensureEmployeeWage={ensureEmployeeWage}
                     handleSetSettings={handleSetSettings}

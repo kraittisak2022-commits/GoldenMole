@@ -298,3 +298,33 @@ export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems
         return currentScore > latestScore ? current : latest;
     });
 };
+
+/** รถหกล้อ / สิบล้อ — ใช้ในเมนูบันทึกรถดรัมและจำนวนเที่ยว */
+export const isSixOrTenWheelVehicleName = (raw?: string | null): boolean => {
+    const s = (raw ?? '').trim();
+    if (!s) return false;
+    const compact = s.toLowerCase().replace(/\s+/g, '');
+    if (compact.includes('หกล้อ') || compact.includes('6ล้อ')) return true;
+    if (/6\s*ล้อ/i.test(s)) return true;
+    if (compact.includes('สิบล้อ') || compact.includes('10ล้อ')) return true;
+    if (/10\s*ล้อ/i.test(s)) return true;
+    return false;
+};
+
+/** รายการรถใน dropdown เที่ยวรถ — หกล้อ/สิบล้อเท่านั้น (คงรถที่เลือกอยู่ถ้าโหลดจากประวัติ) */
+export const vehicleTripDrumCarOptions = (
+    cars: string[],
+    includeVehicle = '',
+): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const extra = includeVehicle.trim();
+    if (extra && seen.add(extra)) out.push(extra);
+    for (const c of cars) {
+        if (!isSixOrTenWheelVehicleName(c)) continue;
+        if (seen.has(c)) continue;
+        seen.add(c);
+        out.push(c);
+    }
+    return out;
+};

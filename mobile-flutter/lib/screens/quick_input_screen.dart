@@ -730,7 +730,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _tripMorningController.clear();
       _tripAfternoonController.clear();
       _cubicPerTripController.clear();
-      _replaceVehicleDrafts(const []);
+      if (!_saving) _replaceVehicleDrafts(const []);
     } else if (_isFuelMode) {
       _fuelLitersController.clear();
       _fuelAmountController.clear();
@@ -738,9 +738,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _fuelVehicleController.clear();
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
-      _replaceFuelVehicleDrafts(const []);
+      if (!_saving) _replaceFuelVehicleDrafts(const []);
     } else if (_isMacroVehicleMode) {
-      _replaceMacroVehicleDrafts(const []);
+      if (!_saving) _replaceMacroVehicleDrafts(const []);
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
       _laborPickedIds.clear();
@@ -754,18 +754,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _resetGeneralSubJobsAfterSave();
       _laborWorkDetailsController.clear();
     } else if (_isLaborLeaveMode) {
-      _selectedLeaveEmpIds.clear();
-      _laborLeaveTxId = null;
-      _leaveTypeChoice = 'Personal';
-      _leaveIsHalfDay = false;
-      _leaveHalfPart = 'morning';
-      _leaveReasonController.clear();
-      _leaveDaysController.text = '1';
-      _leaveStartDate = DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-      );
+      if (!_saving) {
+        _selectedLeaveEmpIds.clear();
+        _laborLeaveTxId = null;
+        _leaveTypeChoice = 'Personal';
+        _leaveIsHalfDay = false;
+        _leaveHalfPart = 'morning';
+        _leaveReasonController.clear();
+        _leaveDaysController.text = '1';
+        _leaveStartDate = DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+        );
+      }
     } else if (_isLaborAdvanceMode) {
       _selectedAdvanceEmpIds.clear();
       _advanceWorkDetailsSeed = null;
@@ -877,7 +879,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return s;
   }
 
-  /// เลขเที่ยว/คิว: ตัดเลขนำหน้าเป็น 0 เช่น "03" → "3"
+  /// ตัวเลขที่พิมพ์: ตัดเลขนำหน้าเป็น 0 เช่น "03" → "3", "080" → "80"
   static String normalizeVehicleTripNumericText(String raw) {
     final t = raw.trim();
     if (t.isEmpty) return '';
@@ -920,6 +922,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final out = <String>[];
     for (final car in _cars) {
       if (!_isMacroCarName(car)) continue;
+      if (seen.add(car)) out.add(car);
+    }
+    return out;
+  }
+
+  /// รถดรัม/เที่ยว — เฉพาะหกล้อและสิบล้อ (จากรายการตั้งค่าแอพ)
+  List<String> _vehicleTripCars({String includeVehicleId = ''}) {
+    final seen = <String>{};
+    final out = <String>[];
+    final extra = includeVehicleId.trim();
+    if (extra.isNotEmpty && seen.add(extra)) out.add(extra);
+    for (final car in _cars) {
+      if (!isSixOrTenWheelVehicleName(car)) continue;
       if (seen.add(car)) out.add(car);
     }
     return out;
@@ -1154,19 +1169,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     if (_isVehicleTripMode) {
       // ฟอร์มว่างสำหรับเพิ่ม/แก้ไขทีละคัน — รายการที่บันทึกแล้วแสดงด้านล่าง
-      _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
+      if (!_saving) _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
       return;
     }
 
     if (_isMacroVehicleMode) {
       // ฟอร์มว่าง — เลือกรถทีละคัน ถ้าซ้ำในวันเดียวกันจะโหลดมาแก้ไข
-      _replaceMacroVehicleDrafts(const []);
+      if (!_saving) _replaceMacroVehicleDrafts(const []);
       return;
     }
 
     if (_isFuelMode) {
       // ฟอร์มสำหรับบันทึกใหม่ — บันทึกทีละคัน/หลายคันต่อครั้งได้ รายการเดิมดูในเมนูประวัติ
-      _replaceFuelVehicleDrafts(const []);
+      if (!_saving) _replaceFuelVehicleDrafts(const []);
       return;
     }
 
@@ -1590,11 +1605,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveContext: ctx,
       onSendReport: () => _submitSaveErrorReport(error, ctx),
     );
-    _reportSaveErrorToServer(error, ctx);
-  }
-
-  void _reportSaveErrorToServer(Object error, SaveErrorContext? ctx) {
-    unawaited(_submitSaveErrorReport(error, ctx).then((_) {}, onError: (_) {}));
   }
 
   void _showSuperAdminHistorySaveError(
@@ -1714,23 +1724,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       action: saveActionLabel,
       button: saveButtonLabel,
     );
-    if (requireSignature) {
-      final signature = await _requestSignatureBeforeSave();
-      if (signature == null) return;
-      _activeSignatureNote = signature.note;
-    } else {
-      _activeSignatureNote = null;
-    }
     setState(() => _saving = true);
     var savingDialogOpen = false;
     _activeSaveErrorContext = saveCtx;
     try {
+      if (requireSignature) {
+        final signature = await _requestSignatureBeforeSave();
+        if (signature == null) return;
+        _activeSignatureNote = signature.note;
+      } else {
+        _activeSignatureNote = null;
+      }
       _showSavingPopup();
       savingDialogOpen = true;
       await body();
       if (!mounted) return;
       _dismissSavingPopup();
       savingDialogOpen = false;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       if (stayOnPage) {
         if (onStayOnPageCleared != null && mounted) {
           setState(onStayOnPageCleared);
@@ -1743,8 +1755,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _showSuccessPopupAndPopToHome(successMessage);
       }
     } catch (error) {
-      if (savingDialogOpen && mounted) _dismissSavingPopup();
-      _showSaveError(error, context: saveCtx);
+      if (savingDialogOpen && mounted) {
+        _dismissSavingPopup();
+        savingDialogOpen = false;
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      if (mounted) _showSaveError(error, context: saveCtx);
     } finally {
       _activeSaveErrorContext = null;
       _activeSignatureNote = null;
@@ -2342,7 +2358,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveMacroVehicleUsageEntries() async {
     final row = _activeMacroVehicleDraft;
-    final isUpdate = row.txId?.trim().isNotEmpty == true;
+    // เก็บค่าก่อน async — _loadModuleTransactions อาจ dispose controller ระหว่างบันทึก
+    final vehicle = row.vehicleId.trim();
+    final driver = row.driverId.trim();
+    final details = row.workDetailsController.text.trim();
+    final workType = row.workType;
+    final existingTxId = row.txId?.trim();
+    final isUpdate = existingTxId != null && existingTxId.isNotEmpty;
     await _runSaveWithPopups(
       successMessage: isUpdate
           ? 'อัปเดตรถคันนี้สำเร็จ — เลือกรถคันถัดไปได้'
@@ -2356,9 +2378,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (macroCars.isEmpty) {
           _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
         }
-        final vehicle = row.vehicleId.trim();
-        final driver = row.driverId.trim();
-        final details = row.workDetailsController.text.trim();
         if (vehicle.isEmpty || driver.isEmpty) {
           _failSave('กรุณาเลือกรถแม็คโครและคนขับ');
         }
@@ -2372,9 +2391,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-        final dayLabel = row.workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
+        final dayLabel = workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
         final txId =
-            row.txId ??
+            existingTxId ??
             '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle';
         await _persist(
           AppTransaction(
@@ -2390,7 +2409,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             vehicleId: vehicle,
             driverId: driver,
             workDetails: details.isEmpty ? null : _appendRecorder(details),
-            workType: row.workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
+            workType: workType == 'HalfDay' ? 'HalfDay' : 'FullDay',
           ),
         );
       },
@@ -2552,52 +2571,60 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveLaborLeaveEntry() async {
+    // เก็บค่าก่อน async — โหลดรายการวันอาจล้าง controller ระหว่างลายเซ็น/บันทึก
+    final leaveEmpIds = _selectedLeaveEmpIds.toList();
+    final reason = _leaveReasonController.text.trim();
+    final leaveDaysText = _leaveDaysController.text.trim();
+    final leaveIsHalfDay = _leaveIsHalfDay;
+    final leaveHalfPart = _leaveHalfPart;
+    final leaveTypeChoice = _leaveTypeChoice;
+    final leaveStartDate = _leaveStartDate;
+    final existingLeaveTxId = _laborLeaveTxId;
     await _runSaveWithPopups(
       successMessage: 'บันทึกลางานสำเร็จ',
       saveActionLabel: 'บันทึกลางาน',
       saveButtonLabel: 'บันทึก',
       body: () async {
-        if (_selectedLeaveEmpIds.isEmpty) {
+        if (leaveEmpIds.isEmpty) {
           _failSave('กรุณาเลือกพนักงาน');
         }
-        final blockedLeave = _selectedLeaveEmpIds.where((id) {
+        final blockedLeave = leaveEmpIds.where((id) {
           final e = _employeesById[id];
           return e != null && isExcludedFromLeaveEmployeePicker(e);
         }).toList();
         if (blockedLeave.isNotEmpty) {
           _failSave('ไม่สามารถบันทึกลาให้คนขับรถหรือรับจ้างรายวันได้');
         }
-        final reason = _leaveReasonController.text.trim();
         if (reason.isEmpty) {
           _failSave('กรุณากรอกเหตุผลการลา', field: 'เหตุผลการลา');
         }
-        final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
-        if (_leaveIsHalfDay) {
-          if (_leaveHalfPart != 'morning' && _leaveHalfPart != 'afternoon') {
+        final days = double.tryParse(leaveDaysText) ?? 0;
+        if (leaveIsHalfDay) {
+          if (leaveHalfPart != 'morning' && leaveHalfPart != 'afternoon') {
             _failSave('กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย');
           }
         } else if (days <= 0) {
           _failSave('กรุณากรอกจำนวนวันให้มากกว่า 0');
         }
-        final effectiveDays = _leaveIsHalfDay ? 0.5 : days;
-        final halfTh = _leaveIsHalfDay
-            ? (_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย')
+        final effectiveDays = leaveIsHalfDay ? 0.5 : days;
+        final halfTh = leaveIsHalfDay
+            ? (leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย')
             : '';
-        final halfMeta = _leaveIsHalfDay
-            ? (_leaveHalfPart == 'morning'
+        final halfMeta = leaveIsHalfDay
+            ? (leaveHalfPart == 'morning'
                   ? _leaveHalfMorningMeta
                   : _leaveHalfAfternoonMeta)
             : null;
-        final y = _leaveStartDate.year.toString().padLeft(4, '0');
-        final m = _leaveStartDate.month.toString().padLeft(2, '0');
-        final d = _leaveStartDate.day.toString().padLeft(2, '0');
+        final y = leaveStartDate.year.toString().padLeft(4, '0');
+        final m = leaveStartDate.month.toString().padLeft(2, '0');
+        final d = leaveStartDate.day.toString().padLeft(2, '0');
         final ymd = '$y-$m-$d';
         final id =
-            _laborLeaveTxId ?? '${DateTime.now().millisecondsSinceEpoch}_leave';
+            existingLeaveTxId ?? '${DateTime.now().millisecondsSinceEpoch}_leave';
         _laborLeaveTxId = id;
-        final typeTh = _leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ';
+        final typeTh = leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ';
         final descCore = 'ลา$typeTh: $reason';
-        final desc = _leaveIsHalfDay
+        final desc = leaveIsHalfDay
             ? '$descCore (ครึ่งวัน — $halfTh)'
             : descCore;
         final saved = AppTransaction(
@@ -2605,9 +2632,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           date: ymd,
           type: 'Leave',
           category: 'Leave',
-          subCategory: _leaveTypeChoice,
+          subCategory: leaveTypeChoice,
           laborStatus: 'Leave',
-          employeeIds: _selectedLeaveEmpIds.toList(),
+          employeeIds: leaveEmpIds,
           amount: 0,
           note: _activeSignatureNote,
           description: _appendRecorder(desc),
@@ -6733,10 +6760,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
 
     if (!mounted || result == null) return;
-    if (controller.text != result) {
-      controller.text = result;
+    final normalized = normalizeVehicleTripNumericText(result);
+    if (controller.text != normalized) {
+      controller.text = normalized;
     }
-    onChanged?.call(result);
+    onChanged?.call(normalized);
+    if (mounted) _scheduleUiRefresh();
   }
 
   Future<void> _openThaiTextPad({
@@ -7075,7 +7104,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             const SizedBox(height: 10),
             _VehicleTripRowsBoard(
               rows: _vehicleTripDrafts,
-              cars: _cars,
+              cars: _vehicleTripCars(),
               drivers: _driverEmployees,
               workSuggestions: _vehicleWorkSuggestions,
               vehicleLabelFromId: _vehicleLabelFromId,
@@ -10786,6 +10815,12 @@ class _VehicleTripRowItem extends StatefulWidget {
 }
 
 class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
+  List<String> _vehicleTripDropdownCars(String currentVehicleId) {
+    final cur = currentVehicleId.trim();
+    if (cur.isEmpty || widget.cars.contains(cur)) return widget.cars;
+    return [cur, ...widget.cars];
+  }
+
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
@@ -10798,6 +10833,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
         : rowTrips * (double.tryParse(row.cubicPerTrip) ?? 0);
     final vLabel = widget.vehicleLabelFromId(row.vehicleId);
     final dLabel = widget.driverLabelFromId(row.driverId);
+    final vehicleOptions = _vehicleTripDropdownCars(row.vehicleId);
     final tripPart =
         'เช้า ${_QuickInputScreenState._strNum(tripM)} • บ่าย ${_QuickInputScreenState._strNum(tripA)} เที่ยว';
     final summaryLine = isLump
@@ -10875,7 +10911,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     labelText: 'รถ/เครื่องจักร',
                     prefixIcon: Icon(Icons.fire_truck_outlined),
                   ),
-                  items: widget.cars
+                  items: vehicleOptions
                       .map(
                         (c) => DropdownMenuItem<String>(
                           value: c,

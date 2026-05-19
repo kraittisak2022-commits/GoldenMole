@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
     computeSandDrumStockSummary,
+    isSixOrTenWheelVehicleName,
     mergeLaborCanvasAssignments,
     normalizeLaborCanvasKey,
     persistedSandHomeDrums,
     sumWizardDailySpend,
     countsTowardWizardDailySpend,
+    vehicleTripDrumCarOptions,
 } from './dailyStepRecorderUtils';
 import type { Employee, Transaction } from '../../types';
 
@@ -352,5 +354,30 @@ describe('normalizeLaborCanvasKey', () => {
         expect(
             mergeLaborCanvasAssignments({ wash_home: ['e1'], generalWork: ['e2'] })
         ).toEqual({ washHome: ['e1'], generalWork: ['e2'] });
+    });
+});
+
+describe('vehicleTripDrumCarOptions', () => {
+    const cars = [
+        'รถหกล้อ 01',
+        'รถ 6 ล้อ 02',
+        'รถสิบล้อ A',
+        '10ล้อ-B',
+        'รถดรัมโอเว่น',
+        'รถแม็คโคร SK200',
+    ];
+
+    it('includes only six- and ten-wheel names', () => {
+        expect(vehicleTripDrumCarOptions(cars)).toEqual([
+            'รถหกล้อ 01',
+            'รถ 6 ล้อ 02',
+            'รถสิบล้อ A',
+            '10ล้อ-B',
+        ]);
+    });
+
+    it('keeps a legacy selected vehicle for edit', () => {
+        expect(isSixOrTenWheelVehicleName('รถดรัมโอเว่น')).toBe(false);
+        expect(vehicleTripDrumCarOptions(cars, 'รถดรัมโอเว่น')).toContain('รถดรัมโอเว่น');
     });
 });
