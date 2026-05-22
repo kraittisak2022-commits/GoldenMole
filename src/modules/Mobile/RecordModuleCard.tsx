@@ -34,14 +34,18 @@ const RecordModuleCard = ({
     const [pressed, setPressed] = useState(false);
     const recorded = fillStatus === 'complete';
     const partial = fillStatus === 'incomplete';
-    const override = completeStatusLabelOverride?.trim();
-    const statusLabel = recorded
-        ? override && override.length > 0
-            ? override
-            : 'ครบแล้ว'
-        : partial
-          ? 'ยังไม่ครบ'
-          : 'แตะเพื่อบันทึก';
+    const detail = completeStatusLabelOverride?.trim();
+    const hasDetail = Boolean(detail && detail.length > 0);
+    const statusLabel =
+        fillStatus === 'pending'
+            ? 'แตะเพื่อบันทึก'
+            : hasDetail
+              ? detail!
+              : recorded
+                ? 'ครบแล้ว'
+                : partial
+                  ? 'ยังไม่ครบ'
+                  : 'แตะเพื่อบันทึก';
     const statusColor = recorded ? '#15803D' : partial ? '#B45309' : '#94A3B8';
     const borderColor = recorded ? '#BBF7D0' : partial ? '#FDE68A' : '#E8EDF3';
     const dotColor = recorded ? '#22C55E' : partial ? '#F59E0B' : '#CBD5E1';

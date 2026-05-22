@@ -1055,14 +1055,24 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       tileColor: m.color,
                       showLightStyle: index.isOdd,
                       fillStatus: fill,
-                      completeStatusLabelOverride: m.category == 'ลางาน'
-                          ? dailyLeaveModuleStatusLabel(
-                              dayKey,
-                              widget.data.dayTransactions,
-                              widget.data.employees,
-                            )
-                          : null,
-                      statusMaxLines: m.category == 'ลางาน' ? 3 : 2,
+                      completeStatusLabelOverride: switch (m.category) {
+                        'ลางาน' => dailyLeaveModuleStatusLabel(
+                          dayKey,
+                          widget.data.dayTransactions,
+                          widget.data.employees,
+                        ),
+                        'บันทึกการร่อนทราย' =>
+                          dailySandWashModuleStatusLabel(
+                            dayKey,
+                            widget.data.dayTransactions,
+                          ),
+                        _ => null,
+                      },
+                      statusMaxLines:
+                          (m.category == 'ลางาน' ||
+                              m.category == 'บันทึกการร่อนทราย')
+                          ? 3
+                          : 2,
                       onTap: () => widget.onOpenModule(m),
                     );
                     if (_gridEntranceCompleted) {

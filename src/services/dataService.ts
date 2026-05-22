@@ -69,6 +69,41 @@ export const deleteEmployee = async (id: string): Promise<boolean> => {
 // ============================================
 // TRANSACTIONS
 // ============================================
+
+/** คอลัมน์ที่มีใน public.transactions — กรองฟิลด์ UI-only ที่ไม่มีใน DB (เช่น labor_general_work_notes) */
+const TRANSACTION_TABLE_COLUMNS = new Set([
+    'id', 'date', 'type', 'category', 'sub_category', 'description', 'amount',
+    'employee_id', 'employee_ids', 'driver_id', 'driver_wage', 'vehicle_wage', 'vehicle_id',
+    'quantity', 'unit', 'unit_price', 'project_id', 'mileage', 'image_url', 'location',
+    'labor_status', 'work_type', 'work_type_by_employee', 'work_assignments', 'custom_work_categories',
+    'ot_amount', 'advance_amount', 'special_amount', 'ot_hours', 'ot_description',
+    'leave_reason', 'leave_days', 'note', 'work_details', 'fuel_type', 'fuel_movement',
+    'payroll_period', 'payroll_snapshot', 'payroll_lock_action', 'unlocked_by_admin_id',
+    'unlocked_by_admin_name', 'unlocked_at',
+    'machine_id', 'machine_hours', 'machine_work_type',
+    'sand_morning', 'sand_afternoon', 'sand_machine_type', 'sand_operators', 'sand_transport',
+    'drums_obtained', 'drums_washed_at_home', 'sand_work_start', 'sand_morning_start',
+    'sand_afternoon_start', 'sand_evening_end',
+    'trip_count', 'trip_morning', 'trip_afternoon', 'cubic_per_trip', 'total_cubic',
+    'per_car_trips', 'per_car_cubic', 'trip_billing_mode',
+    'event_type', 'event_priority', 'event_time', 'income_payment_status',
+    'sand_batch_id', 'sand_home_batch_usages', 'created_at',
+]);
+
+/** แปลง Transaction → แถว Supabase (ตัดคอลัมน์ที่ไม่มีในตาราง) */
+export const prepareTransactionForDb = (t: Transaction): Record<string, unknown> => {
+    const row = keysToSnake(t) as Record<string, unknown>;
+    if (row.employee_ids && !Array.isArray(row.employee_ids)) row.employee_ids = [];
+    if (row.sand_operators && !Array.isArray(row.sand_operators)) row.sand_operators = [];
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+        if (!TRANSACTION_TABLE_COLUMNS.has(key)) continue;
+        if (value === undefined) continue;
+        out[key] = value;
+    }
+    return out;
+};
+
 export const fetchTransactions = async (): Promise<Transaction[]> => {
     const { data, error } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
     if (error) { console.error('fetchTransactions error:', error); return []; }
@@ -76,18 +111,17 @@ export const fetchTransactions = async (): Promise<Transaction[]> => {
 };
 
 export const saveTransaction = async (t: Transaction): Promise<boolean> => {
-    const row = keysToSnake(t);
-    // Ensure JSON array fields
-    if (row.employee_ids && !Array.isArray(row.employee_ids)) row.employee_ids = [];
-    if (row.sand_operators && !Array.isArray(row.sand_operators)) row.sand_operators = [];
+    const row = prepareTransactionForDb(t);
     const { data, error } = await supabase
         .from('transactions')
         .upsert(row, { onConflict: 'id' })
         .select('id');
-    if (error) { console.error('saveTransaction error:', error); return false; }
-    if (!data || data.length === 0) {
-        console.error('saveTransaction verification failed: no row returned after upsert');
+    if (error) {
+        console.error('saveTransaction error:', error.message || error);
         return false;
+    }
+    if (!data || data.length === 0) {
+        console.warn('saveTransaction: upsert ok but select returned no rows');
     }
     return true;
 };

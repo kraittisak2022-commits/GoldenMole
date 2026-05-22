@@ -5,6 +5,7 @@ import { formatDateBE } from '../../utils';
 import { MOBILE_DAILY_MODULES, dailyHeaderCountedModules, type DailyModuleDef } from './mobileDailyModules';
 import {
     dailyLeaveModuleStatusLabel,
+    dailySandWashModuleStatusLabel,
     filterTransactionsForDay,
     resolveDailyModuleFillStatus,
 } from './dailyModuleTransactions';
@@ -144,9 +145,15 @@ const MobileAndroidHome = ({
                                     completeStatusLabelOverride={
                                         m.category === 'ลางาน'
                                             ? dailyLeaveModuleStatusLabel(selectedDate, transactions, employees)
-                                            : undefined
+                                            : m.category === 'บันทึกการร่อนทราย'
+                                              ? dailySandWashModuleStatusLabel(selectedDate, transactions)
+                                              : undefined
                                     }
-                                    statusMaxLines={m.category === 'ลางาน' ? 3 : 2}
+                                    statusMaxLines={
+                                        m.category === 'ลางาน' || m.category === 'บันทึกการร่อนทราย'
+                                            ? 3
+                                            : 2
+                                    }
                                     onTap={() => onOpenModule(m)}
                                 />
                             </div>

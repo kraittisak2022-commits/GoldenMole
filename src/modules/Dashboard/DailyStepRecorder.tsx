@@ -90,7 +90,7 @@ const EmployeeSelectChip = memo(function EmployeeSelectChip({
         <button
             type="button"
             onClick={onClick}
-            className={`rounded-xl text-left font-medium transition-all border-2 touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${selected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}
+            className={`rounded-xl text-left font-medium transition-all border-2 touch-manipulation ${touchUI ? 'min-h-[52px] px-3 py-3 text-base' : 'min-h-[46px] px-3 py-2.5 text-[15px]'} ${selected ? 'border-slate-800 dark:border-slate-300 bg-slate-50 dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'}`}
         >
             {label}
         </button>
@@ -200,16 +200,16 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                                         onDragStartEmployee(eid);
                                     }}
                                     onDragEnd={() => onDragStartEmployee(null)}
-                                    className={`flex cursor-grab items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 font-semibold active:cursor-grabbing ${touchUI ? 'min-h-[44px] px-2.5 py-2 text-sm' : 'px-2 py-1 text-xs'}`}
+                                    className={`flex max-w-full cursor-grab items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 font-medium active:cursor-grabbing ${touchUI ? 'min-h-[34px] px-2 py-1 text-[11px]' : 'px-1.5 py-0.5 text-[10px] leading-tight'}`}
                                 >
-                                    {getEmployeeDisplayName(emp)}
+                                    <span className="truncate">{getEmployeeDisplayName(emp)}</span>
                                     <button
                                         type="button"
                                         onClick={ev => {
                                             ev.stopPropagation();
                                             onToggleHalfDay(eid);
                                         }}
-                                        className={`rounded font-bold touch-manipulation ${touchUI ? 'min-h-10 min-w-10 px-2 text-sm' : 'min-w-[1.5rem] px-1 py-0.5 text-[10px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200'}`}
+                                        className={`shrink-0 rounded font-bold touch-manipulation ${touchUI ? 'min-h-7 min-w-7 px-1 text-[10px]' : 'min-w-[1.15rem] px-0.5 py-0 text-[9px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200'}`}
                                         title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}
                                     >
                                         ½
@@ -217,7 +217,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                                     <button
                                         type="button"
                                         onClick={() => onRemoveEmployee(eid)}
-                                        className={`text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-10 min-w-10 items-center justify-center text-lg' : 'text-base leading-none'}`}
+                                        className={`shrink-0 text-red-400 hover:text-red-600 touch-manipulation ${touchUI ? 'flex min-h-7 min-w-7 items-center justify-center text-sm' : 'text-sm leading-none'}`}
                                     >
                                         ×
                                     </button>
@@ -1980,7 +1980,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             <div className={`grid w-full min-w-0 max-w-full grid-cols-1 gap-4 sm:gap-6 lg:gap-8 ${mobileShell ? '' : 'xl:grid-cols-12'}`}>
                 {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
                 <div className={`min-w-0 space-y-6 ${mobileShell ? '' : 'xl:col-span-8'}`}>
-                    <Card className={`relative flex flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[500px] p-6'}`}>
+                    <Card className={`relative flex min-h-0 flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[560px] p-6'}`}>
                         {viewMode === 'record' && validationChecklist.length > 0 && (
                             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
                                 <p className="mb-2 text-xs font-bold text-amber-800 dark:text-amber-200">Checklist ก่อนบันทึก</p>
@@ -2042,7 +2042,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
                         {/* Step 1: Labor - Canvas Style */}
                         {step === 1 && (
-                            <div className="h-full flex flex-col animate-slide-up">
+                            <div className="flex min-h-0 flex-1 flex-col animate-slide-up">
                                 <div className="flex justify-between items-center mb-3">
                                     <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Users className="text-emerald-500 dark:text-emerald-400" /> บันทึกค่าแรง / OT</h3>
                                     <span className="text-xs text-slate-400 dark:text-slate-500">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
@@ -2136,7 +2136,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     <input placeholder="ค้นหาชื่อ..." value={laborSearch} onChange={e => setLaborSearch(e.target.value)}
                                                         className="text-sm border border-slate-200 dark:border-white/15 rounded-lg px-3 py-1.5 w-32 bg-white dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder:text-slate-400" />
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                                                <div className="max-h-[min(52vh,520px)] min-h-0 overflow-y-auto overscroll-y-contain rounded-lg border border-slate-100 bg-slate-50/50 p-2 [-webkit-overflow-scrolling:touch]">
+                                                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4">
                                                     {otVisibleEmployees.map(emp => {
                                                         const isSelected = selectedEmps.includes(emp.id);
                                                         const displayName = getEmployeeDisplayName(emp);
@@ -2160,6 +2161,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         แสดงพนักงานเพิ่ม ({otVisibleEmployees.length}/{filteredLaborEmployees.length})
                                                     </button>
                                                 )}
+                                                </div>
                                             </div>
 
                                             {/* OT Rate */}
@@ -2328,19 +2330,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             </button>
                                         </div>
                                         {/* Labor drag board — ตามแอป Android (_LaborDragBoard) */}
-                                        <div className="mb-3 overflow-hidden rounded-2xl border border-[#C5D9EF] bg-[#F0F6FC] p-3 shadow-sm">
+                                        <div className="mb-3 min-h-0 flex-1 overflow-hidden rounded-2xl border border-[#C5D9EF] bg-[#F0F6FC] p-3 shadow-sm">
                                             <div
                                                 className={
                                                     !isTouchLayout
-                                                        ? 'flex min-h-[min(42vh,500px)] max-h-[min(72vh,780px)] gap-3.5'
-                                                        : 'flex max-h-[min(88vh,820px)] flex-col gap-3'
+                                                        ? 'flex h-[min(58vh,640px)] max-h-[min(78vh,820px)] min-h-0 flex-1 gap-3.5'
+                                                        : 'flex max-h-[min(88vh,820px)] min-h-0 flex-col gap-3'
                                                 }
                                             >
                                                 <div
                                                     className={
                                                         !isTouchLayout
-                                                            ? 'flex w-[min(40%,440px)] min-w-[320px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
-                                                            : 'flex max-h-[min(50vh,520px)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            ? 'flex min-h-0 w-[min(44%,500px)] min-w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            : 'flex max-h-[min(52vh,560px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
                                                     }
                                                 >
                                                     <div className="shrink-0 border-b border-slate-100 p-2.5">
@@ -2404,8 +2406,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             />
                                                         </div>
                                                     </div>
-                                                    <div className="min-h-[min(36vh,420px)] flex-1 overflow-y-auto p-3">
-                                                        <div className="flex flex-wrap content-start gap-2.5">
+                                                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
+                                                        <div className="flex flex-wrap content-start gap-2.5 sm:gap-3">
                                                             {poolVisibleEmployees.map(emp => {
                                                                 const isSelected = selectedEmps.includes(emp.id);
                                                                 const saved = dayTransactions.find(
@@ -2447,7 +2449,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                 ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}`
                                                                                 : undefined
                                                                         }
-                                                                        className={`inline-flex min-w-[7.5rem] max-w-full items-center justify-center rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[52px] px-4 py-3.5 text-base' : 'min-h-[44px] px-3.5 py-2.5 text-sm'}
+                                                                        className={`inline-flex min-w-[8.25rem] max-w-full items-center justify-center rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[56px] px-4 py-3.5 text-base' : 'min-h-[50px] px-4 py-3 text-[15px] leading-snug'}
                                                                             ${
                                                                                 leaveRecord
                                                                                     ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400'
@@ -2484,7 +2486,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200/80 bg-white/60 p-2.5 sm:p-3">
+                                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-xl border border-slate-200/80 bg-white/60 p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
                                                     <p className="text-base font-extrabold text-[#0D47A1]">กล่องงาน</p>
                                                     <p className="text-xs font-medium leading-snug text-slate-500">
                                                         เลือกพนักงานด้าน{!isTouchLayout ? 'ซ้าย' : 'บน'} → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง
@@ -2827,7 +2829,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 label: job.title.trim() || 'งานทั่วไป',
                                                             })),
                                                     ],
-                                                    laborGeneralWorkNotes: genNote,
                                                     ...(drumsHome !== undefined ? { drumsWashedAtHome: drumsHome } : {}),
                                                 };
                                                 if (hasSemanticNearDuplicate(t as Transaction, { ignoreId: existingDailyLaborTx?.id })) {

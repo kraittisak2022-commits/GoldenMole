@@ -304,6 +304,51 @@ export function dailyLeaveEmployeeNamesOnDay(
     return [...ids].map(id => calendarEmployeeDisplayName(id, employees));
 }
 
+function formatSandCubicForCard(v: number): string {
+    if (v <= 0) return '0';
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    return v.toFixed(1);
+}
+
+export function isSandWashMachineProductionRow(t: Transaction): boolean {
+    const desc = String(t.description ?? '');
+    if (desc.includes('ทรายที่ล้างที่บ้าน')) return false;
+    if (isHomeSandRoundCloseRow(t)) return false;
+    const morning = Number(t.sandMorning ?? 0);
+    const afternoon = Number(t.sandAfternoon ?? 0);
+    if (morning > 0 || afternoon > 0) return true;
+    const mt = String(t.sandMachineType ?? '').trim().toLowerCase();
+    if (mt === 'old' || mt === 'new') return true;
+    if (desc.includes('เครื่องร่อน')) return true;
+    return false;
+}
+
+export function summarizeSandWashCubicForDay(
+    dayKey: string,
+    transactions: Transaction[],
+): { morning: number; afternoon: number } {
+    let morning = 0;
+    let afternoon = 0;
+    for (const t of transactions) {
+        if (!transactionAppliesToDashboardDay(t, dayKey, 'บันทึกการร่อนทราย')) continue;
+        if (!isSandWashMachineProductionRow(t)) continue;
+        morning += Number(t.sandMorning ?? 0);
+        afternoon += Number(t.sandAfternoon ?? 0);
+    }
+    return { morning, afternoon };
+}
+
+/** ข้อความการ์ดเมนู «บันทึกการร่อนทราย» — คิวเช้า/บ่าย/รวม (เครื่องใหม่+เก่า) */
+export function dailySandWashModuleStatusLabel(
+    dayKey: string,
+    transactions: Transaction[],
+): string {
+    const { morning, afternoon } = summarizeSandWashCubicForDay(dayKey, transactions);
+    const total = morning + afternoon;
+    if (total <= 0) return '';
+    return `เช้า ${formatSandCubicForCard(morning)} · บ่าย ${formatSandCubicForCard(afternoon)} · รวม ${formatSandCubicForCard(total)} คิว`;
+}
+
 export function dailyLeaveModuleStatusLabel(
     dayKey: string,
     transactions: Transaction[],

@@ -239,6 +239,75 @@ List<String> dailyLeaveEmployeeNamesOnDay(
   return calendarLeaveNames(rows, employees);
 }
 
+/// แถวล้างทรายเครื่องร่อน (มีคิวเช้า/บ่าย — ไม่นับถังอย่างเดียว / ทรายที่บ้าน / ตัดรอบ)
+bool countsAsSandWashCubicRow(AppTransaction t) {
+  if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
+  if (isHomeSandRoundCloseRow(t)) return false;
+  final sub = (t.subCategory ?? '').trim().toLowerCase();
+  if (t.category == 'DailyLog' && sub == 'sand') {
+    if (t.description.contains('จำนวนถัง')) return false;
+    final morning = (t.sandMorning ?? 0);
+    final afternoon = (t.sandAfternoon ?? 0);
+    if (morning + afternoon > 0) return true;
+    final mt = (t.sandMachineType ?? '').trim();
+    return mt == 'Old' || mt == 'New';
+  }
+  if (t.category.contains('ร่อนทราย')) {
+    return (t.sandMorning ?? 0) > 0 || (t.sandAfternoon ?? 0) > 0;
+  }
+  return false;
+}
+
+/// รวมคิวล้างทรายช่วงเช้า/บ่ายของวัน (จากแถวเครื่องร่อน)
+({double morning, double afternoon}) sandWashPeriodTotalsForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var morning = 0.0;
+  var afternoon = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!countsAsSandWashCubicRow(t)) continue;
+    morning += (t.sandMorning ?? 0);
+    afternoon += (t.sandAfternoon ?? 0);
+  }
+  return (morning: morning, afternoon: afternoon);
+}
+
+String formatSandWashCubic(double v) {
+  if (v.abs() < 1e-9) return '0';
+  if ((v - v.roundToDouble()).abs() < 1e-9) return '${v.round()}';
+  final s = v.toStringAsFixed(1);
+  if (s.endsWith('.0')) return s.substring(0, s.length - 2);
+  return s;
+}
+
+/// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — คิวล้างช่วงเช้า/บ่าย
+String dailySandWashModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final totals = sandWashPeriodTotalsForDay(dayKey, transactions);
+  if (totals.morning > 0 || totals.afternoon > 0) {
+    return 'เช้า ${formatSandWashCubic(totals.morning)} คิว · '
+        'บ่าย ${formatSandWashCubic(totals.afternoon)} คิว';
+  }
+  var maxDrums = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionTouchesDailyModule(t, dayKey, 'บันทึกการร่อนทราย')) {
+      continue;
+    }
+    if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
+    final d = (t.drumsObtained ?? 0).toDouble();
+    if (d > maxDrums) maxDrums = d;
+  }
+  if (maxDrums > 0) {
+    return 'ถัง ${formatSandWashCubic(maxDrums)} · ยังไม่มีคิว';
+  }
+  return 'ยังไม่มีบันทึกล้างทราย';
+}
+
 /// ข้อความสถานะการ์ดเมนู «ลางาน» บนหน้าบันทึกประจำวัน
 String dailyLeaveModuleStatusLabel(
   String dayKey,

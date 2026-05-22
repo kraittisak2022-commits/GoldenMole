@@ -48,10 +48,12 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final partial = status == DailyModuleFillStatus.incomplete;
 
     final overrideComplete = widget.completeStatusLabelOverride?.trim();
-    final statusLabel = recorded
-        ? (overrideComplete != null && overrideComplete.isNotEmpty
-            ? overrideComplete
-            : 'ครบแล้ว')
+    final hasDetailOverride =
+        overrideComplete != null && overrideComplete.isNotEmpty;
+    final statusLabel = hasDetailOverride && (recorded || partial)
+        ? overrideComplete!
+        : recorded
+        ? 'ครบแล้ว'
         : partial
         ? 'ยังไม่ครบ'
         : 'แตะเพื่อบันทึก';

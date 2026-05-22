@@ -5,7 +5,6 @@ import {
     Users,
     List,
     FolderKanban,
-    Settings,
     Shield,
     Monitor,
     User,
