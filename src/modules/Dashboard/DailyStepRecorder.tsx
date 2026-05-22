@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, Touchpad, LayoutGrid } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, LayoutGrid, Search, GripVertical } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -156,36 +156,36 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                 const empId = e.dataTransfer.getData('text/plain');
                 if (empId) onDropEmployee(empId);
             }}
-            className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-all ${dragActive ? 'border-indigo-400 ring-2 ring-indigo-200/60' : 'border-slate-200'}`}
+            className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-all ${dragActive ? 'border-indigo-400 ring-2 ring-indigo-200/50' : 'border-slate-200/90 hover:border-slate-300'}`}
         >
-            <div className="h-1" style={{ backgroundColor: cat.accent }} />
-            <div className="p-2.5">
-                <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-bold leading-snug text-slate-800" title={cat.label}>
-                        {cat.shortTitle}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1">
-                        <span
-                            className="rounded-full px-2 py-0.5 text-[11px] font-bold"
-                            style={{ backgroundColor: `${cat.accent}22`, color: cat.accent }}
-                        >
-                            {assigned.length} คน
+            <div className="h-0.5" style={{ backgroundColor: cat.accent }} />
+            <div className="p-2">
+                <button
+                    type="button"
+                    onClick={onToggleExpanded}
+                    className="flex w-full items-center gap-2 text-left touch-manipulation"
+                >
+                    <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-black text-white"
+                        style={{ backgroundColor: cat.accent }}
+                    >
+                        {assigned.length}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-slate-800" title={cat.label}>
+                            {cat.shortTitle}
                         </span>
-                        <button
-                            type="button"
-                            onClick={onToggleExpanded}
-                            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 touch-manipulation"
-                            title={showMembers ? 'ยุบรายชื่อ' : 'ดูรายชื่อ'}
-                        >
-                            <ChevronDown
-                                size={20}
-                                className={`transition-transform ${showMembers ? 'rotate-180' : ''}`}
-                            />
-                        </button>
-                    </div>
-                </div>
+                        <span className="block text-[10px] font-medium text-slate-500">
+                            {assigned.length > 0 ? `${assigned.length} คนในกล่อง` : 'ว่าง — ลากคนมาวาง'}
+                        </span>
+                    </span>
+                    <ChevronDown
+                        size={18}
+                        className={`shrink-0 text-slate-400 transition-transform ${showMembers ? 'rotate-180' : ''}`}
+                    />
+                </button>
                 {showMembers && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1 border-t border-slate-100 pt-2">
                         {assigned.map(eid => {
                             const emp = employees.find(e => e.id === eid);
                             if (!emp) return null;
@@ -233,7 +233,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                     <button
                         type="button"
                         onClick={onMovePickedHere}
-                        className={`mt-2 w-full rounded-lg bg-indigo-100 font-bold text-indigo-800 hover:bg-indigo-200 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+                        className={`mt-2 w-full rounded-lg border border-indigo-300 bg-indigo-50 font-bold text-indigo-800 hover:bg-indigo-100 touch-manipulation ${touchUI ? 'min-h-[40px] py-2 text-sm' : 'py-1.5 text-[11px]'}`}
                     >
                         ย้ายมาที่นี่ ({selectedCount})
                     </button>
@@ -1979,7 +1979,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             {viewMode === 'record' && (
             <div className={`grid w-full min-w-0 max-w-full grid-cols-1 gap-4 sm:gap-6 lg:gap-8 ${mobileShell ? '' : 'xl:grid-cols-12'}`}>
                 {/* Left: Wizard Form — แยกแถบข้างเฉพาะจอ xl+ เพื่อไม่ให้คอลัมน์ขวาเหลือ ~195px */}
-                <div className={`min-w-0 space-y-6 ${mobileShell ? '' : 'xl:col-span-8'}`}>
+                <div className={`min-w-0 space-y-6 ${mobileShell ? '' : step === 1 ? 'xl:col-span-12' : 'xl:col-span-8'}`}>
                     <Card className={`relative flex min-h-0 flex-col overflow-hidden ${mobileShell ? 'min-h-0 rounded-2xl border border-slate-200/80 p-4 shadow-sm dark:border-white/10 sm:p-4 md:p-5 lg:p-6' : 'min-h-[560px] p-6'}`}>
                         {viewMode === 'record' && validationChecklist.length > 0 && (
                             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -2043,9 +2043,28 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                         {/* Step 1: Labor - Canvas Style */}
                         {step === 1 && (
                             <div className="flex min-h-0 flex-1 flex-col animate-slide-up">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100"><Users className="text-emerald-500 dark:text-emerald-400" /> บันทึกค่าแรง / OT</h3>
-                                    <span className="text-xs text-slate-400 dark:text-slate-500">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="flex items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100">
+                                            <Users className="text-emerald-500 dark:text-emerald-400" /> บันทึกค่าแรง / OT
+                                        </h3>
+                                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                            {new Date(date).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })}
+                                        </p>
+                                    </div>
+                                    {laborStatus === 'Work' && !mobileShell && (
+                                        <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+                                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-indigo-800">
+                                                เลือก {selectedEmps.length}
+                                            </span>
+                                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
+                                                จัดแล้ว {laborAssignedEmpIds.size}
+                                            </span>
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">
+                                                ในรายชื่อ {poolVisibleEmployees.length}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 {mobileShell && (
                                     <div className="mb-3 w-full min-w-0 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
@@ -2079,43 +2098,26 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     </div>
                                 )}
 
-                                <div className="mb-4 flex gap-3">
-                                    <button type="button" onClick={() => setLaborStatus('Work')} className={`flex-1 touch-manipulation rounded-xl border text-base transition-all ${touchUI ? 'min-h-[52px] py-3.5' : 'py-3'} ${laborStatus === 'Work' ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>✅ มาทำงาน</button>
-                                    <button type="button" onClick={() => setLaborStatus('OT')} className={`flex-1 touch-manipulation rounded-xl border text-base transition-all ${touchUI ? 'min-h-[52px] py-3.5' : 'py-3'} ${laborStatus === 'OT' ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 font-bold' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'}`}>🕒 OT</button>
+                                <div className="mb-4 inline-flex w-full max-w-md rounded-xl border border-slate-200 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-white/5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLaborStatus('Work')}
+                                        className={`flex-1 touch-manipulation rounded-lg px-3 text-sm font-bold transition-all ${touchUI ? 'min-h-[44px] py-2.5' : 'py-2'} ${laborStatus === 'Work' ? 'bg-white text-emerald-700 shadow-sm dark:bg-white/10 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`}
+                                    >
+                                        มาทำงาน
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLaborStatus('OT')}
+                                        className={`flex-1 touch-manipulation rounded-lg px-3 text-sm font-bold transition-all ${touchUI ? 'min-h-[44px] py-2.5' : 'py-2'} ${laborStatus === 'OT' ? 'bg-white text-amber-700 shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-slate-600 dark:text-slate-400'}`}
+                                    >
+                                        OT
+                                    </button>
                                 </div>
                                 {laborStatus === 'Work' && !mobileShell && (
-                                    <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">💡 มาทำงานปกติ = เต็มวัน (ไม่ต้องกด) — ถ้ามาครึ่งวันให้กดปุ่ม &quot;½ ครึ่งวัน&quot ที่ชื่อคนนั้น</p>
-                                )}
-
-                                {/* รายการบันทึกวันนี้ (ค่าแรง/OT) — เรียลไทม์ — ซ่อนในโหมดมือถือเพื่อลดความหนาแน่น */}
-                                {step === 1 && !mobileShell && (
-                                    <div className="mb-4 p-3 rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-500/10">
-                                        <p className="text-xs font-bold text-emerald-800 dark:text-emerald-200 mb-2">📋 รายการบันทึกวันนี้ (อัปเดตทันที)</p>
-                                        {dayTransactions.filter(t => t.category === 'Labor').length === 0 ? (
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 py-2">ยังไม่มีรายการค่าแรง/OT วันนี้ — เมื่อกดบันทึกจะแสดงที่นี่ทันที</p>
-                                        ) : (
-                                            <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                                {dayTransactions.filter(t => t.category === 'Labor').map(t => {
-                                                    const mobileSignature = parseSignatureNote(t.note);
-                                                    return (
-                                                        <div key={t.id} className="text-sm py-1.5 px-2 rounded-lg bg-white/80 dark:bg-white/5 border border-emerald-100 dark:border-emerald-500/20">
-                                                            <div className="flex justify-between items-center gap-2">
-                                                                <span className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{t.description}</span>
-                                                                <span className="text-emerald-700 dark:text-emerald-300 font-bold shrink-0">฿{t.amount?.toLocaleString() ?? 0}</span>
-                                                            </div>
-                                                            {mobileSignature && (
-                                                                <div className="mt-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-1 text-[10px] font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200">
-                                                                    ✍️ {signatureSourceLabel(mobileSignature)} {mobileSignature.signedBy ? `โดย ${mobileSignature.signedBy}` : ''}
-                                                                    {mobileSignature.signedAt ? ` • ${formatSignatureDateTime(mobileSignature.signedAt)}` : ''}
-                                                                </div>
-                                                            )}
-                                                            {mobileSignature && <SignatureAttachmentPreview meta={mobileSignature} />}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
+                                    <p className="mb-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                        เต็มวัน = ไม่ต้องกด ½ · เลือกหลายคนแล้วลากหรือกด «ย้ายมาที่นี่» ในกล่องงาน
+                                    </p>
                                 )}
 
                                 {/* === OT MODE: Clean form layout === */}
@@ -2305,17 +2307,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {/* === WORK MODE: Canvas layout === */}
                                 {laborStatus === 'Work' && (
                                     <>
-                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
-                                            <div className="flex flex-wrap gap-1.5">
+                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 shadow-sm dark:border-white/10 dark:bg-white/[0.02]">
+                                            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
                                                 {smartWorkTemplates.map((tpl, idx) => (
                                                     <button
                                                         key={`${tpl.label}_${idx}`}
                                                         type="button"
                                                         onClick={() => setWorkAssignments(tpl.workAssignments)}
-                                                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+                                                        className="rounded-lg border border-indigo-200/80 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
                                                         title="ใช้ template การจัดงานเดิมทั้งชุด"
                                                     >
-                                                        ใช้เทมเพลต #{idx + 1} ({tpl.count} ครั้ง)
+                                                        เทมเพลต #{idx + 1} · {tpl.count}x
                                                     </button>
                                                 ))}
                                             </div>
@@ -2323,32 +2325,43 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 type="button"
                                                 onClick={restoreLaborStepHistory}
                                                 disabled={laborStepHistory.length < 2}
-                                                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-white/[0.06] dark:text-slate-200"
-                                                title="ย้อนกลับเฉพาะขั้นค่าแรง/จัดคน โดยไม่กระทบขั้นอื่น"
+                                                className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
                                             >
-                                                ย้อนกลับขั้นนี้ ({Math.max(0, laborStepHistory.length - 1)})
+                                                ย้อนกลับ ({Math.max(0, laborStepHistory.length - 1)})
                                             </button>
                                         </div>
-                                        {/* Labor drag board — ตามแอป Android (_LaborDragBoard) */}
-                                        <div className="mb-3 min-h-0 flex-1 overflow-hidden rounded-2xl border border-[#C5D9EF] bg-[#F0F6FC] p-3 shadow-sm">
+                                        {/* Labor drag board */}
+                                        <div className="mb-3 min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-slate-100/80 p-2.5 shadow-sm dark:border-white/10 dark:from-white/[0.02] dark:to-white/[0.04] sm:p-3">
                                             <div
                                                 className={
                                                     !isTouchLayout
-                                                        ? 'flex h-[min(58vh,640px)] max-h-[min(78vh,820px)] min-h-0 flex-1 gap-3.5'
+                                                        ? 'grid h-[min(64vh,720px)] max-h-[min(82vh,860px)] min-h-[420px] grid-cols-[minmax(300px,38%)_minmax(0,1fr)] gap-3'
                                                         : 'flex max-h-[min(88vh,820px)] min-h-0 flex-col gap-3'
                                                 }
                                             >
                                                 <div
                                                     className={
                                                         !isTouchLayout
-                                                            ? 'flex min-h-0 w-[min(44%,500px)] min-w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
-                                                            : 'flex max-h-[min(52vh,560px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            ? 'flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            : 'flex max-h-[min(48vh,520px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
                                                     }
                                                 >
-                                                    <div className="shrink-0 border-b border-slate-100 p-2.5">
-                                                        <p className="text-sm font-extrabold text-slate-800">เลือกพนักงาน</p>
-                                                        <p className="text-xs font-medium text-slate-500">กลุ่มตามตำแหน่งงาน</p>
-                                                        <div className="mt-2 space-y-1.5" role="tablist" aria-label="กลุ่มพนักงาน">
+                                                    <div className="shrink-0 space-y-2.5 border-b border-slate-100 p-3">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className="text-sm font-extrabold text-slate-800">เลือกพนักงาน</p>
+                                                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                                                                {selectedEmps.length} เลือก
+                                                            </span>
+                                                        </div>
+                                                        <div
+                                                            className={
+                                                                !isTouchLayout
+                                                                    ? 'flex gap-1.5 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]'
+                                                                    : 'max-h-[min(28vh,240px)] space-y-1 overflow-y-auto pr-0.5'
+                                                            }
+                                                            role="tablist"
+                                                            aria-label="กลุ่มพนักงาน"
+                                                        >
                                                             {LABOR_EMPLOYEE_BUCKET_ORDER.map(b => {
                                                                 const Icon = LABOR_POOL_BUCKET_ICON[b];
                                                                 const selected = laborEmployeeBucket === b;
@@ -2359,55 +2372,48 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                         role="tab"
                                                                         aria-selected={selected}
                                                                         onClick={() => setLaborEmployeeBucket(b)}
-                                                                        className={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors touch-manipulation ${
-                                                                            selected
-                                                                                ? 'border-[#1565C0] bg-[#E8F1FF]'
-                                                                                : 'border-[#E1E8F0] bg-[#F6F8FC] hover:border-indigo-200'
-                                                                        }`}
+                                                                        className={
+                                                                            !isTouchLayout
+                                                                                ? `flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left transition-colors touch-manipulation ${
+                                                                                      selected
+                                                                                          ? 'border-[#1565C0] bg-[#E8F1FF] text-[#0D47A1]'
+                                                                                          : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200'
+                                                                                  }`
+                                                                                : `flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left touch-manipulation ${
+                                                                                      selected
+                                                                                          ? 'border-[#1565C0] bg-[#E8F1FF]'
+                                                                                          : 'border-slate-200 bg-slate-50'
+                                                                                  }`
+                                                                        }
                                                                     >
-                                                                        <Icon
-                                                                            size={22}
-                                                                            className={`mt-0.5 shrink-0 ${selected ? 'text-[#1565C0]' : 'text-[#5B6D83]'}`}
-                                                                        />
-                                                                        <span className="min-w-0 flex-1">
-                                                                            <span className={`block text-sm font-extrabold ${selected ? 'text-[#1D2A3A]' : 'text-slate-800'}`}>
-                                                                                {LABOR_EMPLOYEE_BUCKET_LABEL[b]} ({laborBucketCounts[b]})
-                                                                            </span>
-                                                                            <span className="block text-[11px] font-semibold leading-snug text-slate-500">
-                                                                                {LABOR_EMPLOYEE_BUCKET_HINT[b]}
-                                                                            </span>
+                                                                        <Icon size={!isTouchLayout ? 16 : 20} className="shrink-0" />
+                                                                        <span className={`font-bold ${!isTouchLayout ? 'text-[11px] whitespace-nowrap' : 'text-sm'}`}>
+                                                                            {LABOR_EMPLOYEE_BUCKET_LABEL[b]}
+                                                                        </span>
+                                                                        <span className={`rounded-full px-1.5 font-bold ${!isTouchLayout ? 'text-[10px]' : 'text-xs'} ${selected ? 'bg-[#1565C0] text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                                                            {laborBucketCounts[b]}
                                                                         </span>
                                                                     </button>
                                                                 );
                                                             })}
                                                         </div>
-                                                        <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200/80 bg-amber-50 px-2.5 py-2">
-                                                            <Touchpad size={18} className="shrink-0 text-amber-800" />
-                                                            <p className="text-[11px] font-semibold leading-snug text-amber-950">
-                                                                แตะชื่อเพื่อเลือกหลายคน · กดค้างแล้วลากไปกล่อง หรือกดปุ่ม «ย้ายมาที่นี่» ในกล่องงาน
+                                                        {!isTouchLayout && (
+                                                            <p className="text-[10px] font-medium text-slate-500">
+                                                                {LABOR_EMPLOYEE_BUCKET_HINT[laborEmployeeBucket]}
                                                             </p>
-                                                        </div>
-                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                            <span className="text-xs font-extrabold text-slate-700">รายชื่อในกลุ่ม</span>
-                                                            <span
-                                                                className={`rounded-full border px-2.5 py-0.5 text-xs font-extrabold ${
-                                                                    selectedEmps.length > 0
-                                                                        ? 'border-blue-300 bg-blue-50 text-blue-900'
-                                                                        : 'border-slate-300 bg-slate-100 text-slate-600'
-                                                                }`}
-                                                            >
-                                                                {selectedEmps.length} เลือก
-                                                            </span>
+                                                        )}
+                                                        <div className="relative">
+                                                            <Search size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                                                             <input
-                                                                placeholder="ค้นหา..."
+                                                                placeholder="ค้นหาชื่อ..."
                                                                 value={laborSearch}
                                                                 onChange={e => setLaborSearch(e.target.value)}
-                                                                className="ml-auto text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-28 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-300"
+                                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200"
                                                             />
                                                         </div>
                                                     </div>
-                                                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
-                                                        <div className="flex flex-wrap content-start gap-2.5 sm:gap-3">
+                                                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
+                                                        <div className="grid grid-cols-2 gap-2 content-start lg:grid-cols-2 xl:grid-cols-2">
                                                             {poolVisibleEmployees.map(emp => {
                                                                 const isSelected = selectedEmps.includes(emp.id);
                                                                 const saved = dayTransactions.find(
@@ -2449,19 +2455,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                 ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}`
                                                                                 : undefined
                                                                         }
-                                                                        className={`inline-flex min-w-[8.25rem] max-w-full items-center justify-center rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[56px] px-4 py-3.5 text-base' : 'min-h-[50px] px-4 py-3 text-[15px] leading-snug'}
+                                                                        className={`flex w-full items-center justify-center gap-1 rounded-xl border font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[52px] px-2 py-3 text-sm' : 'min-h-[44px] px-2 py-2.5 text-[13px] leading-snug'}
                                                                             ${
                                                                                 leaveRecord
-                                                                                    ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400'
+                                                                                    ? 'border-amber-300 bg-amber-50 text-amber-900'
                                                                                     : isSelected
-                                                                                      ? 'bg-indigo-600 text-white shadow-md scale-[1.02]'
+                                                                                      ? 'border-indigo-600 bg-indigo-600 text-white shadow-md ring-2 ring-indigo-200'
                                                                                       : saved
-                                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                                        : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:shadow-sm'
+                                                                                        ? 'border-emerald-200 bg-emerald-50/90 text-emerald-800'
+                                                                                        : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40'
                                                                             }`}
                                                                     >
-                                                                        {displayName}
-                                                                        {leaveRecord ? ' 🏖️' : saved ? ' ✅' : ''}
+                                                                        <GripVertical size={12} className={`shrink-0 opacity-40 ${isSelected ? 'text-white' : ''}`} />
+                                                                        <span className="truncate">{displayName}</span>
+                                                                        {leaveRecord ? <span className="shrink-0 text-xs">🏖️</span> : saved ? <span className="shrink-0 text-xs">✓</span> : null}
                                                                     </div>
                                                                 );
                                                             })}
@@ -2486,17 +2493,20 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-xl border border-slate-200/80 bg-white/60 p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
-                                                    <p className="text-base font-extrabold text-[#0D47A1]">กล่องงาน</p>
-                                                    <p className="text-xs font-medium leading-snug text-slate-500">
-                                                        เลือกพนักงานด้าน{!isTouchLayout ? 'ซ้าย' : 'บน'} → ลากหรือกด «ย้ายมาที่นี่» ในกล่อง
-                                                    </p>
+                                                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                    <div className="sticky top-0 z-[1] shrink-0 border-b border-slate-100 bg-white/95 px-3 py-2.5 backdrop-blur-sm">
+                                                        <p className="text-sm font-extrabold text-slate-800">กล่องงาน</p>
+                                                        <p className="text-[10px] font-medium text-slate-500">
+                                                            ลากจากรายชื่อ{!isTouchLayout ? 'ซ้าย' : 'บน'} หรือกด «ย้ายมาที่นี่»
+                                                        </p>
+                                                    </div>
+                                                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
                                                     {laborFixedCanvasCategories.length > 0 && (
                                                         <>
-                                                            <p className="mt-3 text-sm font-bold text-slate-600">
-                                                                ประเภทงาน (ลากหรือกดย้ายพนักงานใส่)
+                                                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                                                ประเภทงาน
                                                             </p>
-                                                            <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
+                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
                                                                 {laborFixedCanvasCategories.map(cat => {
                                                                     const assigned = workAssignments[cat.id] || [];
                                                                     const expanded =
@@ -2665,16 +2675,17 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </div>
                                                     )}
                                                     <div
-                                                        className={`mt-4 flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-center text-sm font-extrabold ${
+                                                        className={`mt-3 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-center text-xs font-bold ${
                                                             laborAssignedEmpIds.size > 0
-                                                                ? 'border-green-300 bg-gradient-to-r from-green-50 to-green-100 text-green-900'
-                                                                : 'border-slate-300 bg-gradient-to-r from-slate-100 to-slate-200 text-slate-600'
+                                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                                                                : 'border-dashed border-slate-200 bg-slate-50 text-slate-500'
                                                         }`}
                                                     >
-                                                        <Users size={20} className="shrink-0" />
+                                                        <Users size={16} className="shrink-0" />
                                                         {laborAssignedEmpIds.size > 0
                                                             ? `จัดลงงานแล้ว ${laborAssignedEmpIds.size} คน`
-                                                            : 'ยังไม่มีคนในกล่องงาน — เลือกพนักงานจากรายชื่อ'}
+                                                            : 'ยังไม่มีคนในกล่องงาน'}
+                                                    </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -4651,9 +4662,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                     </Card>
                 </div>
 
-                {!mobileShell && (
+                {!mobileShell && step === 0 && (
                 <div className="xl:col-span-4 flex min-w-0 w-full flex-col gap-4">
-                    {/* Right: Daily Dashboard — กว้างเต็มแถวจนถึง xl; จาก xl เป็นคอลัมน์ข้าง (~≥320px) */}
+                    {/* Right: สรุปวันนี้ — เฉพาะขั้น «วันที่ทำงาน» */}
                     {/* สรุปด่วน: การ์ดแนวตั้ง อ่านง่าย; จอเล็ก 2×2 / แถบข้าง xl สแต็ก 1 คอลัมน์ */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
                         <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
