@@ -305,7 +305,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   double _homeSandTodayHomeSaved = 0;
   final Set<String> _selectedLaborEmpIds = {};
   final Set<String> _laborPickedIds = {};
-  _LaborEmpPoolKind _laborEmpPoolKind = _LaborEmpPoolKind.sandSieve;
+  _LaborEmpPoolKind _laborEmpPoolKind = _LaborEmpPoolKind.allEmployees;
   final Map<String, Set<String>> _laborAssignments = {
     for (final c in _laborCategories) c.id: <String>{},
   };
@@ -703,7 +703,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
       _laborPickedIds.clear();
-      _laborEmpPoolKind = _LaborEmpPoolKind.sandSieve;
+      _laborEmpPoolKind = _LaborEmpPoolKind.allEmployees;
       for (final k in _laborAssignments.keys) {
         _laborAssignments[k]?.clear();
       }
@@ -888,14 +888,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
-  /// รถดรัม/เที่ยว — เฉพาะหกล้อและสิบล้อ (จากรายการตั้งค่าแอพ)
+  /// รถดรัม/เที่ยว — ดรัม + หกล้อ/สิบล้อ (จากรายการตั้งค่าแอพ)
   List<String> _vehicleTripCars({String includeVehicleId = ''}) {
     final seen = <String>{};
     final out = <String>[];
     final extra = includeVehicleId.trim();
     if (extra.isNotEmpty && seen.add(extra)) out.add(extra);
     for (final car in _cars) {
-      if (!isSixOrTenWheelVehicleName(car)) continue;
+      if (!isVehicleTripDrumCarName(car)) continue;
       if (seen.add(car)) out.add(car);
     }
     return out;
@@ -11287,7 +11287,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
   }
 }
 
-enum _LaborEmpPoolKind { sandSieve, excavatorMac, nightWatch, generalLabor }
+enum _LaborEmpPoolKind { allEmployees, sandSieve, excavatorMac, nightWatch, generalLabor }
 
 const _sandSievePoolCategoryIds = {
   'wash_old',
@@ -11656,7 +11656,11 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         widget.employees
             .where((e) => !e.inactive)
             .where((e) => !assignedIds.contains(e.id))
-            .where((e) => widget.laborEmpPoolKind(e) == widget.poolKind)
+            .where(
+              (e) =>
+                  widget.poolKind == _LaborEmpPoolKind.allEmployees ||
+                  widget.laborEmpPoolKind(e) == widget.poolKind,
+            )
             .toList()
           ..sort(
             (a, b) =>
@@ -11929,6 +11933,8 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
     List<_LaborWorkCategory> categoriesForPool(_LaborEmpPoolKind kind) {
       final Set<String> ids;
       switch (kind) {
+        case _LaborEmpPoolKind.allEmployees:
+          return List<_LaborWorkCategory>.from(widget.categories);
         case _LaborEmpPoolKind.sandSieve:
           ids = _sandSievePoolCategoryIds;
           break;
@@ -11952,7 +11958,8 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           .clamp(1, 3);
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
       final visibleCategories = categoriesForPool(widget.poolKind);
-      final showGeneralOnly = widget.poolKind == _LaborEmpPoolKind.generalLabor;
+      final showGeneralOnly = widget.poolKind == _LaborEmpPoolKind.generalLabor ||
+          widget.poolKind == _LaborEmpPoolKind.allEmployees;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -12023,6 +12030,12 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _poolKindTile(
+                      kind: _LaborEmpPoolKind.allEmployees,
+                      icon: Icons.grid_view_rounded,
+                      title: 'พนักงานทั้งหมด',
+                      subtitle: 'เลือกลงกล่องงานได้ทุกประเภท',
+                    ),
                     _poolKindTile(
                       kind: _LaborEmpPoolKind.sandSieve,
                       icon: Icons.water_drop_outlined,

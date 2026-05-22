@@ -299,7 +299,7 @@ export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems
     });
 };
 
-/** รถหกล้อ / สิบล้อ — ใช้ในเมนูบันทึกรถดรัมและจำนวนเที่ยว */
+/** รถหกล้อ / สิบล้อ */
 export const isSixOrTenWheelVehicleName = (raw?: string | null): boolean => {
     const s = (raw ?? '').trim();
     if (!s) return false;
@@ -311,7 +311,28 @@ export const isSixOrTenWheelVehicleName = (raw?: string | null): boolean => {
     return false;
 };
 
-/** รายการรถใน dropdown เที่ยวรถ — หกล้อ/สิบล้อเท่านั้น (คงรถที่เลือกอยู่ถ้าโหลดจากประวัติ) */
+/** รถดั๊ม / ดรัม (ชื่อในการตั้งค่ามักเป็น «รถดรัม…») */
+export const isDumpTruckVehicleName = (raw?: string | null): boolean => {
+    const s = (raw ?? '').trim();
+    if (!s) return false;
+    const compact = s.toLowerCase().replace(/\s+/g, '');
+    if (compact.includes('ดั๊ม') || compact.includes('ดั้ม') || compact.includes('ดรัม')) return true;
+    if (compact.includes('dump')) return true;
+    return false;
+};
+
+/** รถที่เลือกได้ในเมนูบันทึกรถดรัมและจำนวนเที่ยว — ดรัม + หกล้อ/สิบล้อ (ไม่รวมแม็คโคร) */
+export const isVehicleTripDrumCarName = (raw?: string | null): boolean => {
+    const s = (raw ?? '').trim();
+    if (!s) return false;
+    const compact = s.toLowerCase().replace(/\s+/g, '');
+    if (compact.includes('แม็คโคร') || compact.includes('แมคโคร') || compact.includes('excavator') || compact.includes('backhoe')) {
+        return false;
+    }
+    return isDumpTruckVehicleName(s) || isSixOrTenWheelVehicleName(s);
+};
+
+/** รายการรถใน dropdown เที่ยวรถ — ดรัม + หกล้อ/สิบล้อ (คงรถที่เลือกอยู่ถ้าโหลดจากประวัติ) */
 export const vehicleTripDrumCarOptions = (
     cars: string[],
     includeVehicle = '',
@@ -321,10 +342,99 @@ export const vehicleTripDrumCarOptions = (
     const extra = includeVehicle.trim();
     if (extra && seen.add(extra)) out.push(extra);
     for (const c of cars) {
-        if (!isSixOrTenWheelVehicleName(c)) continue;
+        if (!isVehicleTripDrumCarName(c)) continue;
         if (seen.has(c)) continue;
         seen.add(c);
         out.push(c);
     }
     return out;
 };
+
+/** รถแม็คโคร — แยกจากรถดรัม/เที่ยว (สอดคล้อง mobile) */
+export const isMacroVehicleId = (raw?: string | null): boolean => {
+    const s = (raw ?? '').trim().toLowerCase();
+    if (!s) return false;
+    return (
+        s.includes('แม็คโคร') ||
+        s.includes('แมคโคร') ||
+        s.includes('excavator') ||
+        s.includes('backhoe')
+    );
+};
+
+/**
+ * ธุรกรรม «เที่ยวรถ» / รถดรัมจากมือถือ (category Vehicle ไม่มีค่าจ้างรถ)
+ * ไม่รวมแม็คโคร หรือขั้น «การใช้รถ» ที่มีค่าจ้าง/ยอดเงิน
+ */
+export const transactionCountsAsVehicleTripMenu = (t: Transaction): boolean => {
+    const subRaw = (t.subCategory ?? '').trim();
+    if (t.category === 'Vehicle') {
+        if (isMacroVehicleId(t.vehicleId)) return false;
+        const amount = Number(t.amount || 0);
+        const vehicleWage = Number((t as any).vehicleWage ?? 0);
+        if (amount > 0 || vehicleWage > 0) return false;
+        return true;
+    }
+    if (t.category !== 'DailyLog') return false;
+    if (subRaw.toLowerCase() === 'sand') return false;
+    if (String(t.description ?? '').includes('ทรายที่ล้างที่บ้าน')) return false;
+    if (subRaw.toLowerCase() !== 'vehicletrip') return false;
+    const hasVid = Boolean((t.vehicleId ?? '').trim() || (t.driverId ?? '').trim());
+    if (!hasVid) return false;
+    const mode = String((t as any).tripBillingMode ?? '').trim();
+    const isLumpSum = mode.toLowerCase() === 'lumpsum' || mode === 'เหมา';
+    if (isLumpSum) {
+        const cubic = Number((t as any).perCarCubic ?? (t as any).totalCubic ?? 0);
+        return cubic > 0;
+    }
+    const trips = Number((t as any).perCarTrips ?? (t as any).tripCount ?? 0);
+    return trips > 0;
+};
+
+/** ขั้น Wizard «การใช้รถ» — ค่าจ้างรถ/เบี้ยคนขับ (ไม่ใช่เที่ยวดรัม/แม็คโคร) */
+export const countsAsWizardVehicleUsageRecord = (t: Transaction): boolean =>
+    t.category === 'Vehicle' &&
+    !isMacroVehicleId(t.vehicleId) &&
+    !transactionCountsAsVehicleTripMenu(t);
+
+/** แถวล้างทรายเครื่องร่อน (ไม่นับแถวถังอย่างเดียว / ทรายที่บ้าน / ตัดรอบ) */
+export const countsAsWizardSandWashRecord = (t: Transaction): boolean => {
+    if (t.category !== 'DailyLog' || (t.subCategory ?? '').trim() !== 'Sand') return false;
+    if (isDedicatedHomeSandRow(t)) return false;
+    if (isHomeSandRoundCloseRow(t)) return false;
+    const desc = String(t.description ?? '').trim();
+    if (desc.includes('จำนวนถัง')) return false;
+    const morning = Number(t.sandMorning ?? 0);
+    const afternoon = Number(t.sandAfternoon ?? 0);
+    if (morning + afternoon > 0) return true;
+    const mt = String((t as any).sandMachineType ?? '').trim();
+    return mt === 'Old' || mt === 'New';
+};
+
+export const sumWizardSandWashCubic = (txs: Transaction[]): number =>
+    txs
+        .filter(countsAsWizardSandWashRecord)
+        .reduce((acc, t) => acc + Number(t.sandMorning || 0) + Number(t.sandAfternoon || 0), 0);
+
+export type DayWizardStepStats = {
+    laborCount: number;
+    vehicleUsageCount: number;
+    tripCount: number;
+    sandWashCount: number;
+    sandWashCubic: number;
+    fuelCount: number;
+    incomeCount: number;
+    eventCount: number;
+};
+
+/** สรุปจำนวนรายการต่อขั้น Wizard — ใช้ใน «พบข้อมูลวันที่นี้», สรุปวันนี้, ขั้นตรวจสอบ */
+export const computeDayWizardStepStats = (dayTransactions: Transaction[]): DayWizardStepStats => ({
+    laborCount: dayTransactions.filter(t => t.category === 'Labor').length,
+    vehicleUsageCount: dayTransactions.filter(countsAsWizardVehicleUsageRecord).length,
+    tripCount: dayTransactions.filter(transactionCountsAsVehicleTripMenu).length,
+    sandWashCount: dayTransactions.filter(countsAsWizardSandWashRecord).length,
+    sandWashCubic: sumWizardSandWashCubic(dayTransactions),
+    fuelCount: dayTransactions.filter(t => t.category === 'Fuel').length,
+    incomeCount: dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').length,
+    eventCount: dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length,
+});

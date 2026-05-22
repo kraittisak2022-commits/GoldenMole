@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     computeSandDrumStockSummary,
+    isDumpTruckVehicleName,
     isSixOrTenWheelVehicleName,
+    isVehicleTripDrumCarName,
     mergeLaborCanvasAssignments,
     normalizeLaborCanvasKey,
     persistedSandHomeDrums,
@@ -367,17 +369,25 @@ describe('vehicleTripDrumCarOptions', () => {
         'รถแม็คโคร SK200',
     ];
 
-    it('includes only six- and ten-wheel names', () => {
+    it('includes dump, six- and ten-wheel names', () => {
         expect(vehicleTripDrumCarOptions(cars)).toEqual([
             'รถหกล้อ 01',
             'รถ 6 ล้อ 02',
             'รถสิบล้อ A',
             '10ล้อ-B',
+            'รถดรัมโอเว่น',
         ]);
     });
 
-    it('keeps a legacy selected vehicle for edit', () => {
+    it('classifies dump and ten-wheel for trip drum menu', () => {
+        expect(isDumpTruckVehicleName('รถดรัมโอเว่น')).toBe(true);
         expect(isSixOrTenWheelVehicleName('รถดรัมโอเว่น')).toBe(false);
-        expect(vehicleTripDrumCarOptions(cars, 'รถดรัมโอเว่น')).toContain('รถดรัมโอเว่น');
+        expect(isVehicleTripDrumCarName('รถดรัมโอเว่น')).toBe(true);
+        expect(isVehicleTripDrumCarName('รถสิบล้อ A')).toBe(true);
+        expect(isVehicleTripDrumCarName('รถแม็คโคร SK200')).toBe(false);
+    });
+
+    it('keeps a legacy selected vehicle for edit', () => {
+        expect(vehicleTripDrumCarOptions(cars, 'รถแม็คโคร SK200')).toContain('รถแม็คโคร SK200');
     });
 });

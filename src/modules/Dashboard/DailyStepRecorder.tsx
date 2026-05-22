@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, Touchpad } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, Touchpad, LayoutGrid } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -11,12 +11,16 @@ import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
 import {
+    computeDayWizardStepStats,
     computeSandDrumStockSummary,
+    countsAsWizardSandWashRecord,
+    countsAsWizardVehicleUsageRecord,
     getTransactionRecencyScore,
     mergeLaborCanvasAssignments,
     pickLatestByDayOrder,
     persistedSandHomeDrums,
     sumWizardDailySpend,
+    transactionCountsAsVehicleTripMenu,
     vehicleTripDrumCarOptions,
 } from './dailyStepRecorderUtils';
 
@@ -87,7 +91,7 @@ const EmployeeSelectChip = memo(function EmployeeSelectChip({
     );
 });
 
-type LaborEmployeeBucket = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+type LaborEmployeeBucket = 'all' | 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
 
 type LaborCanvasCategoryDef = {
     id: string;
@@ -99,6 +103,7 @@ type LaborCanvasCategoryDef = {
 };
 
 const LABOR_POOL_BUCKET_ICON: Record<LaborEmployeeBucket, typeof Droplets> = {
+    all: LayoutGrid,
     sifter: Droplets,
     excavatorMac: Truck,
     nightWatch: Moon,
@@ -417,19 +422,21 @@ const isEmployeeMatchedBySearch = (emp: Employee, search: string) => {
 };
 
 const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
+    all: 'พนักงานทั้งหมด',
     sifter: 'พนักงานร่อนทราย',
     excavatorMac: 'คนขับรถแม็คโคร',
     nightWatch: 'เฝ้ากลางคืน',
     generalLabor: 'พนักงานทั่วไป',
 };
 const LABOR_EMPLOYEE_BUCKET_HINT: Record<LaborEmployeeBucket, string> = {
+    all: 'เลือกลงกล่องงานได้ทุกประเภท',
     sifter: 'ตำแหน่งมีคำว่า «ร่อน»',
     excavatorMac: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
     nightWatch: 'ตำแหน่งเวร/เฝ้ากลางคืน',
     generalLabor: 'เฉพาะตำแหน่งพนักงานทั่วไป',
 };
-const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
-const LABOR_BUCKET_FIXED_CATEGORY_IDS: Record<LaborEmployeeBucket, string[]> = {
+const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['all', 'sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
+const LABOR_BUCKET_FIXED_CATEGORY_IDS: Record<Exclude<LaborEmployeeBucket, 'all'>, string[]> = {
     sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
     excavatorMac: ['digHaul'],
     nightWatch: ['nightShift', 'nightPatrol'],
@@ -681,16 +688,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             .map(t => t.description);
         return buildSmartSuggestions(fromHistory, 10);
     }, [transactions]);
-    const dayStepStats = useMemo(() => {
-        const laborCount = dayTransactions.filter(t => t.category === 'Labor').length;
-        const vehicleCount = dayTransactions.filter(t => t.category === 'Vehicle').length;
-        const tripCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length;
-        const sandCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').length;
-        const fuelCount = dayTransactions.filter(t => t.category === 'Fuel').length;
-        const incomeCount = dayTransactions.filter(t => t.category === 'Income' && t.type === 'Income').length;
-        const eventCount = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event').length;
-        return { laborCount, vehicleCount, tripCount, sandCount, fuelCount, incomeCount, eventCount };
-    }, [dayTransactions]);
+    const dayStepStats = useMemo(
+        () => computeDayWizardStepStats(dayTransactions),
+        [dayTransactions],
+    );
     const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
     const latestLaborAttendance = useMemo(() => {
         const laborAttendance = dayTransactions
@@ -701,9 +702,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         if (dayStepStats.eventCount > 0) return 7;
         if (dayStepStats.incomeCount > 0) return 6;
         if (dayStepStats.fuelCount > 0) return 5;
-        if (dayStepStats.sandCount > 0) return 4;
+        if (dayStepStats.sandWashCount > 0) return 4;
         if (dayStepStats.tripCount > 0) return 3;
-        if (dayStepStats.vehicleCount > 0) return 2;
+        if (dayStepStats.vehicleUsageCount > 0) return 2;
         if (dayStepStats.laborCount > 0) return 1;
         return 1;
     }, [dayStepStats]);
@@ -728,15 +729,19 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const hasLaborAttendanceToday = dayTransactions.some(t => t.category === 'Labor' && t.subCategory === 'Attendance');
     /** สรุปวันนี้ (คอลัมน์ขวา) — คำนวณครั้งเดียว */
     const atAGlanceStats = useMemo(() => {
+        const wizard = computeDayWizardStepStats(dayTransactions);
         const laborCount = dayTransactions
             .filter(t => t.category === 'Labor' && t.laborStatus === 'Work')
             .reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
-        const sandCubic = dayTransactions
-            .filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand')
-            .reduce((acc, t) => acc + (t.sandMorning || 0) + (t.sandAfternoon || 0), 0);
-        const vehicleOrDailyCount = dayTransactions.filter(t => t.category === 'Vehicle' || t.category === 'DailyLog').length;
         const fuelBaht = dayTransactions.filter(t => t.category === 'Fuel').reduce((acc, t) => acc + (t.amount || 0), 0);
-        return { laborCount, sandCubic, vehicleOrDailyCount, fuelBaht };
+        return {
+            laborCount,
+            sandCubic: wizard.sandWashCubic,
+            sandWashCount: wizard.sandWashCount,
+            vehicleTripCount: wizard.tripCount,
+            vehicleUsageCount: wizard.vehicleUsageCount,
+            fuelBaht,
+        };
     }, [dayTransactions]);
     const duplicateTxMeta = useMemo(() => {
         const signatureToIds = new Map<string, string[]>();
@@ -868,7 +873,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     // Labor State
     const [laborSearch, setLaborSearch] = useState('');
     const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
-    const [laborEmployeeBucket, setLaborEmployeeBucket] = useState<LaborEmployeeBucket>('sifter');
+    const [laborEmployeeBucket, setLaborEmployeeBucket] = useState<LaborEmployeeBucket>('all');
     const [laborGeneralWorkNotes, setLaborGeneralWorkNotes] = useState('');
     const [generalSubJobs, setGeneralSubJobs] = useState<GeneralSubJob[]>([{ id: 'default', title: '' }]);
     const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
@@ -890,8 +895,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
     const [laborBucketExpanded, setLaborBucketExpanded] = useState<Record<string, boolean>>({});
     const laborBucketCounts = useMemo(() => {
-        const counts: Record<LaborEmployeeBucket, number> = { sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
+        const counts: Record<LaborEmployeeBucket, number> = { all: 0, sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
         for (const e of employees) {
+            if (e.inactive) continue;
+            counts.all += 1;
             const bucket = classifyLaborEmployeeBucket(e);
             if (bucket) counts[bucket] += 1;
         }
@@ -899,11 +906,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     }, [employees]);
     const filteredLaborEmployees = useMemo(
         () =>
-            employees.filter(
-                e =>
-                    classifyLaborEmployeeBucket(e) === laborEmployeeBucket &&
-                    isEmployeeMatchedBySearch(e, debouncedLaborSearch)
-            ),
+            employees.filter(e => {
+                if (e.inactive) return false;
+                if (!isEmployeeMatchedBySearch(e, debouncedLaborSearch)) return false;
+                if (laborEmployeeBucket === 'all') return true;
+                return classifyLaborEmployeeBucket(e) === laborEmployeeBucket;
+            }),
         [employees, laborEmployeeBucket, debouncedLaborSearch]
     );
     const otVisibleEmployees = useMemo(
@@ -919,6 +927,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         [filteredLaborEmployees, laborAssignedEmpIds]
     );
     const laborFixedCanvasCategories = useMemo(() => {
+        if (laborEmployeeBucket === 'all') return FIXED_LABOR_CANVAS_CATEGORIES;
         const ids = new Set(LABOR_BUCKET_FIXED_CATEGORY_IDS[laborEmployeeBucket]);
         return FIXED_LABOR_CANVAS_CATEGORIES.filter((c) => ids.has(c.id));
     }, [laborEmployeeBucket]);
@@ -2020,9 +2029,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-4">
                                             <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-2 text-center dark:border-emerald-500/25 dark:bg-emerald-500/10"><div className="font-semibold text-emerald-700 dark:text-emerald-300">ค่าแรง</div><div className="mt-0.5 text-base font-black text-emerald-800 dark:text-emerald-200">{dayStepStats.laborCount}</div></div>
-                                            <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-500/10"><div className="font-semibold text-amber-700 dark:text-amber-300">การใช้รถ</div><div className="mt-0.5 text-base font-black text-amber-800 dark:text-amber-200">{dayStepStats.vehicleCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-500/10"><div className="font-semibold text-amber-700 dark:text-amber-300">การใช้รถ</div><div className="mt-0.5 text-base font-black text-amber-800 dark:text-amber-200">{dayStepStats.vehicleUsageCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-center dark:border-amber-500/25 dark:bg-amber-950/30"><div className="font-semibold text-amber-800 dark:text-amber-200">เที่ยวรถ</div><div className="mt-0.5 text-base font-black text-amber-900 dark:text-amber-100">{dayStepStats.tripCount}</div></div>
-                                            <div className="min-w-0 rounded-lg border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-2 text-center dark:border-cyan-500/25 dark:bg-cyan-500/10"><div className="font-semibold text-cyan-700 dark:text-cyan-300">ทราย</div><div className="mt-0.5 text-base font-black text-cyan-800 dark:text-cyan-200">{dayStepStats.sandCount}</div></div>
+                                            <div className="min-w-0 rounded-lg border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-2 text-center dark:border-cyan-500/25 dark:bg-cyan-500/10"><div className="font-semibold text-cyan-700 dark:text-cyan-300">ล้างทราย</div><div className="mt-0.5 text-base font-black text-cyan-800 dark:text-cyan-200">{dayStepStats.sandWashCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-2 text-center dark:border-rose-500/25 dark:bg-rose-500/10"><div className="font-semibold text-rose-700 dark:text-rose-300">น้ำมัน</div><div className="mt-0.5 text-base font-black text-rose-800 dark:text-rose-200">{dayStepStats.fuelCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-lime-200/80 bg-lime-50/80 px-2.5 py-2 text-center dark:border-lime-500/25 dark:bg-lime-500/10"><div className="font-semibold text-lime-700 dark:text-lime-300">รายรับ</div><div className="mt-0.5 text-base font-black text-lime-800 dark:text-lime-200">{dayStepStats.incomeCount}</div></div>
                                             <div className="min-w-0 rounded-lg border border-orange-200/80 bg-orange-50/80 px-2.5 py-2 text-center dark:border-orange-500/25 dark:bg-orange-500/10"><div className="font-semibold text-orange-700 dark:text-orange-300">เหตุการณ์</div><div className="mt-0.5 text-base font-black text-orange-800 dark:text-orange-200">{dayStepStats.eventCount}</div></div>
@@ -2533,7 +2542,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             </div>
                                                         </>
                                                     )}
-                                                    {laborEmployeeBucket === 'generalLabor' && (
+                                                    {(laborEmployeeBucket === 'generalLabor' || laborEmployeeBucket === 'all') && (
                                                         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
                                                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                                                 <span className="text-sm font-bold text-slate-700">งานทั่วไป (ชื่องาน)</span>

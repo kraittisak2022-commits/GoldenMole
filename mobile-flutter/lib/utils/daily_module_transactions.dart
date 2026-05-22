@@ -14,7 +14,7 @@ bool isMacroVehicleId(String? raw) {
 bool isMacroVehicleTransaction(AppTransaction t) =>
     t.category == 'Vehicle' && isMacroVehicleId(t.vehicleId);
 
-/// รถหกล้อ / สิบล้อ — ใช้ในเมนูบันทึกรถดรัมและจำนวนเที่ยว
+/// รถหกล้อ / สิบล้อ
 bool isSixOrTenWheelVehicleName(String? raw) {
   final s = (raw ?? '').trim();
   if (s.isEmpty) return false;
@@ -24,6 +24,28 @@ bool isSixOrTenWheelVehicleName(String? raw) {
   if (compact.contains('สิบล้อ') || compact.contains('10ล้อ')) return true;
   if (RegExp(r'10\s*ล้อ', caseSensitive: false).hasMatch(s)) return true;
   return false;
+}
+
+/// รถดั๊ม / ดรัม
+bool isDumpTruckVehicleName(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.isEmpty) return false;
+  final compact = s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+  if (compact.contains('ดั๊ม') ||
+      compact.contains('ดั้ม') ||
+      compact.contains('ดรัม')) {
+    return true;
+  }
+  if (compact.contains('dump')) return true;
+  return false;
+}
+
+/// รถในเมนูบันทึกรถดรัมและจำนวนเที่ยว — ดรัม + หกล้อ/สิบล้อ (ไม่รวมแม็คโคร)
+bool isVehicleTripDrumCarName(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.isEmpty) return false;
+  if (isMacroVehicleId(s)) return false;
+  return isDumpTruckVehicleName(s) || isSixOrTenWheelVehicleName(s);
 }
 
 /// ธุรกรรม «ลา» ที่ใช้ภาพรวมแคลน / ปฏิทิน — ต้องมีรายชื่อพนักงาน
