@@ -1774,9 +1774,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             </Card>
                         ) : reportData.map(([dateStr, txs]) => {
                             const labor = txs.filter(t => t.category === 'Labor');
-                            const vehicle = txs.filter(t => t.category === 'Vehicle');
-                            const trips = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
-                            const sand = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+                            const vehicle = txs.filter(countsAsWizardVehicleUsageRecord);
+                            const trips = txs.filter(transactionCountsAsVehicleTripMenu);
+                            const sand = txs.filter(countsAsWizardSandWashRecord);
                             const fuel = txs.filter(t => t.category === 'Fuel');
                             const income = txs.filter(t => t.category === 'Income' && t.type === 'Income');
                             const events = txs.filter(t => t.category === 'DailyLog' && t.subCategory === 'Event');
@@ -4491,15 +4491,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         <div className="text-[10px] sm:text-xs text-emerald-800">ค่าแรง</div>
                                     </div>
                                     <div className="bg-amber-50 p-2 sm:p-3 rounded-xl border border-amber-100 text-center">
-                                        <div className="text-lg sm:text-2xl font-bold text-amber-600">{dayTransactions.filter(t => t.category === 'Vehicle').length}</div>
+                                        <div className="text-lg sm:text-2xl font-bold text-amber-600">{dayStepStats.vehicleUsageCount}</div>
                                         <div className="text-[10px] sm:text-xs text-amber-800">การใช้รถ</div>
                                     </div>
                                     <div className="bg-blue-50 p-2 sm:p-3 rounded-xl border border-blue-100 text-center">
-                                        <div className="text-lg sm:text-2xl font-bold text-blue-600">{dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip').length}</div>
+                                        <div className="text-lg sm:text-2xl font-bold text-blue-600">{dayStepStats.tripCount}</div>
                                         <div className="text-[10px] sm:text-xs text-blue-800">เที่ยวรถ</div>
                                     </div>
                                     <div className="bg-cyan-50 p-2 sm:p-3 rounded-xl border border-cyan-100 text-center">
-                                        <div className="text-lg sm:text-2xl font-bold text-cyan-600">{dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand').length}</div>
+                                        <div className="text-lg sm:text-2xl font-bold text-cyan-600">{dayStepStats.sandWashCount}</div>
                                         <div className="text-[10px] sm:text-xs text-cyan-800">ล้างทราย</div>
                                     </div>
                                     <div className="bg-red-50 p-2 sm:p-3 rounded-xl border border-red-100 text-center">
@@ -4519,9 +4519,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 {/* Missing category warnings to help user remember what is not recorded yet */}
                                 {(() => {
                                     const hasLabor = dayTransactions.some(t => t.category === 'Labor');
-                                    const hasVehicle = dayTransactions.some(t => t.category === 'Vehicle');
-                                    const hasTrips = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'VehicleTrip');
-                                    const hasSand = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'Sand');
+                                    const hasVehicle = dayTransactions.some(countsAsWizardVehicleUsageRecord);
+                                    const hasTrips = dayTransactions.some(transactionCountsAsVehicleTripMenu);
+                                    const hasSand = dayTransactions.some(countsAsWizardSandWashRecord);
                                     const hasFuel = dayTransactions.some(t => t.category === 'Fuel');
                                     const hasIncome = dayTransactions.some(t => t.category === 'Income' && t.type === 'Income');
                                     const hasEvent = dayTransactions.some(t => t.category === 'DailyLog' && t.subCategory === 'Event');
@@ -4686,7 +4686,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         valueClass: 'text-emerald-800 dark:text-emerald-200',
                                     },
                                     {
-                                        label: 'ทรายล้าง',
+                                        label: 'ล้างทราย',
                                         unit: 'คิว',
                                         display: formatDisplayNumber(atAGlanceStats.sandCubic),
                                         Icon: Droplets,
@@ -4696,9 +4696,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         valueClass: 'text-cyan-800 dark:text-cyan-200',
                                     },
                                     {
-                                        label: 'รถ / รายวัน',
+                                        label: 'เที่ยวรถ',
                                         unit: 'รายการ',
-                                        display: String(atAGlanceStats.vehicleOrDailyCount),
+                                        display: String(atAGlanceStats.vehicleTripCount),
                                         Icon: Truck,
                                         cell: 'bg-orange-500/[0.08] dark:bg-orange-500/10 border-orange-200/70 dark:border-orange-500/20',
                                         iconWrap: 'bg-orange-500/20 text-orange-800 dark:text-orange-300',
