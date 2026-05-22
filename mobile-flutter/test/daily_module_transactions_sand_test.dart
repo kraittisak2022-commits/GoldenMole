@@ -52,10 +52,14 @@ void main() {
         description: 'จำนวนถังที่ได้วันนี้',
         drumsObtained: 12,
       ),
-      _sandTx(
+      AppTransaction(
         id: 'h',
+        date: '2026-05-19',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
         description: 'ทรายที่ล้างที่บ้าน',
-        drumsWashedAtHome: 5,
+        amount: 0,
       ),
       _sandTx(id: 'm', morning: 40, afternoon: 0, machineType: 'Old'),
     ];

@@ -51,7 +51,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final hasDetailOverride =
         overrideComplete != null && overrideComplete.isNotEmpty;
     final statusLabel = hasDetailOverride && (recorded || partial)
-        ? overrideComplete!
+        ? overrideComplete
         : recorded
         ? 'ครบแล้ว'
         : partial
