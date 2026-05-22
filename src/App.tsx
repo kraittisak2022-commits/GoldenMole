@@ -19,7 +19,6 @@ import LoginPage from './modules/Auth/LoginPage';
 import FirstLoginPasswordChange from './modules/Auth/FirstLoginPasswordChange';
 import PostLoginModeSelect from './modules/Auth/PostLoginModeSelect';
 import MobileFieldApp from './modules/Mobile/MobileFieldApp';
-import WorkPlanner from './modules/Planning/WorkPlanner';
 import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
@@ -179,7 +178,6 @@ const MOCK_TRANSACTIONS: Transaction[] = [
 const MENU_ITEMS = [
     { id: 'Dashboard', icon: LayoutDashboard, l: 'ภาพรวม' },
     { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน (Daily Wizard)' },
-    { id: 'WorkPlanner', icon: ClipboardList, l: 'วางแผนงาน (เดือน/สัปดาห์/วัน)' },
     { id: 'MonthDataAudit', icon: CalendarDays, l: 'ตรวจสอบ' },
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
     { id: 'Labor', icon: Users, l: 'ค่าแรง/ลา' },
@@ -287,6 +285,12 @@ function App() {
 
     // --- App State ---
     const [activeMenu, setActiveMenu] = useState('Dashboard');
+
+    useEffect(() => {
+        if (!MENU_ITEMS.some(m => m.id === activeMenu)) {
+            setActiveMenu('Dashboard');
+        }
+    }, [activeMenu]);
     const [dailyWizardJumpDate, setDailyWizardJumpDate] = useState<string | undefined>(undefined);
     const [dailyWizardJumpStep, setDailyWizardJumpStep] = useState<number | undefined>(undefined);
     const [auditBadgeCount, setAuditBadgeCount] = useState(0);
@@ -299,8 +303,6 @@ function App() {
     const [projects, setProjects] = useState<LandProject[]>([]);
     const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
     const [locale, setLocale] = useState<AppLocale>(() => readSavedLocale());
-    const [undoAction, setUndoAction] = useState<{ message: string; expiresAt: number; onUndo: () => void } | null>(null);
-    const [undoRemainingSec, setUndoRemainingSec] = useState(0);
     const lazyFallback = (
         <div className="flex min-h-[240px] items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -1231,78 +1233,7 @@ function App() {
         });
     }, []);
 
-    const handleDeleteTransaction = useCallback((id: string) => {
-        if (!canMutateTransactionsInCurrentMenu()) {
-            setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
-            setTimeout(() => setToast(null), 3500);
-            return;
-        }
-        if (!canDeleteTransactions) {
-            setToast('ไม่มีสิทธิ์ลบรายการ (Delete)');
-            setTimeout(() => setToast(null), 3000);
-            return;
-        }
-        const target = transactions.find(t => t.id === id);
-        if (!target) return;
-        if (target.category !== 'Payroll') {
-            const lockRef = nonHiddenTransactions.find(x =>
-                x.category === 'Payroll' &&
-                x.payrollPeriod &&
-                isDateInRange(target.date, x.payrollPeriod.start, x.payrollPeriod.end)
-            );
-            if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
-                setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้ลบรายการย้อนหลัง`);
-                setTimeout(() => setToast(null), 4500);
-                return;
-            }
-        }
-        if (currentAdmin) {
-            const snap = {
-                id: target.id,
-                date: normalizeDate(target.date),
-                type: target.type,
-                category: target.category,
-                subCategory: target.subCategory,
-                amount: target.amount,
-                description: target.description,
-            };
-            addLog('soft_delete_transaction', `ซ่อนรายการ: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | snapshot=${JSON.stringify(snap)}`);
-        }
-        setSettings(prev => {
-            const next: AppSettings = {
-                ...prev,
-                appDefaults: {
-                    ...(prev.appDefaults || {}),
-                    hiddenTransactionIds: Array.from(new Set([...(prev.appDefaults?.hiddenTransactionIds || []), id])),
-                },
-            };
-            void db.saveSettings(next);
-            return next;
-        });
-        const expiresAt = Date.now() + 20000;
-        setUndoAction({
-            message: 'ซ่อนรายการแล้ว',
-            expiresAt,
-            onUndo: () => {
-                setSettings(prev => {
-                    const next: AppSettings = {
-                        ...prev,
-                        appDefaults: {
-                            ...(prev.appDefaults || {}),
-                            hiddenTransactionIds: (prev.appDefaults?.hiddenTransactionIds || []).filter(x => x !== id),
-                        },
-                    };
-                    void db.saveSettings(next);
-                    return next;
-                });
-                setToast('กู้คืนรายการแล้ว');
-                setTimeout(() => setToast(null), 2500);
-                setUndoAction(null);
-            },
-        });
-    }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
-
-    const handlePermanentDeleteTransaction = useCallback(async (id: string) => {
+    const handleDeleteTransaction = useCallback(async (id: string) => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
@@ -1360,29 +1291,11 @@ function App() {
             };
             addLog('delete_transaction', `ลบถาวรจากฐานข้อมูล: ${target.category}/${target.subCategory || '-'} วันที่ ${normalizeDate(target.date)} จำนวนเงิน ${target.amount || 0} รายละเอียด: ${target.description || '-'} | snapshot=${JSON.stringify(snap)}`);
         }
-        setToast('ลบรายการจากฐานข้อมูลแล้ว');
+        setToast('ลบรายการแล้ว');
         setTimeout(() => setToast(null), 3000);
     }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
-    useEffect(() => {
-        if (!undoAction) return;
-        const ms = Math.max(0, undoAction.expiresAt - Date.now());
-        const timer = window.setTimeout(() => setUndoAction(null), ms);
-        return () => window.clearTimeout(timer);
-    }, [undoAction]);
-    useEffect(() => {
-        if (!undoAction) {
-            setUndoRemainingSec(0);
-            return;
-        }
-        const updateRemaining = () => {
-            const leftMs = Math.max(0, undoAction.expiresAt - Date.now());
-            setUndoRemainingSec(Math.ceil(leftMs / 1000));
-        };
-        updateRemaining();
-        const ticker = window.setInterval(updateRemaining, 200);
-        return () => window.clearInterval(ticker);
-    }, [undoAction]);
+    const handlePermanentDeleteTransaction = handleDeleteTransaction;
 
     useEffect(() => {
         if (!isLoggedIn || activeMenu !== 'DailyWizard') return;
@@ -1572,16 +1485,6 @@ function App() {
                 />
             );
             case 'DailyWizard': return <DailyStepRecorder mobileShell={isMobile} touchLayout={isTouchLayout} initialDate={dailyWizardJumpDate} initialStep={dailyWizardJumpStep} employees={employees} settings={settings} transactions={visibleTransactions} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} onPermanentDeleteTransaction={canDeleteTransactions ? handlePermanentDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} setSettings={handleSetSettings} />;
-            case 'WorkPlanner': return currentAdmin ? (
-                <WorkPlanner
-                    adminId={currentAdmin.id}
-                    adminName={currentAdmin.displayName}
-                    settings={settings}
-                    setSettings={handleSetSettings}
-                    addLog={addLog}
-                    darkMode={darkMode}
-                />
-            ) : null;
             case 'AdminManagement': return currentAdmin?.role === 'SuperAdmin' ? (
                 <Suspense fallback={lazyFallback}>
                     <AdminModule
@@ -1659,12 +1562,6 @@ function App() {
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
                 {idleWarningModal}
-                {undoAction && (
-                    <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                        <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
-                        <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
-                    </div>
-                )}
                 <PostLoginModeSelect
                     appName={settings.appName}
                     appIcon={darkMode && settings.appIconDark ? settings.appIconDark : settings.appIcon}
@@ -1687,12 +1584,6 @@ function App() {
             <>
                 {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
                 {idleWarningModal}
-                {undoAction && (
-                    <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                        <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
-                        <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
-                    </div>
-                )}
                 <AdminProfileModal
                     open={accountModalOpen}
                     onClose={() => setAccountModalOpen(false)}
@@ -1891,12 +1782,6 @@ function App() {
 
             {toast && <div className="relative z-50"><Toast message={toast} countdownMs={toast.includes('ถูกจ่ายแล้ว') ? 4500 : undefined} onClose={() => setToast(null)} /></div>}
             {idleWarningModal}
-            {undoAction && (
-                <div className="fixed bottom-20 right-4 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg text-sm text-amber-900 flex items-center gap-3">
-                    <span>{undoAction.message}{undoRemainingSec > 0 ? ` (เหลือ ${undoRemainingSec} วินาที)` : ''}</span>
-                    <button type="button" onClick={undoAction.onUndo} className="px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700">Undo</button>
-                </div>
-            )}
 
             {currentAdmin && (
                 <AdminProfileModal

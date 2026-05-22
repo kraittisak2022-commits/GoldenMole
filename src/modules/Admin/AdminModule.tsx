@@ -19,7 +19,6 @@ interface AdminModuleProps {
 const MENU_PERMISSION_OPTIONS = [
     { id: 'Dashboard', label: 'ภาพรวม' },
     { id: 'DailyWizard', label: 'บันทึกงานประจำวัน' },
-    { id: 'WorkPlanner', label: 'วางแผนงาน' },
     { id: 'MonthDataAudit', label: 'ตรวจสอบข้อมูล' },
     { id: 'Employees', label: 'พนักงาน' },
     { id: 'Labor', label: 'ค่าแรง/ลา' },
@@ -79,7 +78,7 @@ const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, { label: string; acces
     Auditor: {
         label: 'Auditor (ตรวจสอบ)',
         access: {
-            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList', 'WorkPlanner'],
+            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList'],
             visibleTransactionCategories: TX_CATEGORY_PERMISSION_OPTIONS.map(x => x.id),
             maskFinancialAmountsAsPercent: true,
             transactionPermissions: { view: true, create: false, edit: false, delete: false },

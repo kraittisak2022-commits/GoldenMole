@@ -1,4 +1,4 @@
-import { Smartphone, Monitor, Sun, Moon, ClipboardList, CalendarClock, ArrowRight } from 'lucide-react';
+import { Smartphone, Monitor, Sun, Moon, ClipboardList, ArrowRight } from 'lucide-react';
 import { AdminUser } from '../../types';
 
 interface PostLoginModeSelectProps {
@@ -128,36 +128,20 @@ const PostLoginModeSelect = ({
                             เลือกเข้าใช้งานได้ทันทีหลังล็อกอิน
                         </p>
                     </div>
-                    <div className="grid gap-2.5 sm:grid-cols-2">
-                        <button
-                            type="button"
-                            onClick={() => onChooseDesktopMenu('DailyWizard')}
-                            className={`group min-h-[52px] rounded-xl border px-4 py-2 text-left text-sm font-semibold transition ${
-                                darkMode
-                                    ? 'border-blue-400/40 bg-blue-500/20 hover:bg-blue-500/25'
-                                    : 'border-blue-300 bg-white hover:bg-blue-50'
-                            }`}
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                <ClipboardList size={16} />
-                                เปิดบันทึกงานประจำวัน
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onChooseDesktopMenu('WorkPlanner')}
-                            className={`group min-h-[52px] rounded-xl border px-4 py-2 text-left text-sm font-semibold transition ${
-                                darkMode
-                                    ? 'border-indigo-400/40 bg-indigo-500/20 hover:bg-indigo-500/25'
-                                    : 'border-indigo-300 bg-white hover:bg-indigo-50'
-                            }`}
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                <CalendarClock size={16} />
-                                วางแผนงาน เดือน/สัปดาห์/วัน
-                            </span>
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => onChooseDesktopMenu('DailyWizard')}
+                        className={`group w-full min-h-[52px] rounded-xl border px-4 py-2 text-left text-sm font-semibold transition ${
+                            darkMode
+                                ? 'border-blue-400/40 bg-blue-500/20 hover:bg-blue-500/25'
+                                : 'border-blue-300 bg-white hover:bg-blue-50'
+                        }`}
+                    >
+                        <span className="inline-flex items-center gap-2">
+                            <ClipboardList size={16} />
+                            เปิดบันทึกงานประจำวัน
+                        </span>
+                    </button>
                 </section>
 
                 <section
@@ -169,7 +153,6 @@ const PostLoginModeSelect = ({
                     <div className="grid gap-2.5 sm:grid-cols-2">
                         {[
                             { id: 'DailyWizard', label: 'บันทึกงานประจำวัน (Daily Wizard)' },
-                            { id: 'WorkPlanner', label: 'วางแผนงานประจำวัน' },
                             { id: 'Dashboard', label: 'ดูภาพรวมแดชบอร์ด' },
                             { id: 'DataList', label: 'ดูรายการบันทึกย้อนหลัง' },
                         ].map(item => (

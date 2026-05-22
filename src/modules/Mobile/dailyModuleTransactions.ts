@@ -338,15 +338,25 @@ export function summarizeSandWashCubicForDay(
     return { morning, afternoon };
 }
 
-/** ข้อความการ์ดเมนู «บันทึกการร่อนทราย» — คิวเช้า/บ่าย/รวม (เครื่องใหม่+เก่า) */
+/** ข้อความการ์ดเมนู «บันทึกการร่อนทราย» — คิวเช้า/บ่าย (รวมเครื่องร่อนเก่า+ใหม่) */
 export function dailySandWashModuleStatusLabel(
     dayKey: string,
     transactions: Transaction[],
 ): string {
     const { morning, afternoon } = summarizeSandWashCubicForDay(dayKey, transactions);
-    const total = morning + afternoon;
-    if (total <= 0) return '';
-    return `เช้า ${formatSandCubicForCard(morning)} · บ่าย ${formatSandCubicForCard(afternoon)} · รวม ${formatSandCubicForCard(total)} คิว`;
+    if (morning > 0 || afternoon > 0) {
+        return `เช้า ${formatSandCubicForCard(morning)} คิว · บ่าย ${formatSandCubicForCard(afternoon)} คิว`;
+    }
+    let maxDrums = 0;
+    for (const t of transactions) {
+        if (String(t.date || '').trim().slice(0, 10) !== dayKey) continue;
+        if (!transactionTouchesDailyModule(t, dayKey, 'บันทึกการร่อนทราย')) continue;
+        if (String(t.description ?? '').includes('ทรายที่ล้างที่บ้าน')) continue;
+        const d = Number(t.drumsObtained ?? 0);
+        if (d > maxDrums) maxDrums = d;
+    }
+    if (maxDrums > 0) return `ถัง ${formatSandCubicForCard(maxDrums)} · ยังไม่มีคิว`;
+    return 'ยังไม่มีบันทึกล้างทราย';
 }
 
 export function dailyLeaveModuleStatusLabel(
