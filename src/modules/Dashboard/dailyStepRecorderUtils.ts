@@ -215,6 +215,61 @@ export const WEB_LABOR_CANVAS_CATEGORY_IDS = new Set([
     'generalWork',
 ]);
 
+/** กลุ่มพนักงานในขั้นค่าแรง (ไม่รวม «ทั้งหมด») — สอดคล้อง `_LaborEmpPoolKind` บน Android */
+export type LaborEmployeePool = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+
+const MACRO_EXCAVATOR_DRIVER_TITLES = new Set(['คนขับรถแม็คโคร', 'คนขับรถแมคโคร']);
+
+/** รายการตำแหน่งจากฟิลด์ positions + position เดี่ยว */
+export const getEmployeePositionTokens = (emp: Employee): string[] => {
+    const parts = [...(emp.positions || [])]
+        .map(p => String(p).trim())
+        .filter(Boolean);
+    const single = String(emp.position || '').trim();
+    if (single && !parts.includes(single)) parts.push(single);
+    return parts;
+};
+
+/** คนขับแม็คโคร — เฉพาะตำแหน่งชื่อเต็ม (ไม่ใช่ทุกคนที่มีคำว่าแม็คโครในตำแหน่ง) */
+export const isMacroExcavatorDriverEmployee = (emp: Employee): boolean =>
+    getEmployeePositionTokens(emp).some(p => MACRO_EXCAVATOR_DRIVER_TITLES.has(p));
+
+export const isSandSievePoolEmployee = (emp: Employee): boolean =>
+    getEmployeePositionTokens(emp).some(p => p.includes('ร่อน'));
+
+export const isNightWatchPoolEmployee = (emp: Employee): boolean => {
+    const blob = getEmployeePositionTokens(emp).join(' ').toLowerCase();
+    return (
+        blob.includes('เฝ้ากลางคืน') ||
+        blob.includes('เวรกลางคืน') ||
+        blob.includes('กลางคืน') ||
+        blob.includes('night')
+    );
+};
+
+export const isGeneralLaborPoolEmployee = (emp: Employee): boolean =>
+    getEmployeePositionTokens(emp).some(p => {
+        const t = p.trim();
+        return t.includes('พนักงานทั่วไป') || t === 'ทั่วไป';
+    });
+
+/** จัดกลุ่มพนักงานในขั้นค่าแรง — ลำดับและเงื่อนไขเดียวกับ `_laborEmpPoolKindFor` บน Android */
+export const classifyLaborEmployeePool = (emp: Employee): LaborEmployeePool | null => {
+    if (isMacroExcavatorDriverEmployee(emp)) return 'excavatorMac';
+    if (isSandSievePoolEmployee(emp)) return 'sifter';
+    if (isNightWatchPoolEmployee(emp)) return 'nightWatch';
+    if (isGeneralLaborPoolEmployee(emp)) return 'generalLabor';
+    return null;
+};
+
+/** กล่องงานที่แสดงเมื่อเลือกกลุ่ม — คีย์เว็บหลัง `normalizeLaborCanvasKey` */
+export const LABOR_POOL_FIXED_CANVAS_IDS: Record<LaborEmployeePool, string[]> = {
+    sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
+    excavatorMac: ['digHaul'],
+    nightWatch: ['nightShift', 'nightPatrol'],
+    generalLabor: [],
+};
+
 /**
  * แปลงคีย์จากแอปมือถือ / ข้อมูลเก่า → คีย์มาตรฐานบนเว็บ (สอดคล้อง `_normalizeLaborCanvasKey` ใน Flutter)
  */

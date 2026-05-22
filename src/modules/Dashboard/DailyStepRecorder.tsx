@@ -16,6 +16,8 @@ import {
     countsAsWizardSandWashRecord,
     countsAsWizardVehicleUsageRecord,
     getTransactionRecencyScore,
+    classifyLaborEmployeePool,
+    LABOR_POOL_FIXED_CANVAS_IDS,
     mergeLaborCanvasAssignments,
     pickLatestByDayOrder,
     persistedSandHomeDrums,
@@ -431,41 +433,11 @@ const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
 const LABOR_EMPLOYEE_BUCKET_HINT: Record<LaborEmployeeBucket, string> = {
     all: 'เลือกลงกล่องงานได้ทุกประเภท',
     sifter: 'ตำแหน่งมีคำว่า «ร่อน»',
-    excavatorMac: 'ตำแหน่งคนขับรถแม็คโคร/แมคโคร',
+    excavatorMac: 'ตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น',
     nightWatch: 'ตำแหน่งเวร/เฝ้ากลางคืน',
     generalLabor: 'เฉพาะตำแหน่งพนักงานทั่วไป',
 };
 const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['all', 'sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
-const LABOR_BUCKET_FIXED_CATEGORY_IDS: Record<Exclude<LaborEmployeeBucket, 'all'>, string[]> = {
-    sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
-    excavatorMac: ['digHaul'],
-    nightWatch: ['nightShift', 'nightPatrol'],
-    generalLabor: [],
-};
-const getEmployeePositionBlob = (emp: Employee) => {
-    const parts = [...(emp.positions || [])];
-    if (emp.position && !parts.includes(emp.position)) parts.push(emp.position);
-    return parts.join(' ').toLowerCase();
-};
-/** จัดกลุ่มพนักงานในขั้นค่าแรง — กรองตามตำแหน่งงาน */
-const classifyLaborEmployeeBucket = (emp: Employee): LaborEmployeeBucket | null => {
-    const blob = getEmployeePositionBlob(emp);
-    if (blob.includes('แม็คโคร') || blob.includes('แมคโคร')) return 'excavatorMac';
-    if (blob.includes('ร่อน') || blob.includes('ร่อนทราย')) return 'sifter';
-    if (
-        blob.includes('เฝ้ากลางคืน') ||
-        blob.includes('เวรกลางคืน') ||
-        blob.includes('กลางคืน') ||
-        blob.includes('night')
-    ) {
-        return 'nightWatch';
-    }
-    if (blob.includes('พนักงานทั่วไป') || /\bทั่วไป\b/.test(blob)) {
-        return 'generalLabor';
-    }
-    return null;
-};
-
 const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
     const name = (vehicleName || '').toLowerCase().replace(/\s+/g, '');
     if (name.includes('10ล้อ') || name.includes('สิบล้อ')) return 6;
@@ -899,7 +871,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         for (const e of employees) {
             if (e.inactive) continue;
             counts.all += 1;
-            const bucket = classifyLaborEmployeeBucket(e);
+            const bucket = classifyLaborEmployeePool(e);
             if (bucket) counts[bucket] += 1;
         }
         return counts;
@@ -910,7 +882,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                 if (e.inactive) return false;
                 if (!isEmployeeMatchedBySearch(e, debouncedLaborSearch)) return false;
                 if (laborEmployeeBucket === 'all') return true;
-                return classifyLaborEmployeeBucket(e) === laborEmployeeBucket;
+                return classifyLaborEmployeePool(e) === laborEmployeeBucket;
             }),
         [employees, laborEmployeeBucket, debouncedLaborSearch]
     );
@@ -923,12 +895,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         [workAssignments]
     );
     const poolVisibleEmployees = useMemo(
-        () => filteredLaborEmployees.filter(e => !laborAssignedEmpIds.has(e.id)),
+        () =>
+            filteredLaborEmployees
+                .filter(e => !laborAssignedEmpIds.has(e.id))
+                .slice()
+                .sort((a, b) =>
+                    getEmployeeDisplayName(a).localeCompare(getEmployeeDisplayName(b), 'th')
+                ),
         [filteredLaborEmployees, laborAssignedEmpIds]
     );
     const laborFixedCanvasCategories = useMemo(() => {
         if (laborEmployeeBucket === 'all') return FIXED_LABOR_CANVAS_CATEGORIES;
-        const ids = new Set(LABOR_BUCKET_FIXED_CATEGORY_IDS[laborEmployeeBucket]);
+        const ids = new Set(LABOR_POOL_FIXED_CANVAS_IDS[laborEmployeeBucket]);
         return FIXED_LABOR_CANVAS_CATEGORIES.filter((c) => ids.has(c.id));
     }, [laborEmployeeBucket]);
     const assignEmployeesToLaborBucket = useCallback(
@@ -2336,15 +2314,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             <div
                                                 className={
                                                     !isTouchLayout
-                                                        ? 'flex min-h-[360px] max-h-[min(58vh,640px)] gap-3.5'
-                                                        : 'flex max-h-[min(85vh,720px)] flex-col gap-3'
+                                                        ? 'flex min-h-[min(42vh,500px)] max-h-[min(72vh,780px)] gap-3.5'
+                                                        : 'flex max-h-[min(88vh,820px)] flex-col gap-3'
                                                 }
                                             >
                                                 <div
                                                     className={
                                                         !isTouchLayout
-                                                            ? 'flex w-[min(36%,384px)] min-w-[272px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
-                                                            : 'flex max-h-[42vh] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            ? 'flex w-[min(40%,440px)] min-w-[320px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+                                                            : 'flex max-h-[min(50vh,520px)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
                                                     }
                                                 >
                                                     <div className="shrink-0 border-b border-slate-100 p-2.5">
@@ -2408,8 +2386,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             />
                                                         </div>
                                                     </div>
-                                                    <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-                                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
+                                                    <div className="min-h-[min(36vh,420px)] flex-1 overflow-y-auto p-3">
+                                                        <div className="flex flex-wrap content-start gap-2.5">
                                                             {poolVisibleEmployees.map(emp => {
                                                                 const isSelected = selectedEmps.includes(emp.id);
                                                                 const saved = dayTransactions.find(
@@ -2451,7 +2429,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                 ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}`
                                                                                 : undefined
                                                                         }
-                                                                        className={`rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[48px] px-3 py-3 text-base' : 'px-2.5 py-2 text-xs sm:text-sm'}
+                                                                        className={`inline-flex min-w-[7.5rem] max-w-full items-center justify-center rounded-xl font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[52px] px-4 py-3.5 text-base' : 'min-h-[44px] px-3.5 py-2.5 text-sm'}
                                                                             ${
                                                                                 leaveRecord
                                                                                     ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400'
@@ -2468,10 +2446,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                 );
                                                             })}
                                                             {poolVisibleEmployees.length === 0 && (
-                                                                <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white/80 p-4 text-center text-xs text-slate-500">
-                                                                    {laborAssignedEmpIds.size > 0 && !laborSearch.trim()
-                                                                        ? 'จัดคนในกลุ่มนี้ลงกล่องงานครบแล้ว'
-                                                                        : 'ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา'}
+                                                                <div className="w-full rounded-lg border border-dashed border-slate-300 bg-white/80 p-5 text-center text-sm text-slate-500">
+                                                                    {laborSearch.trim()
+                                                                        ? 'ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา'
+                                                                        : laborAssignedEmpIds.size > 0
+                                                                          ? 'ไม่มีพนักงานในกลุ่มนี้ (หรือจัดลงกล่องงานหมดแล้ว)'
+                                                                          : 'ไม่มีพนักงานในกลุ่มนี้'}
                                                                     {laborSearch.trim() && (
                                                                         <button
                                                                             type="button"

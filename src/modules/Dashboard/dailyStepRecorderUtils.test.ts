@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+    classifyLaborEmployeePool,
     computeDayWizardStepStats,
     computeSandDrumStockSummary,
     countsAsWizardSandWashRecord,
     countsAsWizardVehicleUsageRecord,
     isDumpTruckVehicleName,
+    isMacroExcavatorDriverEmployee,
     isSixOrTenWheelVehicleName,
     isVehicleTripDrumCarName,
     mergeLaborCanvasAssignments,
@@ -490,5 +492,56 @@ describe('vehicleTripDrumCarOptions', () => {
 
     it('keeps a legacy selected vehicle for edit', () => {
         expect(vehicleTripDrumCarOptions(cars, 'รถแม็คโคร SK200')).toContain('รถแม็คโคร SK200');
+    });
+});
+
+describe('classifyLaborEmployeePool (Android _laborEmpPoolKindFor)', () => {
+    const emp = (partial: Partial<Employee> & { id: string }): Employee =>
+        ({
+            id: partial.id,
+            name: partial.name ?? partial.id,
+            nickname: partial.nickname ?? '',
+            position: partial.position ?? '',
+            positions: partial.positions,
+            inactive: false,
+            ...partial,
+        }) as Employee;
+
+    it('puts exact macro driver titles in excavatorMac only', () => {
+        const driver = emp({
+            id: 'd1',
+            positions: ['คนขับรถแม็คโคร'],
+        });
+        expect(classifyLaborEmployeePool(driver)).toBe('excavatorMac');
+        expect(isMacroExcavatorDriverEmployee(driver)).toBe(true);
+    });
+
+    it('does not treat generic macro mention as excavator driver', () => {
+        const other = emp({
+            id: 'd2',
+            positions: ['ช่างซ่อมแม็คโคร'],
+        });
+        expect(isMacroExcavatorDriverEmployee(other)).toBe(false);
+        expect(classifyLaborEmployeePool(other)).toBeNull();
+    });
+
+    it('classifies sand sieve by ร่อน in a position token', () => {
+        const sifter = emp({ id: 's1', positions: ['พนักงานร่อนทราย'] });
+        expect(classifyLaborEmployeePool(sifter)).toBe('sifter');
+    });
+
+    it('prioritizes macro driver over sand sieve when both match', () => {
+        const both = emp({
+            id: 'b1',
+            positions: ['คนขับรถแมคโคร', 'ร่อนทราย'],
+        });
+        expect(classifyLaborEmployeePool(both)).toBe('excavatorMac');
+    });
+
+    it('classifies night watch and general labor', () => {
+        expect(classifyLaborEmployeePool(emp({ id: 'n1', position: 'เฝ้ากลางคืน' }))).toBe('nightWatch');
+        expect(classifyLaborEmployeePool(emp({ id: 'g1', positions: ['พนักงานทั่วไป'] }))).toBe(
+            'generalLabor',
+        );
     });
 });
