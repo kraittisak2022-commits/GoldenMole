@@ -159,28 +159,28 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
             className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-all ${dragActive ? 'border-indigo-400 ring-2 ring-indigo-200/50' : 'border-slate-200/90 hover:border-slate-300'}`}
         >
             <div className="h-0.5" style={{ backgroundColor: cat.accent }} />
-            <div className="p-2">
+            <div className="p-2.5">
                 <button
                     type="button"
                     onClick={onToggleExpanded}
-                    className="flex w-full items-center gap-2 text-left touch-manipulation"
+                    className="flex w-full items-center gap-2.5 text-left touch-manipulation"
                 >
                     <span
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-black text-white"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black text-white"
                         style={{ backgroundColor: cat.accent }}
                     >
                         {assigned.length}
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-bold text-slate-800" title={cat.label}>
+                        <span className="block truncate text-base font-bold text-slate-800" title={cat.label}>
                             {cat.shortTitle}
                         </span>
-                        <span className="block text-[10px] font-medium text-slate-500">
+                        <span className="block text-xs font-medium text-slate-500">
                             {assigned.length > 0 ? `${assigned.length} คนในกล่อง` : 'ว่าง — ลากคนมาวาง'}
                         </span>
                     </span>
                     <ChevronDown
-                        size={18}
+                        size={20}
                         className={`shrink-0 text-slate-400 transition-transform ${showMembers ? 'rotate-180' : ''}`}
                     />
                 </button>
@@ -200,7 +200,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                                         onDragStartEmployee(eid);
                                     }}
                                     onDragEnd={() => onDragStartEmployee(null)}
-                                    className={`flex max-w-full cursor-grab items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 font-medium active:cursor-grabbing ${touchUI ? 'min-h-[34px] px-2 py-1 text-[11px]' : 'px-1.5 py-0.5 text-[10px] leading-tight'}`}
+                                    className={`flex max-w-full cursor-grab items-center gap-1 rounded-md border border-slate-200 bg-slate-50 font-medium active:cursor-grabbing ${touchUI ? 'min-h-[38px] px-2.5 py-1.5 text-sm' : 'min-h-[32px] px-2 py-1 text-xs leading-snug'}`}
                                 >
                                     <span className="truncate">{getEmployeeDisplayName(emp)}</span>
                                     <button
@@ -209,7 +209,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                                             ev.stopPropagation();
                                             onToggleHalfDay(eid);
                                         }}
-                                        className={`shrink-0 rounded font-bold touch-manipulation ${touchUI ? 'min-h-7 min-w-7 px-1 text-[10px]' : 'min-w-[1.15rem] px-0.5 py-0 text-[9px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200'}`}
+                                        className={`shrink-0 rounded font-bold touch-manipulation ${touchUI ? 'min-h-8 min-w-8 px-1 text-xs' : 'min-h-6 min-w-6 px-0.5 text-[11px]'} ${isHalf ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200'}`}
                                         title={isHalf ? 'กดเพื่อเปลี่ยนเป็นเต็มวัน' : 'กดเพื่อกำหนดมาครึ่งวัน'}
                                     >
                                         ½
@@ -225,7 +225,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                             );
                         })}
                         {assigned.length === 0 && (
-                            <span className="text-[11px] italic text-slate-400">ลากหรือกดย้ายคนมาวาง...</span>
+                            <span className="text-xs italic text-slate-400">ลากหรือกดย้ายคนมาวาง...</span>
                         )}
                     </div>
                 )}
@@ -233,7 +233,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                     <button
                         type="button"
                         onClick={onMovePickedHere}
-                        className={`mt-2 w-full rounded-lg border border-indigo-300 bg-indigo-50 font-bold text-indigo-800 hover:bg-indigo-100 touch-manipulation ${touchUI ? 'min-h-[40px] py-2 text-sm' : 'py-1.5 text-[11px]'}`}
+                        className={`mt-2 w-full rounded-lg border border-indigo-300 bg-indigo-50 font-bold text-indigo-800 hover:bg-indigo-100 touch-manipulation ${touchUI ? 'min-h-[44px] py-2.5 text-base' : 'min-h-[36px] py-2 text-sm'}`}
                     >
                         ย้ายมาที่นี่ ({selectedCount})
                     </button>
@@ -2348,8 +2348,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 >
                                                     <div className="shrink-0 space-y-2.5 border-b border-slate-100 p-3">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <p className="text-sm font-extrabold text-slate-800">เลือกพนักงาน</p>
-                                                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                                                            <p className="text-base font-extrabold text-slate-800">เลือกพนักงาน</p>
+                                                            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800">
                                                                 {selectedEmps.length} เลือก
                                                             </span>
                                                         </div>
@@ -2374,23 +2374,23 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                         onClick={() => setLaborEmployeeBucket(b)}
                                                                         className={
                                                                             !isTouchLayout
-                                                                                ? `flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left transition-colors touch-manipulation ${
+                                                                                ? `flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-left transition-colors touch-manipulation ${
                                                                                       selected
                                                                                           ? 'border-[#1565C0] bg-[#E8F1FF] text-[#0D47A1]'
                                                                                           : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200'
                                                                                   }`
-                                                                                : `flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left touch-manipulation ${
+                                                                                : `flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left touch-manipulation ${
                                                                                       selected
                                                                                           ? 'border-[#1565C0] bg-[#E8F1FF]'
                                                                                           : 'border-slate-200 bg-slate-50'
                                                                                   }`
                                                                         }
                                                                     >
-                                                                        <Icon size={!isTouchLayout ? 16 : 20} className="shrink-0" />
-                                                                        <span className={`font-bold ${!isTouchLayout ? 'text-[11px] whitespace-nowrap' : 'text-sm'}`}>
+                                                                        <Icon size={!isTouchLayout ? 18 : 22} className="shrink-0" />
+                                                                        <span className={`font-bold ${!isTouchLayout ? 'text-sm whitespace-nowrap' : 'text-base'}`}>
                                                                             {LABOR_EMPLOYEE_BUCKET_LABEL[b]}
                                                                         </span>
-                                                                        <span className={`rounded-full px-1.5 font-bold ${!isTouchLayout ? 'text-[10px]' : 'text-xs'} ${selected ? 'bg-[#1565C0] text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                                                        <span className={`rounded-full px-2 font-bold ${!isTouchLayout ? 'text-xs' : 'text-sm'} ${selected ? 'bg-[#1565C0] text-white' : 'bg-slate-200 text-slate-600'}`}>
                                                                             {laborBucketCounts[b]}
                                                                         </span>
                                                                     </button>
@@ -2398,22 +2398,22 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                             })}
                                                         </div>
                                                         {!isTouchLayout && (
-                                                            <p className="text-[10px] font-medium text-slate-500">
+                                                            <p className="text-xs font-medium text-slate-500">
                                                                 {LABOR_EMPLOYEE_BUCKET_HINT[laborEmployeeBucket]}
                                                             </p>
                                                         )}
                                                         <div className="relative">
-                                                            <Search size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                            <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                                             <input
                                                                 placeholder="ค้นหาชื่อ..."
                                                                 value={laborSearch}
                                                                 onChange={e => setLaborSearch(e.target.value)}
-                                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-base text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200"
                                                             />
                                                         </div>
                                                     </div>
                                                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
-                                                        <div className="grid grid-cols-2 gap-2 content-start lg:grid-cols-2 xl:grid-cols-2">
+                                                        <div className="grid grid-cols-2 gap-2.5 content-start lg:grid-cols-2 xl:grid-cols-2">
                                                             {poolVisibleEmployees.map(emp => {
                                                                 const isSelected = selectedEmps.includes(emp.id);
                                                                 const saved = dayTransactions.find(
@@ -2455,7 +2455,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                 ? `ลา: ${new Date(leaveRecord.date).toLocaleDateString('th-TH')}${leaveRecord.leaveDays ? ` (${leaveRecord.leaveDays} วัน)` : ''} - ${leaveRecord.leaveReason || leaveRecord.laborStatus}`
                                                                                 : undefined
                                                                         }
-                                                                        className={`flex w-full items-center justify-center gap-1 rounded-xl border font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[52px] px-2 py-3 text-sm' : 'min-h-[44px] px-2 py-2.5 text-[13px] leading-snug'}
+                                                                        className={`flex w-full items-center justify-center gap-1.5 rounded-xl border font-semibold cursor-grab active:cursor-grabbing select-none transition-all text-center touch-manipulation ${touchUI ? 'min-h-[56px] px-2.5 py-3 text-base' : 'min-h-[50px] px-2.5 py-3 text-base leading-snug'}
                                                                             ${
                                                                                 leaveRecord
                                                                                     ? 'border-amber-300 bg-amber-50 text-amber-900'
@@ -2466,14 +2466,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                         : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40'
                                                                             }`}
                                                                     >
-                                                                        <GripVertical size={12} className={`shrink-0 opacity-40 ${isSelected ? 'text-white' : ''}`} />
+                                                                        <GripVertical size={14} className={`shrink-0 opacity-40 ${isSelected ? 'text-white' : ''}`} />
                                                                         <span className="truncate">{displayName}</span>
-                                                                        {leaveRecord ? <span className="shrink-0 text-xs">🏖️</span> : saved ? <span className="shrink-0 text-xs">✓</span> : null}
+                                                                        {leaveRecord ? <span className="shrink-0 text-sm">🏖️</span> : saved ? <span className="shrink-0 text-sm">✓</span> : null}
                                                                     </div>
                                                                 );
                                                             })}
                                                             {poolVisibleEmployees.length === 0 && (
-                                                                <div className="w-full rounded-lg border border-dashed border-slate-300 bg-white/80 p-5 text-center text-sm text-slate-500">
+                                                                <div className="col-span-2 w-full rounded-lg border border-dashed border-slate-300 bg-white/80 p-5 text-center text-base text-slate-500">
                                                                     {laborSearch.trim()
                                                                         ? 'ไม่มีพนักงานในกลุ่มนี้ที่ตรงคำค้นหา'
                                                                         : laborAssignedEmpIds.size > 0
@@ -2483,7 +2483,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setLaborSearch('')}
-                                                                            className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                                                                         >
                                                                             ล้างคำค้น
                                                                         </button>
@@ -2495,18 +2495,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 </div>
                                                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                                                     <div className="sticky top-0 z-[1] shrink-0 border-b border-slate-100 bg-white/95 px-3 py-2.5 backdrop-blur-sm">
-                                                        <p className="text-sm font-extrabold text-slate-800">กล่องงาน</p>
-                                                        <p className="text-[10px] font-medium text-slate-500">
+                                                        <p className="text-base font-extrabold text-slate-800">กล่องงาน</p>
+                                                        <p className="text-xs font-medium text-slate-500">
                                                             ลากจากรายชื่อ{!isTouchLayout ? 'ซ้าย' : 'บน'} หรือกด «ย้ายมาที่นี่»
                                                         </p>
                                                     </div>
                                                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2.5 sm:p-3 [-webkit-overflow-scrolling:touch]">
                                                     {laborFixedCanvasCategories.length > 0 && (
                                                         <>
-                                                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                                            <p className="mb-2 text-sm font-bold text-slate-600">
                                                                 ประเภทงาน
                                                             </p>
-                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
+                                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
                                                                 {laborFixedCanvasCategories.map(cat => {
                                                                     const assigned = workAssignments[cat.id] || [];
                                                                     const expanded =
@@ -2555,7 +2555,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     {(laborEmployeeBucket === 'generalLabor' || laborEmployeeBucket === 'all') && (
                                                         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
                                                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                                <span className="text-sm font-bold text-slate-700">งานทั่วไป (ชื่องาน)</span>
+                                                                <span className="text-base font-bold text-slate-700">งานทั่วไป (ชื่องาน)</span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
@@ -2567,12 +2567,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                 prev[generalSubJobAssignmentKey(id)] || [],
                                                                         }));
                                                                     }}
-                                                                    className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
+                                                                    className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
                                                                 >
                                                                     + เพิ่มงาน
                                                                 </button>
                                                             </div>
-                                                            <p className="mb-2 text-[11px] text-slate-500">
+                                                            <p className="mb-2 text-xs text-slate-500">
                                                                 แยกหลายงานได้ — ลากพนักงานลงแต่ละกล่อง
                                                             </p>
                                                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2612,7 +2612,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                                         )
                                                                                     }
                                                                                     placeholder="ชื่องาน เช่น ทำรั้วสแสลม"
-                                                                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
                                                                                 />
                                                                                 {generalSubJobs.length > 1 && (
                                                                                     <button
@@ -2675,7 +2675,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </div>
                                                     )}
                                                     <div
-                                                        className={`mt-3 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-center text-xs font-bold ${
+                                                        className={`mt-3 flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-center text-sm font-bold ${
                                                             laborAssignedEmpIds.size > 0
                                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                                                                 : 'border-dashed border-slate-200 bg-slate-50 text-slate-500'
