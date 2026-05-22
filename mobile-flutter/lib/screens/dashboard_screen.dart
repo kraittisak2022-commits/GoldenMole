@@ -301,6 +301,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return _HomePayload(
         summary: summary,
         dayTransactions: dayTransactions,
+        allTransactions: allRows,
         employees: employees,
       );
     } catch (_) {
@@ -794,15 +795,28 @@ class _SquircleNavIcon extends StatelessWidget {
   }
 }
 
+const _kDailyMenuDetailCategories = {
+  'ลางาน',
+  'บันทึกการร่อนทราย',
+  'จำนวนเที่ยวรถ',
+  'การใช้รถแม็คโคร',
+  'น้ำมัน',
+  'ทรายที่ล้างที่บ้าน',
+  'ค่าแรง',
+  'OT',
+};
+
 class _HomePayload {
   const _HomePayload({
     required this.summary,
     required this.dayTransactions,
+    required this.allTransactions,
     required this.employees,
   });
 
   final DashboardSummary summary;
   final List<AppTransaction> dayTransactions;
+  final List<AppTransaction> allTransactions;
   final List<Employee> employees;
 }
 
@@ -1055,22 +1069,17 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       tileColor: m.color,
                       showLightStyle: index.isOdd,
                       fillStatus: fill,
-                      completeStatusLabelOverride: switch (m.category) {
-                        'ลางาน' => dailyLeaveModuleStatusLabel(
-                          dayKey,
-                          widget.data.dayTransactions,
-                          widget.data.employees,
-                        ),
-                        'บันทึกการร่อนทราย' =>
-                          dailySandWashModuleStatusLabel(
-                            dayKey,
-                            widget.data.dayTransactions,
+                      completeStatusLabelOverride:
+                          dailyModuleCardStatusLabel(
+                            moduleCategory: m.category,
+                            dayKey: dayKey,
+                            dayTransactions: widget.data.dayTransactions,
+                            employees: widget.data.employees,
+                            allTransactionsForStock:
+                                widget.data.allTransactions,
                           ),
-                        _ => null,
-                      },
                       statusMaxLines:
-                          (m.category == 'ลางาน' ||
-                              m.category == 'บันทึกการร่อนทราย')
+                          _kDailyMenuDetailCategories.contains(m.category)
                           ? 3
                           : 2,
                       onTap: () => widget.onOpenModule(m),

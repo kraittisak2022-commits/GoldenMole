@@ -274,12 +274,169 @@ bool countsAsSandWashCubicRow(AppTransaction t) {
   return (morning: morning, afternoon: afternoon);
 }
 
-String formatSandWashCubic(double v) {
+/// ตัวเลขบนการ์ดเมนู (คิว / เที่ยว / ลิตร / ถัง)
+String formatDashboardMetric(double v) {
   if (v.abs() < 1e-9) return '0';
   if ((v - v.roundToDouble()).abs() < 1e-9) return '${v.round()}';
   final s = v.toStringAsFixed(1);
   if (s.endsWith('.0')) return s.substring(0, s.length - 2);
   return s;
+}
+
+@Deprecated('ใช้ formatDashboardMetric')
+String formatSandWashCubic(double v) => formatDashboardMetric(v);
+
+String normalizeSandDayKey(String raw) {
+  final s = raw.trim();
+  if (s.length >= 10) return s.substring(0, 10);
+  return s;
+}
+
+String _joinStatusParts(Iterable<String> parts) =>
+    parts.where((p) => p.trim().isNotEmpty).join(' · ');
+
+bool isLaborWorkAttendanceRow(AppTransaction t) {
+  if (t.category == 'ค่าแรง') return t.employeeIds.isNotEmpty;
+  if (t.category != 'Labor') return false;
+  final ls = (t.laborStatus ?? '').toLowerCase();
+  final sc = (t.subCategory ?? '').toLowerCase();
+  if (sc == 'ot' || ls == 'ot') return false;
+  if (sc == 'advance' || ls == 'advance') return false;
+  if (ls == 'leave' || ls == 'sick' || ls == 'personal') return false;
+  return t.employeeIds.isNotEmpty;
+}
+
+bool isOtLaborRow(AppTransaction t) {
+  if (t.category != 'Labor') return false;
+  final ls = (t.laborStatus ?? '').toUpperCase();
+  final sc = (t.subCategory ?? '').toLowerCase();
+  return ls == 'OT' || sc == 'ot';
+}
+
+/// สรุปถังล้างที่บ้าน / คงเหลือ — สอดคล้อง `_refreshHomeSandStock` บน Quick Input
+({double washedToday, double remainingAfterWash}) computeHomeSandDrumStockForDay(
+  String dayKey,
+  Iterable<AppTransaction> allTransactions,
+) {
+  final byDay = <String, List<AppTransaction>>{};
+  for (final t in allTransactions) {
+    if (t.category != 'DailyLog' || (t.subCategory ?? '').trim() != 'Sand') {
+      continue;
+    }
+    final day = normalizeSandDayKey(t.date);
+    byDay.putIfAbsent(day, () => []).add(t);
+  }
+  final map = <String, ({double obtained, double home})>{};
+  for (final e in byDay.entries) {
+    final txs = e.value;
+    var obtained = 0.0;
+    for (final t in txs) {
+      final o = (t.drumsObtained ?? 0).toDouble();
+      if (o > obtained) obtained = o;
+    }
+    map[e.key] = (obtained: obtained, home: persistedSandHomeDrumsForDay(txs));
+  }
+
+  final days = map.keys.toList()..sort();
+  var before = 0.0;
+  for (final d in days) {
+    if (d.compareTo(dayKey) >= 0) continue;
+    final rec = map[d]!;
+    before = (before + rec.obtained - rec.home).clamp(0.0, 9999999.0);
+  }
+  final today = map[dayKey];
+  final obtainedToday = today?.obtained ?? 0.0;
+  final washedToday = today?.home ?? 0.0;
+  final remaining = (before + obtainedToday - washedToday).clamp(0.0, 9999999.0);
+  return (washedToday: washedToday, remainingAfterWash: remaining);
+}
+
+({int vehicleCount, double morningTrips, double afternoonTrips})
+    vehicleTripSummaryForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final vehicles = <String>{};
+  var morning = 0.0;
+  var afternoon = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionMatchesVehicleTripModuleList(t)) continue;
+    final v = (t.vehicleId ?? '').trim();
+    if (v.isNotEmpty) vehicles.add(v);
+    morning += (t.tripMorning ?? 0);
+    afternoon += (t.tripAfternoon ?? 0);
+  }
+  return (
+    vehicleCount: vehicles.length,
+    morningTrips: morning,
+    afternoonTrips: afternoon,
+  );
+}
+
+int macroVehicleUsageCountForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var n = 0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
+    n++;
+  }
+  return n;
+}
+
+double fuelLitersTotalForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var sum = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (t.category != 'Fuel') continue;
+    sum += (t.quantity ?? 0);
+  }
+  return sum;
+}
+
+int laborWorkHeadcountForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final ids = <String>{};
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!isLaborWorkAttendanceRow(t)) continue;
+    for (final id in t.employeeIds) {
+      final s = id.trim();
+      if (s.isNotEmpty) ids.add(s);
+    }
+  }
+  return ids.length;
+}
+
+String _formatOtHours(double hours) => formatDashboardMetric(hours);
+
+List<({String empId, double hours})> otHoursByEmployeeForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final byEmp = <String, double>{};
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!isOtLaborRow(t)) continue;
+    final h = (t.otHours ?? 0).toDouble();
+    if (h <= 0) continue;
+    for (final id in t.employeeIds) {
+      final s = id.trim();
+      if (s.isEmpty) continue;
+      byEmp[s] = (byEmp[s] ?? 0) + h;
+    }
+  }
+  return byEmp.entries
+      .map((e) => (empId: e.key, hours: e.value))
+      .toList();
 }
 
 /// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — คิวล้างช่วงเช้า/บ่าย
@@ -306,6 +463,156 @@ String dailySandWashModuleStatusLabel(
     return 'ถัง ${formatSandWashCubic(maxDrums)} · ยังไม่มีคิว';
   }
   return 'ยังไม่มีบันทึกล้างทราย';
+}
+
+/// ข้อความสถานะการ์ดเมนู «บันทึกรถดรัมและจำนวนเที่ยว»
+String dailyVehicleTripModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final s = vehicleTripSummaryForDay(dayKey, transactions);
+  if (s.vehicleCount > 0 ||
+      s.morningTrips > 0 ||
+      s.afternoonTrips > 0) {
+    return _joinStatusParts([
+      '${s.vehicleCount} คัน',
+      'เช้า ${formatDashboardMetric(s.morningTrips)} เที่ยว',
+      'บ่าย ${formatDashboardMetric(s.afternoonTrips)} เที่ยว',
+    ]);
+  }
+  return 'ยังไม่มีบันทึกรถ/เที่ยว';
+}
+
+/// ข้อความสถานะการ์ดเมนู «การใช้รถแม็คโคร»
+String dailyMacroVehicleModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final n = macroVehicleUsageCountForDay(dayKey, transactions);
+  if (n > 0) return 'ใช้แม็คโคร $n คัน';
+  return 'ยังไม่มีบันทึกแม็คโคร';
+}
+
+/// ข้อความสถานะการ์ดเมนู «น้ำมัน»
+String dailyFuelModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final liters = fuelLitersTotalForDay(dayKey, transactions);
+  if (liters > 0) {
+    return 'ใช้น้ำมันรวม ${formatDashboardMetric(liters)} ลิตร';
+  }
+  return 'ยังไม่มีบันทึกน้ำมัน';
+}
+
+/// ข้อความสถานะการ์ดเมนู «ทรายที่ล้างที่บ้าน»
+String dailyHomeSandModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> dayTransactions, {
+  Iterable<AppTransaction>? allTransactionsForStock,
+}) {
+  final stock = computeHomeSandDrumStockForDay(
+    dayKey,
+    allTransactionsForStock ?? dayTransactions,
+  );
+  if (stock.washedToday > 0 || stock.remainingAfterWash > 0) {
+    return _joinStatusParts([
+      'ล้าง ${formatDashboardMetric(stock.washedToday)} ถัง',
+      'คงเหลือ ${formatDashboardMetric(stock.remainingAfterWash)} ถัง',
+    ]);
+  }
+  if (dayTransactions.any(
+    (t) =>
+        t.date.trim() == dayKey.trim() &&
+        transactionTouchesDailyModule(t, dayKey, 'ทรายที่ล้างที่บ้าน'),
+  )) {
+    return 'บันทึกแล้ว · ยังไม่ระบุถัง';
+  }
+  return 'ยังไม่มีบันทึกล้างที่บ้าน';
+}
+
+/// ข้อความสถานะการ์ดเมนู «บันทึกการทำงาน» (หมวด `ค่าแรง`)
+String dailyLaborWorkModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final n = laborWorkHeadcountForDay(dayKey, transactions);
+  if (n > 0) return 'มาทำงาน $n คน';
+  return 'ยังไม่มีบันทึกค่าแรง';
+}
+
+/// ข้อความสถานะการ์ดเมนู «การทำงานล่วงเวลา (OT)»
+String dailyOtModuleStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+  List<Employee> employees, {
+  int maxNames = 2,
+}) {
+  final rows = otHoursByEmployeeForDay(dayKey, transactions);
+  if (rows.isEmpty) return 'ยังไม่มีบันทึก OT';
+  rows.sort(
+    (a, b) => calendarEmployeeDisplayName(a.empId, employees)
+        .compareTo(calendarEmployeeDisplayName(b.empId, employees)),
+  );
+  final parts = <String>[];
+  for (var i = 0; i < rows.length && i < maxNames; i++) {
+    final r = rows[i];
+    final name = calendarEmployeeDisplayName(r.empId, employees);
+    parts.add('$name ${_formatOtHours(r.hours)} ชม.');
+  }
+  if (rows.length > maxNames) {
+    parts.add('+${rows.length - maxNames}');
+  }
+  return _joinStatusParts(parts);
+}
+
+/// ข้อความสถานะการ์ดเมนูบันทึกประจำวัน (แสดงบนการ์ดเมื่อมีข้อมูล)
+String? dailyModuleCardStatusLabel({
+  required String moduleCategory,
+  required String dayKey,
+  required Iterable<AppTransaction> dayTransactions,
+  List<Employee> employees = const [],
+  Iterable<AppTransaction>? allTransactionsForStock,
+}) {
+  switch (moduleCategory) {
+    case 'ลางาน':
+      return dailyLeaveModuleStatusLabel(
+        dayKey,
+        dayTransactions,
+        employees,
+      );
+    case 'บันทึกการร่อนทราย':
+      return dailySandWashModuleStatusLabel(dayKey, dayTransactions);
+    case 'จำนวนเที่ยวรถ':
+      return dailyVehicleTripModuleStatusLabel(dayKey, dayTransactions);
+    case 'การใช้รถแม็คโคร':
+      return dailyMacroVehicleModuleStatusLabel(dayKey, dayTransactions);
+    case 'น้ำมัน':
+      return dailyFuelModuleStatusLabel(dayKey, dayTransactions);
+    case 'ทรายที่ล้างที่บ้าน':
+      return dailyHomeSandModuleStatusLabel(
+        dayKey,
+        dayTransactions,
+        allTransactionsForStock: allTransactionsForStock,
+      );
+    case 'ค่าแรง':
+      return dailyLaborWorkModuleStatusLabel(dayKey, dayTransactions);
+    case 'OT':
+      return dailyOtModuleStatusLabel(
+        dayKey,
+        dayTransactions,
+        employees,
+      );
+    default:
+      if (moduleCategory.contains('ล่วงเวลา')) {
+        return dailyOtModuleStatusLabel(
+          dayKey,
+          dayTransactions,
+          employees,
+        );
+      }
+      return null;
+  }
 }
 
 /// ข้อความสถานะการ์ดเมนู «ลางาน» บนหน้าบันทึกประจำวัน
