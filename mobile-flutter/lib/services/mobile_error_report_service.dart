@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
+import '../utils/mobile_error_report_submit_guard.dart';
 import '../utils/save_error_message.dart';
 
 /// บันทึกรายงานข้อผิดพลาดจากแอป Android ลง Supabase (`mobile_error_reports`)
@@ -75,6 +76,15 @@ class MobileErrorReportService {
             _maxSummary,
           );
 
+    final fp = MobileErrorReportSubmitGuard.fingerprint(
+      source: source,
+      summary: summary,
+    );
+    final blocked = MobileErrorReportSubmitGuard.blockReason(fingerprint: fp);
+    if (blocked != null) {
+      throw MobileErrorReportRateLimitException(blocked);
+    }
+
     final contextLines = <String>[
       if (page != null) 'หน้า: $page',
       if (action != null) 'รายการ: $action',
@@ -106,6 +116,7 @@ class MobileErrorReportService {
     };
 
     await _client.from(_table).insert(row);
+    MobileErrorReportSubmitGuard.recordSuccess(fp);
     return id;
   }
 

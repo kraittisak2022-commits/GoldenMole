@@ -28,6 +28,8 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         mileage: '',
         fuelType: 'Diesel' as 'Diesel' | 'Benzine',
         customType: '',
+        partyName: '',
+        partyAddress: '',
         workDetails: '',
         fuelMovement: 'stock_out' as 'stock_in' | 'stock_out',
         vehicleId: '',
@@ -148,13 +150,19 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
     const loadUtilitiesForEdit = (t: Transaction) => {
         const sub = t.subCategory || '';
         const descStr = t.description || '';
-        const extraPart = sub ? descStr.replace(new RegExp(`^${sub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`), '').trim() : descStr;
+        const legacyExtra = sub
+            ? descStr.replace(new RegExp(`^${sub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`), '').trim()
+            : descStr;
+        const known = (settings.expenseTypes || []).includes(sub);
         setForm(prev => ({
             ...prev,
             date: normalizeDate(t.date) || prev.date,
-            desc: sub === 'Other' ? 'Other' : sub,
-            customType: sub === 'Other' ? extraPart : '',
-            extra: sub === 'Other' ? '' : extraPart,
+            desc: known ? sub : 'Other',
+            customType: known ? '' : sub,
+            extra: '',
+            partyName: t.projectId || '',
+            partyAddress: t.location || '',
+            workDetails: t.workDetails || legacyExtra,
             amount: t.amount != null ? String(t.amount) : '',
         }));
         setEditingId(t.id);
@@ -220,7 +228,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                 descText = `เติมน้ำมันรถ (${ftTh}): ${qtyNum} ${unitLabel} → ${form.vehicleId} ฿${form.amount}${form.workDetails ? ` — ${form.workDetails}` : ''}`;
             }
         } else {
-            descText = `${subCat}: ${form.extra}`;
+            descText = subCat;
         }
 
         const payload: Transaction = {
@@ -238,12 +246,19 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             vehicleId: type === 'Fuel' && form.fuelMovement === 'stock_out' ? form.vehicleId : undefined,
         } as Transaction;
         if (type === 'Fuel') payload.workDetails = form.workDetails;
+        if (type === 'Utilities') {
+            if (form.partyName.trim()) payload.projectId = form.partyName.trim();
+            if (form.partyAddress.trim()) payload.location = form.partyAddress.trim();
+            if (form.workDetails.trim()) payload.workDetails = form.workDetails.trim();
+        }
         onSave(payload);
         setForm(prev => ({
             ...prev,
             amount: '',
             desc: '',
             extra: '',
+            partyName: '',
+            partyAddress: '',
             quantity: '',
             customType: '',
             workDetails: '',
@@ -538,7 +553,16 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 <option value="Other">อื่นๆ</option>
                             </Select>
                             {form.desc === 'Other' && <Input label="ระบุประเภท" value={form.customType} onChange={(e: any) => setForm({ ...form, customType: e.target.value })} />}
-                            <Input label="รายละเอียดเพิ่มเติม" value={form.extra} onChange={(e: any) => setForm({ ...form, extra: e.target.value })} />
+                            {type === 'Utilities' && (
+                                <>
+                                    <Input label="ชื่อ" value={form.partyName} onChange={(e: any) => setForm({ ...form, partyName: e.target.value })} />
+                                    <Input label="ที่อยู่" value={form.partyAddress} onChange={(e: any) => setForm({ ...form, partyAddress: e.target.value })} />
+                                    <Input label="รายละเอียด (ไม่บังคับ)" value={form.workDetails} onChange={(e: any) => setForm({ ...form, workDetails: e.target.value })} />
+                                </>
+                            )}
+                            {type !== 'Utilities' && (
+                                <Input label="รายละเอียดเพิ่มเติม" value={form.extra} onChange={(e: any) => setForm({ ...form, extra: e.target.value })} />
+                            )}
                         </>
                     )}
                     <Input label={amountLabel} type="number" value={form.amount} onChange={(e: any) => setForm({ ...form, amount: e.target.value })} className="input-highlight" />

@@ -38,15 +38,22 @@ describe('coercePositionSources', () => {
 });
 
 describe('advance employee filter', () => {
-    it('excludes when any position matches', () => {
+    it('shows when any position is not excluded', () => {
         const e = base({ positions: ['ร่อนทราย', 'คนขับรถ'] });
-        expect(isExcludedFromAdvanceEmployeePicker(e)).toBe(true);
-        expect(employeeEligibleForAdvancePicker(e)).toBe(false);
+        expect(isExcludedFromAdvanceEmployeePicker(e)).toBe(false);
+        expect(employeeEligibleForAdvancePicker(e)).toBe(true);
     });
 
-    it('excludes legacy position field', () => {
+    it('shows when legacy position is excluded but list has eligible title', () => {
         const e = base({ positions: ['ร่อนทราย'], position: 'รับจ้างรายวัน' });
+        expect(isExcludedFromAdvanceEmployeePicker(e)).toBe(false);
+        expect(employeeEligibleForAdvancePicker(e)).toBe(true);
+    });
+
+    it('hides only when every position is excluded', () => {
+        const e = base({ positions: ['คนขับรถ', 'รับจ้างรายวัน'] });
         expect(isExcludedFromAdvanceEmployeePicker(e)).toBe(true);
+        expect(employeeEligibleForAdvancePicker(e)).toBe(false);
     });
 
     it('handles positions stored as string (legacy row)', () => {

@@ -187,7 +187,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _advanceBank = '';
   final _advanceAccountController = TextEditingController();
   final _utilitiesTypeController = TextEditingController();
-  final _utilitiesExtraController = TextEditingController();
+  final _iuPartyNameController = TextEditingController();
+  final _iuPartyAddressController = TextEditingController();
+  final _iuPartyDetailController = TextEditingController();
   final _utilitiesAmountController = TextEditingController();
   final _incomeTypeController = TextEditingController();
   final _incomeQtyController = TextEditingController();
@@ -241,6 +243,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<AppTransaction> _moduleDayAllTransactions = const [];
   bool _moduleDayLoading = false;
 
+  /// กันผล _loadModuleTransactions ที่เสร็จช้ากว่า (เช่น โหลดตอนเปิดหน้าแล้วบันทึกเสร็จก่อน) ไป dispose draft ที่ใช้อยู่
+  int _moduleTransactionsLoadGeneration = 0;
+
   bool get _hasTrackedModuleCategory =>
       (widget.initialCategory?.trim().isNotEmpty ?? false);
 
@@ -281,9 +286,92 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return _macroVehicleDrafts.first;
   }
 
+  void _deferDisposeVehicleDrafts(Iterable<_VehicleTripDraft> rows) {
+    final old = rows.toList();
+    if (old.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in old) {
+        row.dispose();
+      }
+    });
+  }
+
+  void _deferDisposeMacroVehicleDrafts(Iterable<_MacroVehicleDraft> rows) {
+    final old = rows.toList();
+    if (old.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in old) {
+        row.dispose();
+      }
+    });
+  }
+
+  void _deferDisposeFuelVehicleDrafts(Iterable<_FuelVehicleDraft> rows) {
+    final old = rows.toList();
+    if (old.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in old) {
+        row.dispose();
+      }
+    });
+  }
+
+  void _resetVehicleTripDraftInPlace(_VehicleTripDraft row) {
+    row.tripTxId = null;
+    row.vehicleId = '';
+    row.driverId = '';
+    row.workType = 'FullDay';
+    row.tripBillingMode = 'LumpSum';
+    row.hourlyHours = '';
+    row.workDetails = '';
+    row.tripMorning = '';
+    row.tripAfternoon = '';
+    row.cubicPerTrip = '';
+    row.lumpSumTotalCubic = '';
+    row.workDetailsController.clear();
+    row.hourlyHoursController.clear();
+    row.tripMorningController.clear();
+    row.tripAfternoonController.clear();
+    row.cubicPerTripController.clear();
+    row.lumpSumTotalCubicController.clear();
+  }
+
+  void _clearVehicleTripFormAfterSave() {
+    while (_vehicleTripDrafts.length > 1) {
+      final removed = _vehicleTripDrafts.removeLast();
+      _deferDisposeVehicleDrafts([removed]);
+    }
+    if (_vehicleTripDrafts.isEmpty) {
+      _vehicleTripDrafts.add(_VehicleTripDraft.empty());
+      return;
+    }
+    _resetVehicleTripDraftInPlace(_vehicleTripDrafts.first);
+  }
+
   void _resetActiveMacroVehicleDraft() {
-    _disposeMacroVehicleDrafts();
-    _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
+    _replaceMacroVehicleDrafts([_MacroVehicleDraft.empty()]);
+  }
+
+  void _resetFuelVehicleDraftInPlace(_FuelVehicleDraft row) {
+    row.txId = null;
+    row.vehicleId = '';
+    row.fuelType = 'Diesel';
+    row.liters = '';
+    row.time = '';
+    row.litersController.clear();
+    row.timeController.clear();
+  }
+
+  void _clearFuelVehicleFormAfterSave() {
+    while (_fuelVehicleDrafts.length > 1) {
+      final removed = _fuelVehicleDrafts.removeLast();
+      _deferDisposeFuelVehicleDrafts([removed]);
+    }
+    if (_fuelVehicleDrafts.isEmpty) {
+      _fuelVehicleDrafts.add(_FuelVehicleDraft.empty());
+      return;
+    }
+    _resetFuelVehicleDraftInPlace(_fuelVehicleDrafts.first);
   }
 
   int get _macroSavedVehicleCountToday => _moduleDayTransactions.length;
@@ -473,10 +561,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   void _replaceVehicleDrafts(List<_VehicleTripDraft> nextRows) {
-    _disposeVehicleDrafts();
+    final old = List<_VehicleTripDraft>.from(_vehicleTripDrafts);
     _vehicleTripDrafts
       ..clear()
       ..addAll(nextRows.isEmpty ? [_VehicleTripDraft.empty()] : nextRows);
+    _deferDisposeVehicleDrafts(old);
   }
 
   /// ลบแถวรถดรัม: แถวที่บันทึกแล้ว (`tripTxId`) ลบจากฐานข้อมูลแล้วโหลดรายการใหม่ — ไม่เช่นนั้นลบเฉพาะในแบบฟอร์ม
@@ -508,7 +597,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     setState(() {
       final removed = _vehicleTripDrafts.removeAt(index);
-      removed.dispose();
+      _deferDisposeVehicleDrafts([removed]);
       if (_vehicleTripDrafts.isEmpty) {
         _vehicleTripDrafts.add(_VehicleTripDraft.empty());
       }
@@ -545,7 +634,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     setState(() {
       final removed = _macroVehicleDrafts.removeAt(index);
-      removed.dispose();
+      _deferDisposeMacroVehicleDrafts([removed]);
       if (_macroVehicleDrafts.isEmpty) {
         _macroVehicleDrafts.add(_MacroVehicleDraft.empty());
       }
@@ -559,10 +648,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   void _replaceFuelVehicleDrafts(List<_FuelVehicleDraft> nextRows) {
-    _disposeFuelVehicleDrafts();
+    final old = List<_FuelVehicleDraft>.from(_fuelVehicleDrafts);
     _fuelVehicleDrafts
       ..clear()
       ..addAll(nextRows.isEmpty ? [_FuelVehicleDraft.empty()] : nextRows);
+    _deferDisposeFuelVehicleDrafts(old);
   }
 
   void _disposeMacroVehicleDrafts() {
@@ -572,10 +662,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   void _replaceMacroVehicleDrafts(List<_MacroVehicleDraft> nextRows) {
-    _disposeMacroVehicleDrafts();
+    final old = List<_MacroVehicleDraft>.from(_macroVehicleDrafts);
     _macroVehicleDrafts
       ..clear()
       ..addAll(nextRows.isEmpty ? [_MacroVehicleDraft.empty()] : nextRows);
+    _deferDisposeMacroVehicleDrafts(old);
   }
 
   /// ดึงข้อมูลแม็คโครของคันที่เลือกในวันนี้ (ล่าสุด) เพื่อแก้ไข — กันบันทึกซ้ำ
@@ -602,6 +693,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final ba = best.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       if (ta.isAfter(ba)) best = t;
     }
+    if (row.isDisposed) return;
     if (best != null) {
       row.txId = best.id;
       row.driverId = (best.driverId ?? '').trim();
@@ -700,7 +792,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _fuelVehicleTimeController.clear();
       if (!_saving) _replaceFuelVehicleDrafts(const []);
     } else if (_isMacroVehicleMode) {
-      if (!_saving) _replaceMacroVehicleDrafts(const []);
+      if (!_saving) _resetActiveMacroVehicleDraft();
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
       _laborPickedIds.clear();
@@ -751,7 +843,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _iuIncomeChoice = null;
       _wizardIncomePaymentStatus = 'Paid';
       _utilitiesTypeController.clear();
-      _utilitiesExtraController.clear();
+      _iuPartyNameController.clear();
+      _iuPartyAddressController.clear();
+      _iuPartyDetailController.clear();
       _utilitiesAmountController.clear();
       _incomeTypeController.clear();
       _incomeQtyController.clear();
@@ -769,14 +863,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) async {
     final cat = widget.initialCategory?.trim();
     if (!mounted || cat == null || cat.isEmpty) return;
+    final loadId = ++_moduleTransactionsLoadGeneration;
+    bool isCurrentLoad() => loadId == _moduleTransactionsLoadGeneration;
     setState(() {
       _moduleDayLoading = true;
       _moduleHistoryVisible = false;
     });
+    if (!isCurrentLoad()) return;
     _clearHydrationSlots();
     if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
       _clearModuleFormFields();
     }
+    if (!isCurrentLoad()) return;
     try {
       final ymd = _quickYmd(_selectedDate);
       final forceServer = forceRefresh ||
@@ -807,7 +905,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return tb.compareTo(ta);
       });
-      if (!mounted) return;
+      if (!mounted || !isCurrentLoad()) return;
       for (final t in matched) {
         _persistOmitCreatedForIds.add(t.id);
       }
@@ -817,14 +915,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _moduleDayLoading = false;
         _moduleHistoryVisible = false;
       });
+      if (!isCurrentLoad()) return;
       if (cat != 'รายจ่ายรายรับ') {
         await _refreshHomeSandStock();
       }
+      if (!mounted || !isCurrentLoad()) return;
       _hydrateFormsFromTransactions(matched, dayTransactions: rows);
-      if (!mounted) return;
+      if (!mounted || !isCurrentLoad()) return;
       setState(() {});
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !isCurrentLoad()) return;
       setState(() {
         _moduleDayTransactions = const [];
         _moduleDayAllTransactions = const [];
@@ -1136,8 +1236,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isMacroVehicleMode) {
-      // ฟอร์มว่าง — เลือกรถทีละคัน ถ้าซ้ำในวันเดียวกันจะโหลดมาแก้ไข
-      if (!_saving) _replaceMacroVehicleDrafts(const []);
+      // ฟอร์มแม็คโครจัดการผ่าน draft ปัจจุบันเท่านั้น — ไม่ replace ตอน hydrate (กัน dispose หลังบันทึก)
       return;
     }
 
@@ -1240,7 +1339,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _advanceAmountPerPersonController.dispose();
     _advanceAccountController.dispose();
     _utilitiesTypeController.dispose();
-    _utilitiesExtraController.dispose();
+    _iuPartyNameController.dispose();
+    _iuPartyAddressController.dispose();
+    _iuPartyDetailController.dispose();
     _utilitiesAmountController.dispose();
     _incomeTypeController.dispose();
     _incomeQtyController.dispose();
@@ -1461,6 +1562,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   ];
 
   void _applyMacroWorkPhrase(_MacroVehicleDraft row, String phrase) {
+    if (row.isDisposed) return;
     final cur = row.workDetailsController.text.trim();
     final next = cur.isEmpty ? phrase : '$cur, $phrase';
     setState(() {
@@ -1661,8 +1763,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (!mounted) return;
         if (onStayOnPageCleared != null) {
           setState(onStayOnPageCleared);
+          await WidgetsBinding.instance.endOfFrame;
         }
-        await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text(successMessage, style: GoogleFonts.kanit())),
@@ -2018,7 +2120,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกรถดรัมและจำนวนเที่ยว',
       saveButtonLabel: 'บันทึกรถคันนี้',
       stayOnPage: true,
-      onStayOnPageCleared: () => _replaceVehicleDrafts([_VehicleTripDraft.empty()]),
+      onStayOnPageCleared: _clearVehicleTripFormAfterSave,
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           final lumpFilled =
@@ -2340,7 +2442,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกการใช้น้ำมันรายรถ',
       saveButtonLabel: 'บันทึก',
       stayOnPage: true,
-      onStayOnPageCleared: () => _replaceFuelVehicleDrafts(const []),
+      onStayOnPageCleared: _clearFuelVehicleFormAfterSave,
       body: () async {
         final fuelCars = _fuelMacroCars();
         if (fuelCars.isEmpty) {
@@ -3709,6 +3811,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       text: _stripRecorderSuffix(t.description),
     );
     final subCtrl = TextEditingController(text: (t.subCategory ?? '').trim());
+    final nameCtrl = TextEditingController(text: (t.projectId ?? '').trim());
+    final addrCtrl = TextEditingController(text: (t.location ?? '').trim());
+    final detailCtrl = TextEditingController(text: (t.workDetails ?? '').trim());
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3754,6 +3859,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               const SizedBox(height: 10),
               TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'ชื่อ',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: addrCtrl,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'ที่อยู่',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: detailCtrl,
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: 'รายละเอียด (ไม่บังคับ)',
+                  labelStyle: GoogleFonts.kanit(),
+                ),
+                style: GoogleFonts.kanit(fontSize: 15),
+              ),
+              const SizedBox(height: 10),
+              TextField(
                 controller: amtCtrl,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -3770,6 +3906,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   final sub = subCtrl.text.trim();
                   final desc = descCtrl.text.trim();
                   final amt = double.tryParse(amtCtrl.text.trim()) ?? 0;
+                  final name = nameCtrl.text.trim();
+                  final addr = addrCtrl.text.trim();
+                  final detail = detailCtrl.text.trim();
                   if (sub.isEmpty || desc.isEmpty || amt <= 0) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(
@@ -3785,6 +3924,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     subCategory: sub,
                     description: _appendRecorder(desc),
                     amount: amt,
+                    projectId: name.isEmpty ? null : name,
+                    location: addr.isEmpty ? null : addr,
+                    workDetails: detail.isEmpty ? null : detail,
                   );
                   try {
                     await _persist(saved);
@@ -3822,6 +3964,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       amtCtrl.dispose();
       descCtrl.dispose();
       subCtrl.dispose();
+      nameCtrl.dispose();
+      addrCtrl.dispose();
+      detailCtrl.dispose();
     });
   }
 
@@ -3830,6 +3975,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final descCtrl = TextEditingController(
       text: _stripRecorderSuffix(t.description),
     );
+    final nameCtrl = TextEditingController(text: (t.projectId ?? '').trim());
+    final addrCtrl = TextEditingController(text: (t.location ?? '').trim());
+    final detailCtrl = TextEditingController(text: (t.workDetails ?? '').trim());
     final qtyCtrl = TextEditingController(
       text: t.quantity != null ? _strNum(t.quantity) : '',
     );
@@ -3869,6 +4017,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     controller: descCtrl,
                     decoration: InputDecoration(
                       labelText: 'ประเภทรายรับ / คำอธิบาย',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อ',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: addrCtrl,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'ที่อยู่',
+                      labelStyle: GoogleFonts.kanit(),
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 15),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: detailCtrl,
+                    minLines: 1,
+                    maxLines: 4,
+                    decoration: InputDecoration(
+                      labelText: 'รายละเอียด (ไม่บังคับ)',
                       labelStyle: GoogleFonts.kanit(),
                     ),
                     style: GoogleFonts.kanit(fontSize: 15),
@@ -3940,6 +4119,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       final total = double.tryParse(amtCtrl.text.trim()) ?? 0;
                       final qty = double.tryParse(qtyCtrl.text.trim());
                       final unitPrice = double.tryParse(priceCtrl.text.trim());
+                      final name = nameCtrl.text.trim();
+                      final addr = addrCtrl.text.trim();
+                      final detail = detailCtrl.text.trim();
                       if (desc.isEmpty || total <= 0) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
                           SnackBar(
@@ -3958,6 +4140,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         unitPrice: (unitPrice != null && unitPrice > 0)
                             ? unitPrice
                             : null,
+                        projectId: name.isEmpty ? null : name,
+                        location: addr.isEmpty ? null : addr,
+                        workDetails: detail.isEmpty ? null : detail,
                         incomePaymentStatus: payStatus,
                       );
                       try {
@@ -3999,6 +4184,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       descCtrl.dispose();
       qtyCtrl.dispose();
       priceCtrl.dispose();
+      nameCtrl.dispose();
+      addrCtrl.dispose();
+      detailCtrl.dispose();
     });
   }
 
@@ -4028,6 +4216,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
                   style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
                 ),
+                ..._iuPartyMetaHistoryLines(t),
               ],
             ),
           ),
@@ -5278,7 +5467,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _iuIncomeChoice = null;
     _wizardIncomePaymentStatus = 'Paid';
     _utilitiesTypeController.clear();
-    _utilitiesExtraController.clear();
+    _iuPartyNameController.clear();
+    _iuPartyAddressController.clear();
+    _iuPartyDetailController.clear();
     _utilitiesAmountController.clear();
     _incomeTypeController.clear();
     _incomeQtyController.clear();
@@ -5318,6 +5509,102 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
+  String? _iuOptionalPartyName() {
+    final s = _iuPartyNameController.text.trim();
+    return s.isEmpty ? null : s;
+  }
+
+  String? _iuOptionalPartyAddress() {
+    final s = _iuPartyAddressController.text.trim();
+    return s.isEmpty ? null : s;
+  }
+
+  String? _iuOptionalPartyDetail() {
+    final s = _iuPartyDetailController.text.trim();
+    return s.isEmpty ? null : s;
+  }
+
+  List<Widget> _iuPartyFieldWidgets(
+    InputDecoration Function(String label, IconData icon) deco,
+  ) {
+    return [
+      TextField(
+        controller: _iuPartyNameController,
+        decoration: deco('ชื่อ', Icons.person_outline_rounded),
+        style: GoogleFonts.kanit(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1D2A3A),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _iuPartyAddressController,
+        decoration: deco('ที่อยู่', Icons.home_outlined),
+        minLines: 1,
+        maxLines: 3,
+        style: GoogleFonts.kanit(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1D2A3A),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _iuPartyDetailController,
+        decoration: deco('รายละเอียด (ไม่บังคับ)', Icons.notes_outlined),
+        minLines: 1,
+        maxLines: 4,
+        style: GoogleFonts.kanit(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1D2A3A),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
+    ];
+  }
+
+  List<Widget> _iuPartyMetaHistoryLines(AppTransaction t) {
+    final name = (t.projectId ?? '').trim();
+    final addr = (t.location ?? '').trim();
+    final detail = (t.workDetails ?? '').trim();
+    final lines = <Widget>[];
+    if (name.isNotEmpty) {
+      lines.add(
+        Text(
+          'ชื่อ: $name',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+        ),
+      );
+    }
+    if (addr.isNotEmpty) {
+      lines.add(
+        Text(
+          'ที่อยู่: $addr',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+        ),
+      );
+    }
+    if (detail.isNotEmpty) {
+      lines.add(
+        Text(
+          detail,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+        ),
+      );
+    }
+    return lines;
+  }
+
   String _effectiveIncomeDescription() {
     final choice = _iuIncomeChoice?.trim();
     if (choice == null || choice.isEmpty) return '';
@@ -5336,7 +5623,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       onStayOnPageCleared: _applyIncomeUtilitiesFormClear,
       body: () async {
         final sub = _effectiveUtilitySubcategory();
-        final extra = _utilitiesExtraController.text.trim();
         final amt =
             double.tryParse(_utilitiesAmountController.text.trim()) ?? 0;
         if (_iuExpenseChoice == null || _iuExpenseChoice!.trim().isEmpty) {
@@ -5348,7 +5634,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (amt <= 0) {
           _failSave('กรุณาระบุจำนวนเงินให้ถูกต้อง');
         }
-        final desc = extra.isEmpty ? sub : '$sub: $extra';
         final ymd = _quickYmd(_selectedDate);
         final id = '${DateTime.now().millisecondsSinceEpoch}_utils';
         await _persist(
@@ -5358,8 +5643,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             type: 'Expense',
             category: 'Utilities',
             subCategory: sub,
-            description: _appendRecorder(desc),
+            description: _appendRecorder(sub),
             amount: amt,
+            projectId: _iuOptionalPartyName(),
+            location: _iuOptionalPartyAddress(),
+            workDetails: _iuOptionalPartyDetail(),
             note: _activeSignatureNote,
           ),
         );
@@ -5405,6 +5693,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             amount: total,
             quantity: (qty != null && qty > 0) ? qty : null,
             unitPrice: (unitPrice != null && unitPrice > 0) ? unitPrice : null,
+            projectId: _iuOptionalPartyName(),
+            location: _iuOptionalPartyAddress(),
+            workDetails: _iuOptionalPartyDetail(),
             incomePaymentStatus: _wizardIncomePaymentStatus,
             note: _activeSignatureNote,
           ),
@@ -5719,19 +6010,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ],
           const SizedBox(height: 10),
-          TextField(
-            controller: _utilitiesExtraController,
-            decoration: deco(
-              'รายละเอียดเพิ่ม (ไม่บังคับ)',
-              Icons.notes_outlined,
-            ),
-            style: GoogleFonts.kanit(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1D2A3A),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
+          ..._iuPartyFieldWidgets(deco),
           const SizedBox(height: 10),
           TextField(
             controller: _utilitiesAmountController,
@@ -5862,6 +6141,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onChanged: (_) => setState(() {}),
             ),
           ],
+          const SizedBox(height: 10),
+          ..._iuPartyFieldWidgets(deco),
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 2),
             child: Column(
@@ -6680,8 +6961,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     if (!mounted || result == null) return;
     final normalized = normalizeVehicleTripNumericText(result);
-    if (controller.text != normalized) {
-      controller.text = normalized;
+    try {
+      if (controller.text != normalized) {
+        controller.text = normalized;
+      }
+    } catch (_) {
+      return;
     }
     onChanged?.call(normalized);
     if (mounted) _scheduleUiRefresh();
@@ -7063,7 +7348,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final hasDraftData =
         row.vehicleId.trim().isNotEmpty ||
         row.driverId.trim().isNotEmpty ||
-        row.workDetailsController.text.trim().isNotEmpty;
+        (!row.isDisposed && row.workDetailsController.text.trim().isNotEmpty);
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -12808,8 +13093,13 @@ class _MacroVehicleDraft {
   String driverId = '';
   String workType = 'FullDay';
   final TextEditingController workDetailsController;
+  bool _disposed = false;
+
+  bool get isDisposed => _disposed;
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     workDetailsController.dispose();
   }
 }

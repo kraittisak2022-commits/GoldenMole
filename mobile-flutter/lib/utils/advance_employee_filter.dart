@@ -81,9 +81,9 @@ bool _isExcludedFromPickerIfAllPositionsBlocked(
   return tokens.every((t) => _isExcludedByPositionSet(t, excluded));
 }
 
-/// ซ่อนจากรายการเบิกเมื่อมีอย่างน้อย 1 ตำแหน่งที่อยู่ในรายการยกเว้น
+/// ซ่อนจากรายการเบิกเมื่อทุกตำแหน่งอยู่ในรายการยกเว้น (หลายตำแหน่งยังแสดงถ้ามีตำแหน่งที่เลือกได้)
 bool isExcludedFromAdvanceEmployeePicker(Employee e) =>
-    _isExcludedFromPickerIfAnyPositionBlocked(
+    _isExcludedFromPickerIfAllPositionsBlocked(
       e,
       advanceExcludedPositionTitles,
     );

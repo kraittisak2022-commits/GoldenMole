@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/admin_user.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
+import '../utils/mobile_error_report_submit_guard.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../widgets/mobile_error_report_send_dialog.dart';
 
 /// หน้าเมื่อเกิด error ร้ายแรงที่ไม่ได้จับ — ให้ส่งรายงานเข้าเว็บ (ตาราง mobile_error_reports)
 class AppFatalErrorScreen extends StatefulWidget {
@@ -46,7 +48,21 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  String get _errorPreview {
+    final t = widget.error.toString().trim();
+    if (t.length <= 180) return t;
+    return '${t.substring(0, 180)}…';
+  }
+
+  Future<void> _openSendPopup() async {
+    final confirmed = await showMobileErrorReportSendDialog(
+      context,
+      summary: _errorPreview,
+      detail: _note.text.trim(),
+      confirmLabel: 'ยืนยันส่งข้อมูล',
+    );
+    if (!confirmed || !mounted) return;
+
     setState(() {
       _sending = true;
       _sendOk = null;
@@ -66,7 +82,13 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
       if (!mounted) return;
       setState(() {
         _sending = false;
-        _sendOk = 'ส่งรายงานแล้ว (รหัส $id) ทีมดูได้ที่เว็บ ตั้งค่า > แอป Android';
+        _sendOk = 'ส่งข้อมูลแล้ว (รหัส $id) ทีมดูได้ที่เว็บ ตั้งค่า > แอป Android';
+      });
+    } on MobileErrorReportRateLimitException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _sendErr = e.message;
       });
     } catch (e) {
       if (!mounted) return;
@@ -165,7 +187,7 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _sending ? null : _submit,
+              onPressed: _sending ? null : _openSendPopup,
               icon: _sending
                   ? const SizedBox(
                       width: 20,
@@ -175,9 +197,9 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.cloud_upload_outlined),
+                  : const Icon(Icons.upload_outlined),
               label: Text(
-                _sending ? 'กำลังส่ง...' : 'ส่งรายงานไปเว็บ',
+                _sending ? 'กำลังส่ง...' : 'ส่งข้อมูล',
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
             ),

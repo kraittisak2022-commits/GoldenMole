@@ -1176,6 +1176,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
 
     // Income State (Daily Wizard)
     const [incomeType, setIncomeType] = useState('');
+    const [incomePartyName, setIncomePartyName] = useState('');
+    const [incomePartyAddress, setIncomePartyAddress] = useState('');
+    const [incomePartyDetail, setIncomePartyDetail] = useState('');
     const [incomeQty, setIncomeQty] = useState('');
     const [incomeUnitPrice, setIncomeUnitPrice] = useState('');
     const [incomeTotal, setIncomeTotal] = useState('');
@@ -4201,6 +4204,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     <div className="mt-1 inline-flex rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-900 dark:border-emerald-600/50 dark:bg-emerald-950/40 dark:text-emerald-100">จ่ายเงินแล้ว</div>
                                                 )}
                                                 {t.quantity != null && <div className="text-lime-600 mt-0.5">ปริมาณ: {t.quantity} {t.unit || ''}</div>}
+                                                {(t as any).projectId ? <div className="text-lime-700/90 mt-0.5">ชื่อ: {(t as any).projectId}</div> : null}
+                                                {t.location ? <div className="text-lime-700/90 mt-0.5 line-clamp-2">ที่อยู่: {t.location}</div> : null}
+                                                {t.workDetails ? <div className="text-lime-600/90 mt-0.5 line-clamp-2">{t.workDetails}</div> : null}
                                                 {onDeleteTransaction && <button onClick={() => onDeleteTransaction(t.id)} className="absolute top-2 right-2 p-0.5 text-lime-300 hover:text-red-500"><Trash2 size={10} /></button>}
                                             </div>
                                         ))}
@@ -4312,6 +4318,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             )}
                                         </div>
                                     </div>
+                                    <Input label="ชื่อ" value={incomePartyName} onChange={(e: any) => setIncomePartyName(e.target.value)} />
+                                    <Input label="ที่อยู่" value={incomePartyAddress} onChange={(e: any) => setIncomePartyAddress(e.target.value)} />
+                                    <Input label="รายละเอียด (ไม่บังคับ)" value={incomePartyDetail} onChange={(e: any) => setIncomePartyDetail(e.target.value)} />
                                     <div className="rounded-xl border border-lime-200/80 bg-lime-50/60 dark:border-lime-500/25 dark:bg-lime-950/20 p-3 space-y-2">
                                         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">สถานะรับเงิน</p>
                                         <div className="flex flex-wrap gap-2">
@@ -4351,11 +4360,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 amount: Number(incomeTotal) || 0,
                                                 quantity: incomeQty ? Number(incomeQty) : undefined,
                                                 unitPrice: incomeUnitPrice ? Number(incomeUnitPrice) : undefined,
+                                                projectId: incomePartyName.trim() || undefined,
+                                                location: incomePartyAddress.trim() || undefined,
+                                                workDetails: incomePartyDetail.trim() || undefined,
                                                 incomePaymentStatus: incomePaymentStatus === 'Unpaid' ? 'Unpaid' : 'Paid',
                                             } as Transaction)
                                         );
                                         if (okInc === false) return;
-                                        setIncomeType(''); setIncomeQty(''); setIncomeUnitPrice(''); setIncomeTotal(''); setIncomePaymentStatus('Paid');
+                                        setIncomeType('');
+                                        setIncomePartyName('');
+                                        setIncomePartyAddress('');
+                                        setIncomePartyDetail('');
+                                        setIncomeQty('');
+                                        setIncomeUnitPrice('');
+                                        setIncomeTotal('');
+                                        setIncomePaymentStatus('Paid');
                                     }} className="w-full bg-lime-600 hover:bg-lime-700 py-2.5 focus-ring-strong" data-hotkey-primary="true">
                                         <Wallet size={16} className="mr-1" /> บันทึกรายรับ
                                     </Button>

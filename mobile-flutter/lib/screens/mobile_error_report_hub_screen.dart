@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
 import '../services/mobile_error_report_service.dart';
+import '../utils/mobile_error_report_submit_guard.dart';
+import '../widgets/mobile_error_report_send_dialog.dart';
 
 /// ตั้งค่า > แอป Android
 class MobileErrorReportHubScreen extends StatefulWidget {
@@ -79,7 +81,7 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
     }
   }
 
-  Future<void> _sendManual() async {
+  Future<void> _openSendPopup() async {
     final title = _manualTitle.text.trim();
     final body = _manualDetail.text.trim();
     if (title.isEmpty) {
@@ -90,9 +92,17 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
       );
       return;
     }
+
+    final confirmed = await showMobileErrorReportSendDialog(
+      context,
+      summary: title,
+      detail: body.isEmpty ? '(ไม่มีรายละเอียดเพิ่ม)' : body,
+    );
+    if (!confirmed || !mounted) return;
+
     setState(() => _submitting = true);
     try {
-      await _svc.submit(
+      final id = await _svc.submit(
         error: title,
         stackTrace: null,
         source: 'manual_settings',
@@ -102,12 +112,13 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
       if (!mounted) return;
       _manualTitle.clear();
       _manualDetail.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ส่งรายงานแล้ว', style: GoogleFonts.kanit()),
-        ),
-      );
+      await showMobileErrorReportSentDialog(context, reportId: id);
       await _reload();
+    } on MobileErrorReportRateLimitException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message, style: GoogleFonts.kanit())),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -197,7 +208,7 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _submitting ? null : _sendManual,
+                onPressed: _submitting ? null : _openSendPopup,
                 icon: _submitting
                     ? const SizedBox(
                         width: 18,
@@ -207,11 +218,18 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.send_outlined),
+                    : const Icon(Icons.upload_outlined),
                 label: Text(
-                  _submitting ? 'กำลังส่ง...' : 'ส่งรายงาน',
+                  _submitting ? 'กำลังส่ง...' : 'ส่งข้อมูล',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'กดส่งข้อมูลเพื่อเปิดหน้าต่างยืนยันก่อนบันทึก — ระบบจำกัดการส่งซ้ำภายใน 45 วินาที',
+                style: GoogleFonts.kanit(fontSize: 11, color: Colors.black45),
               ),
             ),
             const SizedBox(height: 22),

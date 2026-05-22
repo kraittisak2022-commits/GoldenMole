@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../widgets/mobile_error_report_send_dialog.dart';
+import 'mobile_error_report_submit_guard.dart';
+
 /// บริบทตอนผู้ใช้กดบันทึก/ส่งข้อมูล — ใช้แสดงใน SnackBar เมื่อเกิดข้อผิดพลาด
 class SaveErrorContext {
   const SaveErrorContext({
@@ -74,8 +77,6 @@ void showSaveErrorSnackBar(
   });
 }
 
-int _saveErrorPresentSeq = 0;
-
 void _presentSaveErrorSnackBar(
   BuildContext context, {
   required Object error,
@@ -87,91 +88,73 @@ void _presentSaveErrorSnackBar(
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
 
+  final fields = extractSaveErrorReportFields(error, context: saveContext);
+  final previewSummary = buildSaveErrorReportSummary(fields);
+
   messenger.showSnackBar(
     SnackBar(
       content: Text(
         formatSaveErrorMessage(error, context: saveContext),
         style: GoogleFonts.kanit(fontSize: 14, height: 1.35),
       ),
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 10),
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      action: onSendReport == null
+          ? null
+          : SnackBarAction(
+              label: 'ส่งข้อมูล',
+              textColor: Colors.amber.shade200,
+              onPressed: () {
+                _promptAndSendSaveErrorReport(
+                  context,
+                  previewSummary: previewSummary,
+                  previewDetail: fields.cause,
+                  onSendReport: onSendReport,
+                );
+              },
+            ),
     ),
-  );
-
-  if (onSendReport == null) return;
-
-  final session = ++_saveErrorPresentSeq;
-  _runAutoSaveErrorReport(
-    context: context,
-    session: session,
-    onSendReport: onSendReport,
   );
 }
 
-Future<void> _runAutoSaveErrorReport({
-  required BuildContext context,
-  required int session,
+Future<void> _promptAndSendSaveErrorReport(
+  BuildContext context, {
+  required String previewSummary,
+  required String previewDetail,
   required SaveErrorReportHandler onSendReport,
 }) async {
+  if (!context.mounted) return;
+  final confirmed = await showMobileErrorReportSendDialog(
+    context,
+    summary: previewSummary,
+    detail: previewDetail,
+  );
+  if (!confirmed || !context.mounted) return;
+
   try {
     final id = await onSendReport();
-    if (!context.mounted || session != _saveErrorPresentSeq) return;
+    if (!context.mounted) return;
     if (id != null && id.isNotEmpty) {
-      await _showSaveErrorReportSentDialog(context);
+      await showMobileErrorReportSentDialog(context, reportId: id);
     }
+  } on MobileErrorReportRateLimitException catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.message, style: GoogleFonts.kanit()),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   } catch (_) {
-    // ส่งไม่สำเร็จ — ไม่รบกวนผู้ใช้ด้วย popup (มี SnackBar ข้อผิดพลาดอยู่แล้ว)
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('ส่งข้อมูลไม่สำเร็จ', style: GoogleFonts.kanit()),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
-}
-
-Future<void> _showSaveErrorReportSentDialog(BuildContext context) async {
-  if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    useRootNavigator: true,
-    builder: (dialogCtx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.check_circle_rounded,
-            color: Colors.green.shade700,
-            size: 30,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'ส่งรายงาน error สำเร็จ',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: Text(
-        'ระบบได้ส่งรายงานข้อผิดพลาดไปยังผู้ดูแลแล้ว',
-        style: GoogleFonts.kanit(fontSize: 15, height: 1.4),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogCtx).pop(),
-          child: Text(
-            'ตกลง',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 /// โยนข้อผิดพลาดพร้อมบริบท (ใช้ภายใน callback ของ [_runSaveWithPopups])

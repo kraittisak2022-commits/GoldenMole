@@ -89,11 +89,11 @@ export const isExcludedPositionToken = (token: string): boolean => {
     return ADVANCE_EXCLUDED_POSITIONS.has(n);
 };
 
-/** ซ่อนจากรายการเบิกเมื่อมีอย่างน้อย 1 ตำแหน่งที่อยู่ในรายการยกเว้น */
+/** ซ่อนจากรายการเบิกเมื่อทุกตำแหน่งอยู่ในรายการยกเว้น (หลายตำแหน่งยังแสดงถ้ามีตำแหน่งที่เลือกได้) */
 export const isExcludedFromAdvanceEmployeePicker = (e: Employee): boolean => {
     const tokens = collectEmployeePositionTokens(e);
     if (tokens.length === 0) return false;
-    return tokens.some(isExcludedPositionToken);
+    return tokens.every(isExcludedPositionToken);
 };
 
 export const employeeEligibleForAdvancePicker = (e: Employee): boolean =>

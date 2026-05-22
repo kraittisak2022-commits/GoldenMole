@@ -33,6 +33,8 @@ class AppTransaction {
     this.quantity,
     this.unitPrice,
     this.unit,
+    this.projectId,
+    this.location,
     this.fuelType,
     this.fuelMovement,
     this.tripCount,
@@ -88,6 +90,10 @@ class AppTransaction {
   final double? quantity;
   final double? unitPrice;
   final String? unit;
+  /// ชื่อคู่ค้า/ลูกค้า (รายรับ-รายจ่าย)
+  final String? projectId;
+  /// ที่อยู่ (รายรับ-รายจ่าย)
+  final String? location;
   final String? fuelType;
   final String? fuelMovement;
   final double? tripCount;
@@ -160,6 +166,8 @@ class AppTransaction {
       quantity: _toDouble(row['quantity']),
       unitPrice: _toDouble(row['unit_price']),
       unit: row['unit']?.toString(),
+      projectId: row['project_id']?.toString(),
+      location: row['location']?.toString(),
       fuelType: row['fuel_type']?.toString(),
       fuelMovement: row['fuel_movement']?.toString(),
       tripCount: _toDouble(row['trip_count']),
@@ -233,6 +241,8 @@ class AppTransaction {
       if (quantity != null) 'quantity': quantity,
       if (unitPrice != null) 'unit_price': unitPrice,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
+      if (projectId != null && projectId!.isNotEmpty) 'project_id': projectId,
+      if (location != null && location!.isNotEmpty) 'location': location,
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)
         'fuel_movement': fuelMovement,
@@ -304,6 +314,8 @@ class AppTransaction {
       if (quantity != null) 'quantity': quantity,
       if (unitPrice != null) 'unit_price': unitPrice,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
+      if (projectId != null && projectId!.isNotEmpty) 'project_id': projectId,
+      if (location != null && location!.isNotEmpty) 'location': location,
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)
         'fuel_movement': fuelMovement,
@@ -365,6 +377,8 @@ class AppTransaction {
     double? quantity,
     double? unitPrice,
     String? unit,
+    String? projectId,
+    String? location,
     String? fuelType,
     String? fuelMovement,
     double? tripCount,
@@ -418,6 +432,8 @@ class AppTransaction {
       quantity: quantity ?? this.quantity,
       unitPrice: unitPrice ?? this.unitPrice,
       unit: unit ?? this.unit,
+      projectId: projectId ?? this.projectId,
+      location: location ?? this.location,
       fuelType: fuelType ?? this.fuelType,
       fuelMovement: fuelMovement ?? this.fuelMovement,
       tripCount: tripCount ?? this.tripCount,
