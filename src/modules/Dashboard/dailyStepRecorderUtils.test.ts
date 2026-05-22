@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+    computeDayWizardStepStats,
     computeSandDrumStockSummary,
+    countsAsWizardSandWashRecord,
+    countsAsWizardVehicleUsageRecord,
     isDumpTruckVehicleName,
     isSixOrTenWheelVehicleName,
     isVehicleTripDrumCarName,
@@ -9,6 +12,7 @@ import {
     persistedSandHomeDrums,
     sumWizardDailySpend,
     countsTowardWizardDailySpend,
+    transactionCountsAsVehicleTripMenu,
     vehicleTripDrumCarOptions,
 } from './dailyStepRecorderUtils';
 import type { Employee, Transaction } from '../../types';
@@ -356,6 +360,103 @@ describe('normalizeLaborCanvasKey', () => {
         expect(
             mergeLaborCanvasAssignments({ wash_home: ['e1'], generalWork: ['e2'] })
         ).toEqual({ washHome: ['e1'], generalWork: ['e2'] });
+    });
+});
+
+describe('computeDayWizardStepStats', () => {
+    const trip = (id: string, vehicleId: string, trips = 2): Transaction =>
+        ({
+            id,
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'VehicleTrip',
+            date: '2026-05-01',
+            amount: 0,
+            description: 'trip',
+            vehicleId,
+            driverId: 'd1',
+            tripCount: trips,
+        }) as Transaction;
+
+    const mobileDrum = (id: string, vehicleId: string): Transaction =>
+        ({
+            id,
+            type: 'Expense',
+            category: 'Vehicle',
+            date: '2026-05-01',
+            amount: 0,
+            description: `รถ: ${vehicleId}`,
+            vehicleId,
+            driverId: 'd1',
+            workType: 'FullDay',
+        }) as Transaction;
+
+    const vehicleWage = (id: string): Transaction =>
+        ({
+            id,
+            type: 'Expense',
+            category: 'Vehicle',
+            date: '2026-05-01',
+            amount: 5000,
+            description: 'ค่าจ้างรถ',
+            vehicleId: 'รถดรัม A',
+            driverId: 'd1',
+            vehicleWage: 4500,
+        }) as Transaction;
+
+    const sandMachine = (id: string, machine: 'Old' | 'New', cubic: number): Transaction =>
+        ({
+            id,
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'Sand',
+            date: '2026-05-01',
+            amount: 0,
+            description: `ล้างทราย เครื่องร่อน ${machine === 'Old' ? '1' : '2'}`,
+            sandMorning: cubic,
+            sandAfternoon: 0,
+            sandMachineType: machine,
+        }) as Transaction;
+
+    it('separates vehicle usage, trips, and sand wash rows', () => {
+        const txs = [
+            vehicleWage('w1'),
+            mobileDrum('m1', 'รถดรัม A'),
+            trip('t1', 'รถดรัม A', 3),
+            sandMachine('s1', 'Old', 10),
+            sandMachine('s2', 'New', 8),
+            {
+                id: 'drums',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'Sand',
+                date: '2026-05-01',
+                amount: 0,
+                description: 'จำนวนถังที่ได้วันนี้',
+                drumsObtained: 20,
+            } as Transaction,
+        ];
+        expect(computeDayWizardStepStats(txs)).toEqual({
+            laborCount: 0,
+            vehicleUsageCount: 1,
+            tripCount: 2,
+            sandWashCount: 2,
+            sandWashCubic: 18,
+            fuelCount: 0,
+            incomeCount: 0,
+            eventCount: 0,
+        });
+    });
+
+    it('classifies helpers correctly', () => {
+        const drum = mobileDrum('m1', 'รถสิบล้อ 01');
+        const wage = vehicleWage('w1');
+        const sand = sandMachine('s1', 'Old', 5);
+        expect(transactionCountsAsVehicleTripMenu(drum)).toBe(true);
+        expect(countsAsWizardVehicleUsageRecord(drum)).toBe(false);
+        expect(countsAsWizardVehicleUsageRecord(wage)).toBe(true);
+        expect(transactionCountsAsVehicleTripMenu(wage)).toBe(false);
+        expect(countsAsWizardSandWashRecord(sand)).toBe(true);
     });
 });
 
