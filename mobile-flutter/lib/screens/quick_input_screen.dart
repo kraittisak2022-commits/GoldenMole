@@ -14,6 +14,7 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/thai_bank_brand_icon.dart';
+import '../widgets/save_operation_feedback.dart';
 import '../widgets/thai_text_pad.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
@@ -1526,8 +1527,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } catch (_) {}
   }
 
-  static const Duration _successPopupHold = Duration(milliseconds: 1400);
-
   SaveErrorContext? _activeSaveErrorContext;
 
   String get _saveErrorPageTitle {
@@ -1595,85 +1594,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _showSavingPopup() {
     _releaseKeyboardFocus();
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(strokeWidth: 2.8),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Text(
-                  'กำลังบันทึกข้อมูล',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    SaveOperationFeedback.showSaving(context);
   }
 
   void _dismissSavingPopup() {
     if (!mounted) return;
     _releaseKeyboardFocus();
-    final nav = Navigator.of(context, rootNavigator: true);
-    if (nav.canPop()) nav.pop();
+    SaveOperationFeedback.dismissSaving(context);
   }
 
   Future<void> _showSuccessPopupAndPopToHome(String message) async {
     if (!mounted) return;
     _releaseKeyboardFocus();
-    showDialog<void>(
+    await SaveOperationFeedback.showSuccessThenDismiss(
       context: context,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.check_circle_rounded,
-                size: 56,
-                color: Colors.green.shade600,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ),
-      ),
+      message: message,
+      holdAfterAnimation: const Duration(milliseconds: 1300),
+      onAfterDismiss: () {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+      },
     );
-    await Future<void>.delayed(_successPopupHold);
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-    if (!mounted) return;
-    Navigator.of(context).pop();
   }
 
   Future<void> _runSaveWithPopups({

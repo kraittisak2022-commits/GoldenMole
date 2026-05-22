@@ -29,12 +29,35 @@ interface LaborModuleProps {
     transactions: Transaction[];
     setTransactions: (t: any) => void;
     ensureEmployeeWage?: (emp: Employee) => Promise<number>;
+    initialTab?: 'Attendance' | 'OT' | 'Advance' | 'Leave';
+    fixedDate?: string;
+    compactShell?: boolean;
 }
 
-const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransaction, transactions, ensureEmployeeWage }: LaborModuleProps) => {
-    const [activeTab, setActiveTab] = useState<'Attendance' | 'OT' | 'Advance' | 'Leave'>('Attendance');
+const LaborModule = ({
+    employees,
+    settings,
+    onSaveTransaction,
+    onDeleteTransaction,
+    transactions,
+    ensureEmployeeWage,
+    initialTab = 'Attendance',
+    fixedDate,
+    compactShell = false,
+}: LaborModuleProps) => {
+    const [activeTab, setActiveTab] = useState<'Attendance' | 'OT' | 'Advance' | 'Leave'>(initialTab);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [formDate, setFormDate] = useState(getToday());
+    const [formDate, setFormDate] = useState(() => fixedDate?.slice(0, 10) || getToday());
+
+    useEffect(() => {
+        if (!fixedDate) return;
+        const d = fixedDate.slice(0, 10);
+        setFormDate(prev => (prev === d ? prev : d));
+    }, [fixedDate]);
+
+    useEffect(() => {
+        setActiveTab(initialTab);
+    }, [initialTab]);
     /** เมื่อกำลังแก้ไขรายการเดิม */
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -336,7 +359,11 @@ const LaborModule = ({ employees, settings, onSaveTransaction, onDeleteTransacti
             </div>
             <Card className="p-4 sm:p-6 max-w-4xl mx-auto">
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
-                    <Input type="date" value={formDate} onChange={(e: any) => { setFormDate(e.target.value); setEditingId(null); }} label="วันที่" />
+                    {fixedDate ? (
+                        <p className="text-sm font-semibold text-slate-600">วันที่ {formatDateBE(formDate)}</p>
+                    ) : (
+                        <Input type="date" value={formDate} onChange={(e: any) => { setFormDate(e.target.value); setEditingId(null); }} label="วันที่" />
+                    )}
                     {activeTab === 'Attendance' && <div className="w-full"><Select value={location} onChange={(e: any) => setLocation(e.target.value)} label="สถานที่">{settings.locations.map((l: string) => <option key={l}>{l}</option>)}</Select></div>}
                 </div>
 

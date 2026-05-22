@@ -1824,6 +1824,9 @@ function App() {
                     onDeleteTransaction={handleDeleteTransaction}
                     onPermanentDeleteTransaction={canDeleteTransactions ? handlePermanentDeleteTransaction : undefined}
                     handleSetTransactions={handleSetTransactions}
+                    handleSetEmployees={handleSetEmployees}
+                    handleSetProjects={handleSetProjects}
+                    onSave={handleSave}
                     ensureEmployeeWage={ensureEmployeeWage}
                     handleSetSettings={handleSetSettings}
                     handleSetAdmins={handleSetAdmins}

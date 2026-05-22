@@ -69,6 +69,10 @@ interface DailyStepRecorderProps {
     touchLayout?: boolean;
     /** ความหนาแน่นหน้าจอสำหรับ mobile shell */
     densityMode?: 'comfortable' | 'compact';
+    /** โหมด Quick Input แบบ Android — แสดงเฉพาะขั้นเดียว */
+    singleStepMode?: number;
+    /** ซ่อนมุมมองรายงาน (ใช้กับ singleStepMode) */
+    hideReportMode?: boolean;
 }
 
 const EmployeeSelectChip = memo(function EmployeeSelectChip({
@@ -550,14 +554,17 @@ function getWashHomeDrumsMismatchMessage(txs: Transaction[]): string | null {
     return null;
 }
 
-const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, onPermanentDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable' }: DailyStepRecorderProps) => {
+const DailyStepRecorder = ({ employees, settings, transactions, initialDate, initialStep, dateFilter, onSaveTransaction, onDeleteTransaction, onPermanentDeleteTransaction, ensureEmployeeWage, setSettings, mobileShell = false, touchLayout = false, densityMode = 'comfortable', singleStepMode, hideReportMode = false }: DailyStepRecorderProps) => {
     const { alert: sessionAlert, confirm: sessionConfirm } = useSessionDialog();
     const isTouchLayout = useMediaQuery('(max-width: 1023px)');
     /** จอสัมผัส / มือถือ: ปุ่มและช่องกดใหญ่ขึ้น */
     const touchUI = mobileShell || touchLayout || isTouchLayout;
+    const isSingleStepMode = typeof singleStepMode === 'number';
     const isCompactDensity = mobileShell && densityMode === 'compact';
     const navBtnClass = touchUI ? 'min-h-[48px] px-5 text-base font-semibold touch-manipulation focus-ring-strong' : 'focus-ring-strong';
-    const stepActionWrapClass = mobileShell
+    const stepActionWrapClass = isSingleStepMode
+        ? 'hidden'
+        : mobileShell
         ? 'sticky bottom-[calc(0.4rem+env(safe-area-inset-bottom,0px))] z-[5] mt-auto flex justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-900/90'
         : 'mt-auto flex justify-between gap-3 pt-3';
     const [step, setStep] = useState(0);
@@ -574,6 +581,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const bounded = Math.max(0, Math.min(initialStep, STEPS.length - 1));
         setStep(prev => (prev === bounded ? prev : bounded));
     }, [initialStep]);
+    useEffect(() => {
+        if (!isSingleStepMode) return;
+        const bounded = Math.max(0, Math.min(singleStepMode, STEPS.length - 1));
+        setStep(bounded);
+    }, [isSingleStepMode, singleStepMode]);
     // ช่วงวันที่สำหรับรายงาน (ใช้ dateFilter เป็นค่าเริ่มต้นถ้ามี)
     const [reportStart, setReportStart] = useState<string>(dateFilter?.start || '');
     const [reportEnd, setReportEnd] = useState<string>(dateFilter?.end || '');
@@ -1456,9 +1468,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             if (!ok) return;
         }
 
+        if (isSingleStepMode) return;
         setStep(s => Math.min(s + 1, STEPS.length - 1));
     };
-    const prevStep = () => setStep(s => Math.max(s - 1, 0));
+    const prevStep = () => {
+        if (isSingleStepMode) return;
+        setStep(s => Math.max(s - 1, 0));
+    };
     const handleStartRecord = () => {
         if (hasExistingWizardData) {
             setStep(resumeStep);
@@ -1595,8 +1611,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             className={`animate-fade-in relative w-full max-w-full min-w-0 ${mobileShell ? 'min-h-0 bg-transparent p-0 sm:p-0' : 'min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-transparent p-3 sm:p-4 lg:p-6'} ${isCompactDensity ? 'mobile-density-compact' : ''}`}
         >
             {/* Header + โหมด บันทึก | รายงาน — โหมดมือถือ: เฉพาะแถบขั้นตอน แตะง่าย */}
-            {mobileShell ? (
+            {mobileShell && !(isSingleStepMode && hideReportMode) ? (
                 <div className="sticky top-0 z-10 mb-3 space-y-2 rounded-2xl border border-slate-200/90 bg-white/95 p-2 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/95">
+                    {!hideReportMode && (
                     <div className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
                         <button
                             type="button"
@@ -1615,7 +1632,8 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             รายงาน
                         </button>
                     </div>
-                    {viewMode === 'record' && (
+                    )}
+                    {viewMode === 'record' && !isSingleStepMode && (
                     <div className="px-0.5 pb-0.5">
                         <div
                             ref={stepScrollerRef}

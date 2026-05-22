@@ -598,6 +598,15 @@
     font-size: max(1rem, 16px);
 }
 
+.mobile-android-shell {
+    font-family: 'Kanit', ui-sans-serif, system-ui, sans-serif;
+    color: #1a2433;
+}
+
+.mobile-android-quick-input .mobile-field-app {
+    min-height: 0;
+}
+
 /* iPhone / notch: ความสูง viewport เสถียรขึ้นเมื่อแถบ Safari แสดง-ซ่อน */
 .mobile-shell-root {
     height: 100dvh;
