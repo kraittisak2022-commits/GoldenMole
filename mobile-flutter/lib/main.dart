@@ -4,12 +4,15 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'l10n/app_locale.dart';
 import 'models/admin_user.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'services/dashboard_service.dart';
+import 'services/locale_service.dart';
 import 'services/session_service.dart';
+import 'widgets/app_locale_scope.dart';
 import 'utils/app_error_binding.dart';
 import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
@@ -87,13 +90,29 @@ class MobileApp extends StatefulWidget {
 class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   AdminUser? _currentAdmin;
   bool _bootstrapping = true;
+  AppLocale _locale = AppLocale.th;
   final SessionService _sessionService = SessionService();
+  final LocaleService _localeService = LocaleService();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _restoreSession();
+    _loadSavedLocale();
+  }
+
+  Future<void> _loadSavedLocale() async {
+    final saved = await _localeService.load();
+    if (!mounted) return;
+    setState(() => _locale = saved);
+  }
+
+  Future<void> _setLocale(AppLocale next) async {
+    if (_locale == next) return;
+    await _localeService.save(next);
+    if (!mounted) return;
+    setState(() => _locale = next);
   }
 
   @override
@@ -205,15 +224,23 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
           : const _AppScrollBehavior(),
       theme: appTheme,
       darkTheme: appTheme,
+      locale: _locale.materialLocale,
       supportedLocales: const [
-        Locale('en'),
-        Locale('th'),
+        Locale('th', 'TH'),
+        Locale('zh', 'CN'),
       ],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) {
+        return AppLocaleScope(
+          locale: _locale,
+          onLocaleChanged: _setLocale,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: _bootstrapping
           ? const BootstrapSplash()
           : _currentAdmin == null

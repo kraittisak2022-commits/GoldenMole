@@ -11,6 +11,8 @@ void main() {
     expect(normalizeLaborCanvasKey('night_patrol'), 'night_shift');
     expect(normalizeLaborCanvasKey('nightPatrol'), 'night_shift');
     expect(normalizeLaborCanvasKey('dig_haul'), 'dig_haul');
+    expect(normalizeLaborCanvasKey('macroDriver'), 'macro_driver');
+    expect(normalizeLaborCanvasKey('macro_driver'), 'macro_driver');
     expect(normalizeLaborCanvasKey('wash_home'), 'washHome');
   });
 

@@ -431,6 +431,21 @@ Set<String> macroVehicleIdsUsedForDay(
   return ids;
 }
 
+/// คนขับจากบันทึกการใช้รถแม็คโครวันนั้น (driverId ไม่ซ้ำ)
+Set<String> macroDriverIdsUsedForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final ids = <String>{};
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
+    final d = (t.driverId ?? '').trim();
+    if (d.isNotEmpty) ids.add(d);
+  }
+  return ids;
+}
+
 Set<String> fuelVehicleIdsReportedForDay(
   String dayKey,
   Iterable<AppTransaction> transactions,

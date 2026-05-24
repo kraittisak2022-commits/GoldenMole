@@ -14,9 +14,13 @@ import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
 import '../services/transaction_service.dart';
+import '../l10n/app_locale.dart';
+import '../l10n/app_localizations.dart';
+import '../l10n/daily_status_translator.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/page_loading_view.dart';
 import '../widgets/record_module_card.dart';
@@ -27,32 +31,6 @@ import 'mobile_error_report_hub_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
 import 'transactions_screen.dart';
-
-String _formatThaiDateFromYmd(String ymd) {
-  try {
-    final p = ymd.split('-');
-    if (p.length != 3) return ymd;
-    final d = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
-    const months = [
-      'ม.ค.',
-      'ก.พ.',
-      'มี.ค.',
-      'เม.ย.',
-      'พ.ค.',
-      'มิ.ย.',
-      'ก.ค.',
-      'ส.ค.',
-      'ก.ย.',
-      'ต.ค.',
-      'พ.ย.',
-      'ธ.ค.',
-    ];
-    final be = d.year + 543;
-    return '${d.day} ${months[d.month - 1]} $be';
-  } catch (_) {
-    return ymd;
-  }
-}
 
 class _DailyModuleDef {
   const _DailyModuleDef({
@@ -513,12 +491,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   snapshot.connectionState ==
                                   ConnectionState.waiting;
                               if (waiting && merged == null) {
+                                final l10n = AppLocalizations.of(context);
                                 final loadingLabel = _bodyPage == 0
-                                    ? 'กำลังโหลดแดชบอร์ด'
-                                    : 'กำลังโหลดภาพรวม';
+                                    ? l10n.loadingDashboard
+                                    : l10n.loadingData;
                                 return PageLoadingView(label: loadingLabel);
                               }
                               if (snapshot.hasError && merged == null) {
+                                final l10n = AppLocalizations.of(context);
                                 return Center(
                                   child: Padding(
                                     padding: const EdgeInsets.all(24),
@@ -526,7 +506,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          'โหลดข้อมูลไม่สำเร็จ\n${snapshot.error}',
+                                          '${l10n.loadFailed}\n${snapshot.error}',
                                           textAlign: TextAlign.center,
                                           style: Theme.of(context)
                                               .textTheme
@@ -535,7 +515,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         const SizedBox(height: 12),
                                         FilledButton(
                                           onPressed: _refreshHome,
-                                          child: const Text('ลองอีกครั้ง'),
+                                          child: Text(l10n.retry),
                                         ),
                                       ],
                                     ),
@@ -544,8 +524,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               }
                               final data = merged;
                               if (data == null) {
-                                return const PageLoadingView(
-                                  label: 'กำลังโหลดข้อมูล',
+                                return PageLoadingView(
+                                  label: AppLocalizations.of(context)
+                                      .loadingData,
                                 );
                               }
                               final showRefreshBar =
@@ -674,6 +655,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _squircleNavRail({required SupabaseClient client}) {
+    final l10n = AppLocalizations.of(context);
     return Material(
       color: Colors.white,
       child: Column(
@@ -683,27 +665,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _SquircleNavIcon(
             icon: Icons.home_outlined,
             selected: _bodyPage == 0,
-            tooltip: 'หน้าแรก',
+            tooltip: l10n.navHome,
             onTap: () => setState(() => _bodyPage = 0),
           ),
           const SizedBox(height: 8),
           _SquircleNavIcon(
             icon: Icons.calendar_month_outlined,
             selected: false,
-            tooltip: 'ปฏิทิน',
+            tooltip: l10n.navCalendar,
             onTap: () => _openCalendarScreen(client),
           ),
           const SizedBox(height: 8),
           _SquircleNavIcon(
             icon: Icons.settings_outlined,
             selected: false,
-            tooltip: 'ตั้งค่า',
+            tooltip: l10n.navSettings,
             onTap: () => _openAppSettingsScreen(client),
           ),
           Expanded(
             child: Center(
               child: Tooltip(
-                message: 'ซ่อนเมนู',
+                message: l10n.navHideMenu,
                 child: Material(
                   color: const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(22),
@@ -730,7 +712,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _SquircleNavIcon(
             icon: Icons.logout,
             selected: false,
-            tooltip: 'ออกจากระบบ',
+            tooltip: l10n.navLogout,
             onTap: widget.onLogout,
           ),
           const SizedBox(height: 12),
@@ -905,9 +887,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   @override
   Widget build(BuildContext context) {
     final useLiteAnimations = _reduceMotion;
+    final l10n = AppLocalizations.of(context);
+    final localeScope = AppLocaleScope.of(context);
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
-        ? _formatThaiDateFromYmd(widget.data.dayTransactions.first.date)
+        ? l10n.formatShortDateFromYmd(
+            widget.data.dayTransactions.first.date,
+          )
         : '—';
 
     final menuStatusByCategory = <String, DailyModuleFillStatus>{
@@ -1063,21 +1049,23 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         menuStatusByCategory[m.category] ??
                             DailyModuleFillStatus.pending;
                     final globalIndex = _kDailyModules.indexOf(m);
+                    final rawStatus = dailyModuleCardStatusLabel(
+                      moduleCategory: m.category,
+                      dayKey: dayKey,
+                      dayTransactions: widget.data.dayTransactions,
+                      employees: widget.data.employees,
+                      allTransactionsForStock: widget.data.allTransactions,
+                    );
                     final card = RecordModuleCard(
-                      title: m.title,
+                      title: l10n.moduleTitle(m.category),
                       icon: m.icon,
                       tileColor: m.color,
                       showLightStyle: index.isOdd,
                       fillStatus: fill,
-                      completeStatusLabelOverride:
-                          dailyModuleCardStatusLabel(
-                            moduleCategory: m.category,
-                            dayKey: dayKey,
-                            dayTransactions: widget.data.dayTransactions,
-                            employees: widget.data.employees,
-                            allTransactionsForStock:
-                                widget.data.allTransactions,
-                          ),
+                      completeStatusLabelOverride: translateDailyCardStatus(
+                        rawStatus,
+                        localeScope.locale,
+                      ),
                       statusMaxLines:
                           _kDailyMenuDetailCategories.contains(m.category)
                           ? 3
@@ -1125,7 +1113,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     appName: widget.data.summary.appName,
                     lastLabel: lastLabel,
                     serverOnline: widget.serverOnline,
-                    selectedDateLabel: widget.formatBuddhistDateButton(
+                    selectedDateLabel: l10n.formatSelectedDate(
                       widget.selectedDay,
                     ),
                     doneCount: doneCount,
@@ -1133,6 +1121,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     totalCount: headerTotalMenuCount,
                     onPickDay: widget.onPickDay,
                     onRefresh: widget.onPullRefresh,
+                    locale: localeScope.locale,
+                    onLocaleChanged: localeScope.onLocaleChanged,
                   ),
                 ),
               ),
@@ -1207,6 +1197,8 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.totalCount,
     required this.onPickDay,
     required this.onRefresh,
+    required this.locale,
+    required this.onLocaleChanged,
   });
 
   final String appName;
@@ -1218,10 +1210,13 @@ class _HomeHeaderCompact extends StatelessWidget {
   final int totalCount;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
+  final AppLocale locale;
+  final ValueChanged<AppLocale> onLocaleChanged;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1250,7 +1245,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'บันทึกประจำวัน',
+                      l10n.dailyLogTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.headlineSmall?.copyWith(
@@ -1347,7 +1342,53 @@ class _HomeHeaderCompact extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                l10n.languageLabel,
+                style: const TextStyle(
+                  color: Color(0xFF6B7788),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SegmentedButton<AppLocale>(
+                  segments: [
+                    ButtonSegment(
+                      value: AppLocale.th,
+                      label: Text(
+                        AppLocale.th.shortLabel,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    ButtonSegment(
+                      value: AppLocale.zh,
+                      label: Text(
+                        AppLocale.zh.shortLabel,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                  selected: {locale},
+                  onSelectionChanged: (next) {
+                    if (next.isEmpty) return;
+                    onLocaleChanged(next.first);
+                  },
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1355,23 +1396,25 @@ class _HomeHeaderCompact extends StatelessWidget {
               _HeaderStatChip(
                 icon: Icons.today_rounded,
                 label: doneCount >= totalCount
-                    ? 'วันนี้บันทึกครบทุกเมนูแล้ว ($totalCount เมนู)'
+                    ? l10n.headerMenusComplete(totalCount)
                     : incompleteMenuCount > 0
-                        ? 'วันนี้ครบ $doneCount · ไม่ครบ $incompleteMenuCount · รวม $totalCount เมนู'
-                        : 'วันนี้บันทึกครบ $doneCount/$totalCount เมนู',
+                        ? l10n.headerMenusProgress(
+                            doneCount,
+                            incompleteMenuCount,
+                            totalCount,
+                          )
+                        : l10n.headerMenusSimple(doneCount, totalCount),
               ),
               _HeaderStatChip(
                 icon: Icons.access_time_filled_rounded,
-                label: 'ล่าสุด $lastLabel',
+                label: '${l10n.latestPrefix} $lastLabel',
               ),
-              const _LiveClockChip(),
+              _LiveClockChip(l10n: l10n),
               _HeaderStatChip(
                 icon: serverOnline
                     ? Icons.cloud_done_rounded
                     : Icons.cloud_off_rounded,
-                label: serverOnline
-                    ? 'เซิร์ฟเวอร์: ออนไลน์'
-                    : 'เซิร์ฟเวอร์: ออฟไลน์',
+                label: serverOnline ? l10n.serverOnline : l10n.serverOffline,
                 iconColor: serverOnline
                     ? const Color(0xFF1E8E56)
                     : const Color(0xFFC25050),
@@ -1385,7 +1428,9 @@ class _HomeHeaderCompact extends StatelessWidget {
 }
 
 class _LiveClockChip extends StatefulWidget {
-  const _LiveClockChip();
+  const _LiveClockChip({required this.l10n});
+
+  final AppLocalizations l10n;
 
   @override
   State<_LiveClockChip> createState() => _LiveClockChipState();
@@ -1414,9 +1459,11 @@ class _LiveClockChipState extends State<_LiveClockChip> {
   Widget build(BuildContext context) {
     final hh = _now.hour.toString().padLeft(2, '0');
     final mm = _now.minute.toString().padLeft(2, '0');
+    final suffix = widget.l10n.timeSuffix;
+    final clock = suffix.isEmpty ? '$hh:$mm' : '$hh:$mm $suffix';
     return _HeaderStatChip(
       icon: Icons.schedule_rounded,
-      label: 'เวลา $hh:$mm น.',
+      label: '${widget.l10n.timePrefix} $clock',
     );
   }
 }

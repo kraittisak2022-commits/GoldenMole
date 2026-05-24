@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 
@@ -41,6 +42,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
         DevicePerf.isConstrainedDevice;
     final status = widget.fillStatus;
@@ -53,10 +55,10 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
     final statusLabel = hasDetailOverride && (recorded || partial)
         ? overrideComplete
         : recorded
-        ? 'ครบแล้ว'
+        ? l10n.statusComplete
         : partial
-        ? 'ยังไม่ครบ'
-        : 'แตะเพื่อบันทึก';
+        ? l10n.statusIncomplete
+        : l10n.statusTapToRecord;
 
     final statusColor = recorded
         ? const Color(0xFF15803D)
