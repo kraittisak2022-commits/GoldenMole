@@ -210,7 +210,6 @@ export const WEB_LABOR_CANVAS_CATEGORY_IDS = new Set([
     'washHome',
     'pierWatch',
     'nightShift',
-    'nightPatrol',
     'digHaul',
     'generalWork',
 ]);
@@ -266,7 +265,7 @@ export const classifyLaborEmployeePool = (emp: Employee): LaborEmployeePool | nu
 export const LABOR_POOL_FIXED_CANVAS_IDS: Record<LaborEmployeePool, string[]> = {
     sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
     excavatorMac: ['digHaul'],
-    nightWatch: ['nightShift', 'nightPatrol'],
+    nightWatch: ['nightShift'],
     generalLabor: [],
 };
 
@@ -290,10 +289,9 @@ export const normalizeLaborCanvasKey = (key: string): string => {
             return 'pierWatch';
         case 'nightShift':
         case 'night_shift':
-            return 'nightShift';
         case 'nightPatrol':
         case 'night_patrol':
-            return 'nightPatrol';
+            return 'nightShift';
         case 'digHaul':
         case 'dig_haul':
         case 'excavator_control':

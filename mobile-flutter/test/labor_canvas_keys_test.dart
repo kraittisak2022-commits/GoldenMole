@@ -8,7 +8,8 @@ void main() {
     expect(normalizeLaborCanvasKey('sand_watch'), 'sand_watch');
     expect(normalizeLaborCanvasKey('pierWatch'), 'sand_watch');
     expect(normalizeLaborCanvasKey('night_shift'), 'night_shift');
-    expect(normalizeLaborCanvasKey('night_patrol'), 'night_patrol');
+    expect(normalizeLaborCanvasKey('night_patrol'), 'night_shift');
+    expect(normalizeLaborCanvasKey('nightPatrol'), 'night_shift');
     expect(normalizeLaborCanvasKey('dig_haul'), 'dig_haul');
     expect(normalizeLaborCanvasKey('wash_home'), 'washHome');
   });

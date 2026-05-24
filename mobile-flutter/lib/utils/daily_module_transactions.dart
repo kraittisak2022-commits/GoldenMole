@@ -394,10 +394,100 @@ double fuelLitersTotalForDay(
   var sum = 0.0;
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (t.category != 'Fuel') continue;
+    if (!isFuelVehicleUsageRow(t)) continue;
     sum += (t.quantity ?? 0);
   }
   return sum;
+}
+
+/// รับเข้าสต็อก vs เติมรถ — สอดคล้อง `inferFuelMovement` บนเว็บ
+bool isFuelStockOutRow(AppTransaction t) {
+  if (t.category != 'Fuel') return false;
+  final mov = (t.fuelMovement ?? '').trim().toLowerCase();
+  if (mov == 'stock_in') return false;
+  if (mov == 'stock_out') return true;
+  return (t.vehicleId ?? '').trim().isNotEmpty;
+}
+
+/// แถวบันทึกการใช้น้ำมันรายคัน (เติมรถ / stock_out)
+bool isFuelVehicleUsageRow(AppTransaction t) {
+  if (!isFuelStockOutRow(t)) return false;
+  final vehicle = (t.vehicleId ?? '').trim();
+  if (vehicle.isEmpty) return false;
+  return (t.quantity ?? 0) > 0;
+}
+
+Set<String> macroVehicleIdsUsedForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final ids = <String>{};
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
+    final v = (t.vehicleId ?? '').trim();
+    if (v.isNotEmpty) ids.add(v);
+  }
+  return ids;
+}
+
+Set<String> fuelVehicleIdsReportedForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final ids = <String>{};
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!isFuelVehicleUsageRow(t)) continue;
+    final v = (t.vehicleId ?? '').trim();
+    if (v.isNotEmpty) ids.add(v);
+  }
+  return ids;
+}
+
+({
+  int usedCount,
+  int fueledCount,
+  double liters,
+  bool allUsedFueled,
+}) fuelVehicleCoverageForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final used = macroVehicleIdsUsedForDay(dayKey, transactions);
+  final fueled = fuelVehicleIdsReportedForDay(dayKey, transactions);
+  final liters = fuelLitersTotalForDay(dayKey, transactions);
+  final missing = used.difference(fueled);
+  return (
+    usedCount: used.length,
+    fueledCount: fueled.length,
+    liters: liters,
+    allUsedFueled: used.isNotEmpty && missing.isEmpty,
+  );
+}
+
+DailyModuleFillStatus resolveFuelModuleFillStatus(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final coverage = fuelVehicleCoverageForDay(dayKey, transactions);
+  if (coverage.usedCount > 0) {
+    return coverage.allUsedFueled
+        ? DailyModuleFillStatus.complete
+        : DailyModuleFillStatus.incomplete;
+  }
+  if (coverage.fueledCount > 0 || coverage.liters > 0) {
+    return DailyModuleFillStatus.complete;
+  }
+  var touch = false;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (transactionTouchesDailyModule(t, dayKey, 'น้ำมัน')) {
+      touch = true;
+      break;
+    }
+  }
+  return touch ? DailyModuleFillStatus.incomplete : DailyModuleFillStatus.pending;
 }
 
 int laborWorkHeadcountForDay(
@@ -498,10 +588,19 @@ String dailyFuelModuleStatusLabel(
   String dayKey,
   Iterable<AppTransaction> transactions,
 ) {
-  final liters = fuelLitersTotalForDay(dayKey, transactions);
-  if (liters > 0) {
-    return 'ใช้น้ำมันรวม ${formatDashboardMetric(liters)} ลิตร';
+  final c = fuelVehicleCoverageForDay(dayKey, transactions);
+  final parts = <String>[];
+  if (c.usedCount > 0) {
+    parts.add('ใช้งาน ${c.usedCount} คัน');
+    parts.add('แจ้ง ${c.fueledCount}/${c.usedCount} คัน');
+    parts.add(c.allUsedFueled ? 'ครบแล้ว' : 'ยังไม่ครบ');
+  } else if (c.fueledCount > 0) {
+    parts.add('แจ้ง ${c.fueledCount} คัน');
   }
+  if (c.liters > 0) {
+    parts.add('${formatDashboardMetric(c.liters)} ลิตร');
+  }
+  if (parts.isNotEmpty) return _joinStatusParts(parts);
   return 'ยังไม่มีบันทึกน้ำมัน';
 }
 
@@ -772,6 +871,9 @@ DailyModuleFillStatus resolveDailyModuleFillStatus(
 ) {
   if (moduleCategory == 'รายจ่ายรายรับ') {
     return resolveIncomeUtilitiesFillStatus(dayKey, transactions);
+  }
+  if (moduleCategory == 'น้ำมัน') {
+    return resolveFuelModuleFillStatus(dayKey, transactions);
   }
   var complete = false;
   var touch = false;

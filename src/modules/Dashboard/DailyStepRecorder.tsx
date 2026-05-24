@@ -282,8 +282,7 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', shortTitle: 'เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200', accent: '#24A7B8' },
     { id: 'washHome', label: 'ล้างทรายที่บ้าน', shortTitle: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200', accent: '#2CB67D' },
     { id: 'pierWatch', label: 'เฝ้าท่าทราย', shortTitle: 'เฝ้าท่าทราย', color: 'bg-pink-500', bgLight: 'bg-pink-50 border-pink-200', accent: '#E64A9E' },
-    { id: 'nightShift', label: 'เวรกลางคืน', shortTitle: 'เวรกลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200', accent: '#7B5AE6' },
-    { id: 'nightPatrol', label: 'เฝ้ากลางคืน', shortTitle: 'เฝ้ากลางคืน', color: 'bg-violet-600', bgLight: 'bg-violet-50 border-violet-200', accent: '#9C4DCC' },
+    { id: 'nightShift', label: 'เวร/เฝ้ากลางคืน', shortTitle: 'เวร/เฝ้ากลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200', accent: '#7B5AE6' },
     { id: 'digHaul', label: 'ขุดขน', shortTitle: 'ขุดขน', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200', accent: '#7962E6' },
     { id: 'generalWork', label: 'งานทั่วไป', shortTitle: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200', accent: '#5F6AD8' },
 ];

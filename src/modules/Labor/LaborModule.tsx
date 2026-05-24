@@ -223,7 +223,7 @@ const LaborModule = ({
                 ? (transactions || []).find((x) => x.id === editingId)?.workDetails
                 : undefined;
 
-        if (editingId && onDeleteTransaction) {
+        if (editingId && onDeleteTransaction && activeTab !== 'Leave') {
             onDeleteTransaction(editingId);
             setEditingId(null);
         }
@@ -335,7 +335,8 @@ const LaborModule = ({
             });
         } else if (activeTab === 'Leave') {
             onSaveTransaction({
-                ...base,
+                id: editingId ?? newId,
+                date: formDate,
                 employeeIds: selectedIds,
                 type: 'Leave',
                 category: 'Leave',

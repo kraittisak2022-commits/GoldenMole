@@ -125,6 +125,10 @@ class AppTransaction {
       if (employeeIdsRaw is List)
         ...employeeIdsRaw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
     ];
+    if (employeeIds.isEmpty) {
+      final legacyId = row['employee_id']?.toString().trim() ?? '';
+      if (legacyId.isNotEmpty) employeeIds.add(legacyId);
+    }
     return AppTransaction(
       id: (row['id'] ?? '').toString(),
       date: (row['date'] ?? '').toString(),
@@ -231,8 +235,8 @@ class AppTransaction {
       if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
       if (driverWage != null) 'driver_wage': driverWage,
       if (vehicleWage != null) 'vehicle_wage': vehicleWage,
-      if (workDetails != null && workDetails!.isNotEmpty)
-        'work_details': workDetails,
+      if (workDetails != null)
+        'work_details': workDetails!.isEmpty ? null : workDetails,
       if (workType != null && workType!.isNotEmpty) 'work_type': workType,
       if (workAssignments != null && workAssignments!.isNotEmpty)
         'work_assignments': workAssignments,
@@ -304,8 +308,8 @@ class AppTransaction {
       if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
       if (driverWage != null) 'driver_wage': driverWage,
       if (vehicleWage != null) 'vehicle_wage': vehicleWage,
-      if (workDetails != null && workDetails!.isNotEmpty)
-        'work_details': workDetails,
+      if (workDetails != null)
+        'work_details': workDetails!.isEmpty ? null : workDetails,
       if (workType != null && workType!.isNotEmpty) 'work_type': workType,
       if (workAssignments != null && workAssignments!.isNotEmpty)
         'work_assignments': workAssignments,

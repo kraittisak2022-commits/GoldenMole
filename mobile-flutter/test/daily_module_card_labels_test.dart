@@ -63,30 +63,111 @@ void main() {
     expect(dailyMacroVehicleModuleStatusLabel(day, txs), 'ใช้แม็คโคร 2 คัน');
   });
 
-  test('fuel card sums liters', () {
+  test('fuel card sums vehicle usage liters and coverage', () {
     final txs = [
+      AppTransaction(
+        id: 'm1',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 01',
+        driverId: 'd1',
+      ),
+      AppTransaction(
+        id: 'm2',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 02',
+        driverId: 'd2',
+      ),
       AppTransaction(
         id: 'f1',
         date: day,
         type: 'Expense',
         category: 'Fuel',
         description: 'น้ำมัน',
+        amount: 0,
+        quantity: 120,
+        fuelMovement: 'stock_out',
+        vehicleId: 'แม็คโคร 01',
+      ),
+    ];
+    expect(
+      dailyFuelModuleStatusLabel(day, txs),
+      'ใช้งาน 2 คัน · แจ้ง 1/2 คัน · ยังไม่ครบ · 120 ลิตร',
+    );
+    expect(
+      resolveFuelModuleFillStatus(day, txs),
+      DailyModuleFillStatus.incomplete,
+    );
+  });
+
+  test('fuel card shows complete when all used vehicles reported', () {
+    final txs = [
+      AppTransaction(
+        id: 'm1',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 01',
+        driverId: 'd1',
+      ),
+      AppTransaction(
+        id: 'f1',
+        date: day,
+        type: 'Expense',
+        category: 'Fuel',
+        description: 'น้ำมัน',
+        amount: 0,
+        quantity: 80,
+        fuelMovement: 'stock_out',
+        vehicleId: 'แม็คโคร 01',
+      ),
+    ];
+    expect(
+      dailyFuelModuleStatusLabel(day, txs),
+      'ใช้งาน 1 คัน · แจ้ง 1/1 คัน · ครบแล้ว · 80 ลิตร',
+    );
+    expect(
+      resolveFuelModuleFillStatus(day, txs),
+      DailyModuleFillStatus.complete,
+    );
+  });
+
+  test('fuel card ignores stock-in when summing liters', () {
+    final txs = [
+      AppTransaction(
+        id: 'f1',
+        date: day,
+        type: 'Expense',
+        category: 'Fuel',
+        description: 'รับเข้า',
         amount: 500,
-        quantity: 120.5,
+        quantity: 1000,
+        fuelMovement: 'stock_in',
       ),
       AppTransaction(
         id: 'f2',
         date: day,
         type: 'Expense',
         category: 'Fuel',
-        description: 'น้ำมัน',
-        amount: 300,
-        quantity: 30,
+        description: 'เติมรถ',
+        amount: 0,
+        quantity: 50,
+        fuelMovement: 'stock_out',
+        vehicleId: 'แม็คโคร 01',
       ),
     ];
     expect(
       dailyFuelModuleStatusLabel(day, txs),
-      'ใช้น้ำมันรวม 150.5 ลิตร',
+      'แจ้ง 1 คัน · 50 ลิตร',
     );
   });
 
@@ -230,10 +311,12 @@ void main() {
             description: 'น้ำมัน',
             amount: 0,
             quantity: 10,
+            fuelMovement: 'stock_out',
+            vehicleId: 'แม็คโคร 01',
           ),
         ],
       ),
-      'ใช้น้ำมันรวม 10 ลิตร',
+      'แจ้ง 1 คัน · 10 ลิตร',
     );
     expect(
       dailyModuleCardStatusLabel(

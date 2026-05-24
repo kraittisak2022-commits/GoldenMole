@@ -352,7 +352,8 @@ describe('normalizeLaborCanvasKey', () => {
         expect(normalizeLaborCanvasKey('wash_new')).toBe('wash2');
         expect(normalizeLaborCanvasKey('sand_watch')).toBe('pierWatch');
         expect(normalizeLaborCanvasKey('night_shift')).toBe('nightShift');
-        expect(normalizeLaborCanvasKey('night_patrol')).toBe('nightPatrol');
+        expect(normalizeLaborCanvasKey('night_patrol')).toBe('nightShift');
+        expect(normalizeLaborCanvasKey('nightPatrol')).toBe('nightShift');
         expect(normalizeLaborCanvasKey('dig_haul')).toBe('digHaul');
     });
 
@@ -362,6 +363,15 @@ describe('normalizeLaborCanvasKey', () => {
         expect(
             mergeLaborCanvasAssignments({ wash_home: ['e1'], generalWork: ['e2'] })
         ).toEqual({ washHome: ['e1'], generalWork: ['e2'] });
+    });
+
+    it('merges night patrol assignments into night shift canvas', () => {
+        expect(
+            mergeLaborCanvasAssignments({
+                nightShift: ['e1'],
+                nightPatrol: ['e2'],
+            })
+        ).toEqual({ nightShift: ['e1', 'e2'] });
     });
 });
 

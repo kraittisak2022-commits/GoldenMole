@@ -130,8 +130,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ),
     _LaborWorkCategory(
       id: 'night_shift',
-      label: 'เวรกลางคืน',
-      shortTitle: 'เวรกลางคืน',
+      label: 'เวร/เฝ้ากลางคืน',
+      shortTitle: 'เวร/เฝ้ากลางคืน',
       color: Color(0xFF7B5AE6),
     ),
     _LaborWorkCategory(
@@ -139,12 +139,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       label: 'ขุดขน',
       shortTitle: 'ขุดขน',
       color: Color(0xFF7962E6),
-    ),
-    _LaborWorkCategory(
-      id: 'night_patrol',
-      label: 'เฝ้ากลางคืน',
-      shortTitle: 'เฝ้ากลางคืน',
-      color: Color(0xFF9C4DCC),
     ),
   ];
   static const Color _bg = Color(0xFFFDFEFF);
@@ -2601,9 +2595,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final leaveStartDate = _leaveStartDate;
     final existingLeaveTxId = _laborLeaveTxId;
     await _runSaveWithPopups(
-      successMessage: 'บันทึกลางานสำเร็จ',
-      saveActionLabel: 'บันทึกลางาน',
-      saveButtonLabel: 'บันทึก',
+      successMessage: existingLeaveTxId != null
+          ? 'บันทึกการแก้ไขลางานแล้ว'
+          : 'บันทึกลางานสำเร็จ',
+      saveActionLabel: existingLeaveTxId != null
+          ? 'แก้ไขลางาน'
+          : 'บันทึกลางาน',
+      saveButtonLabel: existingLeaveTxId != null ? 'บันทึกการแก้ไข' : 'บันทึก',
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        _selectedLeaveEmpIds.clear();
+        _laborLeaveTxId = null;
+        _leaveTypeChoice = 'Personal';
+        _leaveIsHalfDay = false;
+        _leaveHalfPart = 'morning';
+        _leaveReasonController.clear();
+        _leaveDaysController.text = '1';
+        _leaveStartDate = DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+        );
+      },
       body: () async {
         if (leaveEmpIds.isEmpty) {
           _failSave('กรุณาเลือกพนักงาน');
@@ -2634,13 +2647,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ? (leaveHalfPart == 'morning'
                   ? _leaveHalfMorningMeta
                   : _leaveHalfAfternoonMeta)
-            : null;
+            : '';
         final y = leaveStartDate.year.toString().padLeft(4, '0');
         final m = leaveStartDate.month.toString().padLeft(2, '0');
         final d = leaveStartDate.day.toString().padLeft(2, '0');
         final ymd = '$y-$m-$d';
         final id =
             existingLeaveTxId ?? '${DateTime.now().millisecondsSinceEpoch}_leave';
+        if (existingLeaveTxId != null) {
+          _persistOmitCreatedSessionIds.add(existingLeaveTxId);
+        }
         _laborLeaveTxId = id;
         final typeTh = leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ';
         final descCore = 'ลา$typeTh: $reason';
@@ -3643,6 +3659,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       description: _appendRecorder(desc),
                     );
                     try {
+                      _persistOmitCreatedSessionIds.add(t.id);
                       await _persist(saved);
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (!mounted) return;
@@ -4506,20 +4523,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final kind = leaveKindLabelTh(t);
     final duration = leaveDurationLabelTh(t);
     final reason = resolvedLeaveReason(t);
+    final isEditingThis = _laborLeaveTxId == t.id;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: const Color(0xFFF5FAFF),
+        color: isEditingThis ? const Color(0xFFE3F2FD) : const Color(0xFFF5FAFF),
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFFBBDEFB)),
+          side: BorderSide(
+            color: isEditingThis
+                ? const Color(0xFF1565C0)
+                : const Color(0xFFBBDEFB),
+            width: isEditingThis ? 1.5 : 1,
+          ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _saving ? null : () => _loadLeaveForEdit(t),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Container(
                 width: 44,
                 height: 44,
@@ -4621,6 +4647,53 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ],
           ),
         ),
+      ),
+      ),
+    );
+  }
+
+  void _loadLeaveForEdit(AppTransaction t) {
+    final wd = (t.workDetails ?? '').trim();
+    final halfFromMeta =
+        wd == _leaveHalfMorningMeta || wd == _leaveHalfAfternoonMeta;
+    final halfFromDays =
+        t.leaveDays != null && (t.leaveDays! - 0.5).abs() < 1e-6;
+    final isHalf = halfFromMeta || halfFromDays;
+  final halfPart = wd == _leaveHalfAfternoonMeta ? 'afternoon' : 'morning';
+    final startParts = t.date.trim().split('-');
+    DateTime startDate = _leaveStartDate;
+    if (startParts.length == 3) {
+      final y = int.tryParse(startParts[0]);
+      final m = int.tryParse(startParts[1]);
+      final d = int.tryParse(startParts[2]);
+      if (y != null && m != null && d != null) {
+        startDate = DateTime(y, m, d);
+      }
+    }
+    _persistOmitCreatedForIds.add(t.id);
+    setState(() {
+      _laborLeaveTxId = t.id;
+      _selectedLeaveEmpIds
+        ..clear()
+        ..addAll(t.employeeIds);
+      _leaveTypeChoice =
+          (t.subCategory ?? '').trim() == 'Sick' ? 'Sick' : 'Personal';
+      _leaveIsHalfDay = isHalf;
+      _leaveHalfPart = halfPart;
+      _leaveReasonController.text = resolvedLeaveReason(t);
+      _leaveDaysController.text = isHalf
+          ? '0.5'
+          : (t.leaveDays != null ? _strNum(t.leaveDays) : '1');
+      _leaveStartDate = startDate;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'โหลดรายการเพื่อแก้ไข — กดบันทึกการแก้ไขเมื่อเสร็จ',
+          style: GoogleFonts.kanit(),
+        ),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -5019,7 +5092,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               _isLaborAdvanceMode
                                   ? 'แต่ละรายการ = คนละคำขอ — แสดงชื่อผู้เบิกและยอดที่ขอ'
                                   : _isLaborLeaveMode
-                                  ? 'แสดงชื่อผู้ลา ประเภท และระยะเวลา — หนึ่งแถวต่อหนึ่งรายการบันทึก'
+                                  ? 'แตะรายการเพื่อโหลดแก้ไข — หนึ่งแถวต่อหนึ่งรายการบันทึก'
                                   : 'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
                               style: GoogleFonts.kanit(
                                 fontSize: 12,
@@ -8139,6 +8212,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ];
           return;
         }
+        _laborAssignments[canon] ??= <String>{};
         _laborAssignments[canon]!.addAll(list);
         _laborBucketExpanded[canon] = true;
       });
@@ -8546,6 +8620,62 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               color: const Color(0xFF00695C),
             ),
           ),
+          if (_laborLeaveTxId != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE3F2FD),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF90CAF9)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.edit_note_rounded,
+                    size: 20,
+                    color: Color(0xFF1565C0),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'กำลังแก้ไขรายการเดิม — กดบันทึกการแก้ไขเมื่อเสร็จ',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0D47A1),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() {
+                            _laborLeaveTxId = null;
+                            _selectedLeaveEmpIds.clear();
+                            _leaveTypeChoice = 'Personal';
+                            _leaveIsHalfDay = false;
+                            _leaveHalfPart = 'morning';
+                            _leaveReasonController.clear();
+                            _leaveDaysController.text = '1';
+                            _leaveStartDate = DateTime(
+                              _selectedDate.year,
+                              _selectedDate.month,
+                              _selectedDate.day,
+                            );
+                          }),
+                    child: Text(
+                      'ยกเลิก',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1565C0),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Text(
             'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → ลา',
@@ -11522,7 +11652,7 @@ const _sandSievePoolCategoryIds = {
   'sand_watch',
 };
 const _excavatorMacPoolCategoryIds = {'dig_haul'};
-const _nightWatchPoolCategoryIds = {'night_shift', 'night_patrol'};
+const _nightWatchPoolCategoryIds = {'night_shift'};
 
 enum _LaborDragBoardLayout { combined, poolOnly, canvasOnly }
 

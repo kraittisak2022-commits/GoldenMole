@@ -8,7 +8,6 @@ const flutterLaborCanvasCategoryIds = <String>{
   'sand_watch',
   'night_shift',
   'dig_haul',
-  'night_patrol',
 };
 
 bool isGeneralLaborAssignmentKey(String key) =>
@@ -53,10 +52,9 @@ String normalizeLaborCanvasKey(String key) {
       return 'sand_watch';
     case 'nightShift':
     case 'night_shift':
-      return 'night_shift';
     case 'nightPatrol':
     case 'night_patrol':
-      return 'night_patrol';
+      return 'night_shift';
     case 'digHaul':
     case 'dig_haul':
     case 'excavator_control':
