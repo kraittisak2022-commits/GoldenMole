@@ -10,6 +10,7 @@ import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
+import '../services/count_record_offline_sync.dart';
 import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
@@ -184,7 +185,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   static const _kNavRailExpandedPrefKey = 'dashboard_nav_rail_expanded_v1';
   static const _kNavRailWidth = 72.0;
 
@@ -202,11 +204,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     MobileErrorScreenTracker.set(page: 'หน้าหลัก (แดชบอร์ด)');
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome());
     _navRailOpen = true;
     _scheduleNavRailIntroHide();
+    CountRecordOfflineSync.instance.startAutoSync(
+      service: _txService,
+      client: Supabase.instance.client,
+      onSynced: _onCountRecordOfflineSynced,
+    );
   }
 
   /// เปิดหน้าบันทึกประจำวัน — แสดงแถบเมนู 3 วินาที แล้วเก็บซ่อน (ปัดขอบซ้ายเปิดได้อีก)
@@ -245,12 +253,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    CountRecordOfflineSync.instance.stopAutoSync();
     _navRailIntroTimer?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncCountRecordQueueThenRefresh());
+    }
+  }
+
+  void _onCountRecordOfflineSynced() {
+    if (!mounted) return;
+    _refreshHome();
+  }
+
+  Future<void> _syncCountRecordQueueThenRefresh() async {
+    final synced = await CountRecordOfflineSync.instance.syncPendingIfPossible(
+      _txService,
+      Supabase.instance.client,
+    );
+    if (!mounted) return;
+    if (synced > 0 || !_serverOnline) {
+      _refreshHome();
+    }
+  }
+
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     try {
+      await CountRecordOfflineSync.instance.syncPendingIfPossible(
+        _txService,
+        Supabase.instance.client,
+      );
       final employeeService = EmployeeService(Supabase.instance.client);
       final results = await Future.wait([
         widget.dashboardService.fetchSummary(forceRefresh: forceRefresh),
@@ -650,6 +687,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _pullRefresh() async {
+    await CountRecordOfflineSync.instance.syncPendingIfPossible(
+      _txService,
+      Supabase.instance.client,
+    );
+    if (!mounted) return;
     setState(
       () => _homeFuture = _futureWithSnapshot(
         _loadHome(forceRefresh: true),

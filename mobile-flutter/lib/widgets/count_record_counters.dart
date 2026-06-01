@@ -106,6 +106,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
   Timer? _cooldownTicker;
+  Timer? _offlineSyncTicker;
   bool _isOnline = true;
   int _pendingCount = 0;
   bool _addVehiclePanelOpen = false;
@@ -141,6 +142,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   @override
   void dispose() {
     _cooldownTicker?.cancel();
+    _offlineSyncTicker?.cancel();
     super.dispose();
   }
 
@@ -251,15 +253,47 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _refreshConnectivity() async {
+    final wasOnline = _isOnline;
     final online = widget.serverOnline &&
         await CountRecordOfflineSync.instance
             .isOnline(Supabase.instance.client);
     if (mounted) setState(() => _isOnline = online);
+    if (online && !wasOnline) {
+      await _trySyncPending(silent: false);
+    }
+  }
+
+  void _syncOfflinePollTimer() {
+    if (_pendingCount > 0) {
+      _offlineSyncTicker ??= Timer.periodic(
+        const Duration(seconds: 10),
+        (_) {
+          if (!mounted) return;
+          unawaited(_pollOfflineQueue());
+        },
+      );
+    } else {
+      _offlineSyncTicker?.cancel();
+      _offlineSyncTicker = null;
+    }
+  }
+
+  Future<void> _pollOfflineQueue() async {
+    if (_pendingCount == 0) return;
+    if (!widget.serverOnline) return;
+    if (!await CountRecordOfflineSync.instance
+        .isOnline(Supabase.instance.client)) {
+      return;
+    }
+    await _trySyncPending(silent: true);
   }
 
   Future<void> _refreshPendingCount() async {
     final count = await CountRecordOfflineSync.instance.pendingCount();
-    if (mounted) setState(() => _pendingCount = count);
+    if (mounted) {
+      setState(() => _pendingCount = count);
+      _syncOfflinePollTimer();
+    }
   }
 
   Future<void> _trySyncPending({bool silent = false}) async {
@@ -270,10 +304,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (synced > 0) {
       widget.onDataChanged?.call();
       if (!silent && mounted) {
-        _toast('อัปโหลดข้อมูลออฟไลน์ $synced รายการแล้ว');
+        _toast('อัปโหลดข้อมูล $synced รายการเข้าระบบแล้ว');
       }
+      if (!mounted) return;
+      final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
+        widget.dateYmd,
+        widget.dayTransactions,
+      );
+      if (!mounted) return;
+      setState(() {
+        _units.clear();
+        _bootstrapFromTransactions(merged);
+      });
     }
     await _refreshPendingCount();
+    final online = widget.serverOnline &&
+        await CountRecordOfflineSync.instance
+            .isOnline(Supabase.instance.client);
+    if (mounted) setState(() => _isOnline = online);
   }
 
   List<AppTransaction> _effectiveDayRows() {
@@ -453,7 +501,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
             ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
             : 'รอบที่ ${u.rounds} • $stamp';
         _toast(
-          queued ? '$base\n(บันทึกออฟไลน์ — จะอัปโหลดเมื่อมีเน็ต)' : base,
+          queued
+              ? '$base\n(บันทึกในเครื่องแล้ว — จะอัปโหลดทันทีเมื่อมีเน็ต)'
+              : base,
         );
       }
     } catch (e) {
@@ -1005,9 +1055,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (_isOnline && _pendingCount == 0) return null;
     final message = !_isOnline
         ? (_pendingCount > 0
-            ? 'ออฟไลน์ • $_pendingCount รายการรออัปโหลด'
-            : 'ออฟไลน์ — บันทึกได้ จะซิงค์เมื่อมีเน็ต')
-        : '$_pendingCount รายการกำลังรออัปโหลด';
+            ? 'ไม่มีเน็ต • บันทึกในเครื่อง $_pendingCount รายการ'
+            : 'ไม่มีเน็ต — บันทึกเก็บในเครื่องก่อน')
+        : 'เชื่อมต่อเน็ตแล้ว • รออัปโหลด $_pendingCount รายการ';
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),

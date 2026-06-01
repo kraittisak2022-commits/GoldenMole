@@ -18,6 +18,12 @@ class CountRecordOfflineSync {
   static const _kQueue = 'v1_count_record_offline_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
 
+  Timer? _autoSyncTimer;
+  TransactionService? _autoSyncService;
+  SupabaseClient? _autoSyncClient;
+  VoidCallback? _onAutoSynced;
+  bool _autoSyncTickRunning = false;
+
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
   Future<bool> isOnline(SupabaseClient client) async {
@@ -217,7 +223,7 @@ class CountRecordOfflineSync {
     return true;
   }
 
-  /// อัปโหลดคิวที่ค้าง — คืนจำนวนที่สำเร็จ
+  /// อัปโหลดคิวที่ค้าง — คืนจำนวนที่สำเร็จ (ลองทีละรายการ ไม่หยุดทั้งคิวเมื่อรายการเดียวล้ม)
   Future<int> syncPending(
     TransactionService service,
     SupabaseClient client,
@@ -228,12 +234,7 @@ class CountRecordOfflineSync {
 
     var synced = 0;
     final stillPending = <_PendingOp>[];
-    var failed = false;
     for (final op in ops) {
-      if (failed) {
-        stillPending.add(op);
-        continue;
-      }
       try {
         switch (op.type) {
           case _PendingOpType.upsert:
@@ -250,14 +251,62 @@ class CountRecordOfflineSync {
         }
         synced += 1;
       } catch (e) {
-        debugPrint('CountRecordOfflineSync.syncPending stop: $e');
+        debugPrint('CountRecordOfflineSync.syncPending item failed: $e');
         stillPending.add(op);
-        failed = true;
       }
     }
 
     await _writeQueue(stillPending);
     return synced;
+  }
+
+  /// ซิงค์ทันทีถ้าเชื่อมต่อได้ — ใช้ก่อนโหลดแดชบอร์ด / ตอนกลับมาออนไลน์
+  Future<int> syncPendingIfPossible(
+    TransactionService service,
+    SupabaseClient client,
+  ) => syncPending(service, client);
+
+  /// ตรวจและอัปโหลดคิวเป็นระยะ (เรียกจากแดชบอร์ดตลอดที่ล็อกอินอยู่)
+  void startAutoSync({
+    required TransactionService service,
+    required SupabaseClient client,
+    VoidCallback? onSynced,
+  }) {
+    _autoSyncService = service;
+    _autoSyncClient = client;
+    _onAutoSynced = onSynced;
+    _autoSyncTimer ??= Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => unawaited(_autoSyncTick()),
+    );
+    unawaited(_autoSyncTick());
+  }
+
+  void stopAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
+    _autoSyncService = null;
+    _autoSyncClient = null;
+    _onAutoSynced = null;
+  }
+
+  Future<void> _autoSyncTick() async {
+    if (_autoSyncTickRunning) return;
+    final service = _autoSyncService;
+    final client = _autoSyncClient;
+    if (service == null || client == null) return;
+    final pending = await pendingCount();
+    if (pending == 0) return;
+
+    _autoSyncTickRunning = true;
+    try {
+      final synced = await syncPending(service, client);
+      if (synced > 0) {
+        _onAutoSynced?.call();
+      }
+    } finally {
+      _autoSyncTickRunning = false;
+    }
   }
 }
 
