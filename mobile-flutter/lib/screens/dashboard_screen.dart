@@ -1004,6 +1004,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       dayTransactions: widget.data.dayTransactions,
                       employees: widget.data.employees,
                       embedded: true,
+                      serverOnline: widget.serverOnline,
+                      onDataChanged: widget.onPullRefresh,
                     ),
                   );
                 }

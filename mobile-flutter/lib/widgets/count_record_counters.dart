@@ -7,9 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
+import '../services/count_record_offline_sync.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/record_success_speaker.dart';
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
@@ -25,6 +27,7 @@ class _CounterUnit {
     this.persisted = false,
     this.vehicleId,
     this.driverId,
+    this.workDetails = '',
   }) : lapTimes = lapTimes ?? <String>[];
 
   final String txId;
@@ -35,6 +38,7 @@ class _CounterUnit {
   bool persisted;
   String? vehicleId;
   String? driverId;
+  String workDetails;
   bool busy = false;
   DateTime? recordCooldownUntil;
 
@@ -49,12 +53,16 @@ class _CounterUnit {
     final left = until.difference(DateTime.now()).inSeconds;
     return left <= 0 ? 0 : left + 1;
   }
+
+  bool get isBrokenReported => workDetails.contains('รถเสีย');
 }
 
 class _Pick {
   String vehicleId = '';
   String driverId = '';
 }
+
+enum _UnitEditAction { changeDriver, reportBroken }
 
 /// แผงนับเที่ยว/รอบแบบฝังในการ์ด — กดปุ่มแล้วบันทึกวันเวลา + เพิ่มจำนวน 1
 class CountRecordCounterPanel extends StatefulWidget {
@@ -68,6 +76,8 @@ class CountRecordCounterPanel extends StatefulWidget {
     required this.dayTransactions,
     required this.employees,
     this.embedded = false,
+    this.serverOnline = true,
+    this.onDataChanged,
   });
 
   final CounterMode mode;
@@ -78,6 +88,8 @@ class CountRecordCounterPanel extends StatefulWidget {
   final List<AppTransaction> dayTransactions;
   final List<Employee> employees;
   final bool embedded;
+  final bool serverOnline;
+  final VoidCallback? onDataChanged;
 
   @override
   State<CountRecordCounterPanel> createState() =>
@@ -87,11 +99,14 @@ class CountRecordCounterPanel extends StatefulWidget {
 class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     with AutomaticKeepAliveClientMixin {
   static const _recordTapCooldown = Duration(seconds: 3);
+  static const _sandRecentLapsVisible = 4;
 
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
   Timer? _cooldownTicker;
+  bool _isOnline = true;
+  int _pendingCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -102,7 +117,23 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _isOnline = widget.serverOnline;
+    unawaited(_initPanel());
+    RecordSuccessSpeaker.instance.warmUp();
+  }
+
+  @override
+  void didUpdateWidget(covariant CountRecordCounterPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dateYmd != widget.dateYmd ||
+        oldWidget.dayTransactions != widget.dayTransactions) {
+      _units.clear();
+      unawaited(_initPanel());
+    } else if (!oldWidget.serverOnline && widget.serverOnline) {
+      unawaited(_onBackOnline());
+    } else if (oldWidget.serverOnline != widget.serverOnline) {
+      setState(() => _isOnline = widget.serverOnline);
+    }
   }
 
   @override
@@ -129,14 +160,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _ensureCooldownTicker();
   }
 
-  void _bootstrap() {
+  int _recentSandLapStartIndex(int total) {
+    if (total <= _sandRecentLapsVisible) return 0;
+    return total - _sandRecentLapsVisible;
+  }
+
+  void _bootstrapFromTransactions(List<AppTransaction> dayTx) {
     _drivers = widget.employees
         .where((e) => !e.inactive)
         .where(_isDriverEmployee)
         .toList(growable: false);
 
     if (widget.mode == CounterMode.trip) {
-      for (final t in widget.dayTransactions) {
+      for (final t in dayTx) {
         if (t.category != 'DailyLog') continue;
         if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
           continue;
@@ -145,15 +181,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         if (vid.isEmpty || isMacroVehicleId(vid)) continue;
         _units.add(_unitFromTx(t, title: vid, vehicleId: vid));
       }
-      _loadCars();
-      if (_units.isEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _openSelectDialog();
-        });
-      }
     } else {
       AppTransaction? sandRow;
-      for (final t in widget.dayTransactions) {
+      for (final t in dayTx) {
         if (t.category == 'DailyLog' &&
             (t.subCategory ?? '').trim() == 'Sand' &&
             !t.description.contains('ทรายที่ล้างที่บ้าน')) {
@@ -181,6 +211,80 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  Future<void> _initPanel() async {
+    await _refreshConnectivity();
+    await _trySyncPending(silent: true);
+    final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
+      widget.dateYmd,
+      widget.dayTransactions,
+    );
+    if (!mounted) return;
+    setState(() {
+      _units.clear();
+      _bootstrapFromTransactions(merged);
+    });
+    await _loadCars();
+    await _refreshPendingCount();
+    if (widget.mode == CounterMode.trip && _units.isEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openSelectDialog();
+      });
+    }
+  }
+
+  Future<void> _onBackOnline() async {
+    await _refreshConnectivity();
+    await _trySyncPending();
+    if (!mounted) return;
+    final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
+      widget.dateYmd,
+      widget.dayTransactions,
+    );
+    if (!mounted) return;
+    setState(() {
+      _units.clear();
+      _bootstrapFromTransactions(merged);
+    });
+    await _loadCars();
+  }
+
+  Future<void> _refreshConnectivity() async {
+    final online = widget.serverOnline &&
+        await CountRecordOfflineSync.instance
+            .isOnline(Supabase.instance.client);
+    if (mounted) setState(() => _isOnline = online);
+  }
+
+  Future<void> _refreshPendingCount() async {
+    final count = await CountRecordOfflineSync.instance.pendingCount();
+    if (mounted) setState(() => _pendingCount = count);
+  }
+
+  Future<void> _trySyncPending({bool silent = false}) async {
+    final synced = await CountRecordOfflineSync.instance.syncPending(
+      widget.service,
+      Supabase.instance.client,
+    );
+    if (synced > 0) {
+      widget.onDataChanged?.call();
+      if (!silent && mounted) {
+        _toast('อัปโหลดข้อมูลออฟไลน์ $synced รายการแล้ว');
+      }
+    }
+    await _refreshPendingCount();
+  }
+
+  List<AppTransaction> _effectiveDayRows() {
+    final base = widget.dayTransactions
+        .where((t) => t.date == widget.dateYmd)
+        .toList();
+    final byId = {for (final t in base) t.id: t};
+    for (final u in _units) {
+      byId[u.txId] = _txFor(u);
+    }
+    return byId.values.toList();
+  }
+
   _CounterUnit _unitFromTx(
     AppTransaction t, {
     required String title,
@@ -205,6 +309,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       driverId: (t.driverId ?? '').trim().isEmpty
           ? null
           : (t.driverId ?? '').trim(),
+      workDetails: (t.workDetails ?? '').trim(),
     );
   }
 
@@ -238,24 +343,34 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _loadCars() async {
+    final sync = CountRecordOfflineSync.instance;
+    final client = Supabase.instance.client;
     try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('app_settings')
-          .select('cars')
-          .eq('id', 'default')
-          .limit(1);
-      if (rows.isEmpty) return;
-      final raw = rows.first['cars'];
-      final all = <String>[
-        if (raw is List)
-          ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
-      ];
-      if (!mounted) return;
-      setState(() {
-        _cars = all.where(isVehicleTripDrumCarName).toList(growable: false);
-      });
+      if (await sync.isOnline(client)) {
+        final rows = await client
+            .from('app_settings')
+            .select('cars')
+            .eq('id', 'default')
+            .limit(1);
+        if (rows.isEmpty) return;
+        final raw = rows.first['cars'];
+        final all = <String>[
+          if (raw is List)
+            ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
+        ];
+        final cars = all.where(isVehicleTripDrumCarName).toList(growable: false);
+        await sync.cacheCars(cars);
+        if (!mounted) return;
+        setState(() => _cars = cars);
+        return;
+      }
     } catch (_) {}
+    final cached = await sync.readCachedCars();
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _cars = cached.where(isVehicleTripDrumCarName).toList(growable: false);
+      });
+    }
   }
 
   AppTransaction _txFor(_CounterUnit u) {
@@ -276,6 +391,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         note: 'นับเที่ยวโดย ${widget.currentAdmin.displayName}',
         vehicleId: u.vehicleId,
         driverId: u.driverId,
+        workDetails: u.workDetails.trim().isEmpty ? null : u.workDetails.trim(),
         tripBillingMode: 'PerTrip',
         tripCount: r,
         perCarTrips: r,
@@ -296,13 +412,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
-  Future<void> _save(_CounterUnit u) async {
+  Future<bool> _save(_CounterUnit u) async {
     final wasPersisted = u.persisted;
-    await widget.service.upsertTransaction(
-      _txFor(u),
+    final queued = await CountRecordOfflineSync.instance.persist(
+      service: widget.service,
+      client: Supabase.instance.client,
+      transaction: _txFor(u),
       omitCreatedAt: wasPersisted,
+      dayServerRows: _effectiveDayRows(),
     );
     u.persisted = true;
+    await _refreshConnectivity();
+    await _refreshPendingCount();
+    return queued;
   }
 
   /// กดปุ่ม = บันทึกวันเวลา + เพิ่มจำนวน 1 (จำกัด 1 ครั้งทุก 3 วินาทีต่อปุ่ม)
@@ -320,12 +442,15 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     });
     HapticFeedback.selectionClick();
     try {
-      await _save(u);
+      final queued = await _save(u);
       if (mounted) {
+        HapticFeedback.mediumImpact();
+        RecordSuccessSpeaker.instance.speakSuccess();
+        final base = widget.mode == CounterMode.trip
+            ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
+            : 'รอบที่ ${u.rounds} • $stamp';
         _toast(
-          widget.mode == CounterMode.trip
-              ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
-              : 'รอบที่ ${u.rounds} • $stamp',
+          queued ? '$base\n(บันทึกออฟไลน์ — จะอัปโหลดเมื่อมีเน็ต)' : base,
         );
       }
     } catch (e) {
@@ -453,10 +578,25 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (u.busy) return;
     setState(() => u.busy = true);
     try {
-      if (u.persisted) await widget.service.deleteTransaction(u.txId);
+      var queued = false;
+      if (u.persisted) {
+        queued = await CountRecordOfflineSync.instance.delete(
+          service: widget.service,
+          client: Supabase.instance.client,
+          id: u.txId,
+          ymd: widget.dateYmd,
+          dayServerRows: _effectiveDayRows(),
+        );
+        await _refreshConnectivity();
+        await _refreshPendingCount();
+      }
       if (mounted) {
         setState(() => _units.remove(u));
-        _toast('ลบ ${u.title} ออกจากรายการแล้ว');
+        _toast(
+          queued
+              ? 'ลบ ${u.title} ออฟไลน์ — จะซิงค์เมื่อมีเน็ต'
+              : 'ลบ ${u.title} ออกจากรายการแล้ว',
+        );
       }
     } catch (e) {
       _toast('ลบไม่สำเร็จ: $e', error: true);
@@ -505,56 +645,146 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
-  Future<void> _openEditUnitDialog(_CounterUnit u) async {
+  Future<void> _openEditUnitMenu(_CounterUnit u) async {
     if (u.busy) return;
-    if (_cars.isEmpty) {
-      _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
-      return;
-    }
-    final blocked = _units
-        .where((x) => x != u)
-        .map((x) => x.vehicleId ?? '')
-        .where((v) => v.isNotEmpty)
-        .toSet();
-    final pick = await showDialog<_Pick>(
+    final action = await showDialog<_UnitEditAction>(
       context: context,
-      builder: (ctx) => _EditUnitDialog(
-        initialVehicleId: u.vehicleId ?? u.title,
-        initialDriverId: u.driverId ?? '',
-        cars: _cars,
-        drivers: _drivers,
-        blockedVehicles: blocked,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text('แก้ไขข้อมูล — ${u.title}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.badge_outlined, color: Color(0xFF1565C0)),
+              title: const Text(
+                'แก้ไขคนขับ',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                u.subtitle,
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              onTap: () =>
+                  Navigator.pop(ctx, _UnitEditAction.changeDriver),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.car_crash_outlined, color: Color(0xFFE65100)),
+              title: const Text(
+                'แจ้งรถเสีย',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                u.isBrokenReported ? 'แจ้งแล้ววันนี้' : 'บันทึกสถานะรถเสียลงระบบ',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              onTap: () =>
+                  Navigator.pop(ctx, _UnitEditAction.reportBroken),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('ปิด'),
+          ),
+        ],
       ),
     );
-    if (pick == null) return;
-    final vid = pick.vehicleId.trim();
-    final did = pick.driverId.trim();
-    if (vid.isEmpty || did.isEmpty) return;
+    if (action == null || !mounted) return;
+    switch (action) {
+      case _UnitEditAction.changeDriver:
+        await _openChangeDriverDialog(u);
+      case _UnitEditAction.reportBroken:
+        await _confirmReportBrokenVehicle(u);
+    }
+  }
 
-    final prevTitle = u.title;
-    final prevSubtitle = u.subtitle;
-    final prevVehicleId = u.vehicleId;
+  Future<void> _openChangeDriverDialog(_CounterUnit u) async {
+    if (_drivers.isEmpty) {
+      _toast('ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"', error: true);
+      return;
+    }
+    final driverId = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _ChangeDriverDialog(
+        vehicleTitle: u.title,
+        initialDriverId: u.driverId ?? '',
+        drivers: _drivers,
+      ),
+    );
+    if (driverId == null) return;
+    final did = driverId.trim();
+    if (did.isEmpty) return;
+
     final prevDriverId = u.driverId;
-
+    final prevSubtitle = u.subtitle;
     setState(() {
       u.busy = true;
-      u.title = vid;
-      u.vehicleId = vid;
       u.driverId = did;
       u.subtitle = 'คนขับ: ${_driverLabel(did)}';
     });
     try {
       await _save(u);
-      if (mounted) _toast('แก้ไข $vid แล้ว');
+      if (mounted) _toast('แก้ไขคนขับ ${u.title} แล้ว');
     } catch (e) {
       if (mounted) {
         setState(() {
-          u.title = prevTitle;
-          u.subtitle = prevSubtitle;
-          u.vehicleId = prevVehicleId;
           u.driverId = prevDriverId;
+          u.subtitle = prevSubtitle;
         });
         _toast('แก้ไขไม่สำเร็จ: $e', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => u.busy = false);
+    }
+  }
+
+  Future<void> _confirmReportBrokenVehicle(_CounterUnit u) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('แจ้งรถเสีย?'),
+        content: Text(
+          'บันทึกสถานะรถเสียสำหรับ "${u.title}" วันนี้ใช่หรือไม่?\n'
+          'ข้อมูลจะถูกเก็บในรายละเอียดงานของคันนี้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยันแจ้ง'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final stamp = _stamp(DateTime.now());
+    final tag = 'รถเสีย $stamp';
+    final prevDetails = u.workDetails;
+    setState(() {
+      u.busy = true;
+      u.workDetails =
+          prevDetails.isEmpty ? tag : '$prevDetails, $tag';
+    });
+    try {
+      await _save(u);
+      if (mounted) _toast('แจ้งรถเสีย ${u.title} แล้ว');
+    } catch (e) {
+      if (mounted) {
+        setState(() => u.workDetails = prevDetails);
+        _toast('บันทึกไม่สำเร็จ: $e', error: true);
       }
     } finally {
       if (mounted) setState(() => u.busy = false);
@@ -601,7 +831,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                         Expanded(
                           child: _SwipeRevealActions(
                             onDelete: () => _confirmRemoveUnit(_units[i]),
-                            onEdit: () => _openEditUnitDialog(_units[i]),
+                            onEdit: () => _openEditUnitMenu(_units[i]),
                             childBuilder: (interactionsEnabled) =>
                                 _VehicleRecordButton(
                               unit: _units[i],
@@ -683,7 +913,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               spacing: 6,
               runSpacing: 6,
               children: [
-                for (var i = 0; i < u.lapTimes.length; i++)
+                for (var i = _recentSandLapStartIndex(u.lapTimes.length);
+                    i < u.lapTimes.length;
+                    i++)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -708,12 +940,63 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
+  Widget? _buildSyncBanner() {
+    if (_isOnline && _pendingCount == 0) return null;
+    final message = !_isOnline
+        ? (_pendingCount > 0
+            ? 'ออฟไลน์ • $_pendingCount รายการรออัปโหลด'
+            : 'ออฟไลน์ — บันทึกได้ จะซิงค์เมื่อมีเน็ต')
+        : '$_pendingCount รายการกำลังรออัปโหลด';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: !_isOnline ? const Color(0xFFFFF3E0) : const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: !_isOnline ? const Color(0xFFFFCC80) : const Color(0xFFA5D6A7),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            !_isOnline ? Icons.cloud_off_outlined : Icons.cloud_upload_outlined,
+            size: 18,
+            color: !_isOnline ? const Color(0xFFE65100) : const Color(0xFF2E7D32),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: !_isOnline
+                    ? const Color(0xFFBF360C)
+                    : const Color(0xFF1B5E20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return widget.mode == CounterMode.trip
+    final banner = _buildSyncBanner();
+    final body = widget.mode == CounterMode.trip
         ? _buildTripPanel()
         : _buildSandPanel();
+    if (banner == null) return body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        banner,
+        Expanded(child: body),
+      ],
+    );
   }
 }
 
@@ -822,12 +1105,48 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
 
   void _onDeleteTap() {
     _snap(side: _SwipeRevealSide.none);
-    widget.onDelete();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onDelete();
+    });
   }
 
   void _onEditTap() {
     _snap(side: _SwipeRevealSide.none);
-    widget.onEdit();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onEdit();
+    });
+  }
+
+  Widget _actionButton({
+    required Color color,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: color,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: _actionWidth,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 22),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -844,62 +1163,14 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
               Positioned.fill(
                 child: Row(
                   children: [
-                    Material(
-                      color: const Color(0xFF1565C0),
-                      child: InkWell(
-                        onTap: _onEditTap,
-                        child: SizedBox(
-                          width: _actionWidth,
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.edit_outlined,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'แก้ไข',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    SizedBox(
+                      width: _actionWidth,
+                      child: ColoredBox(color: const Color(0xFF1565C0)),
                     ),
                     const Spacer(),
-                    Material(
-                      color: const Color(0xFFD14343),
-                      child: InkWell(
-                        onTap: _onDeleteTap,
-                        child: SizedBox(
-                          width: _actionWidth,
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.delete_outline,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'ลบ',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    SizedBox(
+                      width: _actionWidth,
+                      child: ColoredBox(color: const Color(0xFFD14343)),
                     ),
                   ],
                 ),
@@ -919,7 +1190,195 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
                   child: widget.childBuilder(_interactionsEnabled),
                 ),
               ),
+              if (_revealed == _SwipeRevealSide.edit)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _actionWidth,
+                  child: _actionButton(
+                    color: const Color(0xFF1565C0),
+                    icon: Icons.edit_outlined,
+                    label: 'แก้ไข',
+                    onTap: _onEditTap,
+                  ),
+                ),
+              if (_revealed == _SwipeRevealSide.delete)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _actionWidth,
+                  child: _actionButton(
+                    color: const Color(0xFFD14343),
+                    icon: Icons.delete_outline,
+                    label: 'ลบ',
+                    onTap: _onDeleteTap,
+                  ),
+                ),
             ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// ปุ่มบันทึกแบบยกนูน + เอฟเฟกต์ตอนกด + อนิเมชัน idle ชวนกด
+class _RecordButtonShell extends StatefulWidget {
+  const _RecordButtonShell({
+    required this.bgColor,
+    required this.shadowColor,
+    required this.busy,
+    required this.dimmed,
+    required this.pressed,
+    required this.idleAnimate,
+    required this.onPointerDown,
+    required this.onPointerUp,
+    required this.onPointerCancel,
+    required this.child,
+    this.busyBgColor,
+    this.bottomOverlay,
+    this.idlePhase = 0,
+  });
+
+  final Color bgColor;
+  final Color shadowColor;
+  final bool busy;
+  final bool dimmed;
+  final bool pressed;
+  final bool idleAnimate;
+  final double idlePhase;
+  final VoidCallback onPointerDown;
+  final VoidCallback onPointerUp;
+  final VoidCallback onPointerCancel;
+  final Widget child;
+  final Color? busyBgColor;
+  final Widget? bottomOverlay;
+
+  @override
+  State<_RecordButtonShell> createState() => _RecordButtonShellState();
+}
+
+class _RecordButtonShellState extends State<_RecordButtonShell>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _idleCtrl;
+  late final Animation<double> _idleScale;
+  late final Animation<double> _idleLift;
+  late final Animation<double> _idleGlow;
+
+  @override
+  void initState() {
+    super.initState();
+    _idleCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1700),
+    );
+    _idleScale = Tween<double>(begin: 1.0, end: 1.028).animate(
+      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
+    );
+    _idleLift = Tween<double>(begin: -6.0, end: -11.0).animate(
+      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
+    );
+    _idleGlow = Tween<double>(begin: 0.12, end: 0.34).animate(
+      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
+    );
+    if (widget.idlePhase > 0) {
+      _idleCtrl.value = widget.idlePhase % 1.0;
+    }
+    _syncIdleAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecordButtonShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.idleAnimate != widget.idleAnimate) {
+      _syncIdleAnimation();
+    }
+  }
+
+  void _syncIdleAnimation() {
+    if (widget.idleAnimate) {
+      if (!_idleCtrl.isAnimating) {
+        _idleCtrl.repeat(reverse: true);
+      }
+    } else {
+      _idleCtrl.stop();
+      _idleCtrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _idleCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final idle = widget.idleAnimate && !widget.pressed;
+    final lifted = !widget.busy && !widget.dimmed;
+    final pressScale = widget.pressed ? 0.96 : 1.0;
+    final bg = widget.busy
+        ? (widget.busyBgColor ?? widget.bgColor.withValues(alpha: 0.55))
+        : widget.dimmed
+            ? widget.bgColor.withValues(alpha: 0.72)
+            : widget.bgColor;
+
+    return AnimatedBuilder(
+      animation: _idleCtrl,
+      builder: (context, child) {
+        final idleScale = idle ? _idleScale.value : 1.0;
+        final liftY = widget.pressed
+            ? 0.0
+            : idle
+                ? _idleLift.value
+                : (lifted ? -6.0 : 0.0);
+        final elevation = widget.busy
+            ? 0.0
+            : widget.pressed
+                ? 3.0
+                : idle
+                    ? 10.0 + 6.0 * _idleCtrl.value
+                    : 12.0;
+        final glowAlpha = idle ? _idleGlow.value : 0.0;
+
+        return Transform.scale(
+          scale: pressScale * idleScale,
+          child: Transform.translate(
+            offset: Offset(0, liftY),
+            child: Material(
+              elevation: elevation,
+              shadowColor: widget.shadowColor.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(16),
+              color: bg,
+              clipBehavior: Clip.antiAlias,
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => widget.onPointerDown(),
+                onPointerUp: (_) => widget.onPointerUp(),
+                onPointerCancel: (_) => widget.onPointerCancel(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (glowAlpha > 0)
+                      IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: glowAlpha),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    widget.child,
+                    ?widget.bottomOverlay,
+                  ],
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -955,6 +1414,12 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   DateTime? _pointerDownAt;
   double _holdProgress = 0;
   bool _holdTriggered = false;
+  bool _isPressed = false;
+
+  bool get _canPress =>
+      !widget.unit.busy &&
+      widget.interactionsEnabled &&
+      !widget.unit.isOnRecordCooldown;
 
   @override
   void dispose() {
@@ -984,6 +1449,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
 
   void _onPointerDown() {
     if (widget.unit.busy || !widget.interactionsEnabled) return;
+    if (_canPress) {
+      setState(() => _isPressed = true);
+      HapticFeedback.lightImpact();
+    }
     _pointerDownAt = DateTime.now();
     _holdTriggered = false;
     if (widget.unit.rounds > 0) {
@@ -992,11 +1461,16 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     }
   }
 
+  void _releasePress() {
+    if (_isPressed && mounted) setState(() => _isPressed = false);
+  }
+
   void _onPointerUp() {
     final downAt = _pointerDownAt;
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    _releasePress();
 
     if (_holdTriggered) {
       _holdTriggered = false;
@@ -1019,6 +1493,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    _releasePress();
     if (mounted) setState(() => _holdProgress = 0);
   }
 
@@ -1029,160 +1504,184 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     final onCooldown = unit.isOnRecordCooldown && !busy;
     final bg = _vehicleButtonColor(widget.index);
     final carNo = widget.index + 1;
-    return Material(
-      elevation: busy ? 0 : 2,
-      shadowColor: bg.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(16),
-      color: busy
-          ? bg.withValues(alpha: 0.55)
-          : onCooldown
-              ? bg.withValues(alpha: 0.72)
-              : bg,
-      clipBehavior: Clip.antiAlias,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) => _onPointerDown(),
-        onPointerUp: (_) => _onPointerUp(),
-        onPointerCancel: (_) => _onPointerCancel(),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              child: busy
-                  ? const Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
+    return _RecordButtonShell(
+      bgColor: bg,
+      shadowColor: bg,
+      busy: busy,
+      dimmed: onCooldown,
+      pressed: _isPressed,
+      idleAnimate: !busy &&
+          !onCooldown &&
+          !_isPressed &&
+          widget.interactionsEnabled &&
+          _holdProgress <= 0,
+      idlePhase: widget.index * 0.17,
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      bottomOverlay: _holdProgress > 0
+          ? Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: LinearProgressIndicator(
+                value: _holdProgress,
+                minHeight: 4,
+                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white,
+              ),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: busy
+            ? const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'คันที่ $carNo • บันทึกเที่ยว',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (unit.isBrokenReported) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFE0B2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.car_crash_outlined,
+                              size: 12, color: Color(0xFFE65100)),
+                          SizedBox(width: 4),
+                          Text(
+                            'แจ้งรถเสีย',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFE65100),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    unit.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    unit.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.88),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.add_circle,
+                        size: 18,
+                        color: Colors.white.withValues(alpha: 0.95),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${unit.rounds} เที่ยว',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
                           color: Colors.white,
                         ),
                       ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    ],
+                  ),
+                  if (unit.lapTimes.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'ล่าสุด ${unit.lapTimes.last}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
+                    ),
+                  ],
+                  if (onCooldown) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'คันที่ $carNo • บันทึกเที่ยว',
-                            style: const TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 16,
+                          color: Colors.white.withValues(alpha: 0.92),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(width: 4),
                         Text(
-                          unit.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          'รอ ${unit.recordCooldownSecondsLeft} ว.',
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
-                            height: 1.15,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          unit.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withValues(alpha: 0.88),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.add_circle,
-                              size: 18,
-                              color: Colors.white.withValues(alpha: 0.95),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${unit.rounds} เที่ยว',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (unit.lapTimes.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'ล่าสุด ${unit.lapTimes.last}',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: Colors.white.withValues(alpha: 0.82),
-                            ),
-                          ),
-                        ],
-                        if (onCooldown) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.timer_outlined,
-                                size: 16,
-                                color: Colors.white.withValues(alpha: 0.92),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'รอ ${unit.recordCooldownSecondsLeft} ว.',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else if (unit.rounds > 0) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'กดค้าง 3 ว. ลบเที่ยวล่าสุด',
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
-            ),
-            if (_holdProgress > 0)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: LinearProgressIndicator(
-                  value: _holdProgress,
-                  minHeight: 4,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  color: Colors.white,
-                ),
+                  ] else if (unit.rounds > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'กดค้าง 3 ว. ลบเที่ยวล่าสุด',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-          ],
-        ),
       ),
     );
   }
@@ -1213,6 +1712,10 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
   DateTime? _pointerDownAt;
   double _holdProgress = 0;
   bool _holdTriggered = false;
+  bool _isPressed = false;
+
+  bool get _canPress =>
+      !widget.unit.busy && !widget.unit.isOnRecordCooldown;
 
   @override
   void dispose() {
@@ -1242,6 +1745,10 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
 
   void _onPointerDown() {
     if (widget.unit.busy) return;
+    if (_canPress) {
+      setState(() => _isPressed = true);
+      HapticFeedback.lightImpact();
+    }
     _pointerDownAt = DateTime.now();
     _holdTriggered = false;
     if (widget.unit.rounds > 0) {
@@ -1250,11 +1757,16 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     }
   }
 
+  void _releasePress() {
+    if (_isPressed && mounted) setState(() => _isPressed = false);
+  }
+
   void _onPointerUp() {
     final downAt = _pointerDownAt;
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    _releasePress();
 
     if (_holdTriggered) {
       _holdTriggered = false;
@@ -1277,6 +1789,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    _releasePress();
     if (mounted) setState(() => _holdProgress = 0);
   }
 
@@ -1285,193 +1798,169 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     final unit = widget.unit;
     final busy = unit.busy;
     final onCooldown = unit.isOnRecordCooldown && !busy;
-    return Material(
-      elevation: busy ? 0 : 3,
-      shadowColor: _sandBg.withValues(alpha: 0.4),
-      borderRadius: BorderRadius.circular(16),
-      color: busy
-          ? _sandBgBusy
-          : onCooldown
-              ? _sandBg.withValues(alpha: 0.72)
-              : _sandBg,
-      clipBehavior: Clip.antiAlias,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) => _onPointerDown(),
-        onPointerUp: (_) => _onPointerUp(),
-        onPointerCancel: (_) => _onPointerCancel(),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              child: busy
-                  ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.center,
+    return _RecordButtonShell(
+      bgColor: _sandBg,
+      busyBgColor: _sandBgBusy,
+      shadowColor: _sandBg,
+      busy: busy,
+      dimmed: onCooldown,
+      pressed: _isPressed,
+      idleAnimate:
+          !busy && !onCooldown && !_isPressed && _holdProgress <= 0,
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      bottomOverlay: _holdProgress > 0
+          ? Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: LinearProgressIndicator(
+                value: _holdProgress,
+                minHeight: 4,
+                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white,
+              ),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        child: busy
+            ? const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.water_drop, size: 14, color: Colors.white),
-                              SizedBox(width: 4),
-                              Text(
-                                'บันทึกร่อนทราย',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Icon(Icons.touch_app_rounded,
-                            size: 32, color: Colors.white),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'กดบันทึกวันเวลา +1 รอบ',
+                        Icon(Icons.water_drop, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'บันทึกร่อนทราย',
                           style: TextStyle(
-                            fontSize: 15,
+                            fontSize: 11,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Icon(Icons.touch_app_rounded,
+                      size: 32, color: Colors.white),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'กดบันทึกวันเวลา +1 รอบ',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'รวม ${unit.rounds} รอบ',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (unit.lapTimes.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'ล่าสุด ${unit.lapTimes.last}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                  if (onCooldown) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 16,
+                          color: Colors.white.withValues(alpha: 0.92),
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          'รวม ${unit.rounds} รอบ',
+                          'รอ ${unit.recordCooldownSecondsLeft} ว.',
                           style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
                         ),
-                        if (unit.lapTimes.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'ล่าสุด ${unit.lapTimes.last}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
-                        if (onCooldown) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.timer_outlined,
-                                size: 16,
-                                color: Colors.white.withValues(alpha: 0.92),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'รอ ${unit.recordCooldownSecondsLeft} ว.',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else if (unit.rounds > 0) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'กดค้าง 3 ว. ลบรอบล่าสุด',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
-            ),
-            if (_holdProgress > 0)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: LinearProgressIndicator(
-                  value: _holdProgress,
-                  minHeight: 4,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  color: Colors.white,
-                ),
+                  ] else if (unit.rounds > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'กดค้าง 3 ว. ลบรอบล่าสุด',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-          ],
-        ),
       ),
     );
   }
 }
 
-/// Dialog แก้ไขรถและคนขับของคันที่มีอยู่
-class _EditUnitDialog extends StatefulWidget {
-  const _EditUnitDialog({
-    required this.initialVehicleId,
+/// Dialog แก้ไขคนขับของคันที่มีอยู่
+class _ChangeDriverDialog extends StatefulWidget {
+  const _ChangeDriverDialog({
+    required this.vehicleTitle,
     required this.initialDriverId,
-    required this.cars,
     required this.drivers,
-    required this.blockedVehicles,
   });
 
-  final String initialVehicleId;
+  final String vehicleTitle;
   final String initialDriverId;
-  final List<String> cars;
   final List<Employee> drivers;
-  final Set<String> blockedVehicles;
 
   @override
-  State<_EditUnitDialog> createState() => _EditUnitDialogState();
+  State<_ChangeDriverDialog> createState() => _ChangeDriverDialogState();
 }
 
-class _EditUnitDialogState extends State<_EditUnitDialog> {
-  late final _Pick _row;
+class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
+  late String _driverId;
 
   @override
   void initState() {
     super.initState();
-    _row = _Pick()
-      ..vehicleId = widget.initialVehicleId.trim()
-      ..driverId = widget.initialDriverId.trim();
+    _driverId = widget.initialDriverId.trim();
   }
 
-  List<String> get _availableCars {
-    final current = _row.vehicleId.trim();
-    return widget.cars
-        .where(
-          (c) => c == current || !widget.blockedVehicles.contains(c),
-        )
-        .toList(growable: false);
-  }
-
-  bool get _canSave =>
-      _row.vehicleId.trim().isNotEmpty && _row.driverId.trim().isNotEmpty;
+  bool get _canSave => _driverId.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -1489,13 +1978,13 @@ class _EditUnitDialogState extends State<_EditUnitDialog> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  const Icon(Icons.badge_outlined, color: Color(0xFF1565C0)),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'แก้ไขข้อมูลรถ',
-                      style: TextStyle(
-                        fontSize: 18,
+                      'แก้ไขคนขับ — ${widget.vehicleTitle}',
+                      style: const TextStyle(
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF1A2433),
                       ),
@@ -1507,14 +1996,31 @@ class _EditUnitDialogState extends State<_EditUnitDialog> {
                   ),
                 ],
               ),
-              _SelectRow(
-                index: 0,
-                row: _row,
-                cars: _availableCars,
-                drivers: widget.drivers,
-                canRemove: false,
-                onRemove: () {},
-                onChanged: () => setState(() {}),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: (_driverId.isEmpty ||
+                        !widget.drivers.any((e) => e.id == _driverId))
+                    ? null
+                    : _driverId,
+                decoration: const InputDecoration(
+                  labelText: 'คนขับ',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: widget.drivers
+                    .map(
+                      (e) => DropdownMenuItem<String>(
+                        value: e.id,
+                        child: Text(
+                          e.nickname.isNotEmpty ? e.nickname : e.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _driverId = v ?? ''),
               ),
               if (widget.drivers.isEmpty)
                 const Padding(
@@ -1543,7 +2049,8 @@ class _EditUnitDialogState extends State<_EditUnitDialog> {
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF1565C0),
                       ),
-                      onPressed: _canSave ? () => Navigator.pop(context, _row) : null,
+                      onPressed:
+                          _canSave ? () => Navigator.pop(context, _driverId) : null,
                       child: const Text('บันทึก'),
                     ),
                   ),
