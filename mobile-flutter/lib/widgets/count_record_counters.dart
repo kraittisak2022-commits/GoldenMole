@@ -11,6 +11,7 @@ import '../services/count_record_offline_sync.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
@@ -107,6 +108,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Timer? _cooldownTicker;
   bool _isOnline = true;
   int _pendingCount = 0;
+  bool _addVehiclePanelOpen = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -441,11 +443,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       u.lapTimes.add(stamp);
     });
     HapticFeedback.selectionClick();
+    unawaited(RecordFeedbackSound.playRecordTap());
     try {
       final queued = await _save(u);
       if (mounted) {
         HapticFeedback.mediumImpact();
-        RecordSuccessSpeaker.instance.speakSuccess();
+        unawaited(RecordSuccessSpeaker.instance.speakSuccess());
         final base = widget.mode == CounterMode.trip
             ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
             : 'รอบที่ ${u.rounds} • $stamp';
@@ -814,11 +817,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
             child: _units.isEmpty
                 ? Center(
                     child: Text(
-                      'กด "เพิ่มรถ" เพื่อเลือกรถและคนขับ\nจากนั้นกดปุ่มชื่อรถเพื่อบันทึกเที่ยว',
+                      'กดปุ่ม «เพิ่มรถ» ด้านล่าง\nเพื่อเลือกรถและคนขับ',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontWeight: FontWeight.w600,
+                        fontSize: 13,
                         height: 1.35,
                       ),
                     ),
@@ -875,16 +879,73 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           ],
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF546E7A),
-                backgroundColor: const Color(0xFFF5F7FA),
-                side: const BorderSide(color: Color(0xFFB0BEC5), width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-              ),
-              onPressed: _openSelectDialog,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('เพิ่มรถ (ยังไม่บันทึกเที่ยว)'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => setState(
+                      () => _addVehiclePanelOpen = !_addVehiclePanelOpen,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _addVehiclePanelOpen
+                                ? Icons.expand_more_rounded
+                                : Icons.add_rounded,
+                            size: 20,
+                            color: const Color(0xFF546E7A),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _addVehiclePanelOpen
+                                ? 'ซ่อนเพิ่มรถ'
+                                : 'เพิ่มรถ',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF546E7A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                AnimatedCrossFade(
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF546E7A),
+                        backgroundColor: const Color(0xFFF5F7FA),
+                        side: const BorderSide(
+                          color: Color(0xFFB0BEC5),
+                          width: 1.5,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: _openSelectDialog,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('เพิ่มรถ (ยังไม่บันทึกเที่ยว)'),
+                    ),
+                  ),
+                  crossFadeState: _addVehiclePanelOpen
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 200),
+                  sizeCurve: Curves.easeOutCubic,
+                ),
+              ],
             ),
           ),
         ],
@@ -1597,25 +1658,32 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                     ),
                   ],
                   const SizedBox(height: 8),
-                  Text(
-                    unit.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.15,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      unit.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1.12,
+                        letterSpacing: -0.2,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     unit.subtitle,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.88),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.95),
+                      height: 1.15,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1668,16 +1736,6 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                           ),
                         ),
                       ],
-                    ),
-                  ] else if (unit.rounds > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'กดค้าง 3 ว. ลบเที่ยวล่าสุด',
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.72),
-                      ),
                     ),
                   ],
                 ],
@@ -1852,47 +1910,51 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.water_drop, size: 14, color: Colors.white),
-                        SizedBox(width: 4),
+                        Icon(Icons.water_drop, size: 20, color: Colors.white),
+                        SizedBox(width: 6),
                         Text(
-                          'บันทึกร่อนทราย',
+                          'บันทึกการร่อนทราย',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
                             color: Colors.white,
+                            letterSpacing: -0.2,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   const Icon(Icons.touch_app_rounded,
-                      size: 32, color: Colors.white),
-                  const SizedBox(height: 8),
+                      size: 44, color: Colors.white),
+                  const SizedBox(height: 10),
                   const Text(
                     'กดบันทึกวันเวลา +1 รอบ',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
                       color: Colors.white,
+                      height: 1.15,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     'รวม ${unit.rounds} รอบ',
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                     ),
                   ),
                   if (unit.lapTimes.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       'ล่าสุด ${unit.lapTimes.last}',
                       style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
@@ -1916,16 +1978,6 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                           ),
                         ),
                       ],
-                    ),
-                  ] else if (unit.rounds > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'กดค้าง 3 ว. ลบรอบล่าสุด',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.72),
-                      ),
                     ),
                   ],
                 ],

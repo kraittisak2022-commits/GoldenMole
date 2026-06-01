@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// พูด "บันทึกสำเร็จค่ะ" หลังบันทึกเที่ยว/รอบสำเร็จ
-/// ถ้าแพลตฟอร์มไม่มี flutter_tts (MissingPluginException) จะปิดเสียงเงียบๆ
+/// ใช้ TTS ในเครื่อง — ไม่ต้องมีอินเทอร์เน็ต (ทำงานออฟไลน์ได้บน Android/iOS)
 class RecordSuccessSpeaker {
   RecordSuccessSpeaker._();
 
   static final RecordSuccessSpeaker instance = RecordSuccessSpeaker._();
+
+  static const _phrase = 'บันทึกสำเร็จค่ะ';
 
   FlutterTts? _tts;
   bool _ready = false;
@@ -38,14 +40,11 @@ class RecordSuccessSpeaker {
     }
     try {
       final tts = FlutterTts();
-      final langOk = await _configureLanguage(tts);
-      if (!langOk) {
-        _unavailable = true;
-        return;
-      }
+      await tts.setVolume(1.0);
       await tts.setSpeechRate(0.46);
       await tts.setPitch(1.08);
-      await tts.setVolume(1.0);
+      await tts.awaitSpeakCompletion(false);
+      await _trySetThaiLanguage(tts);
       _tts = tts;
       _ready = true;
     } on MissingPluginException catch (e, st) {
@@ -60,22 +59,15 @@ class RecordSuccessSpeaker {
     }
   }
 
-  Future<bool> _configureLanguage(FlutterTts tts) async {
+  /// ตั้งภาษาไทยถ้าได้ — ไม่ทำให้ TTS ใช้ไม่ได้ถ้าตั้งไม่สำเร็จ (ออฟไลน์ยังพูดได้)
+  Future<void> _trySetThaiLanguage(FlutterTts tts) async {
     for (final code in const ['th-TH', 'th']) {
       try {
-        final result = await tts.setLanguage(code);
-        if (result == 1 || result == true) return true;
+        await tts.setLanguage(code);
+        return;
       } on MissingPluginException {
         rethrow;
       } catch (_) {}
-    }
-    try {
-      await tts.setLanguage('th-TH');
-      return true;
-    } on MissingPluginException {
-      rethrow;
-    } catch (_) {
-      return false;
     }
   }
 
@@ -92,12 +84,15 @@ class RecordSuccessSpeaker {
     try {
       await _ensureReady();
       if (!_ready || _tts == null) return;
-      await _tts!.stop();
-      await _tts!.speak('บันทึกสำเร็จค่ะ');
+      final tts = _tts!;
+      await tts.stop();
+      await tts.speak(_phrase);
     } on MissingPluginException {
       _unavailable = true;
-    } on PlatformException {
-      _unavailable = true;
-    } catch (_) {}
+    } on PlatformException catch (e, st) {
+      debugPrint('RecordSuccessSpeaker.speak: $e\n$st');
+    } catch (e, st) {
+      debugPrint('RecordSuccessSpeaker.speak: $e\n$st');
+    }
   }
 }

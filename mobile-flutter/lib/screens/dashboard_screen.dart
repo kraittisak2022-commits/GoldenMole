@@ -20,6 +20,7 @@ import '../l10n/daily_status_translator.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/record_success_speaker.dart';
 import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
@@ -1181,7 +1182,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       final card = _CountRecordEntryCard(
-                        onTap: () => setState(() => _countAndRecordMenuOpen = true),
+                        onTap: () {
+                          setState(() => _countAndRecordMenuOpen = true);
+                          unawaited(RecordSuccessSpeaker.instance.warmUp());
+                        },
                       );
                       if (_gridEntranceCompleted) {
                         return RepaintBoundary(
