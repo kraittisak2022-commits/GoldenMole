@@ -36,6 +36,19 @@ class _CounterUnit {
   String? vehicleId;
   String? driverId;
   bool busy = false;
+  DateTime? recordCooldownUntil;
+
+  bool get isOnRecordCooldown {
+    final until = recordCooldownUntil;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
+  int get recordCooldownSecondsLeft {
+    final until = recordCooldownUntil;
+    if (until == null) return 0;
+    final left = until.difference(DateTime.now()).inSeconds;
+    return left <= 0 ? 0 : left + 1;
+  }
 }
 
 class _Pick {
@@ -73,9 +86,12 @@ class CountRecordCounterPanel extends StatefulWidget {
 
 class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     with AutomaticKeepAliveClientMixin {
+  static const _recordTapCooldown = Duration(seconds: 3);
+
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
+  Timer? _cooldownTicker;
 
   @override
   bool get wantKeepAlive => true;
@@ -87,6 +103,30 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   void initState() {
     super.initState();
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _cooldownTicker?.cancel();
+    super.dispose();
+  }
+
+  void _ensureCooldownTicker() {
+    if (_cooldownTicker != null) return;
+    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final active = _units.any((u) => u.isOnRecordCooldown);
+      setState(() {});
+      if (!active) {
+        _cooldownTicker?.cancel();
+        _cooldownTicker = null;
+      }
+    });
+  }
+
+  void _armRecordCooldown(_CounterUnit u) {
+    u.recordCooldownUntil = DateTime.now().add(_recordTapCooldown);
+    _ensureCooldownTicker();
   }
 
   void _bootstrap() {
@@ -265,12 +305,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     u.persisted = true;
   }
 
-  /// กดปุ่ม = บันทึกวันเวลา + เพิ่มจำนวน 1
+  /// กดปุ่ม = บันทึกวันเวลา + เพิ่มจำนวน 1 (จำกัด 1 ครั้งทุก 3 วินาทีต่อปุ่ม)
   Future<void> _recordTap(_CounterUnit u) async {
     if (u.busy) return;
+    if (u.isOnRecordCooldown) return;
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
     final stamp = _stamp(DateTime.now());
+    _armRecordCooldown(u);
     setState(() {
       u.busy = true;
       u.rounds += 1;
@@ -463,6 +505,62 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  Future<void> _openEditUnitDialog(_CounterUnit u) async {
+    if (u.busy) return;
+    if (_cars.isEmpty) {
+      _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
+      return;
+    }
+    final blocked = _units
+        .where((x) => x != u)
+        .map((x) => x.vehicleId ?? '')
+        .where((v) => v.isNotEmpty)
+        .toSet();
+    final pick = await showDialog<_Pick>(
+      context: context,
+      builder: (ctx) => _EditUnitDialog(
+        initialVehicleId: u.vehicleId ?? u.title,
+        initialDriverId: u.driverId ?? '',
+        cars: _cars,
+        drivers: _drivers,
+        blockedVehicles: blocked,
+      ),
+    );
+    if (pick == null) return;
+    final vid = pick.vehicleId.trim();
+    final did = pick.driverId.trim();
+    if (vid.isEmpty || did.isEmpty) return;
+
+    final prevTitle = u.title;
+    final prevSubtitle = u.subtitle;
+    final prevVehicleId = u.vehicleId;
+    final prevDriverId = u.driverId;
+
+    setState(() {
+      u.busy = true;
+      u.title = vid;
+      u.vehicleId = vid;
+      u.driverId = did;
+      u.subtitle = 'คนขับ: ${_driverLabel(did)}';
+    });
+    try {
+      await _save(u);
+      if (mounted) _toast('แก้ไข $vid แล้ว');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          u.title = prevTitle;
+          u.subtitle = prevSubtitle;
+          u.vehicleId = prevVehicleId;
+          u.driverId = prevDriverId;
+        });
+        _toast('แก้ไขไม่สำเร็จ: $e', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => u.busy = false);
+    }
+  }
+
   void _toast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -501,8 +599,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                       for (var i = 0; i < _units.length; i++) ...[
                         if (i > 0) const SizedBox(width: 8),
                         Expanded(
-                          child: _SwipeRevealDelete(
+                          child: _SwipeRevealActions(
                             onDelete: () => _confirmRemoveUnit(_units[i]),
+                            onEdit: () => _openEditUnitDialog(_units[i]),
                             childBuilder: (interactionsEnabled) =>
                                 _VehicleRecordButton(
                               unit: _units[i],
@@ -633,32 +732,41 @@ const _kVehicleButtonColors = [
 Color _vehicleButtonColor(int index) =>
     _kVehicleButtonColors[index % _kVehicleButtonColors.length];
 
-/// ปัดการ์ดซ้ายเพื่อแสดงปุ่มลบ
-class _SwipeRevealDelete extends StatefulWidget {
-  const _SwipeRevealDelete({
+/// ปัดการ์ดซ้าย = ลบ, ปัดขวา = แก้ไข
+enum _SwipeRevealSide { none, delete, edit }
+
+class _SwipeRevealActions extends StatefulWidget {
+  const _SwipeRevealActions({
     required this.onDelete,
+    required this.onEdit,
     required this.childBuilder,
   });
 
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
   final Widget Function(bool interactionsEnabled) childBuilder;
 
   @override
-  State<_SwipeRevealDelete> createState() => _SwipeRevealDeleteState();
+  State<_SwipeRevealActions> createState() => _SwipeRevealActionsState();
 }
 
-class _SwipeRevealDeleteState extends State<_SwipeRevealDelete> {
+class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   double _offset = 0;
-  bool _revealed = false;
+  _SwipeRevealSide _revealed = _SwipeRevealSide.none;
   bool _dragging = false;
   double _actionWidth = 64;
 
-  bool get _interactionsEnabled => !_dragging && !_revealed;
+  bool get _interactionsEnabled =>
+      !_dragging && _revealed == _SwipeRevealSide.none;
 
-  void _snap({required bool open}) {
+  void _snap({required _SwipeRevealSide side}) {
     setState(() {
-      _revealed = open;
-      _offset = open ? -_actionWidth : 0;
+      _revealed = side;
+      _offset = switch (side) {
+        _SwipeRevealSide.delete => -_actionWidth,
+        _SwipeRevealSide.edit => _actionWidth,
+        _ => 0.0,
+      };
       _dragging = false;
     });
   }
@@ -668,33 +776,58 @@ class _SwipeRevealDeleteState extends State<_SwipeRevealDelete> {
     final dy = event.delta.dy;
     if (!_dragging) {
       if (dx.abs() < 4 || dx.abs() <= dy.abs()) return;
-      if (dx < 0 || _revealed) {
+      if (dx < 0 || _revealed == _SwipeRevealSide.delete) {
+        setState(() => _dragging = true);
+      } else if (dx > 0 || _revealed == _SwipeRevealSide.edit) {
         setState(() => _dragging = true);
       }
     }
     if (!_dragging) return;
     setState(() {
-      _offset = (_offset + dx).clamp(-_actionWidth, 0);
+      _offset = (_offset + dx).clamp(-_actionWidth, _actionWidth);
     });
   }
 
   void _onPointerUp() {
     if (_dragging) {
-      _snap(open: _offset <= -_actionWidth / 2);
+      if (_offset <= -_actionWidth / 2) {
+        _snap(side: _SwipeRevealSide.delete);
+      } else if (_offset >= _actionWidth / 2) {
+        _snap(side: _SwipeRevealSide.edit);
+      } else {
+        _snap(side: _SwipeRevealSide.none);
+      }
       return;
     }
-    if (_revealed) _snap(open: false);
+    if (_revealed != _SwipeRevealSide.none) {
+      _snap(side: _SwipeRevealSide.none);
+    }
   }
 
   void _onPointerCancel() {
-    if (_dragging || _revealed) {
-      _snap(open: _revealed);
+    if (_dragging) {
+      if (_offset <= -_actionWidth / 2) {
+        _snap(side: _SwipeRevealSide.delete);
+      } else if (_offset >= _actionWidth / 2) {
+        _snap(side: _SwipeRevealSide.edit);
+      } else {
+        _snap(side: _SwipeRevealSide.none);
+      }
+      return;
+    }
+    if (_revealed != _SwipeRevealSide.none) {
+      _snap(side: _SwipeRevealSide.none);
     }
   }
 
   void _onDeleteTap() {
-    _snap(open: false);
+    _snap(side: _SwipeRevealSide.none);
     widget.onDelete();
+  }
+
+  void _onEditTap() {
+    _snap(side: _SwipeRevealSide.none);
+    widget.onEdit();
   }
 
   @override
@@ -702,7 +835,7 @@ class _SwipeRevealDeleteState extends State<_SwipeRevealDelete> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _actionWidth = (constraints.maxWidth * 0.36).clamp(52.0, 76.0);
-        final offset = _offset.clamp(-_actionWidth, 0.0);
+        final offset = _offset.clamp(-_actionWidth, _actionWidth);
         return ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Stack(
@@ -710,8 +843,36 @@ class _SwipeRevealDeleteState extends State<_SwipeRevealDelete> {
             children: [
               Positioned.fill(
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    Material(
+                      color: const Color(0xFF1565C0),
+                      child: InkWell(
+                        onTap: _onEditTap,
+                        child: SizedBox(
+                          width: _actionWidth,
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.edit_outlined,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'แก้ไข',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
                     Material(
                       color: const Color(0xFFD14343),
                       child: InkWell(
@@ -847,6 +1008,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     if (mounted) setState(() => _holdProgress = 0);
 
     if (widget.unit.busy || downAt == null || !widget.interactionsEnabled) return;
+    if (widget.unit.isOnRecordCooldown) return;
     final elapsed = DateTime.now().difference(downAt);
     if (elapsed <= _tapMax && progress < 0.15) {
       widget.onTap();
@@ -864,13 +1026,18 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   Widget build(BuildContext context) {
     final unit = widget.unit;
     final busy = unit.busy;
+    final onCooldown = unit.isOnRecordCooldown && !busy;
     final bg = _vehicleButtonColor(widget.index);
     final carNo = widget.index + 1;
     return Material(
       elevation: busy ? 0 : 2,
       shadowColor: bg.withValues(alpha: 0.35),
       borderRadius: BorderRadius.circular(16),
-      color: busy ? bg.withValues(alpha: 0.55) : bg,
+      color: busy
+          ? bg.withValues(alpha: 0.55)
+          : onCooldown
+              ? bg.withValues(alpha: 0.72)
+              : bg,
       clipBehavior: Clip.antiAlias,
       child: Listener(
         behavior: HitTestBehavior.opaque,
@@ -967,7 +1134,28 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                             ),
                           ),
                         ],
-                        if (unit.rounds > 0) ...[
+                        if (onCooldown) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.timer_outlined,
+                                size: 16,
+                                color: Colors.white.withValues(alpha: 0.92),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'รอ ${unit.recordCooldownSecondsLeft} ว.',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else if (unit.rounds > 0) ...[
                           const SizedBox(height: 6),
                           Text(
                             'กดค้าง 3 ว. ลบเที่ยวล่าสุด',
@@ -1078,6 +1266,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     if (mounted) setState(() => _holdProgress = 0);
 
     if (widget.unit.busy || downAt == null) return;
+    if (widget.unit.isOnRecordCooldown) return;
     final elapsed = DateTime.now().difference(downAt);
     if (elapsed <= _tapMax && progress < 0.15) {
       widget.onTap();
@@ -1095,11 +1284,16 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
   Widget build(BuildContext context) {
     final unit = widget.unit;
     final busy = unit.busy;
+    final onCooldown = unit.isOnRecordCooldown && !busy;
     return Material(
       elevation: busy ? 0 : 3,
       shadowColor: _sandBg.withValues(alpha: 0.4),
       borderRadius: BorderRadius.circular(16),
-      color: busy ? _sandBgBusy : _sandBg,
+      color: busy
+          ? _sandBgBusy
+          : onCooldown
+              ? _sandBg.withValues(alpha: 0.72)
+              : _sandBg,
       clipBehavior: Clip.antiAlias,
       child: Listener(
         behavior: HitTestBehavior.opaque,
@@ -1182,7 +1376,28 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                             ),
                           ),
                         ],
-                        if (unit.rounds > 0) ...[
+                        if (onCooldown) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.timer_outlined,
+                                size: 16,
+                                color: Colors.white.withValues(alpha: 0.92),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'รอ ${unit.recordCooldownSecondsLeft} ว.',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else if (unit.rounds > 0) ...[
                           const SizedBox(height: 8),
                           Text(
                             'กดค้าง 3 ว. ลบรอบล่าสุด',
@@ -1209,6 +1424,133 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog แก้ไขรถและคนขับของคันที่มีอยู่
+class _EditUnitDialog extends StatefulWidget {
+  const _EditUnitDialog({
+    required this.initialVehicleId,
+    required this.initialDriverId,
+    required this.cars,
+    required this.drivers,
+    required this.blockedVehicles,
+  });
+
+  final String initialVehicleId;
+  final String initialDriverId;
+  final List<String> cars;
+  final List<Employee> drivers;
+  final Set<String> blockedVehicles;
+
+  @override
+  State<_EditUnitDialog> createState() => _EditUnitDialogState();
+}
+
+class _EditUnitDialogState extends State<_EditUnitDialog> {
+  late final _Pick _row;
+
+  @override
+  void initState() {
+    super.initState();
+    _row = _Pick()
+      ..vehicleId = widget.initialVehicleId.trim()
+      ..driverId = widget.initialDriverId.trim();
+  }
+
+  List<String> get _availableCars {
+    final current = _row.vehicleId.trim();
+    return widget.cars
+        .where(
+          (c) => c == current || !widget.blockedVehicles.contains(c),
+        )
+        .toList(growable: false);
+  }
+
+  bool get _canSave =>
+      _row.vehicleId.trim().isNotEmpty && _row.driverId.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'แก้ไขข้อมูลรถ',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A2433),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              _SelectRow(
+                index: 0,
+                row: _row,
+                cars: _availableCars,
+                drivers: widget.drivers,
+                canRemove: false,
+                onRemove: () {},
+                onChanged: () => setState(() {}),
+              ),
+              if (widget.drivers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"',
+                    style: TextStyle(
+                      color: Color(0xFFD14343),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('ยกเลิก'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1565C0),
+                      ),
+                      onPressed: _canSave ? () => Navigator.pop(context, _row) : null,
+                      child: const Text('บันทึก'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
