@@ -1656,140 +1656,185 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   ),
                 ),
               )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'คันที่ $carNo • บันทึกเที่ยว',
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
+                  _VehicleTripCountRail(
+                    rounds: unit.rounds,
+                    onCooldown: onCooldown,
+                    cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
                   ),
-                  if (unit.isBrokenReported) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFE0B2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.car_crash_outlined,
-                              size: 12, color: Color(0xFFE65100)),
-                          SizedBox(width: 4),
-                          Text(
-                            'แจ้งรถเสีย',
-                            style: TextStyle(
-                              fontSize: 10,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'คันที่ $carNo • บันทึกเที่ยว',
+                            style: const TextStyle(
+                              fontSize: 10.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFFE65100),
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (unit.isBrokenReported) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE0B2),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.car_crash_outlined,
+                                    size: 12, color: Color(0xFFE65100)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'แจ้งรถเสีย',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFE65100),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      unit.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        height: 1.12,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    unit.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white.withValues(alpha: 0.95),
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.add_circle,
-                        size: 18,
-                        color: Colors.white.withValues(alpha: 0.95),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${unit.rounds} เที่ยว',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (unit.lapTimes.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'ล่าสุด ${unit.lapTimes.last}',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: Colors.white.withValues(alpha: 0.82),
-                      ),
-                    ),
-                  ],
-                  if (onCooldown) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 16,
-                          color: Colors.white.withValues(alpha: 0.92),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'รอ ${unit.recordCooldownSecondsLeft} ว.',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                        const SizedBox(height: 8),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            unit.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.12,
+                              letterSpacing: -0.2,
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 6),
+                        Text(
+                          unit.subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(alpha: 0.95),
+                            height: 1.15,
+                          ),
+                        ),
+                        if (unit.lapTimes.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'ล่าสุด ${unit.lapTimes.last}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                  ],
+                  ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// แถบซ้ายของการ์ดรถ — ไอคอน + จำนวนเที่ยว
+class _VehicleTripCountRail extends StatelessWidget {
+  const _VehicleTripCountRail({
+    required this.rounds,
+    required this.onCooldown,
+    required this.cooldownSecondsLeft,
+  });
+
+  final int rounds;
+  final bool onCooldown;
+  final int cooldownSecondsLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.28),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.add_circle_rounded,
+            size: 30,
+            color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$rounds',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'เที่ยว',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
+          ),
+          if (onCooldown) ...[
+            const SizedBox(height: 6),
+            Icon(
+              Icons.timer_outlined,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+            Text(
+              '$cooldownSecondsLeft',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1945,38 +1990,45 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                 ),
               )
             : Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Row(
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.water_drop, size: 20, color: Colors.white),
-                        SizedBox(width: 6),
+                        Icon(
+                          Icons.water_drop_rounded,
+                          size: 28,
+                          color: Colors.white.withValues(alpha: 0.95),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           'บันทึกการร่อนทราย',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 28,
                             fontWeight: FontWeight.w900,
                             color: Colors.white,
-                            letterSpacing: -0.2,
+                            letterSpacing: -0.3,
+                            height: 1.1,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   const Icon(Icons.touch_app_rounded,
-                      size: 44, color: Colors.white),
+                      size: 40, color: Colors.white),
                   const SizedBox(height: 10),
                   const Text(
                     'กดบันทึกวันเวลา +1 รอบ',
