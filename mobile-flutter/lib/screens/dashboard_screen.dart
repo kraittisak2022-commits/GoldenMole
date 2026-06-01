@@ -22,6 +22,7 @@ import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/count_record_counters.dart';
 import '../widgets/page_loading_view.dart';
 import '../widgets/record_module_card.dart';
 import 'app_settings_screen.dart';
@@ -543,6 +544,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       formatBuddhistDateButton:
                                           _formatBuddhistDateButton,
                                       onOpenModule: _openQuickInput,
+                                      txService: _txService,
+                                      employeeService: EmployeeService(client),
                                     )
                                   : _MetricsContent(
                                       data: data,
@@ -813,6 +816,8 @@ class _DailyHomeContent extends StatefulWidget {
     required this.dateKey,
     required this.formatBuddhistDateButton,
     required this.onOpenModule,
+    required this.txService,
+    required this.employeeService,
   });
 
   final AdminUser currentAdmin;
@@ -824,6 +829,8 @@ class _DailyHomeContent extends StatefulWidget {
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
   final void Function(_DailyModuleDef m) onOpenModule;
+  final TransactionService txService;
+  final EmployeeService employeeService;
 
   @override
   State<_DailyHomeContent> createState() => _DailyHomeContentState();
@@ -838,10 +845,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
   static const _kPanelShadowColor = Color(0x12000000);
-
-  _DailyModuleDef _moduleByCategory(String category) => _kDailyModules.firstWhere(
-    (m) => m.category == category,
-  );
 
   void _onEntranceStatus(AnimationStatus status) {
     if (!mounted) return;
@@ -964,6 +967,66 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
             ),
             builder: (context, constraints) {
               if (_countAndRecordMenuOpen) {
+                void backToMainMenu() {
+                  setState(() => _countAndRecordMenuOpen = false);
+                  widget.onPullRefresh();
+                }
+
+                final dayKeyStr = widget.dateKey(widget.selectedDay);
+                final portrait =
+                    MediaQuery.orientationOf(context) == Orientation.portrait;
+
+                Widget counterCell({
+                  required String title,
+                  required IconData icon,
+                  required Color iconColor,
+                  required Color backgroundColor,
+                  required Color borderColor,
+                  required CounterMode counterMode,
+                  required String modeKey,
+                }) {
+                  return _CountRecordMenuCard(
+                    title: title,
+                    subtitle: '',
+                    icon: icon,
+                    iconColor: iconColor,
+                    backgroundColor: backgroundColor,
+                    borderColor: borderColor,
+                    expanded: true,
+                    onTap: () {},
+                    expandedChild: CountRecordCounterPanel(
+                      key: ValueKey('counter_${modeKey}_$dayKeyStr'),
+                      mode: counterMode,
+                      service: widget.txService,
+                      employeeService: widget.employeeService,
+                      currentAdmin: widget.currentAdmin,
+                      dateYmd: dayKeyStr,
+                      dayTransactions: widget.data.dayTransactions,
+                      employees: widget.data.employees,
+                      embedded: true,
+                    ),
+                  );
+                }
+
+                final tripCell = counterCell(
+                  modeKey: 'trip',
+                  title: 'จำนวนเที่ยวรถ',
+                  icon: Icons.fire_truck_outlined,
+                  iconColor: const Color(0xFF1D8FE1),
+                  backgroundColor: const Color(0xFFF2F8FF),
+                  borderColor: const Color(0xFFD2E7FF),
+                  counterMode: CounterMode.trip,
+                );
+                final sandCell = counterCell(
+                  modeKey: 'sand',
+                  title: 'การร่อนทราย',
+                  icon: Icons.water_drop_outlined,
+                  iconColor: const Color(0xFFE91E8F),
+                  backgroundColor: const Color(0xFFFFF2FA),
+                  borderColor: const Color(0xFFFFD6EB),
+                  counterMode: CounterMode.sand,
+                );
+
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
                   child: Column(
@@ -971,18 +1034,21 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     children: [
                       Row(
                         children: [
-                          Text(
-                            'บันทึกและนับจำนวน',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF1A2433),
-                                ),
+                          Flexible(
+                            child: Text(
+                              'บันทึกและนับจำนวน',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF1A2433),
+                                  ),
+                            ),
                           ),
                           const Spacer(),
                           TextButton(
-                            onPressed: () =>
-                                setState(() => _countAndRecordMenuOpen = false),
+                            onPressed: backToMainMenu,
                             style: TextButton.styleFrom(
                               foregroundColor: const Color(0xFF4A5A70),
                               padding: const EdgeInsets.symmetric(
@@ -1004,37 +1070,21 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
                       const SizedBox(height: 10),
                       Expanded(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _CountRecordMenuCard(
-                                title: 'จำนวนเที่ยวรถ',
-                                subtitle: 'บันทึกเที่ยวรถดรัมและสรุปเที่ยว',
-                                icon: Icons.fire_truck_outlined,
-                                iconColor: const Color(0xFF1D8FE1),
-                                backgroundColor: const Color(0xFFF2F8FF),
-                                borderColor: const Color(0xFFD2E7FF),
-                                onTap: () => widget.onOpenModule(
-                                  _moduleByCategory('จำนวนเที่ยวรถ'),
-                                ),
+                        child: portrait
+                            ? Column(
+                                children: [
+                                  Expanded(child: tripCell),
+                                  const SizedBox(height: 10),
+                                  Expanded(child: sandCell),
+                                ],
+                              )
+                            : Row(
+                                children: [
+                                  Expanded(child: tripCell),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: sandCell),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _CountRecordMenuCard(
-                                title: 'การร่อนทราย',
-                                subtitle: 'บันทึกผลร่อนทรายและจำนวนคิว',
-                                icon: Icons.water_drop_outlined,
-                                iconColor: const Color(0xFFE91E8F),
-                                backgroundColor: const Color(0xFFFFF2FA),
-                                borderColor: const Color(0xFFFFD6EB),
-                                onTap: () => widget.onOpenModule(
-                                  _moduleByCategory('บันทึกการร่อนทราย'),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ],
                   ),
@@ -1129,8 +1179,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       final card = _CountRecordEntryCard(
-                        onTap: () =>
-                            setState(() => _countAndRecordMenuOpen = true),
+                        onTap: () => setState(() => _countAndRecordMenuOpen = true),
                       );
                       if (_gridEntranceCompleted) {
                         return RepaintBoundary(
@@ -1363,6 +1412,8 @@ class _CountRecordMenuCard extends StatelessWidget {
     required this.backgroundColor,
     required this.borderColor,
     required this.onTap,
+    this.expanded = false,
+    this.expandedChild,
   });
 
   final String title;
@@ -1372,86 +1423,137 @@ class _CountRecordMenuCard extends StatelessWidget {
   final Color backgroundColor;
   final Color borderColor;
   final VoidCallback onTap;
+  final bool expanded;
+  final Widget? expandedChild;
 
   @override
   Widget build(BuildContext context) {
+    final shell = DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: expanded ? iconColor : borderColor,
+          width: expanded ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: _buildContent(),
+      ),
+    );
+
+    if (expanded) {
+      return shell;
+    }
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: Icon(icon, color: iconColor),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF1A2433),
-                  height: 1.14,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF5C7088),
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(
-                    Icons.touch_app_rounded,
-                    size: 14,
-                    color: Color(0xFF6B7280),
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    'แตะเพื่อบันทึก',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF6B7280),
+        child: shell,
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (expanded && expandedChild != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A2433),
                     ),
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFE4ECF6)),
+          Expanded(child: expandedChild!),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: Icon(icon, color: iconColor),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A2433),
+              height: 1.14,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF5C7088),
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.touch_app_rounded,
+                size: 14,
+                color: Color(0xFF6B7280),
+              ),
+              SizedBox(width: 4),
+              Text(
+                'แตะเพื่อบันทึก',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF6B7280),
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
