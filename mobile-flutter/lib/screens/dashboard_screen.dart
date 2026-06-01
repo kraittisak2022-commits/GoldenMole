@@ -315,6 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted && !_serverOnline) {
         setState(() => _serverOnline = true);
       }
+      CountRecordOfflineSync.instance.noteServerReachable();
       return _HomePayload(
         summary: summary,
         dayTransactions: dayTransactions,
@@ -322,6 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         employees: employees,
       );
     } catch (_) {
+      CountRecordOfflineSync.instance.noteServerUnreachable();
       if (mounted && _serverOnline) {
         setState(() => _serverOnline = false);
       }

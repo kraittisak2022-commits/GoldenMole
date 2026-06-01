@@ -24,17 +24,50 @@ class CountRecordOfflineSync {
   VoidCallback? _onAutoSynced;
   bool _autoSyncTickRunning = false;
 
+  bool? _cachedReachable;
+  DateTime? _reachabilityCheckedAt;
+  static const _reachabilityTtl = Duration(seconds: 12);
+  static const _probeTimeout = Duration(milliseconds: 1200);
+
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
-  Future<bool> isOnline(SupabaseClient client) async {
+  /// แดชบอร์ดรายงานออฟไลน์ — ข้ามการยิงเครือข่ายชั่วคราว
+  void noteServerUnreachable() {
+    _cachedReachable = false;
+    _reachabilityCheckedAt = DateTime.now();
+  }
+
+  void noteServerReachable() {
+    _cachedReachable = true;
+    _reachabilityCheckedAt = DateTime.now();
+  }
+
+  Future<bool> isOnline(
+    SupabaseClient client, {
+    bool forceProbe = false,
+  }) async {
+    if (!forceProbe &&
+        _cachedReachable == false &&
+        _reachabilityCheckedAt != null &&
+        DateTime.now().difference(_reachabilityCheckedAt!) < _reachabilityTtl) {
+      return false;
+    }
+    if (!forceProbe &&
+        _cachedReachable == true &&
+        _reachabilityCheckedAt != null &&
+        DateTime.now().difference(_reachabilityCheckedAt!) < _reachabilityTtl) {
+      return true;
+    }
     try {
       await client
           .from('transactions')
           .select('id')
           .limit(1)
-          .timeout(const Duration(seconds: 4));
+          .timeout(_probeTimeout);
+      noteServerReachable();
       return true;
     } catch (_) {
+      noteServerUnreachable();
       return false;
     }
   }
@@ -157,16 +190,44 @@ class CountRecordOfflineSync {
     await LocalDataCache.writeTransactionsForDay(ymd, merged);
   }
 
+  Future<void> _persistOffline({
+    required String ymd,
+    required AppTransaction transaction,
+    required bool omitCreatedAt,
+    required List<AppTransaction> dayServerRows,
+  }) async {
+    await _enqueue(
+      _PendingOp.upsert(
+        transaction: transaction,
+        omitCreatedAt: omitCreatedAt,
+      ),
+    );
+    final merged = _applyQueueSync(ymd, dayServerRows, await _readQueue());
+    await _updateDayCache(ymd, merged);
+  }
+
+  Future<void> _deleteOffline({
+    required String id,
+    required String ymd,
+    required List<AppTransaction> dayServerRows,
+  }) async {
+    await _enqueue(_PendingOp.delete(id: id, date: ymd));
+    final merged = _applyQueueSync(ymd, dayServerRows, await _readQueue());
+    await _updateDayCache(ymd, merged);
+  }
+
   /// บันทึก — ออนไลน์ส่ง server ทันที, ออฟไลน์เก็บคิว + แคชวัน
+  /// [serverOnlineHint] false = ข้ามการเช็คเน็ต (เร็วเมื่อไม่มีสัญญาณ)
   Future<bool> persist({
     required TransactionService service,
     required SupabaseClient client,
     required AppTransaction transaction,
     required bool omitCreatedAt,
     required List<AppTransaction> dayServerRows,
+    bool serverOnlineHint = true,
   }) async {
     final ymd = transaction.date;
-    if (await isOnline(client)) {
+    if (serverOnlineHint && await isOnline(client)) {
       try {
         await service.upsertTransaction(
           transaction,
@@ -181,17 +242,16 @@ class CountRecordOfflineSync {
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.persist online failed: $e');
+        noteServerUnreachable();
       }
     }
 
-    await _enqueue(
-      _PendingOp.upsert(
-        transaction: transaction,
-        omitCreatedAt: omitCreatedAt,
-      ),
+    await _persistOffline(
+      ymd: ymd,
+      transaction: transaction,
+      omitCreatedAt: omitCreatedAt,
+      dayServerRows: dayServerRows,
     );
-    final merged = await mergeForDayAsync(ymd, dayServerRows);
-    await _updateDayCache(ymd, merged);
     return true;
   }
 
@@ -202,8 +262,9 @@ class CountRecordOfflineSync {
     required String id,
     required String ymd,
     required List<AppTransaction> dayServerRows,
+    bool serverOnlineHint = true,
   }) async {
-    if (await isOnline(client)) {
+    if (serverOnlineHint && await isOnline(client)) {
       try {
         await service.deleteTransaction(id);
         final ops = await _readQueue();
@@ -214,21 +275,25 @@ class CountRecordOfflineSync {
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.delete online failed: $e');
+        noteServerUnreachable();
       }
     }
 
-    await _enqueue(_PendingOp.delete(id: id, date: ymd));
-    final merged = await mergeForDayAsync(ymd, dayServerRows);
-    await _updateDayCache(ymd, merged);
+    await _deleteOffline(
+      id: id,
+      ymd: ymd,
+      dayServerRows: dayServerRows,
+    );
     return true;
   }
 
   /// อัปโหลดคิวที่ค้าง — คืนจำนวนที่สำเร็จ (ลองทีละรายการ ไม่หยุดทั้งคิวเมื่อรายการเดียวล้ม)
   Future<int> syncPending(
     TransactionService service,
-    SupabaseClient client,
-  ) async {
-    if (!await isOnline(client)) return 0;
+    SupabaseClient client, {
+    bool forceProbe = false,
+  }) async {
+    if (!await isOnline(client, forceProbe: forceProbe)) return 0;
     final ops = await _readQueue();
     if (ops.isEmpty) return 0;
 
@@ -263,8 +328,10 @@ class CountRecordOfflineSync {
   /// ซิงค์ทันทีถ้าเชื่อมต่อได้ — ใช้ก่อนโหลดแดชบอร์ด / ตอนกลับมาออนไลน์
   Future<int> syncPendingIfPossible(
     TransactionService service,
-    SupabaseClient client,
-  ) => syncPending(service, client);
+    SupabaseClient client, {
+    bool forceProbe = false,
+  }) =>
+      syncPending(service, client, forceProbe: forceProbe);
 
   /// ตรวจและอัปโหลดคิวเป็นระยะ (เรียกจากแดชบอร์ดตลอดที่ล็อกอินอยู่)
   void startAutoSync({
