@@ -1012,18 +1012,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   modeKey: 'trip',
                   title: 'จำนวนเที่ยวรถ',
                   icon: Icons.fire_truck_outlined,
-                  iconColor: const Color(0xFF1D8FE1),
-                  backgroundColor: const Color(0xFFF2F8FF),
-                  borderColor: const Color(0xFFD2E7FF),
+                  iconColor: const Color(0xFF1565C0),
+                  backgroundColor: const Color(0xFFE3F2FD),
+                  borderColor: const Color(0xFF90CAF9),
                   counterMode: CounterMode.trip,
                 );
                 final sandCell = counterCell(
                   modeKey: 'sand',
                   title: 'การร่อนทราย',
                   icon: Icons.water_drop_outlined,
-                  iconColor: const Color(0xFFE91E8F),
-                  backgroundColor: const Color(0xFFFFF2FA),
-                  borderColor: const Color(0xFFFFD6EB),
+                  iconColor: const Color(0xFFAD1457),
+                  backgroundColor: const Color(0xFFFCE4EC),
+                  borderColor: const Color(0xFFF48FB1),
                   counterMode: CounterMode.sand,
                 );
 
@@ -1469,11 +1469,13 @@ class _CountRecordMenuCard extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            color: iconColor,
             child: Row(
               children: [
-                Icon(icon, color: iconColor, size: 22),
+                Icon(icon, color: Colors.white, size: 22),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1483,14 +1485,13 @@ class _CountRecordMenuCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A2433),
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE4ECF6)),
           Expanded(child: expandedChild!),
         ],
       );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,18 +73,12 @@ class CountRecordCounterPanel extends StatefulWidget {
 
 class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     with AutomaticKeepAliveClientMixin {
-  static const _primary = Color(0xFF1D8FE1);
-  static const _sandColor = Color(0xFFE91E8F);
-
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
 
   @override
   bool get wantKeepAlive => true;
-
-  Color get _accent =>
-      widget.mode == CounterMode.trip ? _primary : _sandColor;
 
   _CounterUnit? get _sandUnit =>
       _units.isEmpty ? null : _units.first;
@@ -305,13 +301,30 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
-  Future<void> _removeUnit(_CounterUnit u) async {
+  Future<void> _confirmUndoLastRecord(_CounterUnit u) async {
+    final isTrip = widget.mode == CounterMode.trip;
+    if (u.busy || u.rounds <= 0 || u.lapTimes.isEmpty) {
+      if (u.rounds <= 0) {
+        _toast(isTrip ? 'ยังไม่มีเที่ยวให้ลบ' : 'ยังไม่มีรอบให้ลบ', error: true);
+      }
+      return;
+    }
+    final lastStamp = u.lapTimes.last;
+    final recordNo = u.rounds;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text('ลบรถออกจากรายการ'),
-        content: Text('ลบ "${u.title}" และข้อมูลของวันนี้ใช่หรือไม่?'),
+        title: Text(isTrip ? 'ลบเที่ยวล่าสุด?' : 'ลบรอบล่าสุด?'),
+        content: Text(
+          isTrip
+              ? 'ลบเที่ยวที่ $recordNo ของ "${u.title}"\n'
+                  'เวลา $lastStamp\n\n'
+                  'ข้อมูลนี้จะถูกลบออกจากบันทึกวันนี้'
+              : 'ลบรอบที่ $recordNo\n'
+                  'เวลา $lastStamp\n\n'
+                  'ข้อมูลนี้จะถูกลบออกจากบันทึกวันนี้',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -322,17 +335,91 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               backgroundColor: const Color(0xFFD14343),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('ลบ'),
+            child: const Text('ยืนยันลบ'),
           ),
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok == true) await _undoLastRecord(u);
+  }
+
+  Future<void> _undoLastRecord(_CounterUnit u) async {
+    if (u.busy || u.rounds <= 0 || u.lapTimes.isEmpty) return;
+    final isTrip = widget.mode == CounterMode.trip;
+    final prevRounds = u.rounds;
+    final prevLaps = List<String>.from(u.lapTimes);
+    final removedStamp = u.lapTimes.last;
+    setState(() {
+      u.busy = true;
+      u.rounds -= 1;
+      u.lapTimes.removeLast();
+    });
+    try {
+      await _save(u);
+      if (mounted) {
+        _toast(
+          isTrip
+              ? 'ลบเที่ยวล่าสุดแล้ว • $removedStamp'
+              : 'ลบรอบล่าสุดแล้ว • $removedStamp',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          u.rounds = prevRounds;
+          u.lapTimes
+            ..clear()
+            ..addAll(prevLaps);
+        });
+        _toast('ลบไม่สำเร็จ: $e', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => u.busy = false);
+    }
+  }
+
+  Future<void> _confirmRemoveUnit(_CounterUnit u) async {
+    if (u.busy) return;
+    final tripInfo = u.rounds > 0 ? '\n(มี ${u.rounds} เที่ยวที่บันทึกไว้)' : '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('ลบรถออกจากรายการ?'),
+        content: Text(
+          'ลบ "${u.title}" และข้อมูลเที่ยวทั้งหมดของวันนี้ใช่หรือไม่?$tripInfo',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD14343),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยันลบ'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _removeUnit(u);
+  }
+
+  Future<void> _removeUnit(_CounterUnit u) async {
+    if (u.busy) return;
+    setState(() => u.busy = true);
     try {
       if (u.persisted) await widget.service.deleteTransaction(u.txId);
-      if (mounted) setState(() => _units.remove(u));
+      if (mounted) {
+        setState(() => _units.remove(u));
+        _toast('ลบ ${u.title} ออกจากรายการแล้ว');
+      }
     } catch (e) {
       _toast('ลบไม่สำเร็จ: $e', error: true);
+    } finally {
+      if (mounted && _units.contains(u)) setState(() => u.busy = false);
     }
   }
 
@@ -390,117 +477,135 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Widget _buildTripPanel() {
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      children: [
-        if (_units.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'กด "เพิ่มรถ" เพื่อเลือกรถและคนขับ\nจากนั้นกดปุ่มชื่อรถเพื่อบันทึกเที่ยว',
-              textAlign: TextAlign.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _units.isEmpty
+                ? Center(
+                    child: Text(
+                      'กด "เพิ่มรถ" เพื่อเลือกรถและคนขับ\nจากนั้นกดปุ่มชื่อรถเพื่อบันทึกเที่ยว',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < _units.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: _SwipeRevealDelete(
+                            onDelete: () => _confirmRemoveUnit(_units[i]),
+                            childBuilder: (interactionsEnabled) =>
+                                _VehicleRecordButton(
+                              unit: _units[i],
+                              index: i,
+                              interactionsEnabled: interactionsEnabled,
+                              onTap: () => _recordTap(_units[i]),
+                              onHoldToUndo: () =>
+                                  _confirmUndoLastRecord(_units[i]),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+          if (_units.any((u) => u.lapTimes.isNotEmpty)) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'บันทึกล่าสุด',
               style: TextStyle(
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF6B7788),
               ),
             ),
-          )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final u in _units)
-                _VehicleRecordButton(
-                  unit: u,
-                  accent: _accent,
-                  onTap: () => _recordTap(u),
-                  onLongPress: () => _removeUnit(u),
-                ),
-            ],
-          ),
-        if (_units.any((u) => u.lapTimes.isNotEmpty)) ...[
-          const SizedBox(height: 12),
-          const Text(
-            'บันทึกล่าสุด',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6B7788),
-            ),
-          ),
-          const SizedBox(height: 6),
-          ..._units.where((u) => u.lapTimes.isNotEmpty).map(
-                (u) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '${u.title}: ${u.lapTimes.last} (${u.rounds} เที่ยว)',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Color(0xFF52647B),
+            const SizedBox(height: 4),
+            ..._units.where((u) => u.lapTimes.isNotEmpty).map(
+                  (u) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${u.title}: ${u.lapTimes.last} (${u.rounds} เที่ยว)',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF52647B),
+                      ),
                     ),
                   ),
                 ),
+          ],
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF546E7A),
+                backgroundColor: const Color(0xFFF5F7FA),
+                side: const BorderSide(color: Color(0xFFB0BEC5), width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 10),
               ),
-        ],
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _primary,
-              side: const BorderSide(color: Color(0xFF9DC8EC)),
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              onPressed: _openSelectDialog,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('เพิ่มรถ (ยังไม่บันทึกเที่ยว)'),
             ),
-            onPressed: _openSelectDialog,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('เพิ่มรถ'),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildSandPanel() {
     final u = _sandUnit;
     if (u == null) return const SizedBox.shrink();
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      children: [
-        _SandRecordButton(
-          unit: u,
-          accent: _sandColor,
-          onTap: () => _recordTap(u),
-        ),
-        if (u.lapTimes.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (var i = 0; i < u.lapTimes.length; i++)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFDCE6F2)),
-                  ),
-                  child: Text(
-                    'รอบ ${i + 1} • ${u.lapTimes[i]}',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Color(0xFF52647B),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _SandRecordButton(
+              unit: u,
+              onTap: () => _recordTap(u),
+              onHoldToUndo: () => _confirmUndoLastRecord(u),
+            ),
+          ),
+          if (u.lapTimes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (var i = 0; i < u.lapTimes.length; i++)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFDCE6F2)),
+                    ),
+                    child: Text(
+                      'รอบ ${i + 1} • ${u.lapTimes[i]}',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF52647B),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -513,180 +618,597 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 }
 
-/// ปุ่มบันทึกต่อคัน — กดแล้ว +1 เที่ยวและเก็บเวลา
-class _VehicleRecordButton extends StatelessWidget {
-  const _VehicleRecordButton({
-    required this.unit,
-    required this.accent,
-    required this.onTap,
-    required this.onLongPress,
+/// สีปุ่มบันทึกต่อคัน — แยกสีชัดเจนไม่ให้กดสับสน
+const _kVehicleButtonColors = [
+  Color(0xFF1565C0), // น้ำเงิน
+  Color(0xFF2E7D32), // เขียว
+  Color(0xFFE65100), // ส้ม
+  Color(0xFF6A1B9A), // ม่วง
+  Color(0xFF00838F), // ฟ้าเขียว
+  Color(0xFFC62828), // แดง
+  Color(0xFF4527A0), // ม่วงเข้ม
+  Color(0xFF558B2F), // มะกอก
+];
+
+Color _vehicleButtonColor(int index) =>
+    _kVehicleButtonColors[index % _kVehicleButtonColors.length];
+
+/// ปัดการ์ดซ้ายเพื่อแสดงปุ่มลบ
+class _SwipeRevealDelete extends StatefulWidget {
+  const _SwipeRevealDelete({
+    required this.onDelete,
+    required this.childBuilder,
   });
 
-  final _CounterUnit unit;
-  final Color accent;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onDelete;
+  final Widget Function(bool interactionsEnabled) childBuilder;
+
+  @override
+  State<_SwipeRevealDelete> createState() => _SwipeRevealDeleteState();
+}
+
+class _SwipeRevealDeleteState extends State<_SwipeRevealDelete> {
+  double _offset = 0;
+  bool _revealed = false;
+  bool _dragging = false;
+  double _actionWidth = 64;
+
+  bool get _interactionsEnabled => !_dragging && !_revealed;
+
+  void _snap({required bool open}) {
+    setState(() {
+      _revealed = open;
+      _offset = open ? -_actionWidth : 0;
+      _dragging = false;
+    });
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    final dx = event.delta.dx;
+    final dy = event.delta.dy;
+    if (!_dragging) {
+      if (dx.abs() < 4 || dx.abs() <= dy.abs()) return;
+      if (dx < 0 || _revealed) {
+        setState(() => _dragging = true);
+      }
+    }
+    if (!_dragging) return;
+    setState(() {
+      _offset = (_offset + dx).clamp(-_actionWidth, 0);
+    });
+  }
+
+  void _onPointerUp() {
+    if (_dragging) {
+      _snap(open: _offset <= -_actionWidth / 2);
+      return;
+    }
+    if (_revealed) _snap(open: false);
+  }
+
+  void _onPointerCancel() {
+    if (_dragging || _revealed) {
+      _snap(open: _revealed);
+    }
+  }
+
+  void _onDeleteTap() {
+    _snap(open: false);
+    widget.onDelete();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final busy = unit.busy;
-    return Material(
-      color: accent.withValues(alpha: busy ? 0.08 : 0.12),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: busy ? null : onTap,
-        onLongPress: busy ? null : onLongPress,
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 120, minHeight: 72),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withValues(alpha: 0.45)),
-          ),
-          child: busy
-              ? Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: accent,
-                    ),
-                  ),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _actionWidth = (constraints.maxWidth * 0.36).clamp(52.0, 76.0);
+        final offset = _offset.clamp(-_actionWidth, 0.0);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      unit.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A2433),
-                        height: 1.15,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      unit.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF6B7788),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_circle_outline,
-                            size: 16, color: accent),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${unit.rounds} เที่ยว',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: accent,
+                    Material(
+                      color: const Color(0xFFD14343),
+                      child: InkWell(
+                        onTap: _onDeleteTap,
+                        child: SizedBox(
+                          width: _actionWidth,
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'ลบ',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                    if (unit.lapTimes.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'ล่าสุด ${unit.lapTimes.last}',
-                        style: const TextStyle(
-                          fontSize: 10.5,
-                          color: Color(0xFF8A97A8),
-                        ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
+              ),
+              Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => _dragging = false,
+                onPointerMove: _onPointerMove,
+                onPointerUp: (_) => _onPointerUp(),
+                onPointerCancel: (_) => _onPointerCancel(),
+                child: AnimatedContainer(
+                  duration: _dragging
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  transform: Matrix4.translationValues(offset, 0, 0),
+                  child: widget.childBuilder(_interactionsEnabled),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// ปุ่มบันทึกต่อคัน — กดแล้ว +1 เที่ยว, กดค้าง 3 ว. เพื่อลบเที่ยวล่าสุด
+class _VehicleRecordButton extends StatefulWidget {
+  const _VehicleRecordButton({
+    required this.unit,
+    required this.index,
+    required this.onTap,
+    required this.onHoldToUndo,
+    this.interactionsEnabled = true,
+  });
+
+  final _CounterUnit unit;
+  final int index;
+  final VoidCallback onTap;
+  final VoidCallback onHoldToUndo;
+  final bool interactionsEnabled;
+
+  @override
+  State<_VehicleRecordButton> createState() => _VehicleRecordButtonState();
+}
+
+class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
+  static const _holdDuration = Duration(seconds: 3);
+  static const _tapMax = Duration(milliseconds: 400);
+
+  Timer? _holdTimer;
+  DateTime? _pointerDownAt;
+  double _holdProgress = 0;
+  bool _holdTriggered = false;
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startHoldTimer() {
+    _holdTimer?.cancel();
+    final started = DateTime.now();
+    _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted || _pointerDownAt == null) return;
+      final elapsed = DateTime.now().difference(started);
+      final progress =
+          (elapsed.inMilliseconds / _holdDuration.inMilliseconds).clamp(0.0, 1.0);
+      setState(() => _holdProgress = progress);
+      if (progress >= 1) {
+        _holdTimer?.cancel();
+        _holdTimer = null;
+        _holdTriggered = true;
+        HapticFeedback.heavyImpact();
+        setState(() => _holdProgress = 0);
+        widget.onHoldToUndo();
+      }
+    });
+  }
+
+  void _onPointerDown() {
+    if (widget.unit.busy || !widget.interactionsEnabled) return;
+    _pointerDownAt = DateTime.now();
+    _holdTriggered = false;
+    if (widget.unit.rounds > 0) {
+      setState(() => _holdProgress = 0);
+      _startHoldTimer();
+    }
+  }
+
+  void _onPointerUp() {
+    final downAt = _pointerDownAt;
+    _pointerDownAt = null;
+    _holdTimer?.cancel();
+    _holdTimer = null;
+
+    if (_holdTriggered) {
+      _holdTriggered = false;
+      if (mounted) setState(() => _holdProgress = 0);
+      return;
+    }
+
+    final progress = _holdProgress;
+    if (mounted) setState(() => _holdProgress = 0);
+
+    if (widget.unit.busy || downAt == null || !widget.interactionsEnabled) return;
+    final elapsed = DateTime.now().difference(downAt);
+    if (elapsed <= _tapMax && progress < 0.15) {
+      widget.onTap();
+    }
+  }
+
+  void _onPointerCancel() {
+    _pointerDownAt = null;
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    if (mounted) setState(() => _holdProgress = 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unit = widget.unit;
+    final busy = unit.busy;
+    final bg = _vehicleButtonColor(widget.index);
+    final carNo = widget.index + 1;
+    return Material(
+      elevation: busy ? 0 : 2,
+      shadowColor: bg.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(16),
+      color: busy ? bg.withValues(alpha: 0.55) : bg,
+      clipBehavior: Clip.antiAlias,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) => _onPointerDown(),
+        onPointerUp: (_) => _onPointerUp(),
+        onPointerCancel: (_) => _onPointerCancel(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              child: busy
+                  ? const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'คันที่ $carNo • บันทึกเที่ยว',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          unit.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          unit.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.add_circle,
+                              size: 18,
+                              color: Colors.white.withValues(alpha: 0.95),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${unit.rounds} เที่ยว',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (unit.lapTimes.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'ล่าสุด ${unit.lapTimes.last}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
+                        if (unit.rounds > 0) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'กดค้าง 3 ว. ลบเที่ยวล่าสุด',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.72),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+            if (_holdProgress > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: LinearProgressIndicator(
+                  value: _holdProgress,
+                  minHeight: 4,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white,
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _SandRecordButton extends StatelessWidget {
+class _SandRecordButton extends StatefulWidget {
   const _SandRecordButton({
     required this.unit,
-    required this.accent,
     required this.onTap,
+    required this.onHoldToUndo,
   });
 
   final _CounterUnit unit;
-  final Color accent;
   final VoidCallback onTap;
+  final VoidCallback onHoldToUndo;
+
+  @override
+  State<_SandRecordButton> createState() => _SandRecordButtonState();
+}
+
+class _SandRecordButtonState extends State<_SandRecordButton> {
+  static const _holdDuration = Duration(seconds: 3);
+  static const _tapMax = Duration(milliseconds: 400);
+  static const _sandBg = Color(0xFFAD1457);
+  static const _sandBgBusy = Color(0xFF880E4F);
+
+  Timer? _holdTimer;
+  DateTime? _pointerDownAt;
+  double _holdProgress = 0;
+  bool _holdTriggered = false;
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startHoldTimer() {
+    _holdTimer?.cancel();
+    final started = DateTime.now();
+    _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted || _pointerDownAt == null) return;
+      final elapsed = DateTime.now().difference(started);
+      final progress =
+          (elapsed.inMilliseconds / _holdDuration.inMilliseconds).clamp(0.0, 1.0);
+      setState(() => _holdProgress = progress);
+      if (progress >= 1) {
+        _holdTimer?.cancel();
+        _holdTimer = null;
+        _holdTriggered = true;
+        HapticFeedback.heavyImpact();
+        setState(() => _holdProgress = 0);
+        widget.onHoldToUndo();
+      }
+    });
+  }
+
+  void _onPointerDown() {
+    if (widget.unit.busy) return;
+    _pointerDownAt = DateTime.now();
+    _holdTriggered = false;
+    if (widget.unit.rounds > 0) {
+      setState(() => _holdProgress = 0);
+      _startHoldTimer();
+    }
+  }
+
+  void _onPointerUp() {
+    final downAt = _pointerDownAt;
+    _pointerDownAt = null;
+    _holdTimer?.cancel();
+    _holdTimer = null;
+
+    if (_holdTriggered) {
+      _holdTriggered = false;
+      if (mounted) setState(() => _holdProgress = 0);
+      return;
+    }
+
+    final progress = _holdProgress;
+    if (mounted) setState(() => _holdProgress = 0);
+
+    if (widget.unit.busy || downAt == null) return;
+    final elapsed = DateTime.now().difference(downAt);
+    if (elapsed <= _tapMax && progress < 0.15) {
+      widget.onTap();
+    }
+  }
+
+  void _onPointerCancel() {
+    _pointerDownAt = null;
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    if (mounted) setState(() => _holdProgress = 0);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final unit = widget.unit;
     final busy = unit.busy;
     return Material(
-      color: accent.withValues(alpha: 0.1),
+      elevation: busy ? 0 : 3,
+      shadowColor: _sandBg.withValues(alpha: 0.4),
       borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: busy ? null : onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withValues(alpha: 0.45)),
-          ),
-          child: busy
-              ? Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: accent,
-                    ),
-                  ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(Icons.touch_app_rounded, size: 28, color: accent),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'บันทึกวันเวลา +1 รอบ',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A2433),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'รวม ${unit.rounds} รอบ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: accent,
-                      ),
-                    ),
-                    if (unit.lapTimes.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'ล่าสุด ${unit.lapTimes.last}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF8A97A8),
+      color: busy ? _sandBgBusy : _sandBg,
+      clipBehavior: Clip.antiAlias,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) => _onPointerDown(),
+        onPointerUp: (_) => _onPointerUp(),
+        onPointerCancel: (_) => _onPointerCancel(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              child: busy
+                  ? const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
                         ),
                       ),
-                    ],
-                  ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.water_drop, size: 14, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'บันทึกร่อนทราย',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Icon(Icons.touch_app_rounded,
+                            size: 32, color: Colors.white),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'กดบันทึกวันเวลา +1 รอบ',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'รวม ${unit.rounds} รอบ',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (unit.lapTimes.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'ล่าสุด ${unit.lapTimes.last}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                        if (unit.rounds > 0) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'กดค้าง 3 ว. ลบรอบล่าสุด',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.72),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+            if (_holdProgress > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: LinearProgressIndicator(
+                  value: _holdProgress,
+                  minHeight: 4,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white,
                 ),
+              ),
+          ],
         ),
       ),
     );
