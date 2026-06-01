@@ -833,10 +833,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
   late final bool _reduceMotion;
+  bool _countAndRecordMenuOpen = false;
   /// After the grid entrance animation finishes, drop stagger transforms so
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
   static const _kPanelShadowColor = Color(0x12000000);
+
+  _DailyModuleDef _moduleByCategory(String category) => _kDailyModules.firstWhere(
+    (m) => m.category == category,
+  );
 
   void _onEntranceStatus(AnimationStatus status) {
     if (!mounted) return;
@@ -958,6 +963,84 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               widget.formatBuddhistDateButton(widget.selectedDay),
             ),
             builder: (context, constraints) {
+              if (_countAndRecordMenuOpen) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'บันทึกและนับจำนวน',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF1A2433),
+                                ),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () =>
+                                setState(() => _countAndRecordMenuOpen = false),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF4A5A70),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              minimumSize: const Size(0, 36),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: const BorderSide(color: Color(0xFFD9E1EC)),
+                              ),
+                            ),
+                            child: const Text(
+                              'กลับเมนูหลัก',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _CountRecordMenuCard(
+                                title: 'จำนวนเที่ยวรถ',
+                                subtitle: 'บันทึกเที่ยวรถดรัมและสรุปเที่ยว',
+                                icon: Icons.fire_truck_outlined,
+                                iconColor: const Color(0xFF1D8FE1),
+                                backgroundColor: const Color(0xFFF2F8FF),
+                                borderColor: const Color(0xFFD2E7FF),
+                                onTap: () => widget.onOpenModule(
+                                  _moduleByCategory('จำนวนเที่ยวรถ'),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _CountRecordMenuCard(
+                                title: 'การร่อนทราย',
+                                subtitle: 'บันทึกผลร่อนทรายและจำนวนคิว',
+                                icon: Icons.water_drop_outlined,
+                                iconColor: const Color(0xFFE91E8F),
+                                backgroundColor: const Color(0xFFFFF2FA),
+                                borderColor: const Color(0xFFFFD6EB),
+                                onTap: () => widget.onOpenModule(
+                                  _moduleByCategory('บันทึกการร่อนทราย'),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
               final visibleModules = _kDailyModules;
               const gap = 10.0;
               const sideInset = 2.0;
@@ -1035,7 +1118,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   addRepaintBoundaries: true,
                   cacheExtent:
                       menuScrolls ? (cellHeight * cacheRows + gap * 2) : 0,
-                  itemCount: visibleModules.length,
+                  itemCount: visibleModules.length + 1,
                   gridDelegate:
                       SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: cross,
@@ -1044,7 +1127,26 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     mainAxisExtent: cellHeight,
                   ),
                   itemBuilder: (context, index) {
-                    final m = visibleModules[index];
+                    if (index == 0) {
+                      final card = _CountRecordEntryCard(
+                        onTap: () =>
+                            setState(() => _countAndRecordMenuOpen = true),
+                      );
+                      if (_gridEntranceCompleted) {
+                        return RepaintBoundary(
+                          key: ValueKey('mod_count_record_root'),
+                          child: card,
+                        );
+                      }
+                      return _StaggerMenuTile(
+                        parent: _entranceController,
+                        index: 0,
+                        lite: useLiteAnimations,
+                        child: card,
+                      );
+                    }
+                    final moduleIndex = index - 1;
+                    final m = visibleModules[moduleIndex];
                     final fill =
                         menuStatusByCategory[m.category] ??
                             DailyModuleFillStatus.pending;
@@ -1145,6 +1247,212 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CountRecordEntryCard extends StatelessWidget {
+  const _CountRecordEntryCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F8FE),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD8E6F7)),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxW =
+                  constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                      ? constraints.maxWidth
+                      : 108.0;
+              final maxH =
+                  constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                      ? constraints.maxHeight
+                      : maxW;
+              // ใช้สูตรเดียวกับ RecordModuleCard เพื่อให้ icon ใหญ่เท่ากัน
+              final scaleRef = maxW < maxH ? maxW : maxH;
+              final iconSize = (scaleRef * 0.5).clamp(40.0, 66.0);
+              final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
+              final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
+              final subtitleSize = (scaleRef * 0.09).clamp(10.0, 12.0);
+              final textMaxWidth = maxW - (pad * 2);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: iconSize,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        SizedBox(height: pad * 0.5),
+                        SizedBox(
+                          width: textMaxWidth,
+                          child: Text(
+                            'บันทึกและนับจำนวน',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1D2A3A),
+                              height: 1.18,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: pad * 0.28),
+                        SizedBox(
+                          width: textMaxWidth,
+                          child: Text(
+                            'จำนวนเที่ยวรถ / การร่อนทราย',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: subtitleSize,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF6B7788),
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: pad * 0.5,
+                    right: pad * 0.5,
+                    child: const Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: Color(0xFFCBD5E1),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CountRecordMenuCard extends StatelessWidget {
+  const _CountRecordMenuCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconColor,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconColor;
+  final Color backgroundColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: Icon(icon, color: iconColor),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A2433),
+                  height: 1.14,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF5C7088),
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(
+                    Icons.touch_app_rounded,
+                    size: 14,
+                    color: Color(0xFF6B7280),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'แตะเพื่อบันทึก',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
