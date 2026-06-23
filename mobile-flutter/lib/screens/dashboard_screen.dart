@@ -1197,6 +1197,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       dateYmd: dayKeyStr,
                       dayTransactions: widget.data.dayTransactions,
                       employees: widget.data.employees,
+                      tripHistoryTransactions: widget.data.allTransactions,
                       embedded: true,
                       serverOnline: widget.serverOnline,
                       onDataChanged: widget.onPullRefresh,

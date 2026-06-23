@@ -10,6 +10,7 @@ import '../models/employee.dart';
 import '../services/count_record_offline_sync.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
+import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
@@ -76,6 +77,7 @@ class CountRecordCounterPanel extends StatefulWidget {
     required this.dateYmd,
     required this.dayTransactions,
     required this.employees,
+    this.tripHistoryTransactions = const [],
     this.embedded = false,
     this.serverOnline = true,
     this.onDataChanged,
@@ -88,6 +90,7 @@ class CountRecordCounterPanel extends StatefulWidget {
   final String dateYmd;
   final List<AppTransaction> dayTransactions;
   final List<Employee> employees;
+  final List<AppTransaction> tripHistoryTransactions;
   final bool embedded;
   final bool serverOnline;
   final VoidCallback? onDataChanged;
@@ -298,7 +301,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       forceNetwork: tryNetwork && (widget.serverOnline || _isOnline),
     );
     if (!mounted) return;
-    final cars = catalog.cars.where(isVehicleTripDrumCarName).toList(growable: false);
+    final rawCars =
+        catalog.cars.where(isVehicleTripDrumCarName).toList(growable: false);
+    final cars = sortCountRecordVehicles(
+      cars: rawCars,
+      tripHistory: widget.tripHistoryTransactions,
+    );
     setState(() {
       if (cars.isNotEmpty) _cars = cars;
       _applyDriverList(catalog.employees);
@@ -716,9 +724,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       context: context,
       barrierDismissible: false,
       builder: (ctx) => _SelectDialog(
-        cars: _cars,
+        cars: sortCountRecordVehicles(
+          cars: _cars,
+          tripHistory: widget.tripHistoryTransactions,
+        ),
         drivers: _drivers,
         alreadyAdded: already,
+        tripHistory: widget.tripHistoryTransactions,
       ),
     );
     if (picks == null) return;
@@ -2562,11 +2574,13 @@ class _SelectDialog extends StatefulWidget {
     required this.cars,
     required this.drivers,
     required this.alreadyAdded,
+    required this.tripHistory,
   });
 
   final List<String> cars;
   final List<Employee> drivers;
   final Set<String> alreadyAdded;
+  final List<AppTransaction> tripHistory;
 
   @override
   State<_SelectDialog> createState() => _SelectDialogState();
@@ -2575,9 +2589,35 @@ class _SelectDialog extends StatefulWidget {
 class _SelectDialogState extends State<_SelectDialog> {
   final List<_Pick> _rows = [_Pick()];
 
-  List<String> get _availableCars => widget.cars
-      .where((c) => !widget.alreadyAdded.contains(c))
-      .toList(growable: false);
+  List<String> get _availableCars => sortCountRecordVehicles(
+        cars: widget.cars
+            .where((c) => !widget.alreadyAdded.contains(c))
+            .toList(growable: false),
+        tripHistory: widget.tripHistory,
+      );
+
+  void _applyDefaultDriverForRow(_Pick row) {
+    final vehicleId = row.vehicleId.trim();
+    if (vehicleId.isEmpty) return;
+    final defaultId = resolveCountRecordDefaultDriverId(
+      vehicleId: vehicleId,
+      drivers: widget.drivers,
+      tripHistory: widget.tripHistory,
+    );
+    if (defaultId != null) {
+      row.driverId = defaultId;
+    }
+  }
+
+  void _onVehicleChanged(_Pick row, String? vehicleId) {
+    row.vehicleId = vehicleId ?? '';
+    if (row.vehicleId.isNotEmpty) {
+      _applyDefaultDriverForRow(row);
+    } else {
+      row.driverId = '';
+    }
+    setState(() {});
+  }
 
   bool get _canSave => _rows.any(
         (r) => r.vehicleId.trim().isNotEmpty && r.driverId.trim().isNotEmpty,
@@ -2643,9 +2683,11 @@ class _SelectDialogState extends State<_SelectDialog> {
                           row: _rows[i],
                           cars: available,
                           drivers: widget.drivers,
+                          tripHistory: widget.tripHistory,
                           canRemove: _rows.length > 1,
                           onRemove: () =>
                               setState(() => _rows.removeAt(i)),
+                          onVehicleChanged: (v) => _onVehicleChanged(_rows[i], v),
                           onChanged: () => setState(() {}),
                         ),
                     ],
@@ -2709,8 +2751,10 @@ class _SelectRow extends StatelessWidget {
     required this.row,
     required this.cars,
     required this.drivers,
+    required this.tripHistory,
     required this.canRemove,
     required this.onRemove,
+    required this.onVehicleChanged,
     required this.onChanged,
   });
 
@@ -2718,9 +2762,35 @@ class _SelectRow extends StatelessWidget {
   final _Pick row;
   final List<String> cars;
   final List<Employee> drivers;
+  final List<AppTransaction> tripHistory;
   final bool canRemove;
   final VoidCallback onRemove;
+  final ValueChanged<String?> onVehicleChanged;
   final VoidCallback onChanged;
+
+  String? _defaultDriverHint() {
+    final vehicleId = row.vehicleId.trim();
+    if (vehicleId.isEmpty) return null;
+
+    final mappedNick = defaultDriverNicknameForVehicle(vehicleId);
+    final defaultId = resolveCountRecordDefaultDriverId(
+      vehicleId: vehicleId,
+      drivers: drivers,
+      tripHistory: tripHistory,
+    );
+    if (defaultId == null && mappedNick == null) return null;
+
+    if (mappedNick != null) {
+      return 'ค่าเริ่มต้น: $mappedNick';
+    }
+
+    for (final e in drivers) {
+      if (e.id == defaultId) {
+        return 'ค่าเริ่มต้น: ${driverDisplayLabel(e)}';
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2775,10 +2845,7 @@ class _SelectRow extends StatelessWidget {
                   ),
                 )
                 .toList(),
-            onChanged: (v) {
-              row.vehicleId = v ?? '';
-              onChanged();
-            },
+            onChanged: onVehicleChanged,
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
@@ -2787,10 +2854,15 @@ class _SelectRow extends StatelessWidget {
                     !drivers.any((e) => e.id == row.driverId))
                 ? null
                 : row.driverId,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'คนขับ',
-              prefixIcon: Icon(Icons.badge_outlined),
-              border: OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.badge_outlined),
+              helperText: _defaultDriverHint(),
+              helperStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1565C0),
+              ),
+              border: const OutlineInputBorder(),
             ),
             items: drivers
                 .map(
