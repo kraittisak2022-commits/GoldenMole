@@ -27,6 +27,7 @@ import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/page_loading_view.dart';
+import '../widgets/count_record_menu_shell.dart';
 import '../widgets/record_module_card.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
@@ -377,6 +378,63 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Future<_HomePayload> _loadHomeOfflineOrEmpty(String dayKey) async {
+    final cached = await _loadHomeFromLocalCache(dayKey);
+    if (cached != null) return cached;
+    return _composeHomePayload(
+      summary: const DashboardSummary(
+        employeeCount: 0,
+        transactionCount: 0,
+        projectCount: 0,
+        totalRevenue: 0,
+        totalExpense: 0,
+        appName: 'Construction Management',
+      ),
+      dayRows: const [],
+      allRows: const [],
+      employees: const [],
+      dayKey: dayKey,
+    );
+  }
+
+  Future<_HomePayload> _loadHomeFromNetwork({
+    required SupabaseClient client,
+    required String dayKey,
+    required bool networkRefresh,
+  }) async {
+    final employeeService = EmployeeService(client);
+    final results = await Future.wait([
+      widget.dashboardService.fetchSummary(forceRefresh: networkRefresh),
+      _txService.fetchTransactionsForDate(
+        dayKey,
+        forceRefresh: networkRefresh,
+      ),
+      employeeService.fetchEmployees(forceRefresh: networkRefresh),
+    ]);
+    final summary = results[0] as DashboardSummary;
+    final dayRows = results[1] as List<AppTransaction>;
+    final employees = results[2] as List<Employee>;
+    final allRows =
+        await _txService.fetchTransactions(forceRefresh: networkRefresh);
+    unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
+    unawaited(
+      CountRecordOfflineSync.instance.loadDropdownCatalog(
+        client: client,
+        employeeService: employeeService,
+        widgetEmployees: employees,
+        serverOnlineHint: true,
+        forceNetwork: networkRefresh,
+      ),
+    );
+    return _composeHomePayload(
+      summary: summary,
+      dayRows: dayRows,
+      allRows: allRows,
+      employees: employees,
+      dayKey: dayKey,
+    );
+  }
+
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     final client = Supabase.instance.client;
     final dayKey = _dateKey(_selectedDay);
@@ -389,63 +447,34 @@ class _DashboardScreenState extends State<DashboardScreen>
       _syncConnectivityProbe();
     }
 
-    if (online) {
-      try {
-        await CountRecordOfflineSync.instance.uploadPendingImmediately(
-          _txService,
-          client,
-        );
-      } catch (_) {}
-      CountRecordOfflineSync.instance.noteServerReachable();
-    } else {
+    if (!online) {
       CountRecordOfflineSync.instance.noteServerUnreachable();
+      return _loadHomeOfflineOrEmpty(dayKey);
     }
 
-    final networkRefresh = forceRefresh && online;
-
     try {
-      final employeeService = EmployeeService(client);
-      final results = await Future.wait([
-        widget.dashboardService.fetchSummary(forceRefresh: networkRefresh),
-        _txService.fetchTransactionsForDate(
-          dayKey,
-          forceRefresh: networkRefresh,
-        ),
-        employeeService.fetchEmployees(forceRefresh: networkRefresh),
-      ]);
-      final summary = results[0] as DashboardSummary;
-      final dayRows = results[1] as List<AppTransaction>;
-      final employees = results[2] as List<Employee>;
-      final allRows =
-          await _txService.fetchTransactions(forceRefresh: networkRefresh);
-      if (online) {
-        unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
-        unawaited(
-          CountRecordOfflineSync.instance.loadDropdownCatalog(
-            client: client,
-            employeeService: employeeService,
-            widgetEmployees: employees,
-            serverOnlineHint: true,
-            forceNetwork: networkRefresh,
-          ),
-        );
-      }
-      return _composeHomePayload(
-        summary: summary,
-        dayRows: dayRows,
-        allRows: allRows,
-        employees: employees,
+      try {
+        await CountRecordOfflineSync.instance
+            .uploadPendingImmediately(
+              _txService,
+              client,
+            )
+            .timeout(const Duration(seconds: 6));
+      } catch (_) {}
+      CountRecordOfflineSync.instance.noteServerReachable();
+
+      return await _loadHomeFromNetwork(
+        client: client,
         dayKey: dayKey,
-      );
+        networkRefresh: forceRefresh,
+      ).timeout(const Duration(seconds: 12));
     } catch (_) {
       CountRecordOfflineSync.instance.noteServerUnreachable();
       if (mounted && _serverOnline) {
         setState(() => _serverOnline = false);
       }
       if (mounted) _syncConnectivityProbe();
-      final fallback = await _loadHomeFromLocalCache(dayKey);
-      if (fallback != null) return fallback;
-      rethrow;
+      return _loadHomeOfflineOrEmpty(dayKey);
     }
   }
 
@@ -1224,7 +1253,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   counterMode: CounterMode.sand,
                 );
 
-                return Padding(
+                return CountRecordMenuShell(
+                  onSwipeBack: backToMainMenu,
+                  child: Padding(
                   padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1232,15 +1263,30 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              'บันทึกและนับจำนวน',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF1A2433),
-                                  ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'บันทึกและนับจำนวน',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF1A2433),
+                                      ),
+                                ),
+                                Text(
+                                  'ปัดซ้ายเพื่อกลับเมนูหลัก',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF94A3B8),
+                                      ),
+                                ),
+                              ],
                             ),
                           ),
                           const Spacer(),
@@ -1330,6 +1376,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
                     ],
                   ),
+                ),
                 );
               }
 

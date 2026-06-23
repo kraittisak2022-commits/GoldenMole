@@ -2589,6 +2589,18 @@ class _SelectDialog extends StatefulWidget {
 class _SelectDialogState extends State<_SelectDialog> {
   final List<_Pick> _rows = [_Pick()];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_rows.length != 1 || _rows.first.vehicleId.isNotEmpty) return;
+      final available = _availableCars;
+      if (available.isEmpty) return;
+      _onVehicleChanged(_rows.first, available.first);
+    });
+  }
+
   List<String> get _availableCars => sortCountRecordVehicles(
         cars: widget.cars
             .where((c) => !widget.alreadyAdded.contains(c))
@@ -2768,28 +2780,13 @@ class _SelectRow extends StatelessWidget {
   final ValueChanged<String?> onVehicleChanged;
   final VoidCallback onChanged;
 
-  String? _defaultDriverHint() {
-    final vehicleId = row.vehicleId.trim();
-    if (vehicleId.isEmpty) return null;
-
-    final mappedNick = defaultDriverNicknameForVehicle(vehicleId);
-    final defaultId = resolveCountRecordDefaultDriverId(
+  String? _defaultDriverIdForVehicle(String vehicleId) {
+    if (vehicleId.trim().isEmpty) return null;
+    return resolveCountRecordDefaultDriverId(
       vehicleId: vehicleId,
       drivers: drivers,
       tripHistory: tripHistory,
     );
-    if (defaultId == null && mappedNick == null) return null;
-
-    if (mappedNick != null) {
-      return 'ค่าเริ่มต้น: $mappedNick';
-    }
-
-    for (final e in drivers) {
-      if (e.id == defaultId) {
-        return 'ค่าเริ่มต้น: ${driverDisplayLabel(e)}';
-      }
-    }
-    return null;
   }
 
   @override
@@ -2799,6 +2796,19 @@ class _SelectRow extends StatelessWidget {
         row.vehicleId,
       ...cars,
     ];
+    final vehicleId = row.vehicleId.trim();
+    final defaultDriverId = _defaultDriverIdForVehicle(vehicleId);
+    final driverOptions = vehicleId.isEmpty
+        ? drivers
+        : orderDriversForVehicle(
+            vehicleId: vehicleId,
+            drivers: drivers,
+            tripHistory: tripHistory,
+          );
+    final driverValue = (row.driverId.isEmpty ||
+            !drivers.any((e) => e.id == row.driverId))
+        ? null
+        : row.driverId;
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
@@ -2829,10 +2839,11 @@ class _SelectRow extends StatelessWidget {
             ],
           ),
           DropdownButtonFormField<String>(
+            key: ValueKey('veh_${row.vehicleId}_$index'),
             isExpanded: true,
             initialValue: row.vehicleId.isEmpty ? null : row.vehicleId,
             decoration: const InputDecoration(
-              labelText: 'รถ',
+              labelText: 'รถ • คนขับประจำคัน',
               prefixIcon: Icon(Icons.fire_truck_outlined),
               border: OutlineInputBorder(),
             ),
@@ -2840,8 +2851,15 @@ class _SelectRow extends StatelessWidget {
                 .map(
                   (c) => DropdownMenuItem<String>(
                     value: c,
-                    child: Text(c,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      countRecordVehicleDropdownLabel(
+                        vehicleId: c,
+                        drivers: drivers,
+                        tripHistory: tripHistory,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 )
                 .toList(),
@@ -2849,37 +2867,45 @@ class _SelectRow extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
+            key: ValueKey('drv_${row.vehicleId}_${row.driverId}_$index'),
             isExpanded: true,
-            initialValue: (row.driverId.isEmpty ||
-                    !drivers.any((e) => e.id == row.driverId))
-                ? null
-                : row.driverId,
-            decoration: InputDecoration(
+            initialValue: driverValue,
+            decoration: const InputDecoration(
               labelText: 'คนขับ',
-              prefixIcon: const Icon(Icons.badge_outlined),
-              helperText: _defaultDriverHint(),
-              helperStyle: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1565C0),
-              ),
-              border: const OutlineInputBorder(),
+              prefixIcon: Icon(Icons.badge_outlined),
+              border: OutlineInputBorder(),
             ),
-            items: drivers
+            items: driverOptions
                 .map(
                   (e) => DropdownMenuItem<String>(
                     value: e.id,
                     child: Text(
-                      e.nickname.isNotEmpty ? e.nickname : e.name,
+                      driverDropdownLabel(
+                        driver: e,
+                        defaultDriverId: defaultDriverId,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: defaultDriverId != null &&
+                                e.id == defaultDriverId
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                        color: defaultDriverId != null &&
+                                e.id == defaultDriverId
+                            ? const Color(0xFF1565C0)
+                            : null,
+                      ),
                     ),
                   ),
                 )
                 .toList(),
-            onChanged: (v) {
-              row.driverId = v ?? '';
-              onChanged();
-            },
+            onChanged: vehicleId.isEmpty
+                ? null
+                : (v) {
+                    row.driverId = v ?? '';
+                    onChanged();
+                  },
           ),
         ],
       ),

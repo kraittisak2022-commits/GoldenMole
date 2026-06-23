@@ -45,6 +45,8 @@ dependencies:
   device_info_plus: ^13.1.0
   package_info_plus: ^10.1.0
   flutter_tts: ^4.2.5
+  wakelock_plus: ^1.6.1
+  screen_brightness: ^2.1.11
 
 dev_dependencies:
   flutter_test:

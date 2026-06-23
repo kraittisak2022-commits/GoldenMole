@@ -151,6 +151,69 @@ String? resolveCountRecordDefaultDriverId({
 String driverDisplayLabel(Employee e) =>
     e.nickname.trim().isNotEmpty ? e.nickname.trim() : e.name.trim();
 
+/// ข้อความใน dropdown รถ — แสดงคนขับประจำคันต่อท้าย
+String countRecordVehicleDropdownLabel({
+  required String vehicleId,
+  required Iterable<Employee> drivers,
+  required Iterable<AppTransaction> tripHistory,
+}) {
+  final vehicle = vehicleId.trim();
+  if (vehicle.isEmpty) return vehicle;
+
+  final mappedNick = defaultDriverNicknameForVehicle(vehicle);
+  if (mappedNick != null) {
+    return '$vehicle • $mappedNick';
+  }
+
+  final driverId = resolveCountRecordDefaultDriverId(
+    vehicleId: vehicle,
+    drivers: drivers,
+    tripHistory: tripHistory,
+  );
+  if (driverId != null) {
+    for (final e in drivers) {
+      if (e.id == driverId) {
+        return '$vehicle • ${driverDisplayLabel(e)}';
+      }
+    }
+  }
+  return vehicle;
+}
+
+/// เรียงคนขับ — คนขับประจำรถ (default) ขึ้นก่อน
+List<Employee> orderDriversForVehicle({
+  required String vehicleId,
+  required List<Employee> drivers,
+  required Iterable<AppTransaction> tripHistory,
+}) {
+  if (drivers.length <= 1) return List<Employee>.from(drivers);
+  final defaultId = resolveCountRecordDefaultDriverId(
+    vehicleId: vehicleId,
+    drivers: drivers,
+    tripHistory: tripHistory,
+  );
+  if (defaultId == null) return List<Employee>.from(drivers);
+
+  final sorted = List<Employee>.from(drivers);
+  sorted.sort((a, b) {
+    if (a.id == defaultId) return -1;
+    if (b.id == defaultId) return 1;
+    return driverDisplayLabel(a).compareTo(driverDisplayLabel(b));
+  });
+  return sorted;
+}
+
+String driverDropdownLabel({
+  required Employee driver,
+  required String? defaultDriverId,
+}) {
+  final label = driverDisplayLabel(driver);
+  if (defaultDriverId != null && driver.id == defaultDriverId) {
+    return '$label (ค่าเริ่มต้น)';
+  }
+  return label;
+}
+
 int countVehicleTripHistory(
   String vehicleId,
   Iterable<AppTransaction> tripHistory,
