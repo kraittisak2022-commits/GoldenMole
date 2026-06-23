@@ -83,17 +83,6 @@ void main() {
     expect(sorted[1], 'รถดรัมโอเว่น');
   });
 
-  test('vehicle dropdown label includes default driver nickname', () {
-    expect(
-      countRecordVehicleDropdownLabel(
-        vehicleId: 'รถดรัมโอเว่น',
-        drivers: const [],
-        tripHistory: const [],
-      ),
-      'รถดรัมโอเว่น • พี่นุ',
-    );
-  });
-
   test('orders default driver first in driver list', () {
     final drivers = [
       _driver('d1', 'พี่นุ'),

@@ -151,35 +151,6 @@ String? resolveCountRecordDefaultDriverId({
 String driverDisplayLabel(Employee e) =>
     e.nickname.trim().isNotEmpty ? e.nickname.trim() : e.name.trim();
 
-/// ข้อความใน dropdown รถ — แสดงคนขับประจำคันต่อท้าย
-String countRecordVehicleDropdownLabel({
-  required String vehicleId,
-  required Iterable<Employee> drivers,
-  required Iterable<AppTransaction> tripHistory,
-}) {
-  final vehicle = vehicleId.trim();
-  if (vehicle.isEmpty) return vehicle;
-
-  final mappedNick = defaultDriverNicknameForVehicle(vehicle);
-  if (mappedNick != null) {
-    return '$vehicle • $mappedNick';
-  }
-
-  final driverId = resolveCountRecordDefaultDriverId(
-    vehicleId: vehicle,
-    drivers: drivers,
-    tripHistory: tripHistory,
-  );
-  if (driverId != null) {
-    for (final e in drivers) {
-      if (e.id == driverId) {
-        return '$vehicle • ${driverDisplayLabel(e)}';
-      }
-    }
-  }
-  return vehicle;
-}
-
 /// เรียงคนขับ — คนขับประจำรถ (default) ขึ้นก่อน
 List<Employee> orderDriversForVehicle({
   required String vehicleId,

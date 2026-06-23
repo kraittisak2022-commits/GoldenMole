@@ -413,9 +413,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }) {
     final wa = t.workAssignments ?? const <String, List<String>>{};
     final laps = List<String>.from(wa['lapTimes'] ?? const []);
-    final rounds = roundsFromDrums
+    var rounds = roundsFromDrums
         ? (t.drumsObtained ?? 0).round()
         : (t.perCarTrips ?? t.tripCount ?? 0).round();
+    if (laps.length > rounds) rounds = laps.length;
     return _CounterUnit(
       txId: t.id,
       title: title,
@@ -532,8 +533,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _armRecordCooldown(u);
     setState(() {
       u.busy = true;
-      u.rounds += 1;
       u.lapTimes.add(stamp);
+      u.rounds = u.lapTimes.length > u.rounds ? u.lapTimes.length : u.rounds + 1;
     });
     HapticFeedback.selectionClick();
     unawaited(RecordFeedbackSound.playRecordTap());
@@ -605,19 +606,54 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         ],
       ),
     );
-    if (ok == true) await _undoLastRecord(u);
+    if (!mounted) return;
+    if (ok == true) await _undoRecordAt(u, u.lapTimes.length - 1);
   }
 
-  Future<void> _undoLastRecord(_CounterUnit u) async {
-    if (u.busy || u.rounds <= 0 || u.lapTimes.isEmpty) return;
+  Future<void> _confirmUndoSandRoundAt(_CounterUnit u, int lapIndex) async {
+    if (u.busy || lapIndex < 0 || lapIndex >= u.lapTimes.length) return;
+    final stamp = u.lapTimes[lapIndex];
+    final roundNo = lapIndex + 1;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text('ลบรอบที่ $roundNo?'),
+        content: Text(
+          'เวลา $stamp\n\n'
+          'ข้อมูลนี้จะถูกลบออกจากบันทึกวันนี้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD14343),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยันลบ'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (ok == true) await _undoRecordAt(u, lapIndex);
+  }
+
+  Future<void> _undoRecordAt(_CounterUnit u, int lapIndex) async {
+    if (u.busy || lapIndex < 0 || lapIndex >= u.lapTimes.length) return;
+    if (!mounted) return;
     final isTrip = widget.mode == CounterMode.trip;
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
-    final removedStamp = u.lapTimes.last;
+    final removedStamp = u.lapTimes[lapIndex];
     setState(() {
       u.busy = true;
-      u.rounds -= 1;
-      u.lapTimes.removeLast();
+      u.lapTimes.removeAt(lapIndex);
+      u.rounds = u.rounds > u.lapTimes.length ? u.rounds - 1 : u.lapTimes.length;
+      if (u.rounds < 0) u.rounds = 0;
     });
     try {
       await _save(u);
@@ -625,7 +661,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         _toast(
           isTrip
               ? 'ลบเที่ยวล่าสุดแล้ว • $removedStamp'
-              : 'ลบรอบล่าสุดแล้ว • $removedStamp',
+              : 'ลบรอบที่ ${lapIndex + 1} แล้ว • $removedStamp',
         );
       }
     } catch (e) {
@@ -669,11 +705,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         ],
       ),
     );
+    if (!mounted) return;
     if (ok == true) await _removeUnit(u);
   }
 
   Future<void> _removeUnit(_CounterUnit u) async {
     if (u.busy) return;
+    if (!mounted) return;
     setState(() => u.busy = true);
     try {
       var queued = false;
@@ -733,7 +771,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         tripHistory: widget.tripHistoryTransactions,
       ),
     );
-    if (picks == null) return;
+    if (picks == null || !mounted) return;
     for (final p in picks) {
       final vid = p.vehicleId.trim();
       if (vid.isEmpty) continue;
@@ -746,6 +784,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         vehicleId: vid,
         driverId: p.driverId.trim().isEmpty ? null : p.driverId.trim(),
       );
+      if (!mounted) continue;
       setState(() => _units.add(unit));
       try {
         await _save(unit);
@@ -828,7 +867,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         drivers: _drivers,
       ),
     );
-    if (driverId == null) return;
+    if (driverId == null || !mounted) return;
     final did = driverId.trim();
     if (did.isEmpty) return;
 
@@ -880,7 +919,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
 
     final stamp = _stamp(DateTime.now());
     final tag = 'รถเสีย $stamp';
@@ -930,6 +969,80 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     setState(() => _addVehiclePanelOpen = false);
   }
 
+  Widget _tripVehicleCard(int index, {required bool compact}) {
+    final unit = _units[index];
+    return _SwipeRevealActions(
+      onDelete: () => _confirmRemoveUnit(unit),
+      onEdit: () => _openEditUnitMenu(unit),
+      childBuilder: (interactionsEnabled) => _VehicleRecordButton(
+        unit: unit,
+        index: index,
+        compact: compact,
+        interactionsEnabled: interactionsEnabled,
+        onTap: () => _recordTap(unit),
+        onHoldToUndo: () => _confirmUndoLastRecord(unit),
+      ),
+    );
+  }
+
+  /// 1–2 คัน: แถวเดียวเต็มความกว้าง | 3+ คัน: กริด 2 คอลัมน์
+  Widget _buildTripVehicleCards() {
+    if (_units.length <= 2) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < _units.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: _tripVehicleCard(i, compact: false)),
+          ],
+        ],
+      );
+    }
+
+    final rowCount = (_units.length + 1) ~/ 2;
+    if (rowCount > 2) {
+      const rowHeight = 108.0;
+      return ListView.separated(
+        padding: EdgeInsets.zero,
+        itemCount: rowCount,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, row) {
+          final start = row * 2;
+          return SizedBox(
+            height: rowHeight,
+            child: _buildTripVehicleGridRow(start, compact: true),
+          );
+        },
+      );
+    }
+
+    return Column(
+      children: [
+        for (var row = 0; row < rowCount; row++) ...[
+          if (row > 0) const SizedBox(height: 8),
+          Expanded(
+            child: _buildTripVehicleGridRow(row * 2, compact: true),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTripVehicleGridRow(int startIndex, {required bool compact}) {
+    final pairIndex = startIndex + 1;
+    if (pairIndex >= _units.length) {
+      return _tripVehicleCard(startIndex, compact: compact);
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: _tripVehicleCard(startIndex, compact: compact)),
+        const SizedBox(width: 8),
+        Expanded(child: _tripVehicleCard(pairIndex, compact: compact)),
+      ],
+    );
+  }
+
   Widget _buildTripPanel() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
@@ -939,29 +1052,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           Expanded(
             child: _units.isEmpty
                 ? _FirstTripSetupCard(onTap: _openSelectDialog)
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var i = 0; i < _units.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 8),
-                        Expanded(
-                          child: _SwipeRevealActions(
-                            onDelete: () => _confirmRemoveUnit(_units[i]),
-                            onEdit: () => _openEditUnitMenu(_units[i]),
-                            childBuilder: (interactionsEnabled) =>
-                                _VehicleRecordButton(
-                              unit: _units[i],
-                              index: i,
-                              interactionsEnabled: interactionsEnabled,
-                              onTap: () => _recordTap(_units[i]),
-                              onHoldToUndo: () =>
-                                  _confirmUndoLastRecord(_units[i]),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                : _buildTripVehicleCards(),
           ),
           const SizedBox(height: 8),
           _LatestTripRecordsBar(
@@ -1058,21 +1149,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                 for (var i = _recentSandLapStartIndex(u.lapTimes.length);
                     i < u.lapTimes.length;
                     i++)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFDCE6F2)),
-                    ),
-                    child: Text(
-                      'รอบ ${i + 1} • ${u.lapTimes[i]}',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF52647B),
-                      ),
-                    ),
+                  _SandLapChip(
+                    roundNo: i + 1,
+                    stamp: u.lapTimes[i],
+                    onLongPress: () => _confirmUndoSandRoundAt(u, i),
                   ),
               ],
             ),
@@ -1749,6 +1829,7 @@ class _VehicleRecordButton extends StatefulWidget {
     required this.index,
     required this.onTap,
     required this.onHoldToUndo,
+    this.compact = false,
     this.interactionsEnabled = true,
   });
 
@@ -1756,6 +1837,7 @@ class _VehicleRecordButton extends StatefulWidget {
   final int index;
   final VoidCallback onTap;
   final VoidCallback onHoldToUndo;
+  final bool compact;
   final bool interactionsEnabled;
 
   @override
@@ -1853,6 +1935,176 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     if (mounted) setState(() => _holdProgress = 0);
   }
 
+  Widget _buildStandardVehicleBody({
+    required _CounterUnit unit,
+    required int carNo,
+    required bool onCooldown,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _VehicleTripCountRail(
+          rounds: unit.rounds,
+          onCooldown: onCooldown,
+          cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'คันที่ $carNo • บันทึกเที่ยว',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              if (unit.isBrokenReported) ...[
+                const SizedBox(height: 6),
+                const _BrokenVehicleBadge(compact: false),
+              ],
+              const SizedBox(height: 8),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  unit.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.12,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                unit.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.95),
+                  height: 1.15,
+                ),
+              ),
+              if (unit.lapTimes.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'ล่าสุด ${unit.lapTimes.last}',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: Colors.white.withValues(alpha: 0.82),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactVehicleBody({
+    required _CounterUnit unit,
+    required int carNo,
+    required bool onCooldown,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                'คันที่ $carNo',
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            if (unit.isBrokenReported) ...[
+              const SizedBox(width: 4),
+              const _BrokenVehicleBadge(compact: true),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: _VehicleTripCountRail(
+            compact: true,
+            rounds: unit.rounds,
+            onCooldown: onCooldown,
+            cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          unit.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          unit.subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.white.withValues(alpha: 0.92),
+          ),
+        ),
+        if (unit.lapTimes.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            'ล่าสุด ${unit.lapTimes.last}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 9,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final unit = widget.unit;
@@ -1889,7 +2141,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
             )
           : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.compact ? 8 : 10,
+          vertical: widget.compact ? 8 : 10,
+        ),
         child: busy
             ? const Center(
                 child: SizedBox(
@@ -1901,111 +2156,17 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   ),
                 ),
               )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _VehicleTripCountRail(
-                    rounds: unit.rounds,
+            : widget.compact
+                ? _buildCompactVehicleBody(
+                    unit: unit,
+                    carNo: carNo,
                     onCooldown: onCooldown,
-                    cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+                  )
+                : _buildStandardVehicleBody(
+                    unit: unit,
+                    carNo: carNo,
+                    onCooldown: onCooldown,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'คันที่ $carNo • บันทึกเที่ยว',
-                            style: const TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        if (unit.isBrokenReported) ...[
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFE0B2),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.car_crash_outlined,
-                                    size: 12, color: Color(0xFFE65100)),
-                                SizedBox(width: 4),
-                                Text(
-                                  'แจ้งรถเสีย',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFFE65100),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            unit.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              height: 1.12,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          unit.subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(alpha: 0.95),
-                            height: 1.15,
-                          ),
-                        ),
-                        if (unit.lapTimes.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'ล่าสุด ${unit.lapTimes.last}',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: Colors.white.withValues(alpha: 0.82),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
       ),
     );
   }
@@ -2017,14 +2178,75 @@ class _VehicleTripCountRail extends StatelessWidget {
     required this.rounds,
     required this.onCooldown,
     required this.cooldownSecondsLeft,
+    this.compact = false,
   });
 
   final int rounds;
   final bool onCooldown;
   final int cooldownSecondsLeft;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.28),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.add_circle_rounded,
+              size: 20,
+              color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              '$rounds',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
+                height: 1,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              'เที่ยว',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
+            if (onCooldown) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.timer_outlined,
+                size: 12,
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+              Text(
+                '$cooldownSecondsLeft',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: 58,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
@@ -2085,6 +2307,101 @@ class _VehicleTripCountRail extends StatelessWidget {
   }
 }
 
+class _BrokenVehicleBadge extends StatelessWidget {
+  const _BrokenVehicleBadge({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE0B2),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.car_crash_outlined,
+            size: compact ? 10 : 12,
+            color: const Color(0xFFE65100),
+          ),
+          SizedBox(width: compact ? 2 : 4),
+          Text(
+            'แจ้งรถเสีย',
+            style: TextStyle(
+              fontSize: compact ? 8.5 : 10,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFFE65100),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ชิปแสดงรอบร่อนทราย — กดค้างเพื่อลบรอบนั้น
+class _SandLapChip extends StatefulWidget {
+  const _SandLapChip({
+    required this.roundNo,
+    required this.stamp,
+    required this.onLongPress,
+  });
+
+  final int roundNo;
+  final String stamp;
+  final VoidCallback onLongPress;
+
+  @override
+  State<_SandLapChip> createState() => _SandLapChipState();
+}
+
+class _SandLapChipState extends State<_SandLapChip> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: (_) {
+        HapticFeedback.mediumImpact();
+        setState(() => _pressed = true);
+      },
+      onLongPressEnd: (_) => setState(() => _pressed = false),
+      onLongPressCancel: () => setState(() => _pressed = false),
+      onLongPress: () {
+        HapticFeedback.heavyImpact();
+        setState(() => _pressed = false);
+        widget.onLongPress();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: _pressed ? const Color(0xFFFFEBEE) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: _pressed ? const Color(0xFFEF9A9A) : const Color(0xFFDCE6F2),
+          ),
+        ),
+        child: Text(
+          'รอบ ${widget.roundNo} • ${widget.stamp}',
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: _pressed ? FontWeight.w700 : FontWeight.w500,
+            color: _pressed ? const Color(0xFFC62828) : const Color(0xFF52647B),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// วงกลมกลางการ์ดร่อนทราย — แสดงรวมจำนวนรอบ
 class _SandRoundCountHero extends StatelessWidget {
   const _SandRoundCountHero({
@@ -2137,7 +2454,7 @@ class _SandRoundCountHero extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '$rounds',
+              '${rounds < 0 ? 0 : rounds}',
               style: const TextStyle(
                 fontSize: 48,
                 fontWeight: FontWeight.w900,
@@ -2843,7 +3160,7 @@ class _SelectRow extends StatelessWidget {
             isExpanded: true,
             initialValue: row.vehicleId.isEmpty ? null : row.vehicleId,
             decoration: const InputDecoration(
-              labelText: 'รถ • คนขับประจำคัน',
+              labelText: 'รถ',
               prefixIcon: Icon(Icons.fire_truck_outlined),
               border: OutlineInputBorder(),
             ),
@@ -2852,11 +3169,7 @@ class _SelectRow extends StatelessWidget {
                   (c) => DropdownMenuItem<String>(
                     value: c,
                     child: Text(
-                      countRecordVehicleDropdownLabel(
-                        vehicleId: c,
-                        drivers: drivers,
-                        tripHistory: tripHistory,
-                      ),
+                      c,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
