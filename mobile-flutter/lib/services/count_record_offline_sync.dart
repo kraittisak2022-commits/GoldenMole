@@ -253,6 +253,26 @@ class CountRecordOfflineSync {
     return _applyQueueSync(ymd, serverRows, ops);
   }
 
+  /// รวมคิวออฟไลน์กับธุรกรรมทั้งหมด — ให้ประวัติเที่ยวรถตรงกับข้อมูลที่บันทึก
+  Future<List<AppTransaction>> mergeAllTransactionsAsync(
+    List<AppTransaction> serverRows,
+  ) async {
+    final ops = await _readQueue();
+    if (ops.isEmpty) return serverRows;
+    final byId = {for (final t in serverRows) t.id: t};
+    for (final op in ops) {
+      switch (op.type) {
+        case _PendingOpType.upsert:
+          final tx = op.transaction;
+          if (tx != null) byId[tx.id] = tx;
+        case _PendingOpType.delete:
+          final id = op.deleteId;
+          if (id != null) byId.remove(id);
+      }
+    }
+    return byId.values.toList();
+  }
+
   List<AppTransaction> _applyQueueSync(
     String ymd,
     List<AppTransaction> serverRows,
@@ -297,6 +317,44 @@ class CountRecordOfflineSync {
     await LocalDataCache.writeTransactionsForDay(ymd, merged);
   }
 
+  Future<void> _syncLocalCaches({
+    required String ymd,
+    required List<AppTransaction> mergedDayRows,
+    AppTransaction? touchedTx,
+    String? removedId,
+  }) async {
+    await _updateDayCache(ymd, mergedDayRows);
+    if (touchedTx != null) {
+      await LocalDataCache.patchTransactionInFull(touchedTx);
+    }
+    if (removedId != null && removedId.isNotEmpty) {
+      await LocalDataCache.removeTransactionFromFull(removedId);
+    }
+  }
+
+  List<AppTransaction> _mergedDayRowsAfterUpsert(
+    String ymd,
+    List<AppTransaction> dayServerRows,
+    AppTransaction transaction,
+  ) {
+    final byId = <String, AppTransaction>{
+      for (final t in dayServerRows)
+        if (t.date == ymd) t.id: t,
+    };
+    byId[transaction.id] = transaction;
+    return byId.values.toList();
+  }
+
+  List<AppTransaction> _mergedDayRowsAfterDelete(
+    String ymd,
+    List<AppTransaction> dayServerRows,
+    String id,
+  ) {
+    return dayServerRows
+        .where((t) => !(t.date == ymd && t.id == id))
+        .toList();
+  }
+
   Future<void> _persistOffline({
     required String ymd,
     required AppTransaction transaction,
@@ -310,7 +368,11 @@ class CountRecordOfflineSync {
       ),
     );
     final merged = _applyQueueSync(ymd, dayServerRows, await _readQueue());
-    await _updateDayCache(ymd, merged);
+    await _syncLocalCaches(
+      ymd: ymd,
+      mergedDayRows: merged,
+      touchedTx: transaction,
+    );
   }
 
   Future<void> _deleteOffline({
@@ -320,11 +382,15 @@ class CountRecordOfflineSync {
   }) async {
     await _enqueue(_PendingOp.delete(id: id, date: ymd));
     final merged = _applyQueueSync(ymd, dayServerRows, await _readQueue());
-    await _updateDayCache(ymd, merged);
+    await _syncLocalCaches(
+      ymd: ymd,
+      mergedDayRows: merged,
+      removedId: id,
+    );
   }
 
   /// บันทึก — ออนไลน์ส่ง server ทันที, ออฟไลน์เก็บคิว + แคชวัน
-  /// [serverOnlineHint] false = ข้ามการเช็คเน็ต (เร็วเมื่อไม่มีสัญญาณ)
+  /// [serverOnlineHint] false = บังคับ probe เน็ตก่อนตัดสินใจ
   Future<bool> persist({
     required TransactionService service,
     required SupabaseClient client,
@@ -334,7 +400,7 @@ class CountRecordOfflineSync {
     bool serverOnlineHint = true,
   }) async {
     final ymd = transaction.date;
-    if (serverOnlineHint && await isOnline(client)) {
+    if (await isOnline(client, forceProbe: !serverOnlineHint)) {
       try {
         await service.upsertTransaction(
           transaction,
@@ -346,6 +412,12 @@ class CountRecordOfflineSync {
               o.transaction?.id == transaction.id || o.deleteId == transaction.id,
         );
         await _writeQueue(ops);
+        final merged = _mergedDayRowsAfterUpsert(ymd, dayServerRows, transaction);
+        await _syncLocalCaches(
+          ymd: ymd,
+          mergedDayRows: merged,
+          touchedTx: transaction,
+        );
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.persist online failed: $e');
@@ -372,14 +444,20 @@ class CountRecordOfflineSync {
     required List<AppTransaction> dayServerRows,
     bool serverOnlineHint = true,
   }) async {
-    if (serverOnlineHint && await isOnline(client)) {
+    if (await isOnline(client, forceProbe: !serverOnlineHint)) {
       try {
-        await service.deleteTransaction(id);
+        await service.deleteTransaction(id, affectingDate: ymd);
         final ops = await _readQueue();
         ops.removeWhere(
           (o) => o.transaction?.id == id || o.deleteId == id,
         );
         await _writeQueue(ops);
+        final merged = _mergedDayRowsAfterDelete(ymd, dayServerRows, id);
+        await _syncLocalCaches(
+          ymd: ymd,
+          mergedDayRows: merged,
+          removedId: id,
+        );
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.delete online failed: $e');
@@ -421,7 +499,10 @@ class CountRecordOfflineSync {
           case _PendingOpType.delete:
             final id = op.deleteId;
             if (id == null || id.isEmpty) continue;
-            await service.deleteTransaction(id);
+            await service.deleteTransaction(
+              id,
+              affectingDate: op.date,
+            );
         }
         synced += 1;
       } catch (e) {

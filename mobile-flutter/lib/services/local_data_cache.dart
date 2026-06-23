@@ -240,6 +240,26 @@ class LocalDataCache {
     await p.setInt(_kTxAllAt, DateTime.now().millisecondsSinceEpoch);
   }
 
+  /// อัปเดต/เพิ่มรายการเดียวในแคชธุรกรรมเต็มชุด (ใช้หลังบันทึกออฟไลน์)
+  static Future<void> patchTransactionInFull(AppTransaction tx) async {
+    final existing = await readTransactionsFullAny() ?? const <AppTransaction>[];
+    final next = <AppTransaction>[
+      tx,
+      ...existing.where((t) => t.id != tx.id),
+    ];
+    await writeTransactionsFull(next);
+  }
+
+  /// ลบรายการจากแคชธุรกรรมเต็มชุด
+  static Future<void> removeTransactionFromFull(String id) async {
+    if (id.trim().isEmpty) return;
+    final existing = await readTransactionsFullAny();
+    if (existing == null) return;
+    final next = existing.where((t) => t.id != id).toList();
+    if (next.length == existing.length) return;
+    await writeTransactionsFull(next);
+  }
+
   static Future<void> invalidateTransactionsFull() async {
     final p = await _p();
     await p.remove(_kTxAllJson);

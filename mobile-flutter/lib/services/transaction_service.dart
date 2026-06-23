@@ -93,10 +93,8 @@ class TransactionService {
     await _invalidateAfterMutation(affectingDate: item.date);
   }
 
-  Future<void> deleteTransaction(String id) async {
+  Future<void> deleteTransaction(String id, {String? affectingDate}) async {
     await _client.from('transactions').delete().eq('id', id);
-    await LocalDataCache.invalidateDashboard();
-    await LocalDataCache.invalidateAllTransactionsByDay();
-    await LocalDataCache.invalidateTransactionsFull();
+    await _invalidateAfterMutation(affectingDate: affectingDate);
   }
 }

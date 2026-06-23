@@ -111,6 +111,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Timer? _cooldownTicker;
   Timer? _offlineSyncTicker;
   Timer? _dropdownRefreshTicker;
+  Timer? _parentRefreshDebounce;
   bool _isOnline = true;
   int _pendingCount = 0;
   bool _addVehiclePanelOpen = false;
@@ -136,16 +137,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   @override
   void didUpdateWidget(covariant CountRecordCounterPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.dateYmd != widget.dateYmd ||
-        oldWidget.dayTransactions != widget.dayTransactions) {
+    if (oldWidget.dateYmd != widget.dateYmd) {
+      _units.clear();
+      unawaited(_initPanel());
+    } else if (!_sameCountRecordDay(
+      oldWidget.dayTransactions,
+      widget.dayTransactions,
+      widget.dateYmd,
+    )) {
       _units.clear();
       unawaited(_initPanel());
     } else if (!oldWidget.serverOnline && widget.serverOnline) {
       unawaited(_onBackOnline());
     } else if (oldWidget.serverOnline != widget.serverOnline) {
-      if (!widget.serverOnline) {
-        CountRecordOfflineSync.instance.noteServerUnreachable();
-      }
       setState(() => _isOnline = widget.serverOnline);
       _syncDropdownRefreshTimer();
     } else if (oldWidget.employees != widget.employees) {
@@ -153,11 +157,38 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  bool _sameCountRecordDay(
+    List<AppTransaction> a,
+    List<AppTransaction> b,
+    String ymd,
+  ) {
+    if (identical(a, b)) return true;
+    String fp(List<AppTransaction> txs) {
+      final rows = txs
+          .where(
+            (t) =>
+                t.date == ymd &&
+                t.category == 'DailyLog' &&
+                (t.subCategory == 'VehicleTrip' || t.subCategory == 'Sand'),
+          )
+          .map(
+            (t) => '${t.id}|${t.perCarTrips ?? t.tripCount ?? 0}|'
+                '${t.drumsObtained ?? 0}|${(t.workAssignments?['lapTimes'] ?? const []).length}',
+          )
+          .toList()
+        ..sort();
+      return rows.join(';');
+    }
+
+    return fp(a) == fp(b);
+  }
+
   @override
   void dispose() {
     _cooldownTicker?.cancel();
     _offlineSyncTicker?.cancel();
     _dropdownRefreshTicker?.cancel();
+    _parentRefreshDebounce?.cancel();
     super.dispose();
   }
 
@@ -314,20 +345,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _refreshConnectivity() async {
-    if (!widget.serverOnline) {
-      CountRecordOfflineSync.instance.noteServerUnreachable();
-      if (mounted && _isOnline) setState(() => _isOnline = false);
-      return;
-    }
     final wasOnline = _isOnline;
-    final online = widget.serverOnline &&
-        await CountRecordOfflineSync.instance
-            .isOnline(Supabase.instance.client);
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      Supabase.instance.client,
+      forceProbe: !widget.serverOnline,
+    );
     if (mounted) setState(() => _isOnline = online);
     if (online && !wasOnline) {
       await _trySyncPending(silent: false);
       _syncDropdownRefreshTimer();
     }
+  }
+
+  void _notifyParentDataChanged() {
+    _parentRefreshDebounce?.cancel();
+    _parentRefreshDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      widget.onDataChanged?.call();
+    });
   }
 
   void _syncOfflinePollTimer() {
@@ -347,9 +382,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   Future<void> _pollOfflineQueue() async {
     if (_pendingCount == 0) return;
-    if (!widget.serverOnline) return;
-    if (!await CountRecordOfflineSync.instance
-        .isOnline(Supabase.instance.client)) {
+    if (!await CountRecordOfflineSync.instance.isOnline(
+      Supabase.instance.client,
+      forceProbe: true,
+    )) {
       return;
     }
     await _trySyncPending(silent: true);
@@ -385,13 +421,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       });
     }
     await _refreshPendingCount();
-    if (!widget.serverOnline) {
-      if (mounted) setState(() => _isOnline = false);
-      return;
-    }
-    final online = await CountRecordOfflineSync.instance
-        .isOnline(Supabase.instance.client);
-    if (mounted) setState(() => _isOnline = online);
+    await _refreshConnectivity();
   }
 
   List<AppTransaction> _effectiveDayRows() {
@@ -464,10 +494,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   AppTransaction _txFor(_CounterUnit u) {
-    final assignments = <String, List<String>>{};
-    if (u.lapTimes.isNotEmpty) {
-      assignments['lapTimes'] = List<String>.from(u.lapTimes);
-    }
+    final assignments = <String, List<String>>{
+      'lapTimes': List<String>.from(u.lapTimes),
+    };
     if (widget.mode == CounterMode.trip) {
       final r = u.rounds.toDouble();
       return AppTransaction(
@@ -485,7 +514,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         tripBillingMode: 'PerTrip',
         tripCount: r,
         perCarTrips: r,
-        workAssignments: assignments.isEmpty ? null : assignments,
+        workAssignments: assignments,
       );
     }
     return AppTransaction(
@@ -498,7 +527,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       amount: 0,
       note: 'ร่อนทรายโดย ${widget.currentAdmin.displayName}',
       drumsObtained: u.rounds.toDouble(),
-      workAssignments: assignments.isEmpty ? null : assignments,
+      workAssignments: assignments,
     );
   }
 
@@ -510,16 +539,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       transaction: _txFor(u),
       omitCreatedAt: wasPersisted,
       dayServerRows: _effectiveDayRows(),
-      serverOnlineHint: widget.serverOnline,
+      serverOnlineHint: _isOnline,
     );
     u.persisted = true;
-    if (!widget.serverOnline) {
-      if (mounted) setState(() => _isOnline = false);
-      await _refreshPendingCount();
-    } else {
-      await _refreshConnectivity();
-      await _refreshPendingCount();
-    }
+    await _refreshConnectivity();
+    await _refreshPendingCount();
+    _notifyParentDataChanged();
     return queued;
   }
 
@@ -652,8 +677,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     setState(() {
       u.busy = true;
       u.lapTimes.removeAt(lapIndex);
-      u.rounds = u.rounds > u.lapTimes.length ? u.rounds - 1 : u.lapTimes.length;
-      if (u.rounds < 0) u.rounds = 0;
+      u.rounds = u.lapTimes.isEmpty
+          ? 0
+          : (u.rounds > u.lapTimes.length ? u.rounds - 1 : u.lapTimes.length);
     });
     try {
       await _save(u);
@@ -722,15 +748,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           id: u.txId,
           ymd: widget.dateYmd,
           dayServerRows: _effectiveDayRows(),
-          serverOnlineHint: widget.serverOnline,
+          serverOnlineHint: _isOnline,
         );
-        if (!widget.serverOnline) {
-          if (mounted) setState(() => _isOnline = false);
-          await _refreshPendingCount();
-        } else {
-          await _refreshConnectivity();
-          await _refreshPendingCount();
-        }
+        await _refreshConnectivity();
+        await _refreshPendingCount();
+        _notifyParentDataChanged();
       }
       if (mounted) {
         setState(() => _units.remove(u));
@@ -1264,8 +1286,20 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   bool get _interactionsEnabled =>
       !_dragging && _revealed == _SwipeRevealSide.none;
 
+  bool get _showEditAction =>
+      _revealed == _SwipeRevealSide.edit ||
+      (_dragging && _offset >= _actionWidth * 0.22);
+  bool get _showDeleteAction =>
+      _revealed == _SwipeRevealSide.delete ||
+      (_dragging && _offset <= -_actionWidth * 0.22);
+
+  void _setStateIfMounted(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
   void _snap({required _SwipeRevealSide side}) {
-    setState(() {
+    _setStateIfMounted(() {
       _revealed = side;
       _offset = switch (side) {
         _SwipeRevealSide.delete => -_actionWidth,
@@ -1276,50 +1310,30 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
     });
   }
 
-  void _onPointerMove(PointerMoveEvent event) {
-    final dx = event.delta.dx;
-    final dy = event.delta.dy;
-    if (!_dragging) {
-      if (dx.abs() < 4 || dx.abs() <= dy.abs()) return;
-      if (dx < 0 || _revealed == _SwipeRevealSide.delete) {
-        setState(() => _dragging = true);
-      } else if (dx > 0 || _revealed == _SwipeRevealSide.edit) {
-        setState(() => _dragging = true);
-      }
-    }
-    if (!_dragging) return;
-    setState(() {
-      _offset = (_offset + dx).clamp(-_actionWidth, _actionWidth);
+  void _onHorizontalDragStart(DragStartDetails details) {
+    _setStateIfMounted(() => _dragging = true);
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (!mounted) return;
+    _setStateIfMounted(() {
+      _offset = (_offset + details.delta.dx).clamp(-_actionWidth, _actionWidth);
     });
   }
 
-  void _onPointerUp() {
-    if (_dragging) {
-      if (_offset <= -_actionWidth / 2) {
-        _snap(side: _SwipeRevealSide.delete);
-      } else if (_offset >= _actionWidth / 2) {
-        _snap(side: _SwipeRevealSide.edit);
-      } else {
-        _snap(side: _SwipeRevealSide.none);
-      }
-      return;
-    }
-    if (_revealed != _SwipeRevealSide.none) {
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (!mounted) return;
+    final velocity = details.primaryVelocity ?? 0;
+    if (_offset <= -_actionWidth / 2 || velocity < -280) {
+      _snap(side: _SwipeRevealSide.delete);
+    } else if (_offset >= _actionWidth / 2 || velocity > 280) {
+      _snap(side: _SwipeRevealSide.edit);
+    } else {
       _snap(side: _SwipeRevealSide.none);
     }
   }
 
-  void _onPointerCancel() {
-    if (_dragging) {
-      if (_offset <= -_actionWidth / 2) {
-        _snap(side: _SwipeRevealSide.delete);
-      } else if (_offset >= _actionWidth / 2) {
-        _snap(side: _SwipeRevealSide.edit);
-      } else {
-        _snap(side: _SwipeRevealSide.none);
-      }
-      return;
-    }
+  void _onTap() {
     if (_revealed != _SwipeRevealSide.none) {
       _snap(side: _SwipeRevealSide.none);
     }
@@ -1397,22 +1411,25 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
                   ],
                 ),
               ),
-              Listener(
+              GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: (_) => _dragging = false,
-                onPointerMove: _onPointerMove,
-                onPointerUp: (_) => _onPointerUp(),
-                onPointerCancel: (_) => _onPointerCancel(),
+                onTap: _onTap,
+                onHorizontalDragStart: _onHorizontalDragStart,
+                onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                onHorizontalDragEnd: _onHorizontalDragEnd,
                 child: AnimatedContainer(
                   duration: _dragging
                       ? Duration.zero
                       : const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
                   transform: Matrix4.translationValues(offset, 0, 0),
-                  child: widget.childBuilder(_interactionsEnabled),
+                  child: IgnorePointer(
+                    ignoring: !_interactionsEnabled,
+                    child: widget.childBuilder(_interactionsEnabled),
+                  ),
                 ),
               ),
-              if (_revealed == _SwipeRevealSide.edit)
+              if (_showEditAction)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -1425,7 +1442,7 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
                     onTap: _onEditTap,
                   ),
                 ),
-              if (_revealed == _SwipeRevealSide.delete)
+              if (_showDeleteAction)
                 Positioned(
                   right: 0,
                   top: 0,
@@ -1863,6 +1880,19 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   void dispose() {
     _holdTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VehicleRecordButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.interactionsEnabled && !widget.interactionsEnabled) {
+      _holdTimer?.cancel();
+      _holdTimer = null;
+      _pointerDownAt = null;
+      _holdTriggered = false;
+      _releasePress();
+      if (mounted) setState(() => _holdProgress = 0);
+    }
   }
 
   void _startHoldTimer() {

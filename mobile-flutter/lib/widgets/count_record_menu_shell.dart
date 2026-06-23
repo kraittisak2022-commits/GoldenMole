@@ -5,16 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-/// กรอบเมนู «บันทึกและนับจำนวน» — ปัดซ้ายกลับเมนูหลัก + ประหยัดพลังงาน
+/// กรอบเมนู «บันทึกและนับจำนวน» — ประหยัดพลังงาน (หน้าจอไม่ดับ)
 class CountRecordMenuShell extends StatefulWidget {
   const CountRecordMenuShell({
     super.key,
     required this.child,
-    required this.onSwipeBack,
   });
 
   final Widget child;
-  final VoidCallback onSwipeBack;
 
   @override
   State<CountRecordMenuShell> createState() => _CountRecordMenuShellState();
@@ -145,17 +143,6 @@ class _CountRecordMenuShellState extends State<CountRecordMenuShell>
       _powerState = _PowerState.active;
       _lastActivity = DateTime.now();
     });
-  }
-
-  double _dragDx = 0;
-
-  void _trySwipeBack(DragEndDetails details) {
-    if (_powerState == _PowerState.sleeping) return;
-    final velocity = details.primaryVelocity ?? 0;
-    if (_dragDx < -72 || velocity < -280) {
-      widget.onSwipeBack();
-    }
-    _dragDx = 0;
   }
 
   Widget _buildDimOverlay() {
@@ -467,35 +454,29 @@ class _CountRecordMenuShellState extends State<CountRecordMenuShell>
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _noteActivity(),
       onPointerMove: (_) => _noteActivity(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onHorizontalDragStart: (_) => _dragDx = 0,
-        onHorizontalDragUpdate: (d) => _dragDx += d.delta.dx,
-        onHorizontalDragEnd: _trySwipeBack,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            widget.child,
-            IgnorePointer(
-              ignoring: !dimmed,
-              child: AnimatedOpacity(
-                opacity: dimmed ? 1 : 0,
-                duration: const Duration(milliseconds: 650),
-                curve: Curves.easeInOut,
-                child: _buildDimOverlay(),
-              ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          widget.child,
+          IgnorePointer(
+            ignoring: !dimmed,
+            child: AnimatedOpacity(
+              opacity: dimmed ? 1 : 0,
+              duration: const Duration(milliseconds: 650),
+              curve: Curves.easeInOut,
+              child: _buildDimOverlay(),
             ),
-            IgnorePointer(
-              ignoring: !sleeping,
-              child: AnimatedOpacity(
-                opacity: sleeping ? 1 : 0,
-                duration: const Duration(milliseconds: 450),
-                curve: Curves.easeInOut,
-                child: _buildSleepOverlay(),
-              ),
+          ),
+          IgnorePointer(
+            ignoring: !sleeping,
+            child: AnimatedOpacity(
+              opacity: sleeping ? 1 : 0,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOut,
+              child: _buildSleepOverlay(),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

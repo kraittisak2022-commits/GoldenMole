@@ -340,10 +340,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       dayKey,
       <AppTransaction>[...dayRows, ...overlappingLeave],
     );
+    final allTransactions =
+        await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(allRows);
     return _HomePayload(
       summary: summary,
       dayTransactions: dayTransactions,
-      allTransactions: allRows,
+      allTransactions: allTransactions,
       employees: employees,
     );
   }
@@ -438,7 +440,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
     final client = Supabase.instance.client;
     final dayKey = _dateKey(_selectedDay);
-    final online = await CountRecordOfflineSync.instance.isOnline(client);
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      client,
+      forceProbe: forceRefresh,
+    );
 
     if (mounted) {
       if (online != _serverOnline) {
@@ -482,6 +487,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     setState(() {
       _homeFuture = _futureWithSnapshot(_loadHome(forceRefresh: true));
     });
+  }
+
+  /// อัปเดตข้อมูลหลังบันทึกในเมนูนับจำนวน — ไม่ปิดเมนูย่อย
+  Future<void> _refreshAfterCountRecordChange() async {
+    final client = Supabase.instance.client;
+    try {
+      await CountRecordOfflineSync.instance
+          .uploadPendingImmediately(_txService, client)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {}
+    if (!mounted) return;
+    final nextHomeFuture = _futureWithSnapshot(_loadHome(forceRefresh: true));
+    setState(() {
+      _homeFuture = nextHomeFuture;
+    });
+    await _homeFuture;
   }
 
   String _dateKey(DateTime d) {
@@ -737,6 +758,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       serverOnline: _serverOnline,
                                       selectedDay: _selectedDay,
                                       onPullRefresh: _pullRefresh,
+                                      onCountRecordDataChanged:
+                                          _refreshAfterCountRecordChange,
                                       onPickDay: _pickDay,
                                       dateKey: _dateKey,
                                       formatBuddhistDateButton:
@@ -848,7 +871,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _pullRefresh() async {
     final client = Supabase.instance.client;
-    final online = await CountRecordOfflineSync.instance.isOnline(client);
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      client,
+      forceProbe: true,
+    );
     if (online) {
       await CountRecordOfflineSync.instance.uploadPendingImmediately(
         _txService,
@@ -1023,6 +1049,7 @@ class _DailyHomeContent extends StatefulWidget {
     required this.serverOnline,
     required this.selectedDay,
     required this.onPullRefresh,
+    required this.onCountRecordDataChanged,
     required this.onPickDay,
     required this.dateKey,
     required this.formatBuddhistDateButton,
@@ -1036,6 +1063,7 @@ class _DailyHomeContent extends StatefulWidget {
   final bool serverOnline;
   final DateTime selectedDay;
   final Future<void> Function() onPullRefresh;
+  final Future<void> Function() onCountRecordDataChanged;
   final VoidCallback onPickDay;
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
@@ -1093,9 +1121,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       _entranceController
         ..reset()
         ..forward();
-    }
-    if (oldWidget.serverOnline && !widget.serverOnline) {
-      setState(() => _countAndRecordMenuOpen = false);
     }
     if (!oldWidget.serverOnline &&
         widget.serverOnline &&
@@ -1229,7 +1254,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       tripHistoryTransactions: widget.data.allTransactions,
                       embedded: true,
                       serverOnline: widget.serverOnline,
-                      onDataChanged: widget.onPullRefresh,
+                      onDataChanged: () {
+                        unawaited(widget.onCountRecordDataChanged());
+                      },
                     ),
                   );
                 }
@@ -1254,7 +1281,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 );
 
                 return CountRecordMenuShell(
-                  onSwipeBack: backToMainMenu,
                   child: Padding(
                   padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
                   child: Column(
@@ -1263,30 +1289,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       Row(
                         children: [
                           Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'บันทึกและนับจำนวน',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: const Color(0xFF1A2433),
-                                      ),
-                                ),
-                                Text(
-                                  'ปัดซ้ายเพื่อกลับเมนูหลัก',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF94A3B8),
-                                      ),
-                                ),
-                              ],
+                            child: Text(
+                              'บันทึกและนับจำนวน',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF1A2433),
+                                  ),
                             ),
                           ),
                           const Spacer(),
