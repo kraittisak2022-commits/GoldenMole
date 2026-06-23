@@ -50,7 +50,16 @@ class LocalDataCache {
   static Future<List<Employee>?> readEmployees(Duration ttl) async {
     final p = await _p();
     if (!_withinTtl(ttl, p.getInt(_kEmpAt))) return null;
-    final raw = p.getString(_kEmpJson);
+    return _decodeEmployees(p.getString(_kEmpJson));
+  }
+
+  /// อ่านแคชพนักงานแม้ TTL หมด — ใช้ตอนออฟไลน์
+  static Future<List<Employee>?> readEmployeesAny() async {
+    final p = await _p();
+    return _decodeEmployees(p.getString(_kEmpJson));
+  }
+
+  static List<Employee>? _decodeEmployees(String? raw) {
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -81,7 +90,16 @@ class LocalDataCache {
   static Future<DashboardSummary?> readDashboard(Duration ttl) async {
     final p = await _p();
     if (!_withinTtl(ttl, p.getInt(_kDashAt))) return null;
-    final raw = p.getString(_kDashJson);
+    return _decodeDashboard(p.getString(_kDashJson));
+  }
+
+  /// อ่านแคชสรุปแดชบอร์ดแม้ TTL หมด — ใช้ตอนออฟไลน์
+  static Future<DashboardSummary?> readDashboardAny() async {
+    final p = await _p();
+    return _decodeDashboard(p.getString(_kDashJson));
+  }
+
+  static DashboardSummary? _decodeDashboard(String? raw) {
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -144,7 +162,16 @@ class LocalDataCache {
     final p = await _p();
     final atKey = _txDayAtKey(ymd);
     if (!_withinTtl(ttl, p.getInt(atKey))) return null;
-    final raw = p.getString(_txDayJsonKey(ymd));
+    return _decodeTransactionsForDay(p.getString(_txDayJsonKey(ymd)), ymd);
+  }
+
+  /// อ่านธุรกรรมรายวันแม้ TTL หมด — ใช้ตอนออฟไลน์
+  static Future<List<AppTransaction>?> readTransactionsForDayAny(String ymd) async {
+    final p = await _p();
+    return _decodeTransactionsForDay(p.getString(_txDayJsonKey(ymd)), ymd);
+  }
+
+  static List<AppTransaction>? _decodeTransactionsForDay(String? raw, String ymd) {
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -180,7 +207,16 @@ class LocalDataCache {
   static Future<List<AppTransaction>?> readTransactionsFull(Duration ttl) async {
     final p = await _p();
     if (!_withinTtl(ttl, p.getInt(_kTxAllAt))) return null;
-    final raw = p.getString(_kTxAllJson);
+    return _decodeTransactionsFull(p.getString(_kTxAllJson));
+  }
+
+  /// อ่านธุรกรรมทั้งหมดแม้ TTL หมด — ใช้ตอนออฟไลน์
+  static Future<List<AppTransaction>?> readTransactionsFullAny() async {
+    final p = await _p();
+    return _decodeTransactionsFull(p.getString(_kTxAllJson));
+  }
+
+  static List<AppTransaction>? _decodeTransactionsFull(String? raw) {
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);

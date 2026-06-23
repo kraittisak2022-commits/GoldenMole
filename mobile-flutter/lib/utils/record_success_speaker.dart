@@ -44,9 +44,9 @@ class RecordSuccessSpeaker {
       await tts.setSpeechRate(0.46);
       await tts.setPitch(1.08);
       await tts.awaitSpeakCompletion(false);
-      await _trySetThaiLanguage(tts);
       _tts = tts;
       _ready = true;
+      await _trySetThaiLanguage(tts);
     } on MissingPluginException catch (e, st) {
       debugPrint('RecordSuccessSpeaker: plugin missing — $e\n$st');
       _unavailable = true;
@@ -65,9 +65,9 @@ class RecordSuccessSpeaker {
       try {
         await tts.setLanguage(code);
         return;
-      } on MissingPluginException {
-        rethrow;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('RecordSuccessSpeaker: setLanguage($code) skipped — $e');
+      }
     }
   }
 

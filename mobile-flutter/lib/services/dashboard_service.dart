@@ -33,30 +33,36 @@ class DashboardService {
       if (cached != null) return cached;
     }
 
-    final employeeCount = await _countRows('employees');
-    final transactionCount = await _countRows('transactions');
-    final projectCount = await _countRows('land_projects');
-    final totalRevenue = await _sumTransactionsByType('income');
-    final totalExpense = await _sumTransactionsByType('expense');
+    try {
+      final employeeCount = await _countRows('employees');
+      final transactionCount = await _countRows('transactions');
+      final projectCount = await _countRows('land_projects');
+      final totalRevenue = await _sumTransactionsByType('income');
+      final totalExpense = await _sumTransactionsByType('expense');
 
-    String appName = 'Construction Management';
-    final settingsRows = await _client.from('app_settings').select('app_name').eq('id', 'default').limit(1);
-    if (settingsRows.isNotEmpty) {
-      final rawName = settingsRows.first['app_name'];
-      if (rawName != null && rawName.toString().trim().isNotEmpty) {
-        appName = rawName.toString();
+      String appName = 'Construction Management';
+      final settingsRows = await _client.from('app_settings').select('app_name').eq('id', 'default').limit(1);
+      if (settingsRows.isNotEmpty) {
+        final rawName = settingsRows.first['app_name'];
+        if (rawName != null && rawName.toString().trim().isNotEmpty) {
+          appName = rawName.toString();
+        }
       }
-    }
 
-    final summary = DashboardSummary(
-      employeeCount: employeeCount,
-      transactionCount: transactionCount,
-      projectCount: projectCount,
-      totalRevenue: totalRevenue,
-      totalExpense: totalExpense,
-      appName: appName,
-    );
-    await LocalDataCache.writeDashboard(summary);
-    return summary;
+      final summary = DashboardSummary(
+        employeeCount: employeeCount,
+        transactionCount: transactionCount,
+        projectCount: projectCount,
+        totalRevenue: totalRevenue,
+        totalExpense: totalExpense,
+        appName: appName,
+      );
+      await LocalDataCache.writeDashboard(summary);
+      return summary;
+    } catch (_) {
+      final stale = await LocalDataCache.readDashboardAny();
+      if (stale != null) return stale;
+      rethrow;
+    }
   }
 }

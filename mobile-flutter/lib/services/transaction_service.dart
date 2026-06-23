@@ -23,10 +23,16 @@ class TransactionService {
       if (cached != null) return cached;
     }
 
-    final rows = await _client.from('transactions').select().order('created_at', ascending: false);
-    final list = rows.map(AppTransaction.fromMap).toList();
-    await LocalDataCache.writeTransactionsFull(list);
-    return list;
+    try {
+      final rows = await _client.from('transactions').select().order('created_at', ascending: false);
+      final list = rows.map(AppTransaction.fromMap).toList();
+      await LocalDataCache.writeTransactionsFull(list);
+      return list;
+    } catch (_) {
+      final stale = await LocalDataCache.readTransactionsFullAny();
+      if (stale != null) return stale;
+      rethrow;
+    }
   }
 
   Future<List<AppTransaction>> fetchRecentTransactions({int limit = 10}) async {
@@ -50,14 +56,20 @@ class TransactionService {
       if (cached != null) return cached;
     }
 
-    final rows = await _client
-        .from('transactions')
-        .select()
-        .eq('date', ymd)
-        .order('created_at', ascending: false);
-    final list = rows.map(AppTransaction.fromMap).toList();
-    await LocalDataCache.writeTransactionsForDay(ymd, list);
-    return list;
+    try {
+      final rows = await _client
+          .from('transactions')
+          .select()
+          .eq('date', ymd)
+          .order('created_at', ascending: false);
+      final list = rows.map(AppTransaction.fromMap).toList();
+      await LocalDataCache.writeTransactionsForDay(ymd, list);
+      return list;
+    } catch (_) {
+      final stale = await LocalDataCache.readTransactionsForDayAny(ymd);
+      if (stale != null) return stale;
+      rethrow;
+    }
   }
 
   Future<void> upsertTransaction(

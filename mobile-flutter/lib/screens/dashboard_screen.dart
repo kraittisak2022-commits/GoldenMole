@@ -11,6 +11,7 @@ import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
 import '../services/count_record_offline_sync.dart';
+import '../services/local_data_cache.dart';
 import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
@@ -131,7 +132,19 @@ const List<_DailyModuleDef> _kDailyModules = [
   ),
 ];
 
-/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู» — บันทึกการร่อนทราย, น้ำมัน, ค่าแรง, เหตุการณ์, การใช้รถแม็คโคร
+/// หมวดเมนูที่บันทึกออฟไลน์ได้ (ผ่าน «บันทึกและนับจำนวน»)
+const _kOfflineCapableModuleCategories = {
+  'จำนวนเที่ยวรถ',
+  'บันทึกการร่อนทราย',
+};
+
+bool _isOfflineCapableModule(String category) =>
+    _kOfflineCapableModuleCategories.contains(category);
+
+/// เมนูบนหน้าแรกที่แสดงตอนไม่มีเน็ต — เฉพาะ «บันทึกและนับจำนวน»
+const _kOfflineHomeShowsCountRecordOnly = true;
+
+/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู»
 /// และเมนู **ทรายที่ล้างที่บ้าน** เมื่อวันนั้นในบันทึกการทำงานมีคนในกล่อง canvas งานที่บ้าน (`washHome` และคีย์รวมย้อนหลัง)
 bool _laborWorkRecordAssignsWashHome(Iterable<AppTransaction> dayTransactions) {
   for (final t in dayTransactions) {
@@ -200,6 +213,34 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _navRailOpen = true;
   double _edgeSwipeAccum = 0;
   Timer? _navRailIntroTimer;
+  Timer? _connectivityProbeTimer;
+
+  void _syncConnectivityProbe() {
+    if (_serverOnline) {
+      _connectivityProbeTimer?.cancel();
+      _connectivityProbeTimer = null;
+      return;
+    }
+    unawaited(_probeBackOnline());
+    _connectivityProbeTimer ??= Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_probeBackOnline()),
+    );
+  }
+
+  Future<void> _probeBackOnline() async {
+    if (!mounted || _serverOnline) return;
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      Supabase.instance.client,
+      forceProbe: true,
+    );
+    if (!online || !mounted) return;
+    await CountRecordOfflineSync.instance.uploadPendingImmediately(
+      _txService,
+      Supabase.instance.client,
+    );
+    if (mounted) _refreshHome();
+  }
 
   @override
   void initState() {
@@ -256,6 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.removeObserver(this);
     CountRecordOfflineSync.instance.stopAutoSync();
     _navRailIntroTimer?.cancel();
+    _connectivityProbeTimer?.cancel();
     super.dispose();
   }
 
@@ -272,7 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _syncCountRecordQueueThenRefresh() async {
-    final synced = await CountRecordOfflineSync.instance.syncPendingIfPossible(
+    final synced = await CountRecordOfflineSync.instance.uploadPendingImmediately(
       _txService,
       Supabase.instance.client,
     );
@@ -282,51 +324,127 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  Future<_HomePayload> _composeHomePayload({
+    required DashboardSummary summary,
+    required List<AppTransaction> dayRows,
+    required List<AppTransaction> allRows,
+    required List<Employee> employees,
+    required String dayKey,
+  }) async {
+    final seen = dayRows.map((e) => e.id).toSet();
+    final overlappingLeave = allRows.where(
+      (t) => laborLeaveCoversCalendarDay(t, dayKey) && !seen.contains(t.id),
+    );
+    final dayTransactions = await CountRecordOfflineSync.instance.mergeForDayAsync(
+      dayKey,
+      <AppTransaction>[...dayRows, ...overlappingLeave],
+    );
+    return _HomePayload(
+      summary: summary,
+      dayTransactions: dayTransactions,
+      allTransactions: allRows,
+      employees: employees,
+    );
+  }
+
+  Future<_HomePayload?> _loadHomeFromLocalCache(String dayKey) async {
+    final summary = await LocalDataCache.readDashboardAny();
+    final dayRows =
+        await LocalDataCache.readTransactionsForDayAny(dayKey) ?? const [];
+    final employees = await LocalDataCache.readEmployeesAny() ?? const [];
+    final allRows =
+        await LocalDataCache.readTransactionsFullAny() ?? dayRows;
+    if (summary == null && dayRows.isEmpty && employees.isEmpty) {
+      return null;
+    }
+    if (employees.isNotEmpty) {
+      unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
+    }
+    return _composeHomePayload(
+      summary: summary ??
+          const DashboardSummary(
+            employeeCount: 0,
+            transactionCount: 0,
+            projectCount: 0,
+            totalRevenue: 0,
+            totalExpense: 0,
+            appName: 'Construction Management',
+          ),
+      dayRows: dayRows,
+      allRows: allRows,
+      employees: employees,
+      dayKey: dayKey,
+    );
+  }
+
   Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
+    final client = Supabase.instance.client;
+    final dayKey = _dateKey(_selectedDay);
+    final online = await CountRecordOfflineSync.instance.isOnline(client);
+
+    if (mounted) {
+      if (online != _serverOnline) {
+        setState(() => _serverOnline = online);
+      }
+      _syncConnectivityProbe();
+    }
+
+    if (online) {
+      try {
+        await CountRecordOfflineSync.instance.uploadPendingImmediately(
+          _txService,
+          client,
+        );
+      } catch (_) {}
+      CountRecordOfflineSync.instance.noteServerReachable();
+    } else {
+      CountRecordOfflineSync.instance.noteServerUnreachable();
+    }
+
+    final networkRefresh = forceRefresh && online;
+
     try {
-      await CountRecordOfflineSync.instance.syncPendingIfPossible(
-        _txService,
-        Supabase.instance.client,
-      );
-      final employeeService = EmployeeService(Supabase.instance.client);
+      final employeeService = EmployeeService(client);
       final results = await Future.wait([
-        widget.dashboardService.fetchSummary(forceRefresh: forceRefresh),
+        widget.dashboardService.fetchSummary(forceRefresh: networkRefresh),
         _txService.fetchTransactionsForDate(
-          _dateKey(_selectedDay),
-          forceRefresh: forceRefresh,
+          dayKey,
+          forceRefresh: networkRefresh,
         ),
-        employeeService.fetchEmployees(forceRefresh: forceRefresh),
+        employeeService.fetchEmployees(forceRefresh: networkRefresh),
       ]);
       final summary = results[0] as DashboardSummary;
       final dayRows = results[1] as List<AppTransaction>;
       final employees = results[2] as List<Employee>;
-      final dayKey = _dateKey(_selectedDay);
       final allRows =
-          await _txService.fetchTransactions(forceRefresh: forceRefresh);
-      final seen = dayRows.map((e) => e.id).toSet();
-      final overlappingLeave = allRows.where(
-        (t) =>
-            laborLeaveCoversCalendarDay(t, dayKey) && !seen.contains(t.id),
-      );
-      final dayTransactions = <AppTransaction>[
-        ...dayRows,
-        ...overlappingLeave,
-      ];
-      if (mounted && !_serverOnline) {
-        setState(() => _serverOnline = true);
+          await _txService.fetchTransactions(forceRefresh: networkRefresh);
+      if (online) {
+        unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
+        unawaited(
+          CountRecordOfflineSync.instance.loadDropdownCatalog(
+            client: client,
+            employeeService: employeeService,
+            widgetEmployees: employees,
+            serverOnlineHint: true,
+            forceNetwork: networkRefresh,
+          ),
+        );
       }
-      CountRecordOfflineSync.instance.noteServerReachable();
-      return _HomePayload(
+      return _composeHomePayload(
         summary: summary,
-        dayTransactions: dayTransactions,
-        allTransactions: allRows,
+        dayRows: dayRows,
+        allRows: allRows,
         employees: employees,
+        dayKey: dayKey,
       );
     } catch (_) {
       CountRecordOfflineSync.instance.noteServerUnreachable();
       if (mounted && _serverOnline) {
         setState(() => _serverOnline = false);
       }
+      if (mounted) _syncConnectivityProbe();
+      final fallback = await _loadHomeFromLocalCache(dayKey);
+      if (fallback != null) return fallback;
       rethrow;
     }
   }
@@ -396,6 +514,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _openQuickInput(_DailyModuleDef m) {
+    if (!_serverOnline && !_isOfflineCapableModule(m.category)) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'ไม่มีเน็ต — ใช้เมนู «บันทึกและนับจำนวน» เท่านั้น',
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
     HapticFeedback.lightImpact();
     _openWithAnimation(
       QuickInputScreen(
@@ -689,16 +818,24 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _pullRefresh() async {
-    await CountRecordOfflineSync.instance.syncPendingIfPossible(
-      _txService,
-      Supabase.instance.client,
-    );
+    final client = Supabase.instance.client;
+    final online = await CountRecordOfflineSync.instance.isOnline(client);
+    if (online) {
+      await CountRecordOfflineSync.instance.uploadPendingImmediately(
+        _txService,
+        client,
+      );
+    }
     if (!mounted) return;
-    setState(
-      () => _homeFuture = _futureWithSnapshot(
-        _loadHome(forceRefresh: true),
-      ),
+    if (online != _serverOnline) {
+      setState(() => _serverOnline = online);
+    }
+    final nextHomeFuture = _futureWithSnapshot(
+      _loadHome(forceRefresh: online),
     );
+    setState(() {
+      _homeFuture = nextHomeFuture;
+    });
     await _homeFuture;
   }
 
@@ -928,6 +1065,17 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ..reset()
         ..forward();
     }
+    if (oldWidget.serverOnline && !widget.serverOnline) {
+      setState(() => _countAndRecordMenuOpen = false);
+    }
+    if (!oldWidget.serverOnline &&
+        widget.serverOnline &&
+        !_countAndRecordMenuOpen) {
+      _gridEntranceCompleted = false;
+      _entranceController
+        ..reset()
+        ..forward();
+    }
   }
 
   @override
@@ -942,6 +1090,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final useLiteAnimations = _reduceMotion;
     final l10n = AppLocalizations.of(context);
     final localeScope = AppLocaleScope.of(context);
+    final offlineMode = !widget.serverOnline;
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? l10n.formatShortDateFromYmd(
@@ -1014,7 +1163,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               if (_countAndRecordMenuOpen) {
                 void backToMainMenu() {
                   setState(() => _countAndRecordMenuOpen = false);
-                  widget.onPullRefresh();
+                  if (!offlineMode) widget.onPullRefresh();
                 }
 
                 final dayKeyStr = widget.dateKey(widget.selectedDay);
@@ -1094,6 +1243,40 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           const Spacer(),
+                          if (offlineMode)
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3E0),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: const Color(0xFFFFCC80),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(
+                                    Icons.cloud_off_outlined,
+                                    size: 16,
+                                    color: Color(0xFFE65100),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'โหมดออฟไลน์',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFFE65100),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           TextButton(
                             onPressed: backToMainMenu,
                             style: TextButton.styleFrom(
@@ -1108,13 +1291,24 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 side: const BorderSide(color: Color(0xFFD9E1EC)),
                               ),
                             ),
-                            child: const Text(
-                              'กลับเมนูหลัก',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                            child: Text(
+                              offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ),
                         ],
                       ),
+                      if (offlineMode) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'แสดงเฉพาะเมนูที่บันทึกในเครื่องได้ — จะอัปโหลดเมื่อมีเน็ต',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF6B7280),
+                                height: 1.3,
+                              ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Expanded(
                         child: portrait
@@ -1138,7 +1332,66 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 );
               }
 
-              final visibleModules = _kDailyModules;
+              if (offlineMode &&
+                  _kOfflineHomeShowsCountRecordOnly &&
+                  !_countAndRecordMenuOpen) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFFFCC80)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.cloud_off_outlined,
+                              size: 20,
+                              color: Color(0xFFE65100),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'โหมดออฟไลน์ — แตะการ์ดด้านล่างเพื่อเลือกเมนูบันทึก',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF6B4C2E),
+                                      height: 1.35,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: _CountRecordEntryCard(
+                          onTap: () {
+                            setState(() => _countAndRecordMenuOpen = true);
+                            unawaited(RecordSuccessSpeaker.instance.warmUp());
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final visibleModules = offlineMode && _kOfflineHomeShowsCountRecordOnly
+                  ? const <_DailyModuleDef>[]
+                  : _kDailyModules;
+              final gridItemCount = visibleModules.length + 1;
               const gap = 10.0;
               const sideInset = 2.0;
               final mq = MediaQuery.sizeOf(context);
@@ -1158,18 +1411,16 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final layoutW = rawW.isFinite && rawW > 0
                   ? rawW
                   : safeMq;
-              // Defensive: some ancestors can report an absurd finite maxWidth.
               final w =
                   layoutW > safeMq ? safeMq : layoutW;
               final rawMaxH = constraints.maxHeight;
-              // clamp(lower, upper) throws when maxHeight < 120 (e.g. tight layout / animation frame).
               final availH = !rawMaxH.isFinite
                   ? 120.0
                   : rawMaxH <= 0
                       ? 1.0
                       : rawMaxH;
               final rows =
-                  (visibleModules.length / cross).ceil().clamp(1, 12);
+                  (gridItemCount / cross).ceil().clamp(1, 12);
               final usableWidth = w - (sideInset * 2);
               final cellWidth =
                   (usableWidth - (gap * (cross - 1))) / cross;
@@ -1215,7 +1466,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   addRepaintBoundaries: true,
                   cacheExtent:
                       menuScrolls ? (cellHeight * cacheRows + gap * 2) : 0,
-                  itemCount: visibleModules.length + 1,
+                  itemCount: gridItemCount,
                   gridDelegate:
                       SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: cross,
@@ -1303,31 +1554,34 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FadeTransition(
-                opacity: headerAnim,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, -0.08),
-                    end: Offset.zero,
-                  ).animate(headerAnim),
-                  child: _HomeHeaderCompact(
-                    appName: widget.data.summary.appName,
-                    lastLabel: lastLabel,
-                    serverOnline: widget.serverOnline,
-                    selectedDateLabel: l10n.formatSelectedDate(
-                      widget.selectedDay,
+              if (!_countAndRecordMenuOpen) ...[
+                FadeTransition(
+                  opacity: headerAnim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, -0.08),
+                      end: Offset.zero,
+                    ).animate(headerAnim),
+                    child: _HomeHeaderCompact(
+                      appName: widget.data.summary.appName,
+                      lastLabel: lastLabel,
+                      serverOnline: widget.serverOnline,
+                      selectedDateLabel: l10n.formatSelectedDate(
+                        widget.selectedDay,
+                      ),
+                      doneCount: offlineMode ? 0 : doneCount,
+                      incompleteMenuCount: offlineMode ? 0 : incompleteCount,
+                      totalCount: offlineMode ? 0 : headerTotalMenuCount,
+                      hideMenuProgress: offlineMode,
+                      onPickDay: widget.onPickDay,
+                      onRefresh: widget.onPullRefresh,
+                      locale: localeScope.locale,
+                      onLocaleChanged: localeScope.onLocaleChanged,
                     ),
-                    doneCount: doneCount,
-                    incompleteMenuCount: incompleteCount,
-                    totalCount: headerTotalMenuCount,
-                    onPickDay: widget.onPickDay,
-                    onRefresh: widget.onPullRefresh,
-                    locale: localeScope.locale,
-                    onLocaleChanged: localeScope.onLocaleChanged,
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               Expanded(
                 child: _gridEntranceCompleted
                     ? dailyMenuPanel
@@ -1656,6 +1910,7 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.doneCount,
     required this.incompleteMenuCount,
     required this.totalCount,
+    this.hideMenuProgress = false,
     required this.onPickDay,
     required this.onRefresh,
     required this.locale,
@@ -1669,6 +1924,7 @@ class _HomeHeaderCompact extends StatelessWidget {
   final int doneCount;
   final int incompleteMenuCount;
   final int totalCount;
+  final bool hideMenuProgress;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
   final AppLocale locale;
@@ -1854,18 +2110,25 @@ class _HomeHeaderCompact extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _HeaderStatChip(
-                icon: Icons.today_rounded,
-                label: doneCount >= totalCount
-                    ? l10n.headerMenusComplete(totalCount)
-                    : incompleteMenuCount > 0
-                        ? l10n.headerMenusProgress(
-                            doneCount,
-                            incompleteMenuCount,
-                            totalCount,
-                          )
-                        : l10n.headerMenusSimple(doneCount, totalCount),
-              ),
+              if (!hideMenuProgress && totalCount > 0)
+                _HeaderStatChip(
+                  icon: Icons.today_rounded,
+                  label: doneCount >= totalCount
+                      ? l10n.headerMenusComplete(totalCount)
+                      : incompleteMenuCount > 0
+                          ? l10n.headerMenusProgress(
+                              doneCount,
+                              incompleteMenuCount,
+                              totalCount,
+                            )
+                          : l10n.headerMenusSimple(doneCount, totalCount),
+                ),
+              if (hideMenuProgress)
+                const _HeaderStatChip(
+                  icon: Icons.cloud_off_outlined,
+                  label: 'โหมดออฟไลน์ — เมนูบันทึกและนับจำนวน',
+                  iconColor: Color(0xFFE65100),
+                ),
               _HeaderStatChip(
                 icon: Icons.access_time_filled_rounded,
                 label: '${l10n.latestPrefix} $lastLabel',

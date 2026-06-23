@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
+import '../models/employee.dart';
+import 'employee_service.dart';
 import 'local_data_cache.dart';
 import 'transaction_service.dart';
 
@@ -17,6 +19,8 @@ class CountRecordOfflineSync {
 
   static const _kQueue = 'v1_count_record_offline_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
+  static const _kEmployees = 'v1_count_record_employees_json';
+  static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
 
   Timer? _autoSyncTimer;
   TransactionService? _autoSyncService;
@@ -28,6 +32,8 @@ class CountRecordOfflineSync {
   DateTime? _reachabilityCheckedAt;
   static const _reachabilityTtl = Duration(seconds: 12);
   static const _probeTimeout = Duration(milliseconds: 1200);
+  bool _awaitingUploadAfterOffline = false;
+  bool _uploadInFlight = false;
 
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
@@ -35,6 +41,7 @@ class CountRecordOfflineSync {
   void noteServerUnreachable() {
     _cachedReachable = false;
     _reachabilityCheckedAt = DateTime.now();
+    _awaitingUploadAfterOffline = true;
   }
 
   void noteServerReachable() {
@@ -129,6 +136,106 @@ class CountRecordOfflineSync {
     } catch (_) {
       return const [];
     }
+  }
+
+  Future<void> cacheEmployees(List<Employee> employees) async {
+    if (employees.isEmpty) return;
+    final p = await _prefs();
+    await p.setString(
+      _kEmployees,
+      jsonEncode(employees.map((e) => e.toPersistenceMap()).toList()),
+    );
+    await p.setInt(_kDropdownAt, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<List<Employee>> readCachedEmployees() async {
+    final p = await _prefs();
+    final raw = p.getString(_kEmployees);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(Employee.fromMap)
+          .toList();
+    } catch (e, st) {
+      debugPrint('CountRecordOfflineSync.readCachedEmployees: $e\n$st');
+      return const [];
+    }
+  }
+
+  /// รวมแหล่งพนักงาน — widget / แคช count-record / แคชแอpp
+  Future<List<Employee>> mergedEmployeeSources([
+    List<Employee>? fromWidget,
+  ]) async {
+    final byId = <String, Employee>{};
+    void addAll(Iterable<Employee> list) {
+      for (final e in list) {
+        if (e.id.trim().isEmpty) continue;
+        byId[e.id] = e;
+      }
+    }
+
+    addAll(await readCachedEmployees());
+    final appCache = await LocalDataCache.readEmployeesAny();
+    if (appCache != null) addAll(appCache);
+    if (fromWidget != null) addAll(fromWidget);
+    return byId.values.toList();
+  }
+
+  /// ดึงรถ+พนักงานล่าสุด — ออนไลน์อัปเดตแคช, ออฟไลน์อ่านแคชที่มี
+  Future<({List<String> cars, List<Employee> employees})> loadDropdownCatalog({
+    required SupabaseClient client,
+    EmployeeService? employeeService,
+    List<Employee>? widgetEmployees,
+    bool serverOnlineHint = true,
+    bool forceNetwork = false,
+  }) async {
+    var cars = await readCachedCars();
+    var employees = await mergedEmployeeSources(widgetEmployees);
+
+    final shouldFetch = forceNetwork ||
+        (serverOnlineHint && await isOnline(client, forceProbe: forceNetwork));
+    if (!shouldFetch || employeeService == null) {
+      return (cars: cars, employees: employees);
+    }
+
+    try {
+      final rows = await client
+          .from('app_settings')
+          .select('cars')
+          .eq('id', 'default')
+          .limit(1)
+          .timeout(_probeTimeout);
+      if (rows.isNotEmpty) {
+        final raw = rows.first['cars'];
+        final all = <String>[
+          if (raw is List)
+            ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
+        ];
+        if (all.isNotEmpty) {
+          cars = all;
+          await cacheCars(cars);
+        }
+      }
+    } catch (e) {
+      debugPrint('CountRecordOfflineSync.loadDropdownCatalog cars: $e');
+    }
+
+    try {
+      final fetched = await employeeService.fetchEmployees(
+        forceRefresh: forceNetwork,
+      );
+      if (fetched.isNotEmpty) {
+        await cacheEmployees(fetched);
+        employees = await mergedEmployeeSources(widgetEmployees);
+      }
+    } catch (e) {
+      debugPrint('CountRecordOfflineSync.loadDropdownCatalog employees: $e');
+    }
+
+    return (cars: cars, employees: employees);
   }
 
   List<AppTransaction> mergeForDay(
@@ -252,6 +359,7 @@ class CountRecordOfflineSync {
       omitCreatedAt: omitCreatedAt,
       dayServerRows: dayServerRows,
     );
+    _awaitingUploadAfterOffline = true;
     return true;
   }
 
@@ -284,6 +392,7 @@ class CountRecordOfflineSync {
       ymd: ymd,
       dayServerRows: dayServerRows,
     );
+    _awaitingUploadAfterOffline = true;
     return true;
   }
 
@@ -325,13 +434,40 @@ class CountRecordOfflineSync {
     return synced;
   }
 
+  /// อัปโหลดคิวที่ค้างทันทีเมื่อกลับมาออนไลน์ (Wi‑Fi/เน็ต)
+  Future<int> uploadPendingImmediately([
+    TransactionService? service,
+    SupabaseClient? client,
+  ]) async {
+    final s = service ?? _autoSyncService;
+    final c = client ?? _autoSyncClient;
+    if (s == null || c == null || _uploadInFlight) return 0;
+
+    _uploadInFlight = true;
+    try {
+      if (!await isOnline(c, forceProbe: true)) return 0;
+      final synced = await syncPending(s, c, forceProbe: true);
+      if (synced > 0) {
+        _awaitingUploadAfterOffline = false;
+        _onAutoSynced?.call();
+      }
+      return synced;
+    } finally {
+      _uploadInFlight = false;
+    }
+  }
+
   /// ซิงค์ทันทีถ้าเชื่อมต่อได้ — ใช้ก่อนโหลดแดชบอร์ด / ตอนกลับมาออนไลน์
   Future<int> syncPendingIfPossible(
     TransactionService service,
     SupabaseClient client, {
     bool forceProbe = false,
-  }) =>
-      syncPending(service, client, forceProbe: forceProbe);
+  }) async {
+    if (forceProbe || _awaitingUploadAfterOffline) {
+      return uploadPendingImmediately(service, client);
+    }
+    return syncPending(service, client, forceProbe: forceProbe);
+  }
 
   /// ตรวจและอัปโหลดคิวเป็นระยะ (เรียกจากแดชบอร์ดตลอดที่ล็อกอินอยู่)
   void startAutoSync({
@@ -343,7 +479,7 @@ class CountRecordOfflineSync {
     _autoSyncClient = client;
     _onAutoSynced = onSynced;
     _autoSyncTimer ??= Timer.periodic(
-      const Duration(seconds: 12),
+      const Duration(seconds: 2),
       (_) => unawaited(_autoSyncTick()),
     );
     unawaited(_autoSyncTick());
@@ -358,18 +494,18 @@ class CountRecordOfflineSync {
   }
 
   Future<void> _autoSyncTick() async {
-    if (_autoSyncTickRunning) return;
+    if (_autoSyncTickRunning || _uploadInFlight) return;
     final service = _autoSyncService;
     final client = _autoSyncClient;
     if (service == null || client == null) return;
     final pending = await pendingCount();
-    if (pending == 0) return;
+    if (pending == 0 && !_awaitingUploadAfterOffline) return;
 
     _autoSyncTickRunning = true;
     try {
-      final synced = await syncPending(service, client);
-      if (synced > 0) {
-        _onAutoSynced?.call();
+      final synced = await uploadPendingImmediately(service, client);
+      if (synced == 0 && pending == 0 && _cachedReachable == true) {
+        _awaitingUploadAfterOffline = false;
       }
     } finally {
       _autoSyncTickRunning = false;

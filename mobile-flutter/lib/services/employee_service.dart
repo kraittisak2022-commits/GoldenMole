@@ -14,11 +14,17 @@ class EmployeeService {
       if (cached != null) return cached;
     }
 
-    final rows =
-        await _client.from('employees').select().order('created_at');
-    final list = rows.map(Employee.fromMap).toList();
-    await LocalDataCache.writeEmployees(list);
-    return list;
+    try {
+      final rows =
+          await _client.from('employees').select().order('created_at');
+      final list = rows.map(Employee.fromMap).toList();
+      await LocalDataCache.writeEmployees(list);
+      return list;
+    } catch (_) {
+      final stale = await LocalDataCache.readEmployeesAny();
+      if (stale != null) return stale;
+      rethrow;
+    }
   }
 
   Future<void> upsertEmployee(Employee employee) async {

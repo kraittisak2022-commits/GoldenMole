@@ -107,6 +107,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   List<Employee> _drivers = const [];
   Timer? _cooldownTicker;
   Timer? _offlineSyncTicker;
+  Timer? _dropdownRefreshTicker;
   bool _isOnline = true;
   int _pendingCount = 0;
   bool _addVehiclePanelOpen = false;
@@ -125,7 +126,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       CountRecordOfflineSync.instance.noteServerUnreachable();
     }
     unawaited(_initPanel());
-    RecordSuccessSpeaker.instance.warmUp();
+    unawaited(RecordSuccessSpeaker.instance.warmUp());
+    _syncDropdownRefreshTimer();
   }
 
   @override
@@ -142,6 +144,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         CountRecordOfflineSync.instance.noteServerUnreachable();
       }
       setState(() => _isOnline = widget.serverOnline);
+      _syncDropdownRefreshTimer();
+    } else if (oldWidget.employees != widget.employees) {
+      unawaited(_refreshDropdownLists(tryNetwork: false));
     }
   }
 
@@ -149,7 +154,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   void dispose() {
     _cooldownTicker?.cancel();
     _offlineSyncTicker?.cancel();
+    _dropdownRefreshTicker?.cancel();
     super.dispose();
+  }
+
+  void _syncDropdownRefreshTimer() {
+    _dropdownRefreshTicker?.cancel();
+    final offline = !widget.serverOnline || !_isOnline;
+    final interval = offline
+        ? const Duration(seconds: 5)
+        : const Duration(seconds: 12);
+    _dropdownRefreshTicker = Timer.periodic(interval, (_) {
+      if (!mounted) return;
+      unawaited(
+        _refreshDropdownLists(
+          tryNetwork: widget.serverOnline || _isOnline,
+        ),
+      );
+    });
   }
 
   void _ensureCooldownTicker() {
@@ -176,10 +198,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   void _bootstrapFromTransactions(List<AppTransaction> dayTx) {
-    _drivers = widget.employees
-        .where((e) => !e.inactive)
-        .where(_isDriverEmployee)
-        .toList(growable: false);
+    _applyDriverList(widget.employees);
 
     if (widget.mode == CounterMode.trip) {
       for (final t in dayTx) {
@@ -223,7 +242,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   Future<void> _initPanel() async {
     await _refreshConnectivity();
-    await _trySyncPending(silent: true);
+    if (_isOnline) {
+      await _trySyncPending(silent: true);
+    } else {
+      await _refreshPendingCount();
+    }
     final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
       widget.dateYmd,
       widget.dayTransactions,
@@ -233,7 +256,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       _units.clear();
       _bootstrapFromTransactions(merged);
     });
-    await _loadCars();
+    await _refreshDropdownLists(
+      tryNetwork: widget.serverOnline || _isOnline,
+    );
     await _refreshPendingCount();
     if (widget.mode == CounterMode.trip && _units.isEmpty && mounted) {
       setState(() => _addVehiclePanelOpen = false);
@@ -242,7 +267,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   Future<void> _onBackOnline() async {
     await _refreshConnectivity();
-    await _trySyncPending();
+    await _trySyncPending(silent: false);
     if (!mounted) return;
     final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
       widget.dateYmd,
@@ -253,7 +278,31 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       _units.clear();
       _bootstrapFromTransactions(merged);
     });
-    await _loadCars();
+    await _refreshDropdownLists(tryNetwork: true);
+  }
+
+  void _applyDriverList(Iterable<Employee> source) {
+    _drivers = source
+        .where((e) => !e.inactive)
+        .where(_isDriverEmployee)
+        .toList(growable: false);
+  }
+
+  Future<void> _refreshDropdownLists({required bool tryNetwork}) async {
+    final sync = CountRecordOfflineSync.instance;
+    final catalog = await sync.loadDropdownCatalog(
+      client: Supabase.instance.client,
+      employeeService: widget.employeeService,
+      widgetEmployees: widget.employees,
+      serverOnlineHint: widget.serverOnline,
+      forceNetwork: tryNetwork && (widget.serverOnline || _isOnline),
+    );
+    if (!mounted) return;
+    final cars = catalog.cars.where(isVehicleTripDrumCarName).toList(growable: false);
+    setState(() {
+      if (cars.isNotEmpty) _cars = cars;
+      _applyDriverList(catalog.employees);
+    });
   }
 
   Future<void> _refreshConnectivity() async {
@@ -269,13 +318,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (mounted) setState(() => _isOnline = online);
     if (online && !wasOnline) {
       await _trySyncPending(silent: false);
+      _syncDropdownRefreshTimer();
     }
   }
 
   void _syncOfflinePollTimer() {
     if (_pendingCount > 0) {
       _offlineSyncTicker ??= Timer.periodic(
-        const Duration(seconds: 10),
+        const Duration(seconds: 2),
         (_) {
           if (!mounted) return;
           unawaited(_pollOfflineQueue());
@@ -306,7 +356,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _trySyncPending({bool silent = false}) async {
-    final synced = await CountRecordOfflineSync.instance.syncPending(
+    final synced = await CountRecordOfflineSync.instance.uploadPendingImmediately(
       widget.service,
       Supabase.instance.client,
     );
@@ -402,46 +452,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   String _stamp(DateTime d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.day)}/${two(d.month)} ${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
-  }
-
-  Future<void> _loadCars() async {
-    final sync = CountRecordOfflineSync.instance;
-    if (!widget.serverOnline) {
-      final cached = await sync.readCachedCars();
-      if (cached.isNotEmpty && mounted) {
-        setState(() {
-          _cars = cached.where(isVehicleTripDrumCarName).toList(growable: false);
-        });
-      }
-      return;
-    }
-    final client = Supabase.instance.client;
-    try {
-      if (await sync.isOnline(client)) {
-        final rows = await client
-            .from('app_settings')
-            .select('cars')
-            .eq('id', 'default')
-            .limit(1);
-        if (rows.isEmpty) return;
-        final raw = rows.first['cars'];
-        final all = <String>[
-          if (raw is List)
-            ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
-        ];
-        final cars = all.where(isVehicleTripDrumCarName).toList(growable: false);
-        await sync.cacheCars(cars);
-        if (!mounted) return;
-        setState(() => _cars = cars);
-        return;
-      }
-    } catch (_) {}
-    final cached = await sync.readCachedCars();
-    if (cached.isNotEmpty && mounted) {
-      setState(() {
-        _cars = cached.where(isVehicleTripDrumCarName).toList(growable: false);
-      });
-    }
   }
 
   AppTransaction _txFor(_CounterUnit u) {
@@ -692,6 +702,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _openSelectDialog() async {
+    await _refreshDropdownLists(tryNetwork: true);
+    if (!mounted) return;
     if (_cars.isEmpty) {
       _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
       return;
@@ -790,6 +802,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _openChangeDriverDialog(_CounterUnit u) async {
+    await _refreshDropdownLists(tryNetwork: true);
+    if (!mounted) return;
     if (_drivers.isEmpty) {
       _toast('ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"', error: true);
       return;
@@ -892,6 +906,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   void _toggleAddVehiclePanel() {
     HapticFeedback.lightImpact();
+    if (_units.isEmpty) {
+      unawaited(_openSelectDialog());
+      return;
+    }
     setState(() => _addVehiclePanelOpen = !_addVehiclePanelOpen);
   }
 
@@ -908,21 +926,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         children: [
           Expanded(
             child: _units.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        'แตะแถบ «บันทึกล่าสุด» ด้านล่าง\nเพื่อเพิ่มรถและคนขับ',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  )
+                ? _FirstTripSetupCard(onTap: _openSelectDialog)
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1607,7 +1611,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                     child: Text(
                       expanded
                           ? 'เลือกรถด้านล่าง'
-                          : 'แตะแถบนี้เพื่อเพิ่มรถ',
+                          : 'ยังไม่มีเที่ยวที่บันทึก',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: Colors.grey.shade600,
@@ -1618,6 +1622,108 @@ class _LatestTripRecordsBar extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// การ์ดเริ่มต้น — แตะครั้งแรกเพื่อเลือกรถและคนขับ (ไม่ต้องเปิดแถบ «บันทึกล่าสุด»)
+class _FirstTripSetupCard extends StatefulWidget {
+  const _FirstTripSetupCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_FirstTripSetupCard> createState() => _FirstTripSetupCardState();
+}
+
+class _FirstTripSetupCardState extends State<_FirstTripSetupCard> {
+  bool _pressed = false;
+
+  void _onPointerDown() {
+    setState(() => _pressed = true);
+    HapticFeedback.lightImpact();
+  }
+
+  void _onPointerUp() {
+    final tapped = _pressed;
+    setState(() => _pressed = false);
+    if (tapped) widget.onTap();
+  }
+
+  void _onPointerCancel() {
+    if (_pressed) setState(() => _pressed = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _vehicleButtonColor(0);
+    return _RecordButtonShell(
+      bgColor: bg,
+      shadowColor: bg,
+      busy: false,
+      dimmed: false,
+      pressed: _pressed,
+      idleAnimate: !_pressed,
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                'คันที่ 1 • บันทึกเที่ยว',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.fire_truck_outlined,
+                      size: 44,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'เพิ่มรถและคนขับ',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white.withValues(alpha: 0.96),
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Text(
+              'แตะการ์ดเพื่อเริ่มบันทึกเที่ยว',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ],
         ),
       ),
     );
