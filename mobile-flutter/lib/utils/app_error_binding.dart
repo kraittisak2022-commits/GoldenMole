@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/app_fatal_error_screen.dart';
+import 'mobile_error_report_auto_submit.dart';
+import 'mobile_error_screen_tracker.dart';
 
 /// จับ error ที่ไม่ได้รับใน try/catch แล้วเปิดหน้าส่งรายงาน (ต้องมี [navigatorKey] บน MaterialApp)
 class AppErrorBinding {
@@ -37,6 +39,15 @@ class AppErrorBinding {
     if (_routeOpen) return;
     final nav = navigatorKey.currentState;
     if (nav == null) return;
+
+    MobileErrorReportAutoSubmit.fire(
+      error: error,
+      stackTrace: stack,
+      source: source,
+      screenPage: MobileErrorScreenTracker.page,
+      screenAction: MobileErrorScreenTracker.module,
+    );
+
     _routeOpen = true;
     scheduleMicrotask(() {
       final n = navigatorKey.currentState;

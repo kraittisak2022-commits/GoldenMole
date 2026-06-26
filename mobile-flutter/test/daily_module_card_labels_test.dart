@@ -327,4 +327,59 @@ void main() {
       isNull,
     );
   });
+
+  test('count record menu card reflects trip and sand saves', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1: 3 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 3,
+        perCarTrips: 3,
+      ),
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 2 รอบ',
+        amount: 0,
+        drumsObtained: 2,
+      ),
+    ];
+    expect(
+      resolveCountRecordMenuFillStatus(day, txs),
+      DailyModuleFillStatus.complete,
+    );
+    expect(
+      countRecordMenuStatusLabel(day, txs),
+      '1 คัน · 3 เที่ยว · ร่อน 2 รอบ',
+    );
+  });
+
+  test('count record menu card stays pending without saved counts', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip0',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+      ),
+    ];
+    expect(
+      resolveCountRecordMenuFillStatus(day, txs),
+      DailyModuleFillStatus.incomplete,
+    );
+    expect(countRecordMenuStatusLabel(day, txs), isNull);
+  });
 }

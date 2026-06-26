@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -88,13 +90,14 @@ void _presentSaveErrorSnackBar(
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
 
+  final message = formatSaveErrorMessage(error, context: saveContext);
   final fields = extractSaveErrorReportFields(error, context: saveContext);
   final previewSummary = buildSaveErrorReportSummary(fields);
 
   messenger.showSnackBar(
     SnackBar(
       content: Text(
-        formatSaveErrorMessage(error, context: saveContext),
+        message,
         style: GoogleFonts.kanit(fontSize: 14, height: 1.35),
       ),
       duration: const Duration(seconds: 10),
@@ -116,6 +119,17 @@ void _presentSaveErrorSnackBar(
             ),
     ),
   );
+
+  if (onSendReport != null) {
+    unawaited(
+      _autoSendSaveErrorReport(
+        context,
+        messenger: messenger,
+        baseMessage: message,
+        onSendReport: onSendReport,
+      ),
+    );
+  }
 }
 
 Future<void> _promptAndSendSaveErrorReport(
@@ -151,6 +165,57 @@ Future<void> _promptAndSendSaveErrorReport(
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('ส่งข้อมูลไม่สำเร็จ', style: GoogleFonts.kanit()),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+Future<void> _autoSendSaveErrorReport(
+  BuildContext context, {
+  required ScaffoldMessengerState messenger,
+  required String baseMessage,
+  required SaveErrorReportHandler onSendReport,
+}) async {
+  try {
+    final id = await onSendReport();
+    if (!context.mounted) return;
+    if (id != null && id.isNotEmpty) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '$baseMessage\n\nส่งรายงานเข้าเว็บอัตโนมัติแล้ว (รหัส $id)',
+            style: GoogleFonts.kanit(fontSize: 14, height: 1.35),
+          ),
+          duration: const Duration(seconds: 12),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        ),
+      );
+    }
+  } on MobileErrorReportRateLimitException catch (e) {
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '$baseMessage\n\n${e.message}',
+          style: GoogleFonts.kanit(fontSize: 14, height: 1.35),
+        ),
+        duration: const Duration(seconds: 10),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      ),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'ส่งรายงานอัตโนมัติไม่สำเร็จ',
+          style: GoogleFonts.kanit(),
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -199,6 +201,49 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+// #region agent log
+void _dashboardDbgLog(
+  String location,
+  String message,
+  Map<String, dynamic> data, {
+  String hypothesisId = 'A',
+  String runId = 'pre-fix',
+}) {
+  final payload = <String, dynamic>{
+    'sessionId': 'b281b7',
+    'timestamp': DateTime.now().millisecondsSinceEpoch,
+    'location': location,
+    'message': message,
+    'data': data,
+    'hypothesisId': hypothesisId,
+    'runId': runId,
+  };
+  final line = jsonEncode(payload);
+  for (final host in const ['127.0.0.1', '10.0.2.2']) {
+    unawaited(() async {
+      try {
+        final client = HttpClient();
+        final req = await client.postUrl(
+          Uri.parse(
+            'http://$host:7489/ingest/a15bdb6f-9720-40ca-b4b5-53dfc8bf6e60',
+          ),
+        );
+        req.headers.set('Content-Type', 'application/json');
+        req.headers.set('X-Debug-Session-Id', 'b281b7');
+        req.write(line);
+        await req.close();
+        client.close(force: true);
+      } catch (_) {}
+    }());
+  }
+  try {
+    File(
+      r'c:\Users\HP\.gemini\antigravity\scratch\construction-management-app\debug-b281b7.log',
+    ).writeAsStringSync('$line\n', mode: FileMode.append);
+  } catch (_) {}
+}
+// #endregion
+
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   static const _kNavRailExpandedPrefKey = 'dashboard_nav_rail_expanded_v1';
@@ -208,6 +253,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _bodyPage = 0;
   DateTime _selectedDay = DateTime.now();
   bool _serverOnline = true;
+  bool _countAndRecordMenuOpen = false;
   late Future<_HomePayload> _homeFuture;
   _HomePayload? _lastHomePayload;
   /// แถบเมนูซ้าย (ไอคอนสควอร์เคิล): true = แสดง, false = ซ่อน — ปัดจากซ้ายไปขวาที่ขอบจอเพื่อเปิด
@@ -217,30 +263,104 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _connectivityProbeTimer;
 
   void _syncConnectivityProbe() {
-    if (_serverOnline) {
+    unawaited(_syncConnectivityProbeAsync());
+    _connectivityProbeTimer ??= Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_syncConnectivityProbeAsync()),
+    );
+  }
+
+  Future<void> _syncConnectivityProbeAsync() async {
+    final pending = await CountRecordOfflineSync.instance.pendingCount();
+    if (_serverOnline && pending == 0) {
       _connectivityProbeTimer?.cancel();
       _connectivityProbeTimer = null;
       return;
     }
-    unawaited(_probeBackOnline());
-    _connectivityProbeTimer ??= Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(_probeBackOnline()),
-    );
+    await _probeBackOnline();
   }
 
   Future<void> _probeBackOnline() async {
-    if (!mounted || _serverOnline) return;
+    if (!mounted) return;
+    final pending = await CountRecordOfflineSync.instance.pendingCount();
+    if (_serverOnline && pending == 0) return;
+
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
       forceProbe: true,
     );
     if (!online || !mounted) return;
-    await CountRecordOfflineSync.instance.uploadPendingImmediately(
-      _txService,
-      Supabase.instance.client,
+
+    CountRecordOfflineSync.instance.noteServerReachable();
+    if (!_serverOnline) {
+      setState(() => _serverOnline = true);
+      _syncConnectivityProbe();
+    }
+
+    try {
+      await CountRecordOfflineSync.instance.uploadPendingImmediately(
+        _txService,
+        Supabase.instance.client,
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    unawaited(_refreshHomeDataInPlace());
+  }
+
+  /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
+  Future<void> _refreshHomeDataInPlace() async {
+    // #region agent log
+    _dashboardDbgLog(
+      'dashboard_screen.dart:_refreshHomeDataInPlace:entry',
+      'refresh started',
+      {'mounted': mounted},
+      hypothesisId: 'C',
     );
-    if (mounted) _refreshHome();
+    // #endregion
+    final nextHomeFuture = _futureWithSnapshot(
+      _loadHome(forceRefresh: true),
+    );
+    if (!mounted) return;
+    // #region agent log
+    Future<_HomePayload>? assignProbe;
+    final assignExprResult = (() => assignProbe = nextHomeFuture)();
+    _dashboardDbgLog(
+      'dashboard_screen.dart:_refreshHomeDataInPlace:pre-setState',
+      'assignment expression return type probe',
+      {
+        'rhsType': nextHomeFuture.runtimeType.toString(),
+        'assignExprResultType': assignExprResult.runtimeType.toString(),
+        'assignProbeSameAsRhs': identical(assignProbe, nextHomeFuture),
+        'usesArrowSetStatePattern': true,
+      },
+      hypothesisId: 'A',
+    );
+    // #endregion
+    try {
+      setState(() {
+        _homeFuture = nextHomeFuture;
+      });
+    } catch (e) {
+      // #region agent log
+      _dashboardDbgLog(
+        'dashboard_screen.dart:_refreshHomeDataInPlace:setState',
+        'setState threw',
+        {'error': e.toString()},
+        hypothesisId: 'A',
+      );
+      // #endregion
+      rethrow;
+    }
+    // #region agent log
+    _dashboardDbgLog(
+      'dashboard_screen.dart:_refreshHomeDataInPlace:post-setState',
+      'setState completed',
+      {'fixApplied': 'block-body-not-arrow'},
+      hypothesisId: 'A',
+      runId: 'post-fix',
+    );
+    // #endregion
+    await nextHomeFuture;
   }
 
   @override
@@ -311,18 +431,40 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _onCountRecordOfflineSynced() {
     if (!mounted) return;
-    _refreshHome();
+    CountRecordOfflineSync.instance.noteServerReachable();
+    if (!_serverOnline) {
+      setState(() => _serverOnline = true);
+      _syncConnectivityProbe();
+    }
+    unawaited(_refreshHomeDataInPlace());
   }
 
   Future<void> _syncCountRecordQueueThenRefresh() async {
-    final synced = await CountRecordOfflineSync.instance.uploadPendingImmediately(
+    // #region agent log
+    _dashboardDbgLog(
+      'dashboard_screen.dart:_syncCountRecordQueueThenRefresh:entry',
+      'sync then refresh invoked',
+      {'mounted': mounted},
+      hypothesisId: 'C',
+    );
+    // #endregion
+    await CountRecordOfflineSync.instance.uploadPendingImmediately(
       _txService,
       Supabase.instance.client,
     );
     if (!mounted) return;
-    if (synced > 0 || !_serverOnline) {
-      _refreshHome();
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      Supabase.instance.client,
+      forceProbe: true,
+    );
+    if (online) {
+      CountRecordOfflineSync.instance.noteServerReachable();
+      if (!_serverOnline) {
+        setState(() => _serverOnline = true);
+      }
     }
+    _syncConnectivityProbe();
+    unawaited(_refreshHomeDataInPlace());
   }
 
   Future<_HomePayload> _composeHomePayload({
@@ -489,20 +631,32 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
-  /// อัปเดตข้อมูลหลังบันทึกในเมนูนับจำนวน — ไม่ปิดเมนูย่อย
+  /// อัปเดตข้อมูลหลังบันทึกในเมนูนับจำนวน — ไม่ปิดเมนูย่อย / ไม่โหลดทั้งหน้า
   Future<void> _refreshAfterCountRecordChange() async {
-    final client = Supabase.instance.client;
-    try {
-      await CountRecordOfflineSync.instance
-          .uploadPendingImmediately(_txService, client)
-          .timeout(const Duration(seconds: 4));
-    } catch (_) {}
     if (!mounted) return;
-    final nextHomeFuture = _futureWithSnapshot(_loadHome(forceRefresh: true));
+    final base = _lastHomePayload;
+    if (base == null) return;
+    final dayKey = _dateKey(_selectedDay);
+    final dayTransactions =
+        await CountRecordOfflineSync.instance.mergeForDayAsync(
+      dayKey,
+      base.dayTransactions,
+    );
+    final allTransactions =
+        await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
+      base.allTransactions,
+    );
+    if (!mounted) return;
+    final next = _HomePayload(
+      summary: base.summary,
+      dayTransactions: dayTransactions,
+      allTransactions: allTransactions,
+      employees: base.employees,
+    );
     setState(() {
-      _homeFuture = nextHomeFuture;
+      _lastHomePayload = next;
+      _homeFuture = Future<_HomePayload>.value(next);
     });
-    await _homeFuture;
   }
 
   String _dateKey(DateTime d) {
@@ -756,6 +910,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       currentAdmin: widget.currentAdmin,
                                       data: data,
                                       serverOnline: _serverOnline,
+                                      countAndRecordMenuOpen:
+                                          _countAndRecordMenuOpen,
+                                      onCountAndRecordMenuOpenChanged: (open) {
+                                        setState(
+                                          () => _countAndRecordMenuOpen = open,
+                                        );
+                                      },
                                       selectedDay: _selectedDay,
                                       onPullRefresh: _pullRefresh,
                                       onCountRecordDataChanged:
@@ -1047,6 +1208,8 @@ class _DailyHomeContent extends StatefulWidget {
     required this.currentAdmin,
     required this.data,
     required this.serverOnline,
+    required this.countAndRecordMenuOpen,
+    required this.onCountAndRecordMenuOpenChanged,
     required this.selectedDay,
     required this.onPullRefresh,
     required this.onCountRecordDataChanged,
@@ -1061,6 +1224,8 @@ class _DailyHomeContent extends StatefulWidget {
   final AdminUser currentAdmin;
   final _HomePayload data;
   final bool serverOnline;
+  final bool countAndRecordMenuOpen;
+  final ValueChanged<bool> onCountAndRecordMenuOpenChanged;
   final DateTime selectedDay;
   final Future<void> Function() onPullRefresh;
   final Future<void> Function() onCountRecordDataChanged;
@@ -1079,7 +1244,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceController;
   late final bool _reduceMotion;
-  bool _countAndRecordMenuOpen = false;
   /// After the grid entrance animation finishes, drop stagger transforms so
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
@@ -1122,14 +1286,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ..reset()
         ..forward();
     }
-    if (!oldWidget.serverOnline &&
-        widget.serverOnline &&
-        !_countAndRecordMenuOpen) {
-      _gridEntranceCompleted = false;
-      _entranceController
-        ..reset()
-        ..forward();
-    }
   }
 
   @override
@@ -1160,6 +1316,32 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           widget.data.dayTransactions,
         ),
     };
+    final countRecordFill = resolveCountRecordMenuFillStatus(
+      dayKey,
+      widget.data.dayTransactions,
+    );
+    final countRecordStatusLabel = countRecordMenuStatusLabel(
+      dayKey,
+      widget.data.dayTransactions,
+    );
+    Widget buildCountRecordEntryCard({bool showLightStyle = false}) {
+      return RecordModuleCard(
+        title: 'บันทึกและนับจำนวน',
+        icon: Icons.timer_outlined,
+        tileColor: const Color(0xFF1565C0),
+        showLightStyle: showLightStyle,
+        fillStatus: countRecordFill,
+        completeStatusLabelOverride: translateDailyCardStatus(
+          countRecordStatusLabel,
+          localeScope.locale,
+        ),
+        statusMaxLines: 2,
+        onTap: () {
+          widget.onCountAndRecordMenuOpenChanged(true);
+          unawaited(RecordSuccessSpeaker.instance.warmUp());
+        },
+      );
+    }
     final modulesForHeaderTotals = _dailyHeaderCountedModules(
       widget.data.dayTransactions,
     );
@@ -1211,13 +1393,14 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               FadeTransition(opacity: animation, child: child),
           child: LayoutBuilder(
             key: ValueKey(
-              widget.formatBuddhistDateButton(widget.selectedDay),
+              '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
+              'menu_${widget.countAndRecordMenuOpen}',
             ),
             builder: (context, constraints) {
-              if (_countAndRecordMenuOpen) {
+              if (widget.countAndRecordMenuOpen) {
                 void backToMainMenu() {
-                  setState(() => _countAndRecordMenuOpen = false);
-                  if (!offlineMode) widget.onPullRefresh();
+                  widget.onCountAndRecordMenuOpenChanged(false);
+                  unawaited(widget.onCountRecordDataChanged());
                 }
 
                 final dayKeyStr = widget.dateKey(widget.selectedDay);
@@ -1393,7 +1576,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
               if (offlineMode &&
                   _kOfflineHomeShowsCountRecordOnly &&
-                  !_countAndRecordMenuOpen) {
+                  !widget.countAndRecordMenuOpen) {
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
                   child: Column(
@@ -1435,12 +1618,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
                       const SizedBox(height: 12),
                       Expanded(
-                        child: _CountRecordEntryCard(
-                          onTap: () {
-                            setState(() => _countAndRecordMenuOpen = true);
-                            unawaited(RecordSuccessSpeaker.instance.warmUp());
-                          },
-                        ),
+                        child: buildCountRecordEntryCard(),
                       ),
                     ],
                   ),
@@ -1535,11 +1713,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   ),
                   itemBuilder: (context, index) {
                     if (index == 0) {
-                      final card = _CountRecordEntryCard(
-                        onTap: () {
-                          setState(() => _countAndRecordMenuOpen = true);
-                          unawaited(RecordSuccessSpeaker.instance.warmUp());
-                        },
+                      final card = buildCountRecordEntryCard(
+                        showLightStyle: index.isOdd,
                       );
                       if (_gridEntranceCompleted) {
                         return RepaintBoundary(
@@ -1613,7 +1788,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!_countAndRecordMenuOpen) ...[
+              if (!widget.countAndRecordMenuOpen) ...[
                 FadeTransition(
                   opacity: headerAnim,
                   child: SlideTransition(
@@ -1659,109 +1834,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CountRecordEntryCard extends StatelessWidget {
-  const _CountRecordEntryCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4F8FE),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD8E6F7)),
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final maxW =
-                  constraints.maxWidth.isFinite && constraints.maxWidth > 0
-                      ? constraints.maxWidth
-                      : 108.0;
-              final maxH =
-                  constraints.maxHeight.isFinite && constraints.maxHeight > 0
-                      ? constraints.maxHeight
-                      : maxW;
-              // ใช้สูตรเดียวกับ RecordModuleCard เพื่อให้ icon ใหญ่เท่ากัน
-              final scaleRef = maxW < maxH ? maxW : maxH;
-              final iconSize = (scaleRef * 0.5).clamp(40.0, 66.0);
-              final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
-              final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
-              final subtitleSize = (scaleRef * 0.09).clamp(10.0, 12.0);
-              final textMaxWidth = maxW - (pad * 2);
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: iconSize,
-                          color: const Color(0xFF1565C0),
-                        ),
-                        SizedBox(height: pad * 0.5),
-                        SizedBox(
-                          width: textMaxWidth,
-                          child: Text(
-                            'บันทึกและนับจำนวน',
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: titleSize,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1D2A3A),
-                              height: 1.18,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: pad * 0.28),
-                        SizedBox(
-                          width: textMaxWidth,
-                          child: Text(
-                            'จำนวนเที่ยวรถ / การร่อนทราย',
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: subtitleSize,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF6B7788),
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    top: pad * 0.5,
-                    right: pad * 0.5,
-                    child: const Icon(
-                      Icons.circle,
-                      size: 8,
-                      color: Color(0xFFCBD5E1),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
     );
   }
 }

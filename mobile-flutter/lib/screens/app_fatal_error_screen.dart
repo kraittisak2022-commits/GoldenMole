@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../models/admin_user.dart';
-import '../services/mobile_error_report_service.dart';
-import '../services/session_service.dart';
-import '../utils/mobile_error_report_submit_guard.dart';
+import '../utils/mobile_error_report_auto_submit.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../widgets/mobile_error_report_send_dialog.dart';
 
-/// หน้าเมื่อเกิด error ร้ายแรงที่ไม่ได้จับ — ให้ส่งรายงานเข้าเว็บ (ตาราง mobile_error_reports)
+/// หน้าเมื่อเกิด error ร้ายแรงที่ไม่ได้จับ — ส่งรายงานเข้าเว็บอัตโนมัติ + ปุ่มส่งด้วยตนเอง
 class AppFatalErrorScreen extends StatefulWidget {
   const AppFatalErrorScreen({
     super.key,
@@ -29,17 +25,17 @@ class AppFatalErrorScreen extends StatefulWidget {
 
 class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
   final _note = TextEditingController();
-  bool _sending = false;
+  bool _autoSending = false;
+  bool _manualSending = false;
   String? _sendOk;
   String? _sendErr;
-  AdminUser? _reporter;
+
+  bool get _sending => _autoSending || _manualSending;
 
   @override
   void initState() {
     super.initState();
-    SessionService().getSavedAdmin().then((a) {
-      if (mounted) setState(() => _reporter = a);
-    });
+    _runAutoSend();
   }
 
   @override
@@ -54,6 +50,33 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
     return '${t.substring(0, 180)}…';
   }
 
+  Future<void> _runAutoSend() async {
+    setState(() {
+      _autoSending = true;
+      _sendErr = null;
+    });
+    final result = await MobileErrorReportAutoSubmit.submit(
+      error: widget.error,
+      stackTrace: widget.stackTrace,
+      source: widget.source,
+      screenPage: MobileErrorScreenTracker.page,
+      screenAction: MobileErrorScreenTracker.module,
+    );
+    if (!mounted) return;
+    setState(() {
+      _autoSending = false;
+      if (result.success && result.reportId != null) {
+        _sendOk =
+            'ระบบส่งข้อมูลเข้าเว็บอัตโนมัติแล้ว (รหัส ${result.reportId})\n'
+            'ทีมดูได้ที่เว็บ ตั้งค่า > แอป Android';
+      } else if (result.rateLimited) {
+        _sendOk = 'ส่งรายงานนี้ไปแล้วเมื่อสักครู่ — ไม่ต้องส่งซ้ำ';
+      } else {
+        _sendErr = result.message ?? 'ส่งข้อมูลอัตโนมัติไม่สำเร็จ';
+      }
+    });
+  }
+
   Future<void> _openSendPopup() async {
     final confirmed = await showMobileErrorReportSendDialog(
       context,
@@ -64,38 +87,33 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
     if (!confirmed || !mounted) return;
 
     setState(() {
-      _sending = true;
+      _manualSending = true;
       _sendOk = null;
       _sendErr = null;
     });
-    try {
-      final svc = MobileErrorReportService(Supabase.instance.client);
-      final id = await svc.submit(
-        error: widget.error,
-        stackTrace: widget.stackTrace,
-        source: widget.source,
-        userNote: _note.text,
-        reporter: _reporter,
-        screenPage: MobileErrorScreenTracker.page,
-        screenAction: MobileErrorScreenTracker.module,
-      );
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _sendOk = 'ส่งข้อมูลแล้ว (รหัส $id) ทีมดูได้ที่เว็บ ตั้งค่า > แอป Android';
-      });
-    } on MobileErrorReportRateLimitException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _sendErr = e.message;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _sendErr = e.toString();
-      });
+    final result = await MobileErrorReportAutoSubmit.submit(
+      error: widget.error,
+      stackTrace: widget.stackTrace,
+      source: widget.source,
+      userNote: _note.text,
+      screenPage: MobileErrorScreenTracker.page,
+      screenAction: MobileErrorScreenTracker.module,
+    );
+    if (!mounted) return;
+    setState(() {
+      _manualSending = false;
+      if (result.success && result.reportId != null) {
+        _sendOk =
+            'ส่งข้อมูลแล้ว (รหัส ${result.reportId}) ทีมดูได้ที่เว็บ ตั้งค่า > แอป Android';
+      } else if (result.rateLimited) {
+        _sendErr = result.message;
+      } else {
+        _sendErr = result.message ?? 'ส่งข้อมูลไม่สำเร็จ';
+      }
+    });
+    if (!mounted) return;
+    if (result.success && result.reportId != null) {
+      await showMobileErrorReportSentDialog(context, reportId: result.reportId);
     }
   }
 
@@ -119,7 +137,8 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
           Icon(Icons.bug_report_outlined, size: 56, color: Colors.red.shade700),
           const SizedBox(height: 12),
           Text(
-            'แอปหยุดทำงานผิดปกติ คุณสามารถส่งรายละเอียดให้ผู้ดูแลระบบผ่านเว็บได้',
+            'แอปหยุดทำงานผิดปกติ ระบบส่งรายละเอียดเข้าเว็บให้อัตโนมัติแล้ว '
+            'หรือกดปุ่มด้านล่างเพื่อส่งข้อมูลพร้อมคำอธิบายเพิ่มเติม',
             style: GoogleFonts.kanit(
               fontSize: 15,
               height: 1.4,
@@ -164,6 +183,27 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
             style: GoogleFonts.kanit(),
           ),
           const SizedBox(height: 20),
+          if (_autoSending)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'กำลังส่งข้อมูลเข้าเว็บอัตโนมัติ...',
+                    style: GoogleFonts.kanit(
+                      fontSize: 13,
+                      color: const Color(0xFF1565C0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_sendErr != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -188,7 +228,7 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: _sending ? null : _openSendPopup,
-              icon: _sending
+              icon: _manualSending
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -199,7 +239,7 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
                     )
                   : const Icon(Icons.upload_outlined),
               label: Text(
-                _sending ? 'กำลังส่ง...' : 'ส่งข้อมูล',
+                _manualSending ? 'กำลังส่ง...' : 'ส่งข้อมูล',
                 style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
             ),

@@ -30,7 +30,7 @@ class CountRecordOfflineSync {
 
   bool? _cachedReachable;
   DateTime? _reachabilityCheckedAt;
-  static const _reachabilityTtl = Duration(seconds: 12);
+  static const _reachabilityTtl = Duration(seconds: 4);
   static const _probeTimeout = Duration(milliseconds: 1200);
   bool _awaitingUploadAfterOffline = false;
   bool _uploadInFlight = false;
@@ -418,6 +418,7 @@ class CountRecordOfflineSync {
           mergedDayRows: merged,
           touchedTx: transaction,
         );
+        noteServerReachable();
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.persist online failed: $e');
@@ -458,6 +459,7 @@ class CountRecordOfflineSync {
           mergedDayRows: merged,
           removedId: id,
         );
+        noteServerReachable();
         return false;
       } catch (e) {
         debugPrint('CountRecordOfflineSync.delete online failed: $e');
@@ -512,6 +514,9 @@ class CountRecordOfflineSync {
     }
 
     await _writeQueue(stillPending);
+    if (synced > 0) {
+      noteServerReachable();
+    }
     return synced;
   }
 
@@ -527,9 +532,14 @@ class CountRecordOfflineSync {
     _uploadInFlight = true;
     try {
       if (!await isOnline(c, forceProbe: true)) return 0;
+      final wasAwaiting = _awaitingUploadAfterOffline;
       final synced = await syncPending(s, c, forceProbe: true);
-      if (synced > 0) {
+      final remaining = await pendingCount();
+      if (remaining == 0) {
         _awaitingUploadAfterOffline = false;
+        noteServerReachable();
+      }
+      if (synced > 0 || (wasAwaiting && remaining == 0)) {
         _onAutoSynced?.call();
       }
       return synced;

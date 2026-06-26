@@ -866,6 +866,100 @@ DailyModuleFillStatus resolveIncomeUtilitiesFillStatus(
   return DailyModuleFillStatus.pending;
 }
 
+bool _isCountRecordVehicleRow(AppTransaction t) {
+  if (t.category != 'DailyLog') return false;
+  if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
+    return false;
+  }
+  return !t.description.contains('ทรายที่ล้างที่บ้าน');
+}
+
+bool _isCountRecordSandRow(AppTransaction t) {
+  if (t.category != 'DailyLog') return false;
+  if ((t.subCategory ?? '').trim().toLowerCase() != 'sand') return false;
+  return !t.description.contains('ทรายที่ล้างที่บ้าน');
+}
+
+bool _countRecordRowHasLapTimes(AppTransaction t) {
+  final laps = t.workAssignments?['lapTimes'];
+  return (laps as List?)?.isNotEmpty ?? false;
+}
+
+bool countRecordRowHasSavedData(AppTransaction t) {
+  if (_isCountRecordVehicleRow(t)) {
+    final trips = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+    return trips > 0 || _countRecordRowHasLapTimes(t);
+  }
+  if (_isCountRecordSandRow(t)) {
+    final drums = (t.drumsObtained ?? 0).toDouble();
+    return drums > 0 || _countRecordRowHasLapTimes(t);
+  }
+  return false;
+}
+
+bool _countRecordRowTouches(AppTransaction t) {
+  if (_isCountRecordVehicleRow(t)) {
+    return (t.vehicleId ?? '').trim().isNotEmpty ||
+        (t.driverId ?? '').trim().isNotEmpty;
+  }
+  if (_isCountRecordSandRow(t)) return true;
+  return false;
+}
+
+/// สถานะการ์ดเมนู «บันทึกและนับจำนวน» บนหน้าเมนูหลักบันทึกประจำวัน
+DailyModuleFillStatus resolveCountRecordMenuFillStatus(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var complete = false;
+  var touch = false;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (countRecordRowHasSavedData(t)) {
+      complete = true;
+      break;
+    }
+    if (_countRecordRowTouches(t)) touch = true;
+  }
+  if (complete) return DailyModuleFillStatus.complete;
+  if (touch) return DailyModuleFillStatus.incomplete;
+  return DailyModuleFillStatus.pending;
+}
+
+/// ข้อความสถานะการ์ดเมนู «บันทึกและนับจำนวน»
+String? countRecordMenuStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final vehicles = <String>{};
+  var tripTotal = 0.0;
+  var sandRounds = 0.0;
+
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!countRecordRowHasSavedData(t)) continue;
+    if (_isCountRecordVehicleRow(t)) {
+      final vid = (t.vehicleId ?? '').trim();
+      if (vid.isNotEmpty) vehicles.add(vid);
+      tripTotal += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+    } else if (_isCountRecordSandRow(t)) {
+      sandRounds += (t.drumsObtained ?? 0).toDouble();
+    }
+  }
+
+  final parts = <String>[];
+  if (tripTotal > 0 || vehicles.isNotEmpty) {
+    parts.add(
+      '${vehicles.length} คัน · ${formatDashboardMetric(tripTotal)} เที่ยว',
+    );
+  }
+  if (sandRounds > 0) {
+    parts.add('ร่อน ${formatDashboardMetric(sandRounds)} รอบ');
+  }
+  if (parts.isEmpty) return null;
+  return _joinStatusParts(parts);
+}
+
 /// สถานะการกรอกเมนูบันทึกประจำวันบนแดชบอร์ด
 enum DailyModuleFillStatus {
   /// ยังไม่มีข้อมูลที่เกี่ยวข้อง

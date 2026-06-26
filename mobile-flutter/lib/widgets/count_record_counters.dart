@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,8 +15,46 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/device_perf.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
+
+// #region agent log
+void _swipeRevealDbgLog(String location, String message, Map<String, dynamic> data,
+    {String hypothesisId = 'A'}) {
+  final line = jsonEncode({
+    'sessionId': 'b281b7',
+    'timestamp': DateTime.now().millisecondsSinceEpoch,
+    'location': location,
+    'message': message,
+    'data': data,
+    'hypothesisId': hypothesisId,
+    'runId': 'post-fix',
+  });
+  for (final host in const ['127.0.0.1', '10.0.2.2']) {
+    unawaited(() async {
+      try {
+        final client = HttpClient();
+        final req = await client.postUrl(
+          Uri.parse(
+            'http://$host:7489/ingest/a15bdb6f-9720-40ca-b4b5-53dfc8bf6e60',
+          ),
+        );
+        req.headers.set('Content-Type', 'application/json');
+        req.headers.set('X-Debug-Session-Id', 'b281b7');
+        req.write(line);
+        await req.close();
+        client.close(force: true);
+      } catch (_) {}
+    }());
+  }
+  try {
+    File(
+      r'c:\Users\HP\.gemini\antigravity\scratch\construction-management-app\debug-b281b7.log',
+    ).writeAsStringSync('$line\n', mode: FileMode.append);
+  } catch (_) {}
+}
+// #endregion
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
@@ -43,6 +84,7 @@ class _CounterUnit {
   String workDetails;
   bool busy = false;
   DateTime? recordCooldownUntil;
+  int burstTick = 0;
 
   bool get isOnRecordCooldown {
     final until = recordCooldownUntil;
@@ -56,7 +98,14 @@ class _CounterUnit {
     return left <= 0 ? 0 : left + 1;
   }
 
-  bool get isBrokenReported => workDetails.contains('รถเสีย');
+  bool get isBrokenReported => isWorkDetailsBroken(workDetails);
+
+  static bool isWorkDetailsBroken(String details) {
+    final lastBroken = details.lastIndexOf('รถเสีย');
+    if (lastBroken < 0) return false;
+    final lastNormal = details.lastIndexOf('รถปกติ');
+    return lastNormal < lastBroken;
+  }
 }
 
 class _Pick {
@@ -64,7 +113,7 @@ class _Pick {
   String driverId = '';
 }
 
-enum _UnitEditAction { changeDriver, reportBroken }
+enum _UnitEditAction { changeDriver, reportBroken, restoreNormal }
 
 /// แผงนับเที่ยว/รอบแบบฝังในการ์ด — กดปุ่มแล้วบันทึกวันเวลา + เพิ่มจำนวน 1
 class CountRecordCounterPanel extends StatefulWidget {
@@ -115,6 +164,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   bool _isOnline = true;
   int _pendingCount = 0;
   bool _addVehiclePanelOpen = false;
+  int _skipExternalDayTxReload = 0;
+  final Set<String> _hiddenDayTxIds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -126,12 +177,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   void initState() {
     super.initState();
     _isOnline = widget.serverOnline;
-    if (!widget.serverOnline) {
-      CountRecordOfflineSync.instance.noteServerUnreachable();
-    }
     unawaited(_initPanel());
     unawaited(RecordSuccessSpeaker.instance.warmUp());
     _syncDropdownRefreshTimer();
+    _syncOfflinePollTimer();
   }
 
   @override
@@ -139,19 +188,39 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dateYmd != widget.dateYmd) {
       _units.clear();
+      _hiddenDayTxIds.clear();
       unawaited(_initPanel());
-    } else if (!_sameCountRecordDay(
+      return;
+    }
+    if (_skipExternalDayTxReload > 0) {
+      _skipExternalDayTxReload--;
+      if (oldWidget.serverOnline != widget.serverOnline) {
+        unawaited(_refreshConnectivity());
+        _syncDropdownRefreshTimer();
+      }
+      unawaited(_refreshPendingCount());
+      return;
+    }
+    if (!_sameCountRecordDay(
       oldWidget.dayTransactions,
       widget.dayTransactions,
       widget.dateYmd,
     )) {
+      _pruneHiddenDayTxIds();
+      if (_hasLocalOnlyTripUnits() || _hasLocalSandProgress()) {
+        unawaited(_refreshPendingCount());
+        return;
+      }
       _units.clear();
       unawaited(_initPanel());
     } else if (!oldWidget.serverOnline && widget.serverOnline) {
       unawaited(_onBackOnline());
     } else if (oldWidget.serverOnline != widget.serverOnline) {
-      setState(() => _isOnline = widget.serverOnline);
+      unawaited(_refreshConnectivity());
       _syncDropdownRefreshTimer();
+    } else if (oldWidget.dayTransactions != widget.dayTransactions) {
+      unawaited(_refreshPendingCount());
+      unawaited(_refreshConnectivity());
     } else if (oldWidget.employees != widget.employees) {
       unawaited(_refreshDropdownLists(tryNetwork: false));
     }
@@ -172,8 +241,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                 (t.subCategory == 'VehicleTrip' || t.subCategory == 'Sand'),
           )
           .map(
-            (t) => '${t.id}|${t.perCarTrips ?? t.tripCount ?? 0}|'
-                '${t.drumsObtained ?? 0}|${(t.workAssignments?['lapTimes'] ?? const []).length}',
+            (t) {
+              final laps = List<String>.from(
+                t.workAssignments?['lapTimes'] ?? const [],
+              );
+              return '${t.id}|${t.perCarTrips ?? t.tripCount ?? 0}|'
+                  '${t.drumsObtained ?? 0}|${laps.join(',')}';
+            },
           )
           .toList()
         ..sort();
@@ -247,11 +321,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     } else {
       AppTransaction? sandRow;
       for (final t in dayTx) {
-        if (t.category == 'DailyLog' &&
-            (t.subCategory ?? '').trim() == 'Sand' &&
-            !t.description.contains('ทรายที่ล้างที่บ้าน')) {
+        if (t.category != 'DailyLog') continue;
+        if ((t.subCategory ?? '').trim() != 'Sand') continue;
+        if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
+        if (_sandRowIsEmpty(t)) continue;
+        if (sandRow == null || _sandRowScore(t) > _sandRowScore(sandRow)) {
           sandRow = t;
-          break;
         }
       }
       if (sandRow != null) {
@@ -281,10 +356,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     } else {
       await _refreshPendingCount();
     }
-    final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
-      widget.dateYmd,
-      widget.dayTransactions,
-    );
+    final merged = await _mergedPanelDayRows();
     if (!mounted) return;
     setState(() {
       _units.clear();
@@ -299,14 +371,30 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  bool _sandRowIsEmpty(AppTransaction t) {
+    final laps = List<String>.from(t.workAssignments?['lapTimes'] ?? const []);
+    final drums = (t.drumsObtained ?? 0).round();
+    return laps.isEmpty && drums <= 0;
+  }
+
+  int _sandRowScore(AppTransaction t) {
+    final laps = List<String>.from(t.workAssignments?['lapTimes'] ?? const []);
+    if (laps.isNotEmpty) return laps.length * 1000;
+    return (t.drumsObtained ?? 0).round();
+  }
+
+  Future<List<AppTransaction>> _mergedPanelDayRows() {
+    return CountRecordOfflineSync.instance.mergeForDayAsync(
+      widget.dateYmd,
+      _effectiveDayRows(),
+    );
+  }
+
   Future<void> _onBackOnline() async {
     await _refreshConnectivity();
     await _trySyncPending(silent: false);
     if (!mounted) return;
-    final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
-      widget.dateYmd,
-      widget.dayTransactions,
-    );
+    final merged = await _mergedPanelDayRows();
     if (!mounted) return;
     setState(() {
       _units.clear();
@@ -344,20 +432,27 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     });
   }
 
-  Future<void> _refreshConnectivity() async {
+  Future<void> _refreshConnectivity({bool forceProbe = false}) async {
     final wasOnline = _isOnline;
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
-      forceProbe: !widget.serverOnline,
+      forceProbe: forceProbe,
     );
     if (mounted) setState(() => _isOnline = online);
-    if (online && !wasOnline) {
-      await _trySyncPending(silent: false);
+    if (online) {
+      CountRecordOfflineSync.instance.noteServerReachable();
+    }
+    if (online && (!wasOnline || _pendingCount > 0)) {
+      await _trySyncPending(silent: wasOnline);
       _syncDropdownRefreshTimer();
     }
+    _syncOfflinePollTimer();
   }
 
-  void _notifyParentDataChanged() {
+  void _notifyParentDataChanged({bool shieldPanelReload = false}) {
+    if (shieldPanelReload) {
+      _skipExternalDayTxReload++;
+    }
     _parentRefreshDebounce?.cancel();
     _parentRefreshDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
@@ -366,7 +461,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   void _syncOfflinePollTimer() {
-    if (_pendingCount > 0) {
+    if (_pendingCount > 0 || !_isOnline) {
       _offlineSyncTicker ??= Timer.periodic(
         const Duration(seconds: 2),
         (_) {
@@ -381,14 +476,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _pollOfflineQueue() async {
-    if (_pendingCount == 0) return;
-    if (!await CountRecordOfflineSync.instance.isOnline(
-      Supabase.instance.client,
-      forceProbe: true,
-    )) {
-      return;
-    }
-    await _trySyncPending(silent: true);
+    await _refreshConnectivity();
   }
 
   Future<void> _refreshPendingCount() async {
@@ -405,15 +493,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       Supabase.instance.client,
     );
     if (synced > 0) {
-      widget.onDataChanged?.call();
       if (!silent && mounted) {
         _toast('อัปโหลดข้อมูล $synced รายการเข้าระบบแล้ว');
       }
       if (!mounted) return;
-      final merged = await CountRecordOfflineSync.instance.mergeForDayAsync(
-        widget.dateYmd,
-        widget.dayTransactions,
-      );
+      if (_skipExternalDayTxReload > 0 || _shouldPreserveLocalPanelState()) {
+        widget.onDataChanged?.call();
+        await _refreshPendingCount();
+        return;
+      }
+      widget.onDataChanged?.call();
+      final merged = await _mergedPanelDayRows();
       if (!mounted) return;
       setState(() {
         _units.clear();
@@ -421,7 +511,15 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       });
     }
     await _refreshPendingCount();
-    await _refreshConnectivity();
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      Supabase.instance.client,
+      forceProbe: true,
+    );
+    if (mounted) setState(() => _isOnline = online);
+    if (online) {
+      CountRecordOfflineSync.instance.noteServerReachable();
+    }
+    _syncOfflinePollTimer();
   }
 
   List<AppTransaction> _effectiveDayRows() {
@@ -429,11 +527,48 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         .where((t) => t.date == widget.dateYmd)
         .toList();
     final byId = {for (final t in base) t.id: t};
+    for (final id in _hiddenDayTxIds) {
+      byId.remove(id);
+    }
     for (final u in _units) {
+      final empty = u.rounds <= 0 && u.lapTimes.isEmpty;
+      if (empty) {
+        if (u.txId.isNotEmpty) byId.remove(u.txId);
+        continue;
+      }
       byId[u.txId] = _txFor(u);
     }
     return byId.values.toList();
   }
+
+  void _pruneHiddenDayTxIds() {
+    _hiddenDayTxIds.removeWhere(
+      (id) => !widget.dayTransactions.any(
+        (t) => t.id == id && t.date == widget.dateYmd,
+      ),
+    );
+  }
+
+  bool _unitIsEmpty(_CounterUnit u) => u.rounds <= 0 && u.lapTimes.isEmpty;
+
+  bool _hasLocalOnlyTripUnits() {
+    if (widget.mode != CounterMode.trip) return false;
+    return _units.any(
+      (u) =>
+          (u.vehicleId ?? '').trim().isNotEmpty &&
+          (!u.persisted || _unitIsEmpty(u)),
+    );
+  }
+
+  bool _hasLocalSandProgress() {
+    if (widget.mode != CounterMode.sand) return false;
+    final u = _sandUnit;
+    if (u == null) return false;
+    return u.rounds > 0 || u.lapTimes.isNotEmpty;
+  }
+
+  bool _shouldPreserveLocalPanelState() =>
+      _hasLocalOnlyTripUnits() || _hasLocalSandProgress();
 
   _CounterUnit _unitFromTx(
     AppTransaction t, {
@@ -443,10 +578,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }) {
     final wa = t.workAssignments ?? const <String, List<String>>{};
     final laps = List<String>.from(wa['lapTimes'] ?? const []);
-    var rounds = roundsFromDrums
-        ? (t.drumsObtained ?? 0).round()
-        : (t.perCarTrips ?? t.tripCount ?? 0).round();
-    if (laps.length > rounds) rounds = laps.length;
+    final int rounds;
+    if (roundsFromDrums) {
+      final fromDrums = (t.drumsObtained ?? 0).round();
+      if (laps.isNotEmpty) {
+        rounds = laps.length > fromDrums ? laps.length : fromDrums;
+      } else {
+        rounds = fromDrums;
+      }
+    } else {
+      var tripRounds = (t.perCarTrips ?? t.tripCount ?? 0).round();
+      if (laps.length > tripRounds) tripRounds = laps.length;
+      rounds = tripRounds;
+    }
     return _CounterUnit(
       txId: t.id,
       title: title,
@@ -494,9 +638,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   AppTransaction _txFor(_CounterUnit u) {
-    final assignments = <String, List<String>>{
-      'lapTimes': List<String>.from(u.lapTimes),
-    };
+    final laps = List<String>.from(u.lapTimes);
+    final Map<String, List<String>>? assignments = laps.isEmpty
+        ? null
+        : <String, List<String>>{'lapTimes': laps};
     if (widget.mode == CounterMode.trip) {
       final r = u.rounds.toDouble();
       return AppTransaction(
@@ -531,7 +676,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
-  Future<bool> _save(_CounterUnit u) async {
+  Future<bool> _save(
+    _CounterUnit u, {
+    bool notifyParent = true,
+  }) async {
+    if (_unitIsEmpty(u)) {
+      await _deleteUnitRecord(u, notifyParent: notifyParent);
+      return false;
+    }
     final wasPersisted = u.persisted;
     final queued = await CountRecordOfflineSync.instance.persist(
       service: widget.service,
@@ -542,24 +694,65 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       serverOnlineHint: _isOnline,
     );
     u.persisted = true;
-    await _refreshConnectivity();
     await _refreshPendingCount();
-    _notifyParentDataChanged();
+    if (notifyParent) {
+      _notifyParentDataChanged(shieldPanelReload: true);
+    }
+    unawaited(_refreshConnectivity(forceProbe: false));
     return queued;
+  }
+
+  Future<void> _deleteUnitRecord(
+    _CounterUnit u, {
+    bool notifyParent = true,
+  }) async {
+    final oldId = u.txId;
+    if (u.persisted && oldId.isNotEmpty) {
+      await CountRecordOfflineSync.instance.delete(
+        service: widget.service,
+        client: Supabase.instance.client,
+        id: oldId,
+        ymd: widget.dateYmd,
+        dayServerRows: _effectiveDayRows(),
+        serverOnlineHint: _isOnline,
+      );
+      _hiddenDayTxIds.add(oldId);
+    }
+    u.persisted = false;
+    u.rounds = 0;
+    u.lapTimes.clear();
+    if (widget.mode == CounterMode.sand && mounted) {
+      final idx = _units.indexOf(u);
+      if (idx >= 0) {
+        setState(() {
+          _units[idx] = _CounterUnit(
+            txId: '${DateTime.now().millisecondsSinceEpoch}_sand',
+            title: u.title,
+            subtitle: u.subtitle,
+          );
+        });
+      }
+    }
+    await _refreshPendingCount();
+    if (notifyParent) {
+      _notifyParentDataChanged(shieldPanelReload: true);
+    }
   }
 
   /// กดปุ่ม = บันทึกวันเวลา + เพิ่มจำนวน 1 (จำกัด 1 ครั้งทุก 3 วินาทีต่อปุ่ม)
   Future<void> _recordTap(_CounterUnit u) async {
     if (u.busy) return;
     if (u.isOnRecordCooldown) return;
+    if (widget.mode == CounterMode.trip && u.isBrokenReported) return;
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
     final stamp = _stamp(DateTime.now());
     _armRecordCooldown(u);
+    _skipExternalDayTxReload++;
     setState(() {
-      u.busy = true;
       u.lapTimes.add(stamp);
       u.rounds = u.lapTimes.length > u.rounds ? u.lapTimes.length : u.rounds + 1;
+      u.burstTick++;
     });
     HapticFeedback.selectionClick();
     unawaited(RecordFeedbackSound.playRecordTap());
@@ -579,16 +772,16 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       }
     } catch (e) {
       if (mounted) {
+        if (_skipExternalDayTxReload > 0) _skipExternalDayTxReload--;
         setState(() {
           u.rounds = prevRounds;
           u.lapTimes
             ..clear()
             ..addAll(prevLaps);
+          if (u.burstTick > 0) u.burstTick--;
         });
         _toast('บันทึกไม่สำเร็จ: $e', error: true);
       }
-    } finally {
-      if (mounted) setState(() => u.busy = false);
     }
   }
 
@@ -682,7 +875,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           : (u.rounds > u.lapTimes.length ? u.rounds - 1 : u.lapTimes.length);
     });
     try {
-      await _save(u);
+      await _save(u, notifyParent: false);
+      _notifyParentDataChanged(shieldPanelReload: true);
       if (mounted) {
         _toast(
           isTrip
@@ -742,17 +936,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     try {
       var queued = false;
       if (u.persisted) {
+        final oldId = u.txId;
         queued = await CountRecordOfflineSync.instance.delete(
           service: widget.service,
           client: Supabase.instance.client,
-          id: u.txId,
+          id: oldId,
           ymd: widget.dateYmd,
           dayServerRows: _effectiveDayRows(),
           serverOnlineHint: _isOnline,
         );
+        if (oldId.isNotEmpty) _hiddenDayTxIds.add(oldId);
         await _refreshConnectivity();
         await _refreshPendingCount();
-        _notifyParentDataChanged();
+        _notifyParentDataChanged(shieldPanelReload: true);
       }
       if (mounted) {
         setState(() => _units.remove(u));
@@ -808,11 +1004,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       );
       if (!mounted) continue;
       setState(() => _units.add(unit));
-      try {
-        await _save(unit);
-      } catch (_) {
-        if (mounted) setState(() => _units.remove(unit));
-      }
     }
   }
 
@@ -841,20 +1032,42 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                   Navigator.pop(ctx, _UnitEditAction.changeDriver),
             ),
             const Divider(height: 1),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.car_crash_outlined, color: Color(0xFFE65100)),
-              title: const Text(
-                'แจ้งรถเสีย',
-                style: TextStyle(fontWeight: FontWeight.w700),
+            if (u.isBrokenReported)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.check_circle_outline,
+                  color: Color(0xFF2E7D32),
+                ),
+                title: const Text(
+                  'ปรับสถานะรถปกติ',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text(
+                  'รถพร้อมใช้งาน — เปิดบันทึกเที่ยวต่อ',
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                onTap: () =>
+                    Navigator.pop(ctx, _UnitEditAction.restoreNormal),
+              )
+            else
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.car_crash_outlined,
+                  color: Color(0xFFE65100),
+                ),
+                title: const Text(
+                  'แจ้งรถเสีย',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text(
+                  'บันทึกสถานะรถเสียลงระบบ',
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                onTap: () =>
+                    Navigator.pop(ctx, _UnitEditAction.reportBroken),
               ),
-              subtitle: Text(
-                u.isBrokenReported ? 'แจ้งแล้ววันนี้' : 'บันทึกสถานะรถเสียลงระบบ',
-                style: const TextStyle(fontSize: 12.5),
-              ),
-              onTap: () =>
-                  Navigator.pop(ctx, _UnitEditAction.reportBroken),
-            ),
           ],
         ),
         actions: [
@@ -871,6 +1084,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         await _openChangeDriverDialog(u);
       case _UnitEditAction.reportBroken:
         await _confirmReportBrokenVehicle(u);
+      case _UnitEditAction.restoreNormal:
+        await _confirmRestoreVehicleNormal(u);
     }
   }
 
@@ -964,6 +1179,56 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  Future<void> _confirmRestoreVehicleNormal(_CounterUnit u) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('ปรับสถานะรถปกติ?'),
+        content: Text(
+          'ยืนยันว่า "${u.title}" กลับมาใช้งานได้แล้วใช่หรือไม่?\n'
+          'จะเปิดปุ่มบันทึกเที่ยวให้อีกครั้ง',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยัน'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final stamp = _stamp(DateTime.now());
+    final tag = 'รถปกติ $stamp';
+    final prevDetails = u.workDetails;
+    setState(() {
+      u.busy = true;
+      u.workDetails =
+          prevDetails.isEmpty ? tag : '$prevDetails, $tag';
+    });
+    try {
+      await _save(u);
+      if (mounted) {
+        _toast('ปรับสถานะรถปกติแล้ว — พร้อมบันทึกเที่ยวต่อ');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => u.workDetails = prevDetails);
+        _toast('บันทึกไม่สำเร็จ: $e', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => u.busy = false);
+    }
+  }
+
   void _toast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -996,11 +1261,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     return _SwipeRevealActions(
       onDelete: () => _confirmRemoveUnit(unit),
       onEdit: () => _openEditUnitMenu(unit),
-      childBuilder: (interactionsEnabled) => _VehicleRecordButton(
+      childBuilder: (interactionsEnabled, setHoldLock) => _VehicleRecordButton(
         unit: unit,
         index: index,
         compact: compact,
         interactionsEnabled: interactionsEnabled,
+        setHoldLock: setHoldLock,
         onTap: () => _recordTap(unit),
         onHoldToUndo: () => _confirmUndoLastRecord(unit),
       ),
@@ -1082,66 +1348,52 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
             units: _units,
             onTap: _toggleAddVehiclePanel,
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 280),
-            switchInCurve: Curves.easeOutBack,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              return SizeTransition(
-                sizeFactor: animation,
-                axisAlignment: -1,
-                child: FadeTransition(opacity: animation, child: child),
-              );
-            },
-            child: _addVehiclePanelOpen
-                ? Padding(
-                    key: const ValueKey('add_vehicle_panel'),
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF1565C0),
-                            backgroundColor: const Color(0xFFE3F2FD),
-                            side: const BorderSide(
-                              color: Color(0xFF90CAF9),
-                              width: 1.5,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          onPressed: () {
-                            _openSelectDialog();
-                            _hideAddVehiclePanel();
-                          },
-                          icon: const Icon(Icons.add_rounded, size: 20),
-                          label: const Text(
-                            'เพิ่มรถเพิ่มเติม',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        Align(
-                          alignment: Alignment.center,
-                          child: TextButton(
-                            onPressed: _hideAddVehiclePanel,
-                            child: const Text(
-                              'ปิด',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF78909C),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+          if (_addVehiclePanelOpen)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1565C0),
+                      backgroundColor: const Color(0xFFE3F2FD),
+                      side: const BorderSide(
+                        color: Color(0xFF90CAF9),
+                        width: 1.5,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                  )
-                : const SizedBox.shrink(key: ValueKey('add_vehicle_hidden')),
-          ),
+                    onPressed: () {
+                      _openSelectDialog();
+                      _hideAddVehiclePanel();
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text(
+                      'เพิ่มรถเพิ่มเติม',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.center,
+                    child: TextButton(
+                      onPressed: _hideAddVehiclePanel,
+                      child: const Text(
+                        'ปิด',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF78909C),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -1271,7 +1523,10 @@ class _SwipeRevealActions extends StatefulWidget {
 
   final VoidCallback onDelete;
   final VoidCallback onEdit;
-  final Widget Function(bool interactionsEnabled) childBuilder;
+  final Widget Function(
+    bool interactionsEnabled,
+    void Function(bool locked) setHoldLock,
+  ) childBuilder;
 
   @override
   State<_SwipeRevealActions> createState() => _SwipeRevealActionsState();
@@ -1281,6 +1536,7 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   double _offset = 0;
   _SwipeRevealSide _revealed = _SwipeRevealSide.none;
   bool _dragging = false;
+  bool _holdLocked = false;
   double _actionWidth = 64;
 
   bool get _interactionsEnabled =>
@@ -1310,19 +1566,57 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
     });
   }
 
+  void _setHoldLock(bool locked) {
+    // #region agent log
+    _swipeRevealDbgLog(
+      'count_record_counters:_setHoldLock',
+      'hold lock changed',
+      {
+        'locked': locked,
+        'dragging': _dragging,
+        'revealed': _revealed.name,
+        'willSnap': !locked && (_dragging || _revealed != _SwipeRevealSide.none),
+        'deferred': !locked && (_dragging || _revealed != _SwipeRevealSide.none),
+      },
+      hypothesisId: 'A',
+    );
+    // #endregion
+    _holdLocked = locked;
+    if (!locked && (_dragging || _revealed != _SwipeRevealSide.none)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _holdLocked) return;
+        if (_dragging || _revealed != _SwipeRevealSide.none) {
+          // #region agent log
+          _swipeRevealDbgLog(
+            'count_record_counters:_setHoldLock:postFrame',
+            'deferred snap to none',
+            {
+              'dragging': _dragging,
+              'revealed': _revealed.name,
+            },
+            hypothesisId: 'A',
+          );
+          // #endregion
+          _snap(side: _SwipeRevealSide.none);
+        }
+      });
+    }
+  }
+
   void _onHorizontalDragStart(DragStartDetails details) {
+    if (_holdLocked) return;
     _setStateIfMounted(() => _dragging = true);
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (!mounted) return;
+    if (_holdLocked || !mounted) return;
     _setStateIfMounted(() {
       _offset = (_offset + details.delta.dx).clamp(-_actionWidth, _actionWidth);
     });
   }
 
   void _onHorizontalDragEnd(DragEndDetails details) {
-    if (!mounted) return;
+    if (_holdLocked || !mounted) return;
     final velocity = details.primaryVelocity ?? 0;
     if (_offset <= -_actionWidth / 2 || velocity < -280) {
       _snap(side: _SwipeRevealSide.delete);
@@ -1425,7 +1719,10 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
                   transform: Matrix4.translationValues(offset, 0, 0),
                   child: IgnorePointer(
                     ignoring: !_interactionsEnabled,
-                    child: widget.childBuilder(_interactionsEnabled),
+                    child: widget.childBuilder(
+                      _interactionsEnabled,
+                      _setHoldLock,
+                    ),
                   ),
                 ),
               ),
@@ -1463,22 +1760,264 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   }
 }
 
-/// ปุ่มบันทึกแบบยกนูน + เอฟเฟกต์ตอนกด + อนิเมชัน idle ชวนกด
-class _RecordButtonShell extends StatefulWidget {
+/// เอฟเฟกต์ popup แบบเกมเมื่อบันทึกรอบ/เที่ยวสำเร็จ
+Widget _withRecordBurst({
+  required _CounterUnit unit,
+  required bool isTrip,
+  required Widget child,
+}) {
+  return Stack(
+    clipBehavior: Clip.none,
+    fit: StackFit.passthrough,
+    children: [
+      child,
+      Positioned.fill(
+        child: IgnorePointer(
+          child: _GameRecordBurst(
+            burstTick: unit.burstTick,
+            roundNo: unit.rounds,
+            isTrip: isTrip,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _GameRecordBurst extends StatefulWidget {
+  const _GameRecordBurst({
+    required this.burstTick,
+    required this.roundNo,
+    required this.isTrip,
+  });
+
+  final int burstTick;
+  final int roundNo;
+  final bool isTrip;
+
+  @override
+  State<_GameRecordBurst> createState() => _GameRecordBurstState();
+}
+
+class _GameRecordBurstState extends State<_GameRecordBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final ms = DevicePerf.isConstrainedDevice ? 540 : 780;
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: ms),
+    );
+    if (widget.burstTick > 0) {
+      _ctrl.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _GameRecordBurst oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.burstTick != oldWidget.burstTick && widget.burstTick > 0) {
+      _ctrl.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.burstTick <= 0) return const SizedBox.shrink();
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+        final popIn = Curves.easeOutBack.transform((t / 0.38).clamp(0.0, 1.0));
+        final popScale = t < 0.38
+            ? 0.15 + popIn * 0.95
+            : 1.1 +
+                Curves.easeOut.transform(((t - 0.38) / 0.62).clamp(0.0, 1.0)) *
+                    0.18;
+        final fadeOut =
+            1 - Curves.easeIn.transform(((t - 0.42) / 0.58).clamp(0.0, 1.0));
+        final riseY =
+            -56 * Curves.easeOutCubic.transform(((t - 0.3) / 0.7).clamp(0.0, 1.0));
+        final ringScale = 0.55 + t * 1.55;
+        final ringFade = (1 - t).clamp(0.0, 1.0) * 0.65;
+        final particleT = Curves.easeOut.transform((t / 0.72).clamp(0.0, 1.0));
+        final accent = widget.isTrip
+            ? const Color(0xFFFFD600)
+            : const Color(0xFFFFF176);
+        final labelColor =
+            widget.isTrip ? const Color(0xFF0D47A1) : const Color(0xFF880E4F);
+
+        return Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Transform.scale(
+              scale: ringScale,
+              child: Opacity(
+                opacity: ringFade,
+                child: Container(
+                  width: 118,
+                  height: 118,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.55),
+                        blurRadius: 18,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            for (var i = 0; i < 8; i++)
+              _burstParticle(
+                angle: i * 0.785398,
+                distance: 34 + particleT * 52,
+                size: 5.5 * (1 - particleT * 0.65),
+                opacity: (1 - particleT).clamp(0.0, 1.0),
+                color: i.isEven ? accent : Colors.white,
+              ),
+            Transform.translate(
+              offset: Offset(0, riseY),
+              child: Transform.scale(
+                scale: popScale,
+                child: Opacity(
+                  opacity: fadeOut.clamp(0.0, 1.0),
+                  child: _burstPopupCard(
+                    labelColor: labelColor,
+                    accent: accent,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _burstParticle({
+    required double angle,
+    required double distance,
+    required double size,
+    required double opacity,
+    required Color color,
+  }) {
+    return Transform.translate(
+      offset: Offset(
+        distance * math.cos(angle),
+        distance * math.sin(angle),
+      ),
+      child: Opacity(
+        opacity: opacity,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.7),
+                blurRadius: 6,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _burstPopupCard({
+    required Color labelColor,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: widget.isTrip
+              ? const [Color(0xFFFFF59D), Color(0xFFFFB300)]
+              : const [Color(0xFFFFFDE7), Color(0xFFFFEE58)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: accent.withValues(alpha: 0.55),
+            blurRadius: 22,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '+1',
+            style: TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.w900,
+              color: labelColor,
+              height: 1,
+              shadows: const [
+                Shadow(color: Colors.white, blurRadius: 10),
+                Shadow(color: Colors.white, blurRadius: 4),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            widget.isTrip
+                ? 'เที่ยวที่ ${widget.roundNo}'
+                : 'รอบที่ ${widget.roundNo}',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF37474F),
+              letterSpacing: -0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ปุ่มบันทึกแบบยกนูน + เอฟเฟกต์ตอนกด
+class _RecordButtonShell extends StatelessWidget {
   const _RecordButtonShell({
     required this.bgColor,
     required this.shadowColor,
     required this.busy,
     required this.dimmed,
     required this.pressed,
-    required this.idleAnimate,
     required this.onPointerDown,
     required this.onPointerUp,
     required this.onPointerCancel,
     required this.child,
     this.busyBgColor,
     this.bottomOverlay,
-    this.idlePhase = 0,
   });
 
   final Color bgColor;
@@ -1486,8 +2025,6 @@ class _RecordButtonShell extends StatefulWidget {
   final bool busy;
   final bool dimmed;
   final bool pressed;
-  final bool idleAnimate;
-  final double idlePhase;
   final VoidCallback onPointerDown;
   final VoidCallback onPointerUp;
   final VoidCallback onPointerCancel;
@@ -1496,131 +2033,42 @@ class _RecordButtonShell extends StatefulWidget {
   final Widget? bottomOverlay;
 
   @override
-  State<_RecordButtonShell> createState() => _RecordButtonShellState();
-}
-
-class _RecordButtonShellState extends State<_RecordButtonShell>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _idleCtrl;
-  late final Animation<double> _idleScale;
-  late final Animation<double> _idleLift;
-  late final Animation<double> _idleGlow;
-
-  @override
-  void initState() {
-    super.initState();
-    _idleCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1700),
-    );
-    _idleScale = Tween<double>(begin: 1.0, end: 1.028).animate(
-      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
-    );
-    _idleLift = Tween<double>(begin: -6.0, end: -11.0).animate(
-      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
-    );
-    _idleGlow = Tween<double>(begin: 0.12, end: 0.34).animate(
-      CurvedAnimation(parent: _idleCtrl, curve: Curves.easeInOut),
-    );
-    if (widget.idlePhase > 0) {
-      _idleCtrl.value = widget.idlePhase % 1.0;
-    }
-    _syncIdleAnimation();
-  }
-
-  @override
-  void didUpdateWidget(covariant _RecordButtonShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.idleAnimate != widget.idleAnimate) {
-      _syncIdleAnimation();
-    }
-  }
-
-  void _syncIdleAnimation() {
-    if (widget.idleAnimate) {
-      if (!_idleCtrl.isAnimating) {
-        _idleCtrl.repeat(reverse: true);
-      }
-    } else {
-      _idleCtrl.stop();
-      _idleCtrl.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _idleCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final idle = widget.idleAnimate && !widget.pressed;
-    final lifted = !widget.busy && !widget.dimmed;
-    final pressScale = widget.pressed ? 0.96 : 1.0;
-    final bg = widget.busy
-        ? (widget.busyBgColor ?? widget.bgColor.withValues(alpha: 0.55))
-        : widget.dimmed
-            ? widget.bgColor.withValues(alpha: 0.72)
-            : widget.bgColor;
+    final pressScale = pressed ? 0.98 : 1.0;
+    final bg = busy
+        ? (busyBgColor ?? bgColor.withValues(alpha: 0.55))
+        : dimmed
+            ? bgColor.withValues(alpha: 0.72)
+            : bgColor;
+    final lifted = !busy && !dimmed && !pressed;
+    final liftY = lifted ? -4.0 : 0.0;
+    final elevation = busy ? 0.0 : pressed ? 3.0 : 8.0;
 
-    return AnimatedBuilder(
-      animation: _idleCtrl,
-      builder: (context, child) {
-        final idleScale = idle ? _idleScale.value : 1.0;
-        final liftY = widget.pressed
-            ? 0.0
-            : idle
-                ? _idleLift.value
-                : (lifted ? -6.0 : 0.0);
-        final elevation = widget.busy
-            ? 0.0
-            : widget.pressed
-                ? 3.0
-                : idle
-                    ? 10.0 + 6.0 * _idleCtrl.value
-                    : 12.0;
-        final glowAlpha = idle ? _idleGlow.value : 0.0;
-
-        return Transform.scale(
-          scale: pressScale * idleScale,
-          child: Transform.translate(
-            offset: Offset(0, liftY),
-            child: Material(
-              elevation: elevation,
-              shadowColor: widget.shadowColor.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(16),
-              color: bg,
-              clipBehavior: Clip.antiAlias,
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: (_) => widget.onPointerDown(),
-                onPointerUp: (_) => widget.onPointerUp(),
-                onPointerCancel: (_) => widget.onPointerCancel(),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (glowAlpha > 0)
-                      IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: glowAlpha),
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                    widget.child,
-                    ?widget.bottomOverlay,
-                  ],
-                ),
-              ),
+    return Transform.scale(
+      scale: pressScale,
+      child: Transform.translate(
+        offset: Offset(0, liftY),
+        child: Material(
+          elevation: elevation,
+          shadowColor: shadowColor.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(16),
+          color: bg,
+          clipBehavior: Clip.antiAlias,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (_) => onPointerDown(),
+            onPointerUp: (_) => onPointerUp(),
+            onPointerCancel: (_) => onPointerCancel(),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                child,
+                ?bottomOverlay,
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -1684,9 +2132,8 @@ class _LatestTripRecordsBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
+                    Transform.rotate(
+                      angle: expanded ? 3.14159 : 0,
                       child: Icon(
                         Icons.expand_more_rounded,
                         size: 22,
@@ -1774,7 +2221,6 @@ class _FirstTripSetupCardState extends State<_FirstTripSetupCard> {
       busy: false,
       dimmed: false,
       pressed: _pressed,
-      idleAnimate: !_pressed,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
@@ -1848,6 +2294,7 @@ class _VehicleRecordButton extends StatefulWidget {
     required this.onHoldToUndo,
     this.compact = false,
     this.interactionsEnabled = true,
+    required this.setHoldLock,
   });
 
   final _CounterUnit unit;
@@ -1856,6 +2303,7 @@ class _VehicleRecordButton extends StatefulWidget {
   final VoidCallback onHoldToUndo;
   final bool compact;
   final bool interactionsEnabled;
+  final void Function(bool locked) setHoldLock;
 
   @override
   State<_VehicleRecordButton> createState() => _VehicleRecordButtonState();
@@ -1876,9 +2324,13 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       widget.interactionsEnabled &&
       !widget.unit.isOnRecordCooldown;
 
+  bool get _canRecordTrip =>
+      _canPress && !widget.unit.isBrokenReported;
+
   @override
   void dispose() {
     _holdTimer?.cancel();
+    widget.setHoldLock(false);
     super.dispose();
   }
 
@@ -1890,6 +2342,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       _holdTimer = null;
       _pointerDownAt = null;
       _holdTriggered = false;
+      widget.setHoldLock(false);
       _releasePress();
       if (mounted) setState(() => _holdProgress = 0);
     }
@@ -1917,7 +2370,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
 
   void _onPointerDown() {
     if (widget.unit.busy || !widget.interactionsEnabled) return;
-    if (_canPress) {
+    if (_canRecordTrip) {
       setState(() => _isPressed = true);
       HapticFeedback.lightImpact();
     }
@@ -1925,6 +2378,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     _holdTriggered = false;
     if (widget.unit.rounds > 0) {
       setState(() => _holdProgress = 0);
+      widget.setHoldLock(true);
       _startHoldTimer();
     }
   }
@@ -1938,6 +2392,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    widget.setHoldLock(false);
     _releasePress();
 
     if (_holdTriggered) {
@@ -1950,7 +2405,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     if (mounted) setState(() => _holdProgress = 0);
 
     if (widget.unit.busy || downAt == null || !widget.interactionsEnabled) return;
-    if (widget.unit.isOnRecordCooldown) return;
+    if (!_canRecordTrip) return;
     final elapsed = DateTime.now().difference(downAt);
     if (elapsed <= _tapMax && progress < 0.15) {
       widget.onTap();
@@ -1961,6 +2416,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
     _pointerDownAt = null;
     _holdTimer?.cancel();
     _holdTimer = null;
+    widget.setHoldLock(false);
     _releasePress();
     if (mounted) setState(() => _holdProgress = 0);
   }
@@ -1975,8 +2431,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       children: [
         _VehicleTripCountRail(
           rounds: unit.rounds,
+          burstTick: unit.burstTick,
           onCooldown: onCooldown,
           cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+          recordingEnabled: !unit.isBrokenReported,
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1994,7 +2452,9 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  'คันที่ $carNo • บันทึกเที่ยว',
+                  unit.isBrokenReported
+                      ? 'คันที่ $carNo • หยุดบันทึกเที่ยว'
+                      : 'คันที่ $carNo • บันทึกเที่ยว',
                   style: const TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w800,
@@ -2089,8 +2549,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
           child: _VehicleTripCountRail(
             compact: true,
             rounds: unit.rounds,
+            burstTick: unit.burstTick,
             onCooldown: onCooldown,
             cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+            recordingEnabled: !unit.isBrokenReported,
           ),
         ),
         const SizedBox(height: 6),
@@ -2139,21 +2601,19 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   Widget build(BuildContext context) {
     final unit = widget.unit;
     final busy = unit.busy;
+    final broken = unit.isBrokenReported;
     final onCooldown = unit.isOnRecordCooldown && !busy;
     final bg = _vehicleButtonColor(widget.index);
     final carNo = widget.index + 1;
-    return _RecordButtonShell(
+    return _withRecordBurst(
+      unit: unit,
+      isTrip: true,
+      child: _RecordButtonShell(
       bgColor: bg,
       shadowColor: bg,
       busy: busy,
-      dimmed: onCooldown,
+      dimmed: onCooldown || broken,
       pressed: _isPressed,
-      idleAnimate: !busy &&
-          !onCooldown &&
-          !_isPressed &&
-          widget.interactionsEnabled &&
-          _holdProgress <= 0,
-      idlePhase: widget.index * 0.17,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
@@ -2198,6 +2658,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                     onCooldown: onCooldown,
                   ),
       ),
+    ),
     );
   }
 }
@@ -2208,13 +2669,29 @@ class _VehicleTripCountRail extends StatelessWidget {
     required this.rounds,
     required this.onCooldown,
     required this.cooldownSecondsLeft,
+    this.burstTick = 0,
     this.compact = false,
+    this.recordingEnabled = true,
   });
 
   final int rounds;
+  final int burstTick;
   final bool onCooldown;
   final int cooldownSecondsLeft;
   final bool compact;
+  final bool recordingEnabled;
+
+  Widget _punchCount(Widget child, {double punchScale = 1.2}) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(burstTick),
+      tween: Tween(begin: 1.0, end: burstTick > 0 ? punchScale : 1.0),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2232,19 +2709,28 @@ class _VehicleTripCountRail extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.add_circle_rounded,
-              size: 20,
-              color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              '$rounds',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
-                height: 1,
+            if (recordingEnabled)
+              Icon(
+                Icons.add_circle_rounded,
+                size: 20,
+                color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
+              )
+            else
+              Icon(
+                Icons.block_rounded,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
+            if (recordingEnabled) const SizedBox(width: 5),
+            _punchCount(
+              Text(
+                '$rounds',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
+                  height: 1,
+                ),
               ),
             ),
             const SizedBox(width: 3),
@@ -2291,20 +2777,30 @@ class _VehicleTripCountRail extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.add_circle_rounded,
-            size: 30,
-            color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '$rounds',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
-              height: 1,
+          if (recordingEnabled)
+            Icon(
+              Icons.add_circle_rounded,
+              size: 30,
+              color: Colors.white.withValues(alpha: onCooldown ? 0.55 : 0.98),
+            )
+          else
+            Icon(
+              Icons.block_rounded,
+              size: 26,
+              color: Colors.white.withValues(alpha: 0.72),
             ),
+          SizedBox(height: recordingEnabled ? 6 : 4),
+          _punchCount(
+            Text(
+              '$rounds',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: Colors.white.withValues(alpha: onCooldown ? 0.7 : 1),
+                height: 1,
+              ),
+            ),
+            punchScale: 1.22,
           ),
           const SizedBox(height: 2),
           Text(
@@ -2437,15 +2933,16 @@ class _SandRoundCountHero extends StatelessWidget {
   const _SandRoundCountHero({
     required this.rounds,
     required this.dimmed,
+    this.burstTick = 0,
   });
 
   final int rounds;
   final bool dimmed;
+  final int burstTick;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 200),
+    final core = Opacity(
       opacity: dimmed ? 0.72 : 1,
       child: Container(
         width: 132,
@@ -2506,6 +3003,15 @@ class _SandRoundCountHero extends StatelessWidget {
           ],
         ),
       ),
+    );
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(burstTick),
+      tween: Tween(begin: 1.0, end: burstTick > 0 ? 1.16 : 1.0),
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: core,
     );
   }
 }
@@ -2621,15 +3127,16 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     final unit = widget.unit;
     final busy = unit.busy;
     final onCooldown = unit.isOnRecordCooldown && !busy;
-    return _RecordButtonShell(
+    return _withRecordBurst(
+      unit: unit,
+      isTrip: false,
+      child: _RecordButtonShell(
       bgColor: _sandBg,
       busyBgColor: _sandBgBusy,
       shadowColor: _sandBg,
       busy: busy,
       dimmed: onCooldown,
       pressed: _isPressed,
-      idleAnimate:
-          !busy && !onCooldown && !_isPressed && _holdProgress <= 0,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
@@ -2734,6 +3241,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                           child: Center(
                             child: _SandRoundCountHero(
                               rounds: unit.rounds,
+                              burstTick: unit.burstTick,
                               dimmed: onCooldown,
                             ),
                           ),
@@ -2782,6 +3290,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
           ],
         ),
       ),
+    ),
     );
   }
 }
