@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/employee.dart';
 import '../services/employee_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/page_loading_view.dart';
 
 class EmployeesScreen extends StatefulWidget {
@@ -22,6 +24,11 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'พนักงาน',
+      pageId: MobileScreenIds.pageEmployees,
+      stepId: MobileScreenIds.stepEmployeesList,
+    );
     _employeesFuture = widget.service.fetchEmployees();
   }
 

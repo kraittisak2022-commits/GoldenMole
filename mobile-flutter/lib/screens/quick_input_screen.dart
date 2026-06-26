@@ -25,6 +25,7 @@ import '../utils/device_perf.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../utils/save_error_message.dart';
 
 class QuickInputScreen extends StatefulWidget {
@@ -602,7 +603,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : ((category != null && category.isNotEmpty)
                 ? category
                 : 'บันทึกข้อมูล'),
+      pageId: MobileScreenIds.pageQuickInput,
       module: category,
+      stepId: MobileScreenIds.quickInputStep(category),
     );
     final reduceMotion = WidgetsBinding
         .instance
@@ -1222,14 +1225,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     List<AppTransaction> sandMatched,
     List<AppTransaction> allDay,
   ) {
-    var inferredMaxDrums = 0.0;
     List<String> oldMachineNames = const [];
     List<String> newMachineNames = const [];
     for (final t in sandMatched) {
-      final rowDrums = t.drumsObtained ?? 0;
-      if (rowDrums > inferredMaxDrums) {
-        inferredMaxDrums = rowDrums;
-      }
       final mt = (t.sandMachineType ?? '').toLowerCase();
       final desc = t.description;
       final isOldMachine =
@@ -1267,10 +1265,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _sandEveningEndController.text = t.sandEveningEnd!;
       }
     }
-    if (_sandDrumsObtainedController.text.trim().isEmpty &&
-        inferredMaxDrums > 0) {
-      _sandDrumsObtainedController.text = _strNum(inferredMaxDrums);
-    }
+    _prefillSandWashFromCountRecord(allDay);
 
     final laborWash = _operatorNamesFromLatestLaborWash(allDay);
     if (laborWash.oldNames.isNotEmpty) {
@@ -1282,6 +1277,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     _sand1OperatorNames = oldMachineNames;
     _sand2OperatorNames = newMachineNames;
+  }
+
+  /// เติมช่องเครื่องร่อนใหม่/เก่า จากจำนวนที่นับใน «บันทึกและนับจำนวน → การร่อนทราย»
+  /// แบ่งตามช่วงเช้า/บ่าย (เศษให้เครื่องใหม่ก่อน) — ผู้ใช้แก้ไขทับได้ก่อนบันทึก
+  void _prefillSandWashFromCountRecord(List<AppTransaction> allDay) {
+    final ymd = _quickYmd(_selectedDate);
+    final periods = countRecordSandPeriodTotals(ymd, allDay);
+    if (periods.morning <= 0 && periods.afternoon <= 0) return;
+
+    final morning = splitSandRoundsNewFirst(periods.morning);
+    final afternoon = splitSandRoundsNewFirst(periods.afternoon);
+
+    if (periods.morning > 0) {
+      _sand2MorningController.text = _strNum(morning.newer.toDouble());
+      _sand1MorningController.text = _strNum(morning.older.toDouble());
+    }
+    if (periods.afternoon > 0) {
+      _sand2AfternoonController.text = _strNum(afternoon.newer.toDouble());
+      _sand1AfternoonController.text = _strNum(afternoon.older.toDouble());
+    }
   }
 
   void _hydrateFormsFromTransactions(
@@ -7254,8 +7269,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         modeRaw.toLowerCase() == 'lumpsum' || modeRaw == 'เหมา';
     d.tripBillingMode = isLump ? 'LumpSum' : 'PerTrip';
 
-    final tm = t.tripMorning ?? 0;
-    final ta = t.tripAfternoon ?? 0;
+    var tm = (t.tripMorning ?? 0).toDouble();
+    var ta = (t.tripAfternoon ?? 0).toDouble();
+    // ดึงค่าจาก "บันทึกและนับจำนวน > จำนวนเที่ยวรถ" ให้สอดคล้องกัน:
+    // ตัวนับเที่ยวบันทึกจำนวนรวมไว้ใน perCarTrips/tripCount โดยไม่แยกเช้า/บ่าย
+    // ถ้าฟอร์มยังไม่มีการแยกเช้า/บ่าย ให้นำจำนวนเที่ยวรวมมาใส่ช่องเช้า
+    if (tm == 0 && ta == 0) {
+      final counted = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+      if (counted > 0) tm = counted;
+    }
     d.tripMorning = _strNum(tm);
     d.tripAfternoon = _strNum(ta);
     d.tripMorningController.text = d.tripMorning;

@@ -1476,7 +1476,9 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                                             const ctx = mobileErrorContextFromRow(row);
                                                             if (!mobileErrorHasContext(ctx)) return null;
                                                             const items: { label: string; value: string }[] = [];
+                                                            if (ctx.pageId) items.push({ label: 'รหัสหน้า', value: ctx.pageId });
                                                             if (ctx.page) items.push({ label: 'หน้า', value: ctx.page });
+                                                            if (ctx.stepId) items.push({ label: 'รหัสขั้นตอน', value: ctx.stepId });
                                                             if (ctx.action) items.push({ label: 'รายการ', value: ctx.action });
                                                             if (ctx.button) items.push({ label: 'ปุ่ม', value: ctx.button });
                                                             if (ctx.field) items.push({ label: 'จุดที่ผิด', value: ctx.field });

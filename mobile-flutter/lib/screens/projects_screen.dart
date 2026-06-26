@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/land_project.dart';
 import '../services/project_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/page_loading_view.dart';
 
 class ProjectsScreen extends StatefulWidget {
@@ -22,6 +24,11 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'โครงการ',
+      pageId: MobileScreenIds.pageProjects,
+      stepId: MobileScreenIds.stepProjectsList,
+    );
     _projectsFuture = widget.service.fetchProjects();
   }
 

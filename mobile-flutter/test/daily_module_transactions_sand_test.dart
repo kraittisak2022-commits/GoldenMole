@@ -41,7 +41,7 @@ void main() {
     expect(totals.afternoon, 30);
     expect(
       dailySandWashModuleStatusLabel('2026-05-19', txs),
-      'เช้า 80 คิว · บ่าย 30 คิว',
+      '110 คิว',
     );
   });
 
@@ -68,7 +68,29 @@ void main() {
     expect(totals.afternoon, 0);
     expect(
       dailySandWashModuleStatusLabel('2026-05-19', txs),
-      'เช้า 40 คิว · บ่าย 0 คิว',
+      'ถัง 12 · 40 คิว',
+    );
+  });
+
+  test('drums from dedicated row not machine drumsObtained duplicate', () {
+    final txs = [
+      _sandTx(
+        id: 'd',
+        description: 'จำนวนถังที่ได้วันนี้',
+        drumsObtained: 20,
+      ),
+      _sandTx(
+        id: 'm',
+        morning: 5,
+        afternoon: 3,
+        machineType: 'Old',
+        drumsObtained: 20,
+      ),
+    ];
+    expect(sandWashDrumsObtainedForDay('2026-05-19', txs), 20);
+    expect(
+      dailySandWashModuleStatusLabel('2026-05-19', txs),
+      'ถัง 20 · 8 คิว',
     );
   });
 }

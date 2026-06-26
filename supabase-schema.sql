@@ -296,6 +296,8 @@ CREATE TABLE IF NOT EXISTS mobile_error_reports (
     resolved_at TIMESTAMPTZ,
     resolved_by TEXT,
     screen_page TEXT,
+    screen_page_id TEXT,
+    screen_step_id TEXT,
     screen_action TEXT,
     screen_button TEXT,
     error_field TEXT

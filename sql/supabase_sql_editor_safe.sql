@@ -14,6 +14,10 @@ ALTER TABLE public.mobile_error_reports
     ADD COLUMN IF NOT EXISTS screen_button text;
 ALTER TABLE public.mobile_error_reports
     ADD COLUMN IF NOT EXISTS error_field text;
+ALTER TABLE public.mobile_error_reports
+    ADD COLUMN IF NOT EXISTS screen_page_id text;
+ALTER TABLE public.mobile_error_reports
+    ADD COLUMN IF NOT EXISTS screen_step_id text;
 
 ALTER TABLE public.mobile_error_reports
     ADD COLUMN IF NOT EXISTS resolved boolean NOT NULL DEFAULT false;

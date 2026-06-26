@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/app_transaction.dart';
 import '../services/transaction_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/page_loading_view.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -22,6 +24,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'รายการธุรกรรม',
+      pageId: MobileScreenIds.pageTransactions,
+      stepId: MobileScreenIds.stepTransactionsList,
+    );
     _transactionsFuture = widget.service.fetchTransactions();
   }
 

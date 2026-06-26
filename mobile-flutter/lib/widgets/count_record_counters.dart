@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,46 +13,11 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../utils/device_perf.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
-
-// #region agent log
-void _swipeRevealDbgLog(String location, String message, Map<String, dynamic> data,
-    {String hypothesisId = 'A'}) {
-  final line = jsonEncode({
-    'sessionId': 'b281b7',
-    'timestamp': DateTime.now().millisecondsSinceEpoch,
-    'location': location,
-    'message': message,
-    'data': data,
-    'hypothesisId': hypothesisId,
-    'runId': 'post-fix',
-  });
-  for (final host in const ['127.0.0.1', '10.0.2.2']) {
-    unawaited(() async {
-      try {
-        final client = HttpClient();
-        final req = await client.postUrl(
-          Uri.parse(
-            'http://$host:7489/ingest/a15bdb6f-9720-40ca-b4b5-53dfc8bf6e60',
-          ),
-        );
-        req.headers.set('Content-Type', 'application/json');
-        req.headers.set('X-Debug-Session-Id', 'b281b7');
-        req.write(line);
-        await req.close();
-        client.close(force: true);
-      } catch (_) {}
-    }());
-  }
-  try {
-    File(
-      r'c:\Users\HP\.gemini\antigravity\scratch\construction-management-app\debug-b281b7.log',
-    ).writeAsStringSync('$line\n', mode: FileMode.append);
-  } catch (_) {}
-}
-// #endregion
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
@@ -85,6 +48,10 @@ class _CounterUnit {
   bool busy = false;
   DateTime? recordCooldownUntil;
   int burstTick = 0;
+
+  /// ระบบคอมโบแบบเกม — นับการบันทึกต่อเนื่องภายในช่วงเวลาสั้นๆ
+  int comboCount = 0;
+  DateTime? lastRecordAt;
 
   bool get isOnRecordCooldown {
     final until = recordCooldownUntil;
@@ -176,6 +143,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   @override
   void initState() {
     super.initState();
+    _syncErrorTrackerStep();
     _isOnline = widget.serverOnline;
     unawaited(_initPanel());
     unawaited(RecordSuccessSpeaker.instance.warmUp());
@@ -183,9 +151,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _syncOfflinePollTimer();
   }
 
+  void _syncErrorTrackerStep() {
+    final isTrip = widget.mode == CounterMode.trip;
+    MobileErrorScreenTracker.set(
+      page: 'หน้าหลัก (แดชบอร์ด)',
+      pageId: MobileScreenIds.pageDashboard,
+      module: isTrip ? 'จำนวนเที่ยวรถ' : 'การร่อนทราย',
+      stepId: isTrip
+          ? MobileScreenIds.stepDashboardCountRecordTrip
+          : MobileScreenIds.stepDashboardCountRecordSand,
+    );
+  }
+
   @override
   void didUpdateWidget(covariant CountRecordCounterPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.mode != widget.mode) {
+      _syncErrorTrackerStep();
+    }
     if (oldWidget.dateYmd != widget.dateYmd) {
       _units.clear();
       _hiddenDayTxIds.clear();
@@ -219,8 +202,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       unawaited(_refreshConnectivity());
       _syncDropdownRefreshTimer();
     } else if (oldWidget.dayTransactions != widget.dayTransactions) {
+      // ข้อมูลชนิดของการ์ดนี้ไม่เปลี่ยน (เปลี่ยนแค่การ์ดอีกใบ) — อัปเดตเบา ๆ พอ
       unawaited(_refreshPendingCount());
-      unawaited(_refreshConnectivity());
     } else if (oldWidget.employees != widget.employees) {
       unawaited(_refreshDropdownLists(tryNetwork: false));
     }
@@ -232,13 +215,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     String ymd,
   ) {
     if (identical(a, b)) return true;
+    // ดูเฉพาะชนิดข้อมูลของการ์ดนี้ — การ์ดร่อนทรายจะไม่ reload เมื่อแก้ข้อมูลเที่ยวรถ
+    // และในทางกลับกัน (กันการ์ดอีกใบกระพริบ/รีเฟรชโดยไม่จำเป็น)
+    final wantSub =
+        widget.mode == CounterMode.trip ? 'vehicletrip' : 'sand';
     String fp(List<AppTransaction> txs) {
       final rows = txs
           .where(
             (t) =>
                 t.date == ymd &&
                 t.category == 'DailyLog' &&
-                (t.subCategory == 'VehicleTrip' || t.subCategory == 'Sand'),
+                (t.subCategory ?? '').trim().toLowerCase() == wantSub,
           )
           .map(
             (t) {
@@ -746,13 +733,21 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (widget.mode == CounterMode.trip && u.isBrokenReported) return;
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
-    final stamp = _stamp(DateTime.now());
+    final prevCombo = u.comboCount;
+    final prevLastRecordAt = u.lastRecordAt;
+    final now = DateTime.now();
+    final stamp = _stamp(now);
     _armRecordCooldown(u);
     _skipExternalDayTxReload++;
+    final lastAt = u.lastRecordAt;
+    final keepsCombo =
+        lastAt != null && now.difference(lastAt) <= const Duration(seconds: 10);
     setState(() {
       u.lapTimes.add(stamp);
       u.rounds = u.lapTimes.length > u.rounds ? u.lapTimes.length : u.rounds + 1;
       u.burstTick++;
+      u.comboCount = keepsCombo ? u.comboCount + 1 : 1;
+      u.lastRecordAt = now;
     });
     HapticFeedback.selectionClick();
     unawaited(RecordFeedbackSound.playRecordTap());
@@ -779,6 +774,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
             ..clear()
             ..addAll(prevLaps);
           if (u.burstTick > 0) u.burstTick--;
+          u.comboCount = prevCombo;
+          u.lastRecordAt = prevLastRecordAt;
         });
         _toast('บันทึกไม่สำเร็จ: $e', error: true);
       }
@@ -867,23 +864,23 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
     final removedStamp = u.lapTimes[lapIndex];
+    // อัปเดตหน้าจอทันที (ไม่ขึ้นสปินเนอร์) แล้วค่อยบันทึกเบื้องหลัง
     setState(() {
-      u.busy = true;
       u.lapTimes.removeAt(lapIndex);
       u.rounds = u.lapTimes.isEmpty
           ? 0
           : (u.rounds > u.lapTimes.length ? u.rounds - 1 : u.lapTimes.length);
     });
+    if (mounted) {
+      _toast(
+        isTrip
+            ? 'ลบเที่ยวล่าสุดแล้ว • $removedStamp'
+            : 'ลบรอบที่ ${lapIndex + 1} แล้ว • $removedStamp',
+      );
+    }
     try {
       await _save(u, notifyParent: false);
       _notifyParentDataChanged(shieldPanelReload: true);
-      if (mounted) {
-        _toast(
-          isTrip
-              ? 'ลบเที่ยวล่าสุดแล้ว • $removedStamp'
-              : 'ลบรอบที่ ${lapIndex + 1} แล้ว • $removedStamp',
-        );
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -894,8 +891,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         });
         _toast('ลบไม่สำเร็จ: $e', error: true);
       }
-    } finally {
-      if (mounted) setState(() => u.busy = false);
     }
   }
 
@@ -1168,6 +1163,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     });
     try {
       await _save(u);
+      unawaited(_logVehicleStatusEvent(u, broken: true, stamp: stamp));
       if (mounted) _toast('แจ้งรถเสีย ${u.title} แล้ว');
     } catch (e) {
       if (mounted) {
@@ -1176,6 +1172,50 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       }
     } finally {
       if (mounted) setState(() => u.busy = false);
+    }
+  }
+
+  /// บันทึกเหตุการณ์ประจำวัน (DailyLog + Event) เมื่อแจ้งรถเสีย/รถกลับมาปกติ
+  /// ทำงานเบื้องหลัง รองรับออฟไลน์ (เข้าคิวซิงค์อัตโนมัติ)
+  Future<void> _logVehicleStatusEvent(
+    _CounterUnit u, {
+    required bool broken,
+    required String stamp,
+  }) async {
+    final driver = (u.driverId ?? '').trim().isEmpty
+        ? ''
+        : ' • คนขับ ${_driverLabel((u.driverId ?? '').trim())}';
+    final admin = widget.currentAdmin.displayName;
+    final desc = broken
+        ? 'แจ้งรถเสีย: ${u.title}$driver • เวลา $stamp (บันทึกโดย $admin)'
+        : 'รถกลับมาใช้งานปกติ: ${u.title}$driver • เวลา $stamp '
+            '(บันทึกโดย $admin)';
+    final event = AppTransaction(
+      id: '${DateTime.now().millisecondsSinceEpoch}_vehstatus',
+      date: widget.dateYmd,
+      type: 'Expense',
+      category: 'DailyLog',
+      subCategory: 'Event',
+      description: desc,
+      amount: 0,
+      note: 'บันทึกอัตโนมัติจากเมนูบันทึกและนับจำนวน',
+      eventType: broken ? 'problem' : 'success',
+      eventPriority: broken ? 'urgent' : 'normal',
+    );
+    try {
+      await CountRecordOfflineSync.instance.persist(
+        service: widget.service,
+        client: Supabase.instance.client,
+        transaction: event,
+        omitCreatedAt: false,
+        dayServerRows: _effectiveDayRows(),
+        serverOnlineHint: _isOnline,
+      );
+      if (!mounted) return;
+      await _refreshPendingCount();
+      _notifyParentDataChanged(shieldPanelReload: true);
+    } catch (e) {
+      debugPrint('logVehicleStatusEvent failed: $e');
     }
   }
 
@@ -1216,6 +1256,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     });
     try {
       await _save(u);
+      unawaited(_logVehicleStatusEvent(u, broken: false, stamp: stamp));
       if (mounted) {
         _toast('ปรับสถานะรถปกติแล้ว — พร้อมบันทึกเที่ยวต่อ');
       }
@@ -1536,7 +1577,6 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   double _offset = 0;
   _SwipeRevealSide _revealed = _SwipeRevealSide.none;
   bool _dragging = false;
-  bool _holdLocked = false;
   double _actionWidth = 64;
 
   bool get _interactionsEnabled =>
@@ -1567,56 +1607,24 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   }
 
   void _setHoldLock(bool locked) {
-    // #region agent log
-    _swipeRevealDbgLog(
-      'count_record_counters:_setHoldLock',
-      'hold lock changed',
-      {
-        'locked': locked,
-        'dragging': _dragging,
-        'revealed': _revealed.name,
-        'willSnap': !locked && (_dragging || _revealed != _SwipeRevealSide.none),
-        'deferred': !locked && (_dragging || _revealed != _SwipeRevealSide.none),
-      },
-      hypothesisId: 'A',
-    );
-    // #endregion
-    _holdLocked = locked;
-    if (!locked && (_dragging || _revealed != _SwipeRevealSide.none)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _holdLocked) return;
-        if (_dragging || _revealed != _SwipeRevealSide.none) {
-          // #region agent log
-          _swipeRevealDbgLog(
-            'count_record_counters:_setHoldLock:postFrame',
-            'deferred snap to none',
-            {
-              'dragging': _dragging,
-              'revealed': _revealed.name,
-            },
-            hypothesisId: 'A',
-          );
-          // #endregion
-          _snap(side: _SwipeRevealSide.none);
-        }
-      });
-    }
+    // คงไว้เป็น callback ของตัวการ์ด แต่ไม่ทำอะไรกับสถานะปัดอีกต่อไป
+    // (เดิมเคยสั่ง _snap(none) ทำให้ปุ่มลบ/แก้ไขที่ปัดเผยแล้วหายทันทีเมื่อปล่อยนิ้ว)
   }
 
   void _onHorizontalDragStart(DragStartDetails details) {
-    if (_holdLocked) return;
+    // ปัดแนวนอน = ตั้งใจปัดการ์ด → เริ่มปัด
     _setStateIfMounted(() => _dragging = true);
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (_holdLocked || !mounted) return;
+    if (!mounted) return;
     _setStateIfMounted(() {
       _offset = (_offset + details.delta.dx).clamp(-_actionWidth, _actionWidth);
     });
   }
 
   void _onHorizontalDragEnd(DragEndDetails details) {
-    if (_holdLocked || !mounted) return;
+    if (!mounted) return;
     final velocity = details.primaryVelocity ?? 0;
     if (_offset <= -_actionWidth / 2 || velocity < -280) {
       _snap(side: _SwipeRevealSide.delete);
@@ -1776,6 +1784,7 @@ Widget _withRecordBurst({
           child: _GameRecordBurst(
             burstTick: unit.burstTick,
             roundNo: unit.rounds,
+            comboCount: unit.comboCount,
             isTrip: isTrip,
           ),
         ),
@@ -1784,15 +1793,40 @@ Widget _withRecordBurst({
   );
 }
 
+/// 1 ชิ้นคอนเฟตติที่กระเด็นออกตอนบันทึก
+class _Confetti {
+  _Confetti({
+    required this.angle,
+    required this.distance,
+    required this.size,
+    required this.color,
+    required this.rotSpeed,
+    required this.drift,
+    required this.gravity,
+    required this.isStar,
+  });
+
+  final double angle;
+  final double distance;
+  final double size;
+  final Color color;
+  final double rotSpeed;
+  final double drift;
+  final double gravity;
+  final bool isStar;
+}
+
 class _GameRecordBurst extends StatefulWidget {
   const _GameRecordBurst({
     required this.burstTick,
     required this.roundNo,
+    required this.comboCount,
     required this.isTrip,
   });
 
   final int burstTick;
   final int roundNo;
+  final int comboCount;
   final bool isTrip;
 
   @override
@@ -1801,17 +1835,31 @@ class _GameRecordBurst extends StatefulWidget {
 
 class _GameRecordBurstState extends State<_GameRecordBurst>
     with SingleTickerProviderStateMixin {
+  static const _party = <Color>[
+    Color(0xFFFFD600),
+    Color(0xFFFF6D00),
+    Color(0xFF00E5FF),
+    Color(0xFF76FF03),
+    Color(0xFFFF4081),
+    Color(0xFFB388FF),
+    Colors.white,
+  ];
+
   late final AnimationController _ctrl;
+  List<_Confetti> _confetti = const [];
+
+  bool get _isMilestone => widget.roundNo > 0 && widget.roundNo % 5 == 0;
 
   @override
   void initState() {
     super.initState();
-    final ms = DevicePerf.isConstrainedDevice ? 540 : 780;
+    final ms = DevicePerf.isConstrainedDevice ? 620 : 920;
     _ctrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: ms),
     );
     if (widget.burstTick > 0) {
+      _rebuildConfetti();
       _ctrl.forward();
     }
   }
@@ -1820,8 +1868,29 @@ class _GameRecordBurstState extends State<_GameRecordBurst>
   void didUpdateWidget(covariant _GameRecordBurst oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.burstTick != oldWidget.burstTick && widget.burstTick > 0) {
+      _rebuildConfetti();
       _ctrl.forward(from: 0);
     }
+  }
+
+  void _rebuildConfetti() {
+    final rnd = math.Random(widget.burstTick * 911 + widget.roundNo * 7);
+    final base = DevicePerf.isConstrainedDevice ? 10 : 16;
+    final count = _isMilestone ? (base * 1.8).round() : base;
+    _confetti = List<_Confetti>.generate(count, (i) {
+      final angle = rnd.nextDouble() * math.pi * 2;
+      final spread = _isMilestone ? 128.0 : 84.0;
+      return _Confetti(
+        angle: angle,
+        distance: 38 + rnd.nextDouble() * spread,
+        size: 6 + rnd.nextDouble() * 8,
+        color: _party[rnd.nextInt(_party.length)],
+        rotSpeed: (rnd.nextDouble() - 0.5) * 10,
+        drift: (rnd.nextDouble() - 0.5) * 40,
+        gravity: 40 + rnd.nextDouble() * 90,
+        isStar: rnd.nextBool(),
+      );
+    });
   }
 
   @override
@@ -1838,19 +1907,16 @@ class _GameRecordBurstState extends State<_GameRecordBurst>
       animation: _ctrl,
       builder: (context, _) {
         final t = _ctrl.value;
-        final popIn = Curves.easeOutBack.transform((t / 0.38).clamp(0.0, 1.0));
-        final popScale = t < 0.38
+        final popIn = Curves.easeOutBack.transform((t / 0.34).clamp(0.0, 1.0));
+        final popScale = t < 0.34
             ? 0.15 + popIn * 0.95
             : 1.1 +
-                Curves.easeOut.transform(((t - 0.38) / 0.62).clamp(0.0, 1.0)) *
-                    0.18;
+                Curves.easeOut.transform(((t - 0.34) / 0.66).clamp(0.0, 1.0)) *
+                    0.16;
         final fadeOut =
-            1 - Curves.easeIn.transform(((t - 0.42) / 0.58).clamp(0.0, 1.0));
-        final riseY =
-            -56 * Curves.easeOutCubic.transform(((t - 0.3) / 0.7).clamp(0.0, 1.0));
-        final ringScale = 0.55 + t * 1.55;
-        final ringFade = (1 - t).clamp(0.0, 1.0) * 0.65;
-        final particleT = Curves.easeOut.transform((t / 0.72).clamp(0.0, 1.0));
+            1 - Curves.easeIn.transform(((t - 0.55) / 0.45).clamp(0.0, 1.0));
+        final riseY = -60 *
+            Curves.easeOutCubic.transform(((t - 0.25) / 0.75).clamp(0.0, 1.0));
         final accent = widget.isTrip
             ? const Color(0xFFFFD600)
             : const Color(0xFFFFF176);
@@ -1861,35 +1927,10 @@ class _GameRecordBurstState extends State<_GameRecordBurst>
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
-            Transform.scale(
-              scale: ringScale,
-              child: Opacity(
-                opacity: ringFade,
-                child: Container(
-                  width: 118,
-                  height: 118,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.55),
-                        blurRadius: 18,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            for (var i = 0; i < 8; i++)
-              _burstParticle(
-                angle: i * 0.785398,
-                distance: 34 + particleT * 52,
-                size: 5.5 * (1 - particleT * 0.65),
-                opacity: (1 - particleT).clamp(0.0, 1.0),
-                color: i.isEven ? accent : Colors.white,
-              ),
+            _shockRing(t: t, accent: accent, delay: 0, maxScale: 1.7),
+            if (_isMilestone)
+              _shockRing(t: t, accent: Colors.white, delay: 0.12, maxScale: 2.3),
+            for (final c in _confetti) _confettiWidget(c, t),
             Transform.translate(
               offset: Offset(0, riseY),
               child: Transform.scale(
@@ -1909,30 +1950,30 @@ class _GameRecordBurstState extends State<_GameRecordBurst>
     );
   }
 
-  Widget _burstParticle({
-    required double angle,
-    required double distance,
-    required double size,
-    required double opacity,
-    required Color color,
+  Widget _shockRing({
+    required double t,
+    required Color accent,
+    required double delay,
+    required double maxScale,
   }) {
-    return Transform.translate(
-      offset: Offset(
-        distance * math.cos(angle),
-        distance * math.sin(angle),
-      ),
+    final lt = ((t - delay) / (1 - delay)).clamp(0.0, 1.0);
+    final scale = 0.5 + lt * maxScale;
+    final fade = (1 - lt).clamp(0.0, 1.0) * 0.6;
+    return Transform.scale(
+      scale: scale,
       child: Opacity(
-        opacity: opacity,
+        opacity: fade,
         child: Container(
-          width: size,
-          height: size,
+          width: 112,
+          height: 112,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: color,
+            border: Border.all(color: Colors.white, width: 3.5),
             boxShadow: [
               BoxShadow(
-                color: color.withValues(alpha: 0.7),
-                blurRadius: 6,
+                color: accent.withValues(alpha: 0.55),
+                blurRadius: 18,
+                spreadRadius: 2,
               ),
             ],
           ),
@@ -1941,65 +1982,171 @@ class _GameRecordBurstState extends State<_GameRecordBurst>
     );
   }
 
+  Widget _confettiWidget(_Confetti c, double t) {
+    final travel = Curves.easeOut.transform(t);
+    final dx = math.cos(c.angle) * c.distance * travel + c.drift * t;
+    final dy = math.sin(c.angle) * c.distance * travel + c.gravity * t * t;
+    final opacity =
+        t < 0.6 ? 1.0 : (1 - (t - 0.6) / 0.4).clamp(0.0, 1.0).toDouble();
+    return Transform.translate(
+      offset: Offset(dx, dy),
+      child: Transform.rotate(
+        angle: c.rotSpeed * t,
+        child: Opacity(
+          opacity: opacity,
+          child: c.isStar
+              ? Icon(
+                  Icons.star_rounded,
+                  size: c.size + 4,
+                  color: c.color,
+                  shadows: [
+                    Shadow(color: c.color.withValues(alpha: 0.8), blurRadius: 6),
+                  ],
+                )
+              : Container(
+                  width: c.size,
+                  height: c.size * 0.5,
+                  decoration: BoxDecoration(
+                    color: c.color,
+                    borderRadius: BorderRadius.circular(2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.color.withValues(alpha: 0.7),
+                        blurRadius: 5,
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  ({String text, IconData icon, Color color})? _comboBadge() {
+    final combo = widget.comboCount;
+    if (_isMilestone) {
+      return (
+        text: widget.isTrip
+            ? 'ครบ ${widget.roundNo} เที่ยว!'
+            : 'ครบ ${widget.roundNo} รอบ!',
+        icon: Icons.emoji_events_rounded,
+        color: const Color(0xFFFF6D00),
+      );
+    }
+    if (combo >= 8) {
+      return (text: 'เทพมาก! x$combo', icon: Icons.bolt_rounded, color: const Color(0xFFD500F9));
+    }
+    if (combo >= 5) {
+      return (text: 'สุดยอด! x$combo', icon: Icons.local_fire_department_rounded, color: const Color(0xFFFF3D00));
+    }
+    if (combo >= 3) {
+      return (text: 'ไฟแรง! x$combo', icon: Icons.local_fire_department_rounded, color: const Color(0xFFFF9100));
+    }
+    if (combo >= 2) {
+      return (text: 'คอมโบ x$combo', icon: Icons.flash_on_rounded, color: const Color(0xFF00B0FF));
+    }
+    return null;
+  }
+
   Widget _burstPopupCard({
     required Color labelColor,
     required Color accent,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: widget.isTrip
-              ? const [Color(0xFFFFF59D), Color(0xFFFFB300)]
-              : const [Color(0xFFFFFDE7), Color(0xFFFFEE58)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
-            blurRadius: 16,
-            offset: const Offset(0, 7),
-          ),
-          BoxShadow(
-            color: accent.withValues(alpha: 0.55),
-            blurRadius: 22,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '+1',
-            style: TextStyle(
-              fontSize: 44,
-              fontWeight: FontWeight.w900,
-              color: labelColor,
-              height: 1,
-              shadows: const [
-                Shadow(color: Colors.white, blurRadius: 10),
-                Shadow(color: Colors.white, blurRadius: 4),
+    final badge = _comboBadge();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (badge != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: badge.color,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: badge.color.withValues(alpha: 0.6),
+                  blurRadius: 14,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(badge.icon, size: 16, color: Colors.white),
+                const SizedBox(width: 4),
+                Text(
+                  badge.text,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            widget.isTrip
-                ? 'เที่ยวที่ ${widget.roundNo}'
-                : 'รอบที่ ${widget.roundNo}',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF37474F),
-              letterSpacing: -0.2,
-            ),
-          ),
+          const SizedBox(height: 6),
         ],
-      ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: widget.isTrip
+                  ? const [Color(0xFFFFF59D), Color(0xFFFFB300)]
+                  : const [Color(0xFFFFFDE7), Color(0xFFFFEE58)],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 16,
+                offset: const Offset(0, 7),
+              ),
+              BoxShadow(
+                color: accent.withValues(alpha: 0.55),
+                blurRadius: 22,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '+1',
+                style: TextStyle(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  color: labelColor,
+                  height: 1,
+                  shadows: const [
+                    Shadow(color: Colors.white, blurRadius: 10),
+                    Shadow(color: Colors.white, blurRadius: 4),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.isTrip
+                    ? 'เที่ยวที่ ${widget.roundNo}'
+                    : 'รอบที่ ${widget.roundNo}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF37474F),
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2016,8 +2163,10 @@ class _RecordButtonShell extends StatelessWidget {
     required this.onPointerUp,
     required this.onPointerCancel,
     required this.child,
+    this.onPointerMove,
     this.busyBgColor,
     this.bottomOverlay,
+    this.shimmer = false,
   });
 
   final Color bgColor;
@@ -2028,9 +2177,11 @@ class _RecordButtonShell extends StatelessWidget {
   final VoidCallback onPointerDown;
   final VoidCallback onPointerUp;
   final VoidCallback onPointerCancel;
+  final void Function(PointerMoveEvent event)? onPointerMove;
   final Widget child;
   final Color? busyBgColor;
   final Widget? bottomOverlay;
+  final bool shimmer;
 
   @override
   Widget build(BuildContext context) {
@@ -2057,18 +2208,82 @@ class _RecordButtonShell extends StatelessWidget {
           child: Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: (_) => onPointerDown(),
+            onPointerMove: onPointerMove,
             onPointerUp: (_) => onPointerUp(),
             onPointerCancel: (_) => onPointerCancel(),
             child: Stack(
               fit: StackFit.expand,
               children: [
                 child,
+                if (shimmer && !busy && !dimmed && !pressed)
+                  const Positioned.fill(
+                    child: IgnorePointer(child: _IdleShimmer()),
+                  ),
                 ?bottomOverlay,
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// แสงวิ่งเฉียงๆ วนซ้ำ เพื่อให้ปุ่มดูมีชีวิตชีวาแบบเกม
+class _IdleShimmer extends StatefulWidget {
+  const _IdleShimmer();
+
+  @override
+  State<_IdleShimmer> createState() => _IdleShimmerState();
+}
+
+class _IdleShimmerState extends State<_IdleShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(
+        milliseconds: DevicePerf.isConstrainedDevice ? 4200 : 2900,
+      ),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        // แสงวิ่งช่วงต้นของรอบ แล้วพักช่วงท้าย
+        final sweep = (_ctrl.value / 0.45).clamp(0.0, 1.0);
+        final pos = -1.0 + sweep * 2.4;
+        return ShaderMask(
+          shaderCallback: (rect) {
+            return LinearGradient(
+              begin: Alignment(pos - 0.5, -1),
+              end: Alignment(pos + 0.5, 1),
+              colors: [
+                Colors.white.withValues(alpha: 0),
+                Colors.white.withValues(alpha: 0.22),
+                Colors.white.withValues(alpha: 0),
+              ],
+              stops: const [0.35, 0.5, 0.65],
+            ).createShader(rect);
+          },
+          child: const SizedBox.expand(
+            child: ColoredBox(color: Colors.white),
+          ),
+        );
+      },
     );
   }
 }
@@ -2312,12 +2527,16 @@ class _VehicleRecordButton extends StatefulWidget {
 class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   static const _holdDuration = Duration(seconds: 3);
   static const _tapMax = Duration(milliseconds: 400);
+  static const _swipeSlop = 6.0;
 
   Timer? _holdTimer;
   DateTime? _pointerDownAt;
   double _holdProgress = 0;
   bool _holdTriggered = false;
   bool _isPressed = false;
+  double _moveAccumX = 0;
+  double _moveAccumY = 0;
+  bool _swipeTakeover = false;
 
   bool get _canPress =>
       !widget.unit.busy &&
@@ -2370,6 +2589,9 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
 
   void _onPointerDown() {
     if (widget.unit.busy || !widget.interactionsEnabled) return;
+    _moveAccumX = 0;
+    _moveAccumY = 0;
+    _swipeTakeover = false;
     if (_canRecordTrip) {
       setState(() => _isPressed = true);
       HapticFeedback.lightImpact();
@@ -2380,6 +2602,26 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       setState(() => _holdProgress = 0);
       widget.setHoldLock(true);
       _startHoldTimer();
+    }
+  }
+
+  /// เมื่อเลื่อนนิ้วแนวนอน = ตั้งใจปัดการ์ด → ยกเลิกการกดค้าง แล้วปลดล็อกให้การ์ดปัดได้
+  void _onPointerMove(PointerMoveEvent event) {
+    if (_swipeTakeover) return;
+    _moveAccumX += event.delta.dx;
+    _moveAccumY += event.delta.dy;
+    if (_moveAccumX.abs() > _swipeSlop &&
+        _moveAccumX.abs() >= _moveAccumY.abs()) {
+      _swipeTakeover = true;
+      _holdTimer?.cancel();
+      _holdTimer = null;
+      _holdTriggered = false;
+      _pointerDownAt = null;
+      widget.setHoldLock(false);
+      _releasePress();
+      if (mounted && _holdProgress != 0) {
+        setState(() => _holdProgress = 0);
+      }
     }
   }
 
@@ -2614,7 +2856,9 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       busy: busy,
       dimmed: onCooldown || broken,
       pressed: _isPressed,
+      shimmer: !broken,
       onPointerDown: _onPointerDown,
+      onPointerMove: _onPointerMove,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
       bottomOverlay: _holdProgress > 0
@@ -2663,6 +2907,90 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
   }
 }
 
+/// เด้งสเกลแบบ pop เมื่อ trigger เปลี่ยน โดยไม่ remount ลูก
+/// (ทำให้ _RollingCount ข้างในยังเล่นอนิเมชั่นเลื่อนตัวเลขได้)
+class _PunchScale extends StatefulWidget {
+  const _PunchScale({
+    required this.trigger,
+    required this.punch,
+    required this.child,
+  });
+
+  final int trigger;
+  final double punch;
+  final Widget child;
+
+  @override
+  State<_PunchScale> createState() => _PunchScaleState();
+}
+
+class _PunchScaleState extends State<_PunchScale>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 340),
+    value: widget.trigger > 0 ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(covariant _PunchScale oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.trigger != oldWidget.trigger && widget.trigger > 0) {
+      _c.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        final s = 1 + (widget.punch - 1) * Curves.elasticOut.transform(_c.value);
+        return Transform.scale(scale: s, child: child);
+      },
+    );
+  }
+}
+
+/// ตัวเลขที่ "เลื่อนขึ้น" แบบสล็อตเมื่อค่าจำนวนเปลี่ยน
+class _RollingCount extends StatelessWidget {
+  const _RollingCount({required this.value, required this.style});
+
+  final int value;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 380),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, anim) {
+        final isIncoming = child.key == ValueKey<int>(value);
+        final begin = isIncoming ? const Offset(0, 0.9) : const Offset(0, -0.9);
+        return ClipRect(
+          child: SlideTransition(
+            position: Tween<Offset>(begin: begin, end: Offset.zero).animate(anim),
+            child: FadeTransition(opacity: anim, child: child),
+          ),
+        );
+      },
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.center,
+        children: [...previousChildren, ?currentChild],
+      ),
+      child: Text('$value', key: ValueKey<int>(value), style: style),
+    );
+  }
+}
+
 /// แถบซ้ายของการ์ดรถ — ไอคอน + จำนวนเที่ยว
 class _VehicleTripCountRail extends StatelessWidget {
   const _VehicleTripCountRail({
@@ -2682,15 +3010,7 @@ class _VehicleTripCountRail extends StatelessWidget {
   final bool recordingEnabled;
 
   Widget _punchCount(Widget child, {double punchScale = 1.2}) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(burstTick),
-      tween: Tween(begin: 1.0, end: burstTick > 0 ? punchScale : 1.0),
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.elasticOut,
-      builder: (context, scale, child) =>
-          Transform.scale(scale: scale, child: child),
-      child: child,
-    );
+    return _PunchScale(trigger: burstTick, punch: punchScale, child: child);
   }
 
   @override
@@ -2723,8 +3043,8 @@ class _VehicleTripCountRail extends StatelessWidget {
               ),
             if (recordingEnabled) const SizedBox(width: 5),
             _punchCount(
-              Text(
-                '$rounds',
+              _RollingCount(
+                value: rounds,
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
@@ -2791,8 +3111,8 @@ class _VehicleTripCountRail extends StatelessWidget {
             ),
           SizedBox(height: recordingEnabled ? 6 : 4),
           _punchCount(
-            Text(
-              '$rounds',
+            _RollingCount(
+              value: rounds,
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w900,
@@ -2980,8 +3300,8 @@ class _SandRoundCountHero extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '${rounds < 0 ? 0 : rounds}',
+            _RollingCount(
+              value: rounds < 0 ? 0 : rounds,
               style: const TextStyle(
                 fontSize: 48,
                 fontWeight: FontWeight.w900,
@@ -3004,15 +3324,7 @@ class _SandRoundCountHero extends StatelessWidget {
         ),
       ),
     );
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(burstTick),
-      tween: Tween(begin: 1.0, end: burstTick > 0 ? 1.16 : 1.0),
-      duration: const Duration(milliseconds: 340),
-      curve: Curves.elasticOut,
-      builder: (context, scale, child) =>
-          Transform.scale(scale: scale, child: child),
-      child: core,
-    );
+    return _PunchScale(trigger: burstTick, punch: 1.16, child: core);
   }
 }
 
@@ -3137,6 +3449,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
       busy: busy,
       dimmed: onCooldown,
       pressed: _isPressed,
+      shimmer: true,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,

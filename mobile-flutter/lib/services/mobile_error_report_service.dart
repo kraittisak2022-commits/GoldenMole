@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
 import '../utils/mobile_error_report_submit_guard.dart';
+import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/save_error_message.dart';
 
 /// บันทึกรายงานข้อผิดพลาดจากแอป Android ลง Supabase (`mobile_error_reports`)
@@ -60,6 +61,8 @@ class MobileErrorReportService {
     String? screenAction,
     String? screenButton,
     String? errorField,
+    String? screenPageId,
+    String? screenStepId,
   }) async {
     final id = 'mer_${DateTime.now().millisecondsSinceEpoch}';
     final fields = extractSaveErrorReportFields(error, context: saveContext);
@@ -67,6 +70,8 @@ class MobileErrorReportService {
     final action = _nonEmpty(screenAction) ?? fields.action;
     final button = _nonEmpty(screenButton) ?? fields.button;
     final field = _nonEmpty(errorField) ?? fields.field;
+    final pageId = _nonEmpty(screenPageId) ?? MobileErrorScreenTracker.pageId;
+    final stepId = _nonEmpty(screenStepId) ?? MobileErrorScreenTracker.stepId;
     final cause = fields.cause;
 
     final summary = source == 'save_failed'
@@ -86,7 +91,9 @@ class MobileErrorReportService {
     }
 
     final contextLines = <String>[
+      if (pageId != null) 'รหัสหน้า: $pageId',
       if (page != null) 'หน้า: $page',
+      if (stepId != null) 'รหัสขั้นตอน: $stepId',
       if (action != null) 'รายการ: $action',
       if (button != null) 'ปุ่ม: $button',
       if (field != null) 'จุดที่ผิด: $field',
@@ -109,6 +116,8 @@ class MobileErrorReportService {
       'user_note': note,
       'source': source,
       'screen_page': page,
+      'screen_page_id': pageId,
+      'screen_step_id': stepId,
       'screen_action': action,
       'screen_button': button,
       'error_field': field,

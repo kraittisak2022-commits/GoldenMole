@@ -382,4 +382,44 @@ void main() {
     );
     expect(countRecordMenuStatusLabel(day, txs), isNull);
   });
+
+  test('count record sand card splits rounds into morning/afternoon', () {
+    final txs = [
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 5 รอบ',
+        amount: 0,
+        drumsObtained: 5,
+        workAssignments: {
+          'lapTimes': [
+            '19/05 08:10:00',
+            '19/05 09:30:00',
+            '19/05 11:55:00',
+            '19/05 13:05:00',
+            '19/05 15:40:00',
+          ],
+        },
+      ),
+    ];
+    expect(
+      countRecordMenuStatusLabel(day, txs),
+      'ร่อน 5 รอบ (เช้า 3 · บ่าย 2)',
+    );
+    final periods = countRecordSandPeriodTotals(day, txs);
+    expect(periods.morning, 3);
+    expect(periods.afternoon, 2);
+  });
+
+  test('sand rounds split gives the remainder to the new machine', () {
+    expect(splitSandRoundsNewFirst(6).newer, 3);
+    expect(splitSandRoundsNewFirst(6).older, 3);
+    expect(splitSandRoundsNewFirst(7).newer, 4);
+    expect(splitSandRoundsNewFirst(7).older, 3);
+    expect(splitSandRoundsNewFirst(0).newer, 0);
+    expect(splitSandRoundsNewFirst(0).older, 0);
+  });
 }

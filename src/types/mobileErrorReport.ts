@@ -11,6 +11,8 @@ export type MobileErrorReportRow = {
     user_note?: string | null;
     source?: string | null;
     screen_page?: string | null;
+    screen_page_id?: string | null;
+    screen_step_id?: string | null;
     screen_action?: string | null;
     screen_button?: string | null;
     error_field?: string | null;

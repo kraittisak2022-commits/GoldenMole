@@ -11,6 +11,8 @@ const labeledLine = (text: string | null | undefined, prefix: string): string | 
 
 export type MobileErrorContextDisplay = {
     page: string | null;
+    pageId: string | null;
+    stepId: string | null;
     action: string | null;
     button: string | null;
     field: string | null;
@@ -21,6 +23,8 @@ export function mobileErrorContextFromRow(row: MobileErrorReportRow): MobileErro
     const detail = row.error_detail ?? '';
     return {
         page: row.screen_page?.trim() || labeledLine(detail, 'หน้า:'),
+        pageId: row.screen_page_id?.trim() || labeledLine(detail, 'รหัสหน้า:'),
+        stepId: row.screen_step_id?.trim() || labeledLine(detail, 'รหัสขั้นตอน:'),
         action: row.screen_action?.trim() || labeledLine(detail, 'รายการ:'),
         button: row.screen_button?.trim() || labeledLine(detail, 'ปุ่ม:'),
         field: row.error_field?.trim() || labeledLine(detail, 'จุดที่ผิด:'),
@@ -28,7 +32,7 @@ export function mobileErrorContextFromRow(row: MobileErrorReportRow): MobileErro
 }
 
 export function mobileErrorHasContext(ctx: MobileErrorContextDisplay): boolean {
-    return !!(ctx.page || ctx.action || ctx.button || ctx.field);
+    return !!(ctx.page || ctx.pageId || ctx.stepId || ctx.action || ctx.button || ctx.field);
 }
 
 export function mobileErrorSourceLabel(source: string | null | undefined): string {

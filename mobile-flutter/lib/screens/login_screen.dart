@@ -8,6 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/admin_user.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/app_logo.dart';
 
 /// หลังล็อกอินสำเร็จ — [persistSession] คือจะบันทึก session ลงเครื่องหรือไม่
@@ -57,6 +59,11 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'เข้าสู่ระบบ',
+      pageId: MobileScreenIds.pageLogin,
+      stepId: MobileScreenIds.stepLoginForm,
+    );
     _shimmerController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),

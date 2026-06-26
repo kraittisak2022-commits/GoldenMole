@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +23,7 @@ import '../l10n/daily_status_translator.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../utils/record_success_speaker.dart';
 import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
@@ -201,49 +201,6 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-// #region agent log
-void _dashboardDbgLog(
-  String location,
-  String message,
-  Map<String, dynamic> data, {
-  String hypothesisId = 'A',
-  String runId = 'pre-fix',
-}) {
-  final payload = <String, dynamic>{
-    'sessionId': 'b281b7',
-    'timestamp': DateTime.now().millisecondsSinceEpoch,
-    'location': location,
-    'message': message,
-    'data': data,
-    'hypothesisId': hypothesisId,
-    'runId': runId,
-  };
-  final line = jsonEncode(payload);
-  for (final host in const ['127.0.0.1', '10.0.2.2']) {
-    unawaited(() async {
-      try {
-        final client = HttpClient();
-        final req = await client.postUrl(
-          Uri.parse(
-            'http://$host:7489/ingest/a15bdb6f-9720-40ca-b4b5-53dfc8bf6e60',
-          ),
-        );
-        req.headers.set('Content-Type', 'application/json');
-        req.headers.set('X-Debug-Session-Id', 'b281b7');
-        req.write(line);
-        await req.close();
-        client.close(force: true);
-      } catch (_) {}
-    }());
-  }
-  try {
-    File(
-      r'c:\Users\HP\.gemini\antigravity\scratch\construction-management-app\debug-b281b7.log',
-    ).writeAsStringSync('$line\n', mode: FileMode.append);
-  } catch (_) {}
-}
-// #endregion
-
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   static const _kNavRailExpandedPrefKey = 'dashboard_nav_rail_expanded_v1';
@@ -309,57 +266,13 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   Future<void> _refreshHomeDataInPlace() async {
-    // #region agent log
-    _dashboardDbgLog(
-      'dashboard_screen.dart:_refreshHomeDataInPlace:entry',
-      'refresh started',
-      {'mounted': mounted},
-      hypothesisId: 'C',
-    );
-    // #endregion
     final nextHomeFuture = _futureWithSnapshot(
       _loadHome(forceRefresh: true),
     );
     if (!mounted) return;
-    // #region agent log
-    Future<_HomePayload>? assignProbe;
-    final assignExprResult = (() => assignProbe = nextHomeFuture)();
-    _dashboardDbgLog(
-      'dashboard_screen.dart:_refreshHomeDataInPlace:pre-setState',
-      'assignment expression return type probe',
-      {
-        'rhsType': nextHomeFuture.runtimeType.toString(),
-        'assignExprResultType': assignExprResult.runtimeType.toString(),
-        'assignProbeSameAsRhs': identical(assignProbe, nextHomeFuture),
-        'usesArrowSetStatePattern': true,
-      },
-      hypothesisId: 'A',
-    );
-    // #endregion
-    try {
-      setState(() {
-        _homeFuture = nextHomeFuture;
-      });
-    } catch (e) {
-      // #region agent log
-      _dashboardDbgLog(
-        'dashboard_screen.dart:_refreshHomeDataInPlace:setState',
-        'setState threw',
-        {'error': e.toString()},
-        hypothesisId: 'A',
-      );
-      // #endregion
-      rethrow;
-    }
-    // #region agent log
-    _dashboardDbgLog(
-      'dashboard_screen.dart:_refreshHomeDataInPlace:post-setState',
-      'setState completed',
-      {'fixApplied': 'block-body-not-arrow'},
-      hypothesisId: 'A',
-      runId: 'post-fix',
-    );
-    // #endregion
+    setState(() {
+      _homeFuture = nextHomeFuture;
+    });
     await nextHomeFuture;
   }
 
@@ -367,7 +280,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    MobileErrorScreenTracker.set(page: 'หน้าหลัก (แดชบอร์ด)');
+    MobileErrorScreenTracker.set(
+      page: 'หน้าหลัก (แดชบอร์ด)',
+      pageId: MobileScreenIds.pageDashboard,
+      stepId: MobileScreenIds.stepDashboardHome,
+    );
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome());
     _navRailOpen = true;
@@ -440,14 +357,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _syncCountRecordQueueThenRefresh() async {
-    // #region agent log
-    _dashboardDbgLog(
-      'dashboard_screen.dart:_syncCountRecordQueueThenRefresh:entry',
-      'sync then refresh invoked',
-      {'mounted': mounted},
-      hypothesisId: 'C',
-    );
-    // #endregion
     await CountRecordOfflineSync.instance.uploadPendingImmediately(
       _txService,
       Supabase.instance.client,
@@ -631,16 +540,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
-  /// อัปเดตข้อมูลหลังบันทึกในเมนูนับจำนวน — ไม่ปิดเมนูย่อย / ไม่โหลดทั้งหน้า
+  /// อัปเดตข้อมูลหลังบันทึก/ลบในเมนูนับจำนวน — ทำงานเบื้องหลัง
+  /// ไม่ปิดเมนูย่อย ไม่โหลดทั้งหน้า และไม่โชว์แถบรีเฟรช
   Future<void> _refreshAfterCountRecordChange() async {
     if (!mounted) return;
     final base = _lastHomePayload;
     if (base == null) return;
     final dayKey = _dateKey(_selectedDay);
+    // อ่านสถานะวันล่าสุดจากแคชในเครื่อง (CountRecordOfflineSync อัปเดตหลังบันทึก/ลบ)
+    // เพื่อไม่ให้ข้อมูลเก่าที่ค้างใน payload เดิมโผล่กลับมา
+    final cachedDay =
+        await LocalDataCache.readTransactionsForDayAny(dayKey);
     final dayTransactions =
         await CountRecordOfflineSync.instance.mergeForDayAsync(
       dayKey,
-      base.dayTransactions,
+      cachedDay ?? base.dayTransactions,
     );
     final allTransactions =
         await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
@@ -655,7 +569,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     setState(() {
       _lastHomePayload = next;
-      _homeFuture = Future<_HomePayload>.value(next);
+      // SynchronousFuture = FutureBuilder ไม่เข้าสถานะ waiting → ไม่มีแถบโหลด
+      _homeFuture = SynchronousFuture<_HomePayload>(next);
     });
   }
 
@@ -1259,6 +1174,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   @override
   void initState() {
     super.initState();
+    _syncErrorTrackerStep();
     _reduceMotion = WidgetsBinding
         .instance
         .platformDispatcher
@@ -1285,6 +1201,26 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       _entranceController
         ..reset()
         ..forward();
+    }
+    if (oldWidget.countAndRecordMenuOpen != widget.countAndRecordMenuOpen) {
+      _syncErrorTrackerStep();
+    }
+  }
+
+  void _syncErrorTrackerStep() {
+    if (widget.countAndRecordMenuOpen) {
+      MobileErrorScreenTracker.set(
+        page: 'หน้าหลัก (แดชบอร์ด)',
+        pageId: MobileScreenIds.pageDashboard,
+        module: 'บันทึกและนับจำนวน',
+        stepId: MobileScreenIds.stepDashboardCountRecordMenu,
+      );
+    } else {
+      MobileErrorScreenTracker.set(
+        page: 'หน้าหลัก (แดชบอร์ด)',
+        pageId: MobileScreenIds.pageDashboard,
+        stepId: MobileScreenIds.stepDashboardHome,
+      );
     }
   }
 

@@ -8,6 +8,8 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../services/weekly_off_calendar_store.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../utils/thai_holidays.dart';
 import '../widgets/page_loading_view.dart';
 
@@ -81,6 +83,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'ปฏิทิน',
+      pageId: MobileScreenIds.pageCalendar,
+      stepId: MobileScreenIds.stepCalendarMain,
+    );
     _future = _load();
   }
 

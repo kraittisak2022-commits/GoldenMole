@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/admin_user.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 
 class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({
@@ -47,6 +49,11 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'ตั้งค่าแอป',
+      pageId: MobileScreenIds.pageSettings,
+      stepId: MobileScreenIds.stepSettingsMain,
+    );
     _loadPrefs();
     _refreshCacheInfo();
   }

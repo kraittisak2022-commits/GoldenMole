@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/admin_user.dart';
 import '../services/mobile_error_report_service.dart';
 import '../utils/mobile_error_report_submit_guard.dart';
+import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/mobile_error_report_send_dialog.dart';
 
 /// ตั้งค่า > แอป Android
@@ -33,6 +35,11 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'รายงานข้อผิดพลาดแอป',
+      pageId: MobileScreenIds.pageErrorHub,
+      stepId: MobileScreenIds.stepErrorHubList,
+    );
     _svc = MobileErrorReportService(Supabase.instance.client);
     _reload();
   }
@@ -135,15 +142,24 @@ class _MobileErrorReportHubScreenState extends State<MobileErrorReportHubScreen>
   }
 
   String? _contextLine(Map<String, dynamic> r) {
+    final pageId = '${r['screen_page_id'] ?? ''}'.trim();
+    final stepId = '${r['screen_step_id'] ?? ''}'.trim();
     final page = '${r['screen_page'] ?? ''}'.trim();
     final action = '${r['screen_action'] ?? ''}'.trim();
     final button = '${r['screen_button'] ?? ''}'.trim();
     final field = '${r['error_field'] ?? ''}'.trim();
-    if (page.isEmpty && action.isEmpty && button.isEmpty && field.isEmpty) {
+    if (pageId.isEmpty &&
+        stepId.isEmpty &&
+        page.isEmpty &&
+        action.isEmpty &&
+        button.isEmpty &&
+        field.isEmpty) {
       return null;
     }
     final parts = <String>[];
+    if (pageId.isNotEmpty) parts.add('รหัสหน้า: $pageId');
     if (page.isNotEmpty) parts.add('หน้า: $page');
+    if (stepId.isNotEmpty) parts.add('ขั้นตอน: $stepId');
     if (action.isNotEmpty) parts.add('รายการ: $action');
     if (button.isNotEmpty) parts.add('ปุ่ม: $button');
     if (field.isNotEmpty) parts.add('จุด: $field');

@@ -274,6 +274,24 @@ bool countsAsSandWashCubicRow(AppTransaction t) {
   return (morning: morning, afternoon: afternoon);
 }
 
+/// จำนวนถังที่ได้วันนี้ — จากแถว «จำนวนถังที่ได้วันนี้» เท่านั้น (ไม่ใช้ drumsObtained บนแถวเครื่องร่อน)
+double sandWashDrumsObtainedForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var drums = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!transactionTouchesDailyModule(t, dayKey, 'บันทึกการร่อนทราย')) {
+      continue;
+    }
+    if (!t.description.contains('จำนวนถัง')) continue;
+    final d = (t.drumsObtained ?? 0).toDouble();
+    if (d > drums) drums = d;
+  }
+  return drums;
+}
+
 /// ตัวเลขบนการ์ดเมนู (คิว / เที่ยว / ลิตร / ถัง)
 String formatDashboardMetric(double v) {
   if (v.abs() < 1e-9) return '0';
@@ -364,8 +382,16 @@ bool isOtLaborRow(AppTransaction t) {
     if (!transactionMatchesVehicleTripModuleList(t)) continue;
     final v = (t.vehicleId ?? '').trim();
     if (v.isNotEmpty) vehicles.add(v);
-    morning += (t.tripMorning ?? 0);
-    afternoon += (t.tripAfternoon ?? 0);
+    final tm = (t.tripMorning ?? 0).toDouble();
+    final ta = (t.tripAfternoon ?? 0).toDouble();
+    if (tm == 0 && ta == 0) {
+      // บันทึกจากตัวนับ «จำนวนเที่ยวรถ» เก็บยอดรวมไว้ใน perCarTrips/tripCount
+      // (ไม่แยกเช้า/บ่าย) — นับรวมไว้ฝั่งเช้าให้สอดคล้องกับฟอร์มบันทึกรถดรัม
+      morning += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+    } else {
+      morning += tm;
+      afternoon += ta;
+    }
   }
   return (
     vehicleCount: vehicles.length,
@@ -544,30 +570,26 @@ List<({String empId, double hours})> otHoursByEmployeeForDay(
       .toList();
 }
 
-/// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — คิวล้างช่วงเช้า/บ่าย
+/// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — ถังที่ได้วันนี้ + คิวรวมเช้า/บ่าย
 String dailySandWashModuleStatusLabel(
   String dayKey,
   Iterable<AppTransaction> transactions,
 ) {
   final totals = sandWashPeriodTotalsForDay(dayKey, transactions);
-  if (totals.morning > 0 || totals.afternoon > 0) {
-    return 'เช้า ${formatSandWashCubic(totals.morning)} คิว · '
-        'บ่าย ${formatSandWashCubic(totals.afternoon)} คิว';
+  final totalCubic = totals.morning + totals.afternoon;
+  final drums = sandWashDrumsObtainedForDay(dayKey, transactions);
+
+  final parts = <String>[];
+  if (drums > 0) {
+    parts.add('ถัง ${formatSandWashCubic(drums)}');
   }
-  var maxDrums = 0.0;
-  for (final t in transactions) {
-    if (t.date.trim() != dayKey.trim()) continue;
-    if (!transactionTouchesDailyModule(t, dayKey, 'บันทึกการร่อนทราย')) {
-      continue;
-    }
-    if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
-    final d = (t.drumsObtained ?? 0).toDouble();
-    if (d > maxDrums) maxDrums = d;
+  if (totalCubic > 0) {
+    parts.add('${formatSandWashCubic(totalCubic)} คิว');
+  } else if (drums > 0) {
+    parts.add('ยังไม่มีคิว');
   }
-  if (maxDrums > 0) {
-    return 'ถัง ${formatSandWashCubic(maxDrums)} · ยังไม่มีคิว';
-  }
-  return 'ยังไม่มีบันทึกล้างทราย';
+  if (parts.isEmpty) return 'ยังไม่มีบันทึกล้างทราย';
+  return _joinStatusParts(parts);
 }
 
 /// ข้อความสถานะการ์ดเมนู «บันทึกรถดรัมและจำนวนเที่ยว»
@@ -926,6 +948,38 @@ DailyModuleFillStatus resolveCountRecordMenuFillStatus(
   return DailyModuleFillStatus.pending;
 }
 
+/// ชั่วโมงของ lap «dd/MM HH:mm:ss» (คืน null หากแยกไม่ได้)
+int? _countRecordLapHour(String lap) {
+  final s = lap.trim();
+  final sp = s.indexOf(' ');
+  if (sp < 0) return null;
+  final time = s.substring(sp + 1);
+  final colon = time.indexOf(':');
+  final hourStr = colon < 0 ? time : time.substring(0, colon);
+  return int.tryParse(hourStr.trim());
+}
+
+/// แยกจำนวน lap ของแถวออกเป็นช่วงเช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
+({int morning, int afternoon, int unknown}) _countRecordLapPeriods(
+  AppTransaction t,
+) {
+  final laps = (t.workAssignments?['lapTimes'] as List?) ?? const [];
+  var morning = 0;
+  var afternoon = 0;
+  var unknown = 0;
+  for (final lap in laps) {
+    final h = _countRecordLapHour(lap.toString());
+    if (h == null) {
+      unknown++;
+    } else if (h < 12) {
+      morning++;
+    } else {
+      afternoon++;
+    }
+  }
+  return (morning: morning, afternoon: afternoon, unknown: unknown);
+}
+
 /// ข้อความสถานะการ์ดเมนู «บันทึกและนับจำนวน»
 String? countRecordMenuStatusLabel(
   String dayKey,
@@ -934,6 +988,8 @@ String? countRecordMenuStatusLabel(
   final vehicles = <String>{};
   var tripTotal = 0.0;
   var sandRounds = 0.0;
+  var sandMorning = 0;
+  var sandAfternoon = 0;
 
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
@@ -944,6 +1000,9 @@ String? countRecordMenuStatusLabel(
       tripTotal += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
     } else if (_isCountRecordSandRow(t)) {
       sandRounds += (t.drumsObtained ?? 0).toDouble();
+      final periods = _countRecordLapPeriods(t);
+      sandMorning += periods.morning;
+      sandAfternoon += periods.afternoon;
     }
   }
 
@@ -954,10 +1013,51 @@ String? countRecordMenuStatusLabel(
     );
   }
   if (sandRounds > 0) {
-    parts.add('ร่อน ${formatDashboardMetric(sandRounds)} รอบ');
+    final buf = StringBuffer('ร่อน ${formatDashboardMetric(sandRounds)} รอบ');
+    if (sandMorning > 0 || sandAfternoon > 0) {
+      buf.write(' (เช้า $sandMorning · บ่าย $sandAfternoon)');
+    }
+    parts.add(buf.toString());
   }
   if (parts.isEmpty) return null;
   return _joinStatusParts(parts);
+}
+
+/// แถวการนับ «บันทึกและนับจำนวน → การร่อนทราย» (มี lapTimes/จำนวนรอบ)
+/// แยกออกจากแถวฟอร์ม «บันทึกการร่อนทราย» (เครื่องร่อนใหม่/เก่า, จำนวนถัง)
+bool isCountRecordSandTapRow(AppTransaction t) {
+  if (t.category != 'DailyLog') return false;
+  if ((t.subCategory ?? '').trim().toLowerCase() != 'sand') return false;
+  final desc = t.description;
+  if (desc.contains('เครื่องร่อน')) return false;
+  if (desc.contains('จำนวนถัง')) return false;
+  if (desc.contains('ทรายที่ล้างที่บ้าน')) return false;
+  return desc.contains('ร่อนทราย');
+}
+
+/// รวมจำนวนรอบที่นับได้ในวันนั้นแยกช่วงเช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
+({int morning, int afternoon}) countRecordSandPeriodTotals(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var morning = 0;
+  var afternoon = 0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!isCountRecordSandTapRow(t)) continue;
+    final p = _countRecordLapPeriods(t);
+    morning += p.morning;
+    afternoon += p.afternoon;
+  }
+  return (morning: morning, afternoon: afternoon);
+}
+
+/// แบ่งจำนวนรอบให้เครื่องร่อนใหม่/เก่า โดยเศษที่เหลือให้เครื่องใหม่ก่อน
+/// (เช่น 6 → ใหม่ 3 / เก่า 3, 7 → ใหม่ 4 / เก่า 3)
+({int newer, int older}) splitSandRoundsNewFirst(int rounds) {
+  if (rounds <= 0) return (newer: 0, older: 0);
+  final older = rounds ~/ 2;
+  return (newer: rounds - older, older: older);
 }
 
 /// สถานะการกรอกเมนูบันทึกประจำวันบนแดชบอร์ด

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../utils/mobile_error_report_auto_submit.dart';
 import '../utils/mobile_error_screen_tracker.dart';
+import '../utils/mobile_screen_ids.dart';
 import '../widgets/mobile_error_report_send_dialog.dart';
 
 /// หน้าเมื่อเกิด error ร้ายแรงที่ไม่ได้จับ — ส่งรายงานเข้าเว็บอัตโนมัติ + ปุ่มส่งด้วยตนเอง
@@ -35,6 +36,11 @@ class _AppFatalErrorScreenState extends State<AppFatalErrorScreen> {
   @override
   void initState() {
     super.initState();
+    MobileErrorScreenTracker.set(
+      page: 'เกิดข้อผิดพลาดในแอป',
+      pageId: MobileScreenIds.pageFatalError,
+      stepId: MobileScreenIds.stepFatalErrorView,
+    );
     _runAutoSend();
   }
 
