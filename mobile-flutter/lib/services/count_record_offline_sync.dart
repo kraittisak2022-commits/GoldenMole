@@ -30,10 +30,20 @@ class CountRecordOfflineSync {
 
   bool? _cachedReachable;
   DateTime? _reachabilityCheckedAt;
-  static const _reachabilityTtl = Duration(seconds: 4);
+  int _probeFailStreak = 0;
+  static const _reachabilityTtlOnline = Duration(seconds: 8);
+  static const _reachabilityTtlOffline = Duration(seconds: 18);
+  static const _failuresBeforeOffline = 2;
   static const _probeTimeout = Duration(milliseconds: 1200);
   bool _awaitingUploadAfterOffline = false;
   bool _uploadInFlight = false;
+
+  bool get uploadInFlight => _uploadInFlight;
+
+  bool get awaitingUploadAfterOffline => _awaitingUploadAfterOffline;
+
+  Duration _reachabilityTtlFor(bool? reachable) =>
+      reachable == false ? _reachabilityTtlOffline : _reachabilityTtlOnline;
 
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
@@ -41,29 +51,27 @@ class CountRecordOfflineSync {
   void noteServerUnreachable() {
     _cachedReachable = false;
     _reachabilityCheckedAt = DateTime.now();
+    _probeFailStreak = _failuresBeforeOffline;
     _awaitingUploadAfterOffline = true;
   }
 
   void noteServerReachable() {
     _cachedReachable = true;
     _reachabilityCheckedAt = DateTime.now();
+    _probeFailStreak = 0;
   }
 
   Future<bool> isOnline(
     SupabaseClient client, {
     bool forceProbe = false,
   }) async {
-    if (!forceProbe &&
-        _cachedReachable == false &&
-        _reachabilityCheckedAt != null &&
-        DateTime.now().difference(_reachabilityCheckedAt!) < _reachabilityTtl) {
-      return false;
-    }
-    if (!forceProbe &&
-        _cachedReachable == true &&
-        _reachabilityCheckedAt != null &&
-        DateTime.now().difference(_reachabilityCheckedAt!) < _reachabilityTtl) {
-      return true;
+    final cached = _cachedReachable;
+    final checkedAt = _reachabilityCheckedAt;
+    if (!forceProbe && cached != null && checkedAt != null) {
+      final ttl = _reachabilityTtlFor(cached);
+      if (DateTime.now().difference(checkedAt) < ttl) {
+        return cached;
+      }
     }
     try {
       await client
@@ -71,11 +79,17 @@ class CountRecordOfflineSync {
           .select('id')
           .limit(1)
           .timeout(_probeTimeout);
+      _probeFailStreak = 0;
       noteServerReachable();
       return true;
     } catch (_) {
-      noteServerUnreachable();
-      return false;
+      _probeFailStreak++;
+      if (forceProbe || _probeFailStreak >= _failuresBeforeOffline) {
+        noteServerUnreachable();
+        return false;
+      }
+      // สัญญาณหลุดชั่วคราว — คงสถานะเดิมก่อน ไม่สลับออฟไลน์ทันที
+      return cached ?? true;
     }
   }
 

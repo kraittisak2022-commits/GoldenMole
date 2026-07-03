@@ -18,6 +18,7 @@ import '../utils/mobile_screen_ids.dart';
 import '../utils/device_perf.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
+import 'count_record_panel_skeleton.dart';
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
@@ -36,7 +37,7 @@ class _CounterUnit {
     this.workDetails = '',
   }) : lapTimes = lapTimes ?? <String>[];
 
-  final String txId;
+  String txId;
   String title;
   String subtitle;
   int rounds;
@@ -133,6 +134,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   bool _addVehiclePanelOpen = false;
   int _skipExternalDayTxReload = 0;
   final Set<String> _hiddenDayTxIds = {};
+  bool _panelBootstrapping = true;
 
   @override
   bool get wantKeepAlive => true;
@@ -180,8 +182,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (_skipExternalDayTxReload > 0) {
       _skipExternalDayTxReload--;
       if (oldWidget.serverOnline != widget.serverOnline) {
-        unawaited(_refreshConnectivity());
+        if (mounted) setState(() => _isOnline = widget.serverOnline);
         _syncDropdownRefreshTimer();
+        if (widget.serverOnline) {
+          unawaited(_handleParentOnlineTransition());
+        } else {
+          _syncOfflinePollTimer();
+        }
       }
       unawaited(_refreshPendingCount());
       return;
@@ -198,11 +205,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       }
       _units.clear();
       unawaited(_initPanel());
-    } else if (!oldWidget.serverOnline && widget.serverOnline) {
-      unawaited(_onBackOnline());
     } else if (oldWidget.serverOnline != widget.serverOnline) {
-      unawaited(_refreshConnectivity());
+      if (mounted) setState(() => _isOnline = widget.serverOnline);
       _syncDropdownRefreshTimer();
+      if (widget.serverOnline) {
+        unawaited(_handleParentOnlineTransition());
+      } else {
+        _syncOfflinePollTimer();
+      }
     } else if (oldWidget.dayTransactions != widget.dayTransactions) {
       // ข้อมูลชนิดของการ์ดนี้ไม่เปลี่ยน (เปลี่ยนแค่การ์ดอีกใบ) — อัปเดตเบา ๆ พอ
       unawaited(_refreshPendingCount());
@@ -234,8 +244,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               final laps = List<String>.from(
                 t.workAssignments?['lapTimes'] ?? const [],
               );
-              return '${t.id}|${t.perCarTrips ?? t.tripCount ?? 0}|'
-                  '${t.drumsObtained ?? 0}|${laps.join(',')}';
+              if (wantSub == 'vehicletrip') {
+                final vid = (t.vehicleId ?? '').trim();
+                return '$vid|${t.perCarTrips ?? t.tripCount ?? 0}|'
+                    '${t.driverId ?? ''}|${laps.join(',')}';
+              }
+              return '${t.drumsObtained ?? 0}|${laps.join(',')}';
             },
           )
           .toList()
@@ -339,6 +353,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _initPanel() async {
+    if (mounted) setState(() => _panelBootstrapping = true);
     // แสดงข้อมูลจากแคช/คิวในเครื่องทันที — งานเครือข่ายทำเบื้องหลังต่อ
     // (ไม่ให้ผู้ใช้เห็นหน้าว่าง/แถบโหลดระหว่างรอ probe หรืออัปโหลดคิว)
     await _refreshDropdownLists(tryNetwork: false);
@@ -346,18 +361,25 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final merged = await _mergedPanelDayRows();
     if (!mounted) return;
     setState(() {
+      _panelBootstrapping = false;
       _units.clear();
       _bootstrapFromTransactions(merged);
       if (widget.mode == CounterMode.trip && _units.isEmpty) {
         _addVehiclePanelOpen = false;
       }
     });
-    await _refreshPendingCount();
-    if (!mounted) return;
-    await _refreshConnectivity();
+    unawaited(_refreshPendingCount());
+    unawaited(_backgroundPanelNetworkSync());
+  }
+
+  Future<void> _backgroundPanelNetworkSync() async {
+    if (!widget.serverOnline) {
+      if (mounted) setState(() => _isOnline = false);
+      return;
+    }
+    await _refreshConnectivity(forceProbe: false);
     if (!mounted) return;
     if (_isOnline) {
-      // ถ้ามีคิวค้าง _trySyncPending จะอัปโหลดแล้วรีเฟรชตัวเลขให้เอง (มีการ์ดกันรีเซ็ต)
       await _trySyncPending(silent: true);
     }
     if (!mounted) return;
@@ -387,17 +409,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
-  Future<void> _onBackOnline() async {
-    await _refreshConnectivity();
-    await _trySyncPending(silent: false);
-    if (!mounted) return;
-    final merged = await _mergedPanelDayRows();
-    if (!mounted) return;
-    setState(() {
-      _units.clear();
-      _bootstrapFromTransactions(merged);
-    });
-    await _refreshDropdownLists(tryNetwork: true);
+  Future<void> _handleParentOnlineTransition() async {
+    _syncDropdownRefreshTimer();
+    unawaited(_refreshDropdownLists(tryNetwork: true));
+    await _trySyncPending(silent: true);
   }
 
   void _applyDriverList(Iterable<Employee> source) {
@@ -454,6 +469,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _refreshConnectivity({bool forceProbe = false}) async {
+    if (!widget.serverOnline && !forceProbe) {
+      if (mounted && _isOnline) setState(() => _isOnline = false);
+      _syncOfflinePollTimer();
+      return;
+    }
     final wasOnline = _isOnline;
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
@@ -526,10 +546,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       widget.onDataChanged?.call();
       final merged = await _mergedPanelDayRows();
       if (!mounted) return;
-      setState(() {
-        _units.clear();
-        _bootstrapFromTransactions(merged);
-      });
+      _applyMergedInPlace(merged);
     }
     await _refreshPendingCount();
     final online = await CountRecordOfflineSync.instance.isOnline(
@@ -590,6 +607,73 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   bool _shouldPreserveLocalPanelState() =>
       _hasLocalOnlyTripUnits() || _hasLocalSandProgress();
+
+  void _applyMergedInPlace(List<AppTransaction> merged) {
+    if (_units.isEmpty) {
+      setState(() => _bootstrapFromTransactions(merged));
+      return;
+    }
+    if (widget.mode == CounterMode.trip) {
+      for (final u in _units) {
+        if (u.busy) continue;
+        final vid = (u.vehicleId ?? '').trim();
+        if (vid.isEmpty) continue;
+        AppTransaction? match;
+        for (final t in merged) {
+          if (t.category != 'DailyLog') continue;
+          if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
+            continue;
+          }
+          if ((t.vehicleId ?? '').trim() == vid) {
+            match = t;
+            break;
+          }
+        }
+        if (match == null) continue;
+        final fresh = _unitFromTx(match, title: u.title, vehicleId: vid);
+        u.txId = fresh.txId;
+        u.rounds = fresh.rounds;
+        u.lapTimes
+          ..clear()
+          ..addAll(fresh.lapTimes);
+        u.driverId = fresh.driverId;
+        u.subtitle = fresh.subtitle;
+        u.workDetails = fresh.workDetails;
+        u.persisted = fresh.persisted;
+      }
+      setState(() {});
+      return;
+    }
+    final u = _sandUnit;
+    if (u == null || u.busy) {
+      setState(() {});
+      return;
+    }
+    AppTransaction? sandRow;
+    for (final t in merged) {
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim() != 'Sand') continue;
+      if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
+      if (_sandRowIsEmpty(t)) continue;
+      if (sandRow == null || _sandRowScore(t) > _sandRowScore(sandRow)) {
+        sandRow = t;
+      }
+    }
+    if (sandRow != null) {
+      final fresh = _unitFromTx(
+        sandRow,
+        title: u.title,
+        roundsFromDrums: true,
+      );
+      u.txId = fresh.txId;
+      u.rounds = fresh.rounds;
+      u.lapTimes
+        ..clear()
+        ..addAll(fresh.lapTimes);
+      u.persisted = fresh.persisted;
+    }
+    setState(() {});
+  }
 
   _CounterUnit _unitFromTx(
     AppTransaction t, {
@@ -1539,26 +1623,44 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Widget? _buildSyncBanner() {
-    // ออฟไลน์: ซ่อนสถานะ "ไม่มีเน็ต/บันทึกในเครื่อง" ทั้งหมด — บันทึกเงียบๆ ในเครื่อง
-    if (!_isOnline) return null;
-    // ออนไลน์และไม่มีคิวค้าง: ไม่ต้องมีแบนเนอร์
-    if (_pendingCount == 0) return null;
-    // ออนไลน์ + มีคิวค้าง: โชว์อนิเมชั่นอัปโหลดแบบเกมสวยๆ
-    return _GameUploadBanner(count: _pendingCount);
+    final pending = _pendingCount;
+    final uploading = CountRecordOfflineSync.instance.uploadInFlight;
+    if (pending == 0 && !uploading) return null;
+    final offlineQueued = !widget.serverOnline || !_isOnline;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: _GameUploadBanner(
+        key: ValueKey('upload_${offlineQueued}_$pending'),
+        count: pending,
+        offlineQueued: offlineQueued,
+        syncing: uploading,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    if (_panelBootstrapping) {
+      return CountRecordPanelSkeleton(
+        isTripMode: widget.mode == CounterMode.trip,
+      );
+    }
     final banner = _buildSyncBanner();
     final body = widget.mode == CounterMode.trip
         ? _buildTripPanel()
         : _buildSandPanel();
-    if (banner == null) return body;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        banner,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: banner ?? const SizedBox(width: double.infinity),
+        ),
         Expanded(child: body),
       ],
     );
@@ -1567,9 +1669,16 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
 /// แบนเนอร์อัปโหลดแบบเกม — โชว์ตอนออนไลน์แล้วมีคิวค้างรออัปโหลด
 class _GameUploadBanner extends StatefulWidget {
-  const _GameUploadBanner({required this.count});
+  const _GameUploadBanner({
+    super.key,
+    required this.count,
+    this.offlineQueued = false,
+    this.syncing = false,
+  });
 
   final int count;
+  final bool offlineQueued;
+  final bool syncing;
 
   @override
   State<_GameUploadBanner> createState() => _GameUploadBannerState();
@@ -1598,15 +1707,29 @@ class _GameUploadBannerState extends State<_GameUploadBanner>
 
   @override
   Widget build(BuildContext context) {
+    final gradient = widget.offlineQueued
+        ? const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFFFF8F00), Color(0xFFFFB74D), Color(0xFFFFCC80)],
+          )
+        : const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFF00BFA5), Color(0xFF1DE9B6), Color(0xFF00B0FF)],
+          );
+    final statusLabel = widget.offlineQueued
+        ? (widget.count > 0
+            ? 'บันทึกในเครื่อง ${widget.count} รายการ — จะซิงก์เมื่อมีเน็ต'
+            : 'บันทึกในเครื่อง — รอซิงก์เมื่อมีเน็ต')
+        : (widget.syncing && widget.count == 0
+            ? 'กำลังซิงก์เข้าระบบ...'
+            : 'กำลังอัปโหลด ${widget.count} รายการเข้าระบบ');
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Color(0xFF00BFA5), Color(0xFF1DE9B6), Color(0xFF00B0FF)],
-        ),
+        gradient: gradient,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -1639,7 +1762,7 @@ class _GameUploadBannerState extends State<_GameUploadBanner>
                         const SizedBox(width: 3),
                         Flexible(
                           child: Text(
-                            'กำลังอัปโหลด ${widget.count} รายการเข้าระบบ',
+                            statusLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(

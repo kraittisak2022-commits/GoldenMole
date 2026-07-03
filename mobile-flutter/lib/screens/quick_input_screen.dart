@@ -24,6 +24,8 @@ import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
+import '../services/local_data_cache.dart';
+import '../services/count_record_offline_sync.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../utils/save_error_message.dart';
@@ -258,10 +260,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ระหว่างรอธุรกรรมของวันที่เลือก และ (ถ้าเป็นเมนูค่าแรง/OT) รายชื่อพนักงาน
   bool get _blockingModuleBootstrap {
     if (!_hasTrackedModuleCategory) return false;
-    if (_moduleDayLoading) return true;
-    if (_showsEmployeeLoadingUi && _employeesLoading) return true;
+    if (_moduleDayLoading && _moduleDayTransactions.isEmpty) return true;
+    if (_showsEmployeeLoadingUi && _employeesLoading && _employees.isEmpty) {
+      return true;
+    }
     return false;
   }
+
+  bool get _softModuleRefreshing =>
+      _hasTrackedModuleCategory &&
+      _moduleDayLoading &&
+      _moduleDayTransactions.isNotEmpty;
 
   /// แสดงรายการประวัติเฉพาะเมื่อผู้ใช้กด (ค่าเริ่มต้นซ่อน)
   bool _moduleHistoryVisible = false;
@@ -660,10 +669,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
     _otGroups.add(_OtGroupDraft.empty());
-    final cat = widget.initialCategory?.trim();
-    if (cat != null && cat.isNotEmpty) {
-      _moduleDayLoading = true;
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _loadModuleTransactions();
@@ -896,29 +901,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (!mounted || cat == null || cat.isEmpty) return;
     final loadId = ++_moduleTransactionsLoadGeneration;
     bool isCurrentLoad() => loadId == _moduleTransactionsLoadGeneration;
-    setState(() {
-      _moduleDayLoading = true;
-      _moduleHistoryVisible = false;
-    });
-    if (!isCurrentLoad()) return;
-    _clearHydrationSlots();
-    if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
-      _clearModuleFormFields();
-    }
-    if (!isCurrentLoad()) return;
-    try {
-      final ymd = _quickYmd(_selectedDate);
-      final forceServer = forceRefresh ||
-          cat == 'ลางาน' ||
-          cat == 'จำนวนเที่ยวรถ' ||
-          cat == 'การใช้รถแม็คโคร' ||
-          cat.toUpperCase().contains('OT');
-      final rows = cat == 'ลางาน'
-          ? await widget.service.fetchTransactions(forceRefresh: forceServer)
-          : await widget.service.fetchTransactionsForDate(
-              ymd,
-              forceRefresh: forceServer,
-            );
+    final ymd = _quickYmd(_selectedDate);
+
+    Future<void> applyRows(
+      List<AppTransaction> rows, {
+      required bool clearForm,
+    }) async {
+      if (!isCurrentLoad()) return;
+      if (clearForm &&
+          !(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
+        _clearModuleFormFields();
+      }
+      if (!isCurrentLoad()) return;
       final matched = cat == 'รายจ่ายรายรับ'
           ? rows
                 .where(
@@ -956,15 +950,73 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (_isLaborMode) {
         _syncMacroDriverCanvasFromVehicleUsage();
       }
-      setState(() {});
-    } catch (_) {
-      if (!mounted || !isCurrentLoad()) return;
+      if (mounted && isCurrentLoad()) setState(() {});
+    }
+
+    if (!forceRefresh) {
+      List<AppTransaction>? cachedRows;
+      if (cat == 'ลางาน') {
+        cachedRows = await LocalDataCache.readTransactionsFullAny();
+      } else {
+        cachedRows = await LocalDataCache.readTransactionsForDayAny(ymd);
+        if (cachedRows == null || cachedRows.isEmpty) {
+          final full = await LocalDataCache.readTransactionsFullAny();
+          if (full != null) {
+            cachedRows = full
+                .where((t) => t.date.trim() == ymd.trim())
+                .toList(growable: false);
+          }
+        }
+      }
+      if (cachedRows != null && cachedRows.isNotEmpty) {
+        if (!isCurrentLoad()) return;
+        _clearHydrationSlots();
+        await applyRows(cachedRows, clearForm: true);
+      }
+    }
+
+    if (!isCurrentLoad()) return;
+    if (_moduleDayTransactions.isEmpty) {
       setState(() {
-        _moduleDayTransactions = const [];
-        _moduleDayAllTransactions = const [];
-        _moduleDayLoading = false;
+        _moduleDayLoading = true;
         _moduleHistoryVisible = false;
       });
+      _clearHydrationSlots();
+      if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
+        _clearModuleFormFields();
+      }
+    } else {
+      setState(() => _moduleDayLoading = true);
+    }
+    if (!isCurrentLoad()) return;
+
+    try {
+      final forceServer = forceRefresh ||
+          cat == 'ลางาน' ||
+          cat == 'จำนวนเที่ยวรถ' ||
+          cat == 'การใช้รถแม็คโคร' ||
+          cat.toUpperCase().contains('OT');
+      final rows = cat == 'ลางาน'
+          ? await widget.service.fetchTransactions(forceRefresh: forceServer)
+          : await widget.service.fetchTransactionsForDate(
+              ymd,
+              forceRefresh: forceServer,
+            );
+      if (!isCurrentLoad()) return;
+      _clearHydrationSlots();
+      await applyRows(rows, clearForm: _moduleDayTransactions.isEmpty);
+    } catch (_) {
+      if (!mounted || !isCurrentLoad()) return;
+      if (_moduleDayTransactions.isEmpty) {
+        setState(() {
+          _moduleDayTransactions = const [];
+          _moduleDayAllTransactions = const [];
+          _moduleDayLoading = false;
+          _moduleHistoryVisible = false;
+        });
+      } else if (mounted) {
+        setState(() => _moduleDayLoading = false);
+      }
     }
   }
 
@@ -1486,6 +1538,51 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _employeesLoadProgressTimer?.cancel();
     _employeesLoadProgressTimer = null;
     final showPct = _showsEmployeeLoadingUi;
+
+    if (!forceRefresh) {
+      final cached = await LocalDataCache.readEmployeesAny();
+      if (cached != null && cached.isNotEmpty && mounted) {
+        final list = List<Employee>.from(cached);
+        list.sort((a, b) {
+          return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
+            b.nickname.isNotEmpty ? b.nickname : b.name,
+          );
+        });
+        setState(() {
+          _employees = list;
+          _employeesById = {for (final e in list) e.id: e};
+          _driverEmployees = list
+              .where((e) => !e.inactive)
+              .where(_isDriverEmployee)
+              .toList();
+          _employeesLoading = false;
+          _employeesLoadPercent = 0;
+        });
+      }
+    }
+
+    if (_employees.isNotEmpty && !forceRefresh) {
+      unawaited(
+        widget.employeeService.fetchEmployees(forceRefresh: false).then((list) {
+          if (!mounted || list.isEmpty) return;
+          list.sort((a, b) {
+            return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
+              b.nickname.isNotEmpty ? b.nickname : b.name,
+            );
+          });
+          setState(() {
+            _employees = list;
+            _employeesById = {for (final e in list) e.id: e};
+            _driverEmployees = list
+                .where((e) => !e.inactive)
+                .where(_isDriverEmployee)
+                .toList();
+          });
+        }),
+      );
+      return;
+    }
+
     if (showPct && mounted) {
       setState(() {
         _employeesLoading = true;
@@ -3062,15 +3159,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _moduleBootstrapOverlay(double keyboardInset, bool reduceMotion) {
+    if (!_blockingModuleBootstrap) {
+      return const SizedBox.shrink();
+    }
     final showEmployeesLine = _showsEmployeeLoadingUi && _employeesLoading;
     final showTxnLine = _moduleDayLoading;
     return Positioned.fill(
       child: IgnorePointer(
-        ignoring: !_blockingModuleBootstrap,
+        ignoring: false,
         child: AnimatedOpacity(
           duration: Duration(milliseconds: reduceMotion ? 1 : 220),
           curve: Curves.easeOutCubic,
-          opacity: _blockingModuleBootstrap ? 1 : 0,
+          opacity: 1,
           child: Padding(
             padding: EdgeInsets.fromLTRB(10, 0, 10, 16 + keyboardInset),
             child: ClipRRect(
@@ -5464,6 +5564,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
               ),
+              if (_softModuleRefreshing)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: LinearProgressIndicator(
+                      minHeight: 2.5,
+                      backgroundColor: Color(0x33FFFFFF),
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               SafeArea(
                 child: FadeTransition(
                   opacity: _entranceFade,

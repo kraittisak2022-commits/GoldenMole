@@ -110,77 +110,98 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
 
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
-                            <Activity size={18} />
-                        </span>
-                        Real-time V.4
-                    </h2>
-                    <p className="text-sm text-slate-500 mt-1">
-                        บันทึกและนับจำนวน • เที่ยวรถ • ร่อนทราย • อัปเดตเรียลไทม์
-                    </p>
-                    {focusCountRecordStatus && (
-                        <p className="text-xs font-semibold text-indigo-600 mt-1">{focusCountRecordStatus}</p>
-                    )}
+            {/* Hero header */}
+            <div className="relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-5 sm:px-6 sm:py-6 text-white shadow-xl shadow-slate-900/15">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.35),transparent_50%)]" />
+                <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
+                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-indigo-200/90">
+                            <Activity size={16} />
+                            <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Operations Monitor</span>
+                        </div>
+                        <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-[1.65rem]">Real-time V.4</h2>
+                        <p className="mt-1 max-w-xl text-sm text-slate-300">
+                            ติดตามการนับเที่ยวรถและรอบร่อนทรายจากแอปมือถือแบบเรียลไทม์
+                        </p>
+                        {focusDate && (
+                            <p className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm">
+                                <Calendar size={13} />
+                                กำลังดู: {formatThaiDate(focusDate)}
+                            </p>
+                        )}
+                        {focusCountRecordStatus && (
+                            <p className="mt-2 text-sm font-medium text-indigo-200">{focusCountRecordStatus}</p>
+                        )}
+                    </div>
+                    <RealtimeLiveBadge
+                        isLive={realtime.isLive}
+                        channelStatus={realtime.channelStatus}
+                        lastSyncAt={realtime.lastSyncAt}
+                        syncSource={realtime.syncSource}
+                    />
                 </div>
-                <RealtimeLiveBadge
-                    isLive={realtime.isLive}
-                    channelStatus={realtime.channelStatus}
-                    lastSyncAt={realtime.lastSyncAt}
-                    syncSource={realtime.syncSource}
-                />
             </div>
 
-            {/* Date selector for V4 detail view */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                        <Calendar size={16} className="text-indigo-500" />
-                        เลือกวันที่ (Real-time)
+            {/* Date selector */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/30">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                            <Calendar size={15} />
+                        </span>
+                        เลือกวันที่
                     </label>
-                    <div className="flex flex-col xs:flex-row gap-2 w-full sm:w-auto">
+                    <div className="flex flex-col gap-2 xs:flex-row w-full sm:w-auto">
                         <input
                             type="date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            className="w-full sm:w-auto px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700"
+                            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                         />
                         {selectedDate && (
                             <button
                                 type="button"
                                 onClick={() => setSelectedDate('')}
-                                className="px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50"
+                                className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                             >
-                                ล้างตัวกรองวัน
+                                ล้างตัวกรอง
                             </button>
                         )}
                     </div>
-                    <p className="text-xs text-slate-400 sm:ml-auto">
-                        {selectedDate ? `แสดงเฉพาะวันที่ ${formatThaiDate(selectedDate)}` : `แสดงตามช่วงวันที่ ${dateFilter.start} ถึง ${dateFilter.end}`}
+                    <p className="text-xs font-medium text-slate-400 sm:ml-auto">
+                        {selectedDate
+                            ? `เฉพาะ ${formatThaiDate(selectedDate)}`
+                            : `ช่วง ${dateFilter.start} – ${dateFilter.end}`}
                     </p>
                 </div>
             </div>
 
             {focusDate && (
                 <div
-                    className={`rounded-2xl border bg-white p-4 sm:p-5 shadow-sm transition-all duration-500 ${
+                    className={`overflow-hidden rounded-[24px] border bg-white shadow-sm transition-all duration-700 ${
                         realtime.pulseToken > 0
-                            ? 'border-indigo-300 ring-2 ring-indigo-200/60'
-                            : 'border-slate-200'
+                            ? 'border-indigo-200 shadow-lg shadow-indigo-100/50 ring-1 ring-indigo-100'
+                            : 'border-slate-200/80 shadow-slate-200/40'
                     }`}
                 >
-                    <CountRecordOverview
-                        dayKey={focusDate}
-                        transactions={transactions}
-                        employees={employees}
-                        pulseToken={realtime.pulseToken}
-                    />
-                    <div className="mt-4">
-                        <CountRecordActivityFeed activities={realtime.activities} />
+                    <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Live board</p>
+                        <p className="text-sm font-semibold text-slate-700">แผงบันทึกและนับจำนวน</p>
                     </div>
+                    <div className="p-4 sm:p-5">
+                        <CountRecordOverview
+                            dayKey={focusDate}
+                            transactions={transactions}
+                            employees={employees}
+                            pulseToken={realtime.pulseToken}
+                        />
+                    </div>
+                    {realtime.activities.length > 0 && (
+                        <div className="border-t border-slate-100 bg-slate-50/40 p-4 sm:p-5">
+                            <CountRecordActivityFeed activities={realtime.activities} />
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -237,10 +258,15 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
                 </Card>
             ) : (
                 <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                        <BarChart3 size={16} />
-                        รายวัน
-                    </h3>
+                    <div className="flex items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.12em] text-slate-500">
+                            <BarChart3 size={16} className="text-indigo-500" />
+                            รายการรายวัน
+                        </h3>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-500">
+                            {byDate.length} วัน
+                        </span>
+                    </div>
                     <div className="space-y-3">
                         {byDate.map(([dateStr, txs]) => {
                             const wizardTx = txs.filter(isDailyWizardTx);
@@ -260,39 +286,43 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
                             return (
                                 <div
                                     key={dateStr}
-                                    className="rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                                    className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md"
                                 >
                                     <button
                                         type="button"
                                         onClick={() => setExpandedDate(isExpanded ? null : dateStr)}
-                                        className="w-full flex justify-between items-center p-4 sm:p-5 text-left hover:bg-slate-50/80 transition-colors"
+                                        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50/80 sm:p-5"
                                     >
-                                        <div className="flex items-center gap-3 flex-wrap">
-                                            <span className="font-bold text-slate-800">{formatThaiDate(dateStr)}</span>
-                                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+                                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                            <span className="text-base font-bold text-slate-800">{formatThaiDate(dateStr)}</span>
+                                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-100">
                                                 {wizardTx.length} รายการ
                                             </span>
-                                            <span className="text-xs bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full font-medium">
+                                            <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-100">
                                                 ฿{expenseTotal.toLocaleString()}
                                             </span>
-                                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-100">
                                                 ฿{incomeTotal.toLocaleString()}
                                             </span>
                                         </div>
-                                        <span className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                        <span
+                                            className={`shrink-0 text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                                        >
                                             <ChevronDown size={20} />
                                         </span>
                                     </button>
 
                                     {isExpanded && (
-                                        <div className="px-4 sm:px-5 pb-5 pt-0 space-y-5 border-t border-slate-100 bg-slate-50/50">
-                                            <CountRecordOverview
+                                        <div className="space-y-5 border-t border-slate-100 bg-gradient-to-b from-slate-50/80 to-white px-4 pb-5 pt-4 sm:px-5">
+                                            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                                                <CountRecordOverview
                                                 dayKey={dateStr}
                                                 transactions={transactions}
                                                 employees={employees}
                                                 compact
                                                 showHeader={false}
                                             />
+                                            </div>
                                             <div>
                                                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                                                     <ClipboardList size={14} className="text-indigo-500" />

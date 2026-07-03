@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Truck, Droplets, AlertTriangle, Timer } from 'lucide-react';
+import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound } from 'lucide-react';
 import type { Employee, Transaction } from '../../types';
 import {
     VEHICLE_BUTTON_COLORS,
@@ -18,97 +18,157 @@ interface CountRecordOverviewProps {
     pulseToken?: number;
 }
 
-const SAND_RECENT_LAPS = 4;
+const SAND_RECENT_LAPS = 5;
+
+function PeriodPill({ morning, afternoon }: { morning: number; afternoon: number }) {
+    if (morning <= 0 && afternoon <= 0) return null;
+    return (
+        <div className="flex flex-wrap justify-center gap-1.5">
+            {morning > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                    <Sun size={10} />
+                    เช้า {formatDashboardMetric(morning)}
+                </span>
+            )}
+            {afternoon > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">
+                    <Sunset size={10} />
+                    บ่าย {formatDashboardMetric(afternoon)}
+                </span>
+            )}
+        </div>
+    );
+}
 
 function TripVehicleCard({
     unit,
     index,
     compact,
-    bump,
+    highlight,
 }: {
     unit: ReturnType<typeof buildCountRecordTripUnits>[number];
     index: number;
     compact?: boolean;
-    bump?: boolean;
+    highlight?: boolean;
 }) {
-    const bg = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
+    const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
     const lastLap = unit.lapTimes[unit.lapTimes.length - 1];
 
     return (
-        <div
-            className={`rounded-2xl text-white shadow-md overflow-hidden transition-transform duration-300 ${compact ? 'min-h-[100px]' : 'min-h-[120px]'} ${bump ? 'scale-[1.03] animate-bounce-short' : ''}`}
-            style={{ backgroundColor: bg, opacity: unit.broken ? 0.55 : 1 }}
+        <article
+            className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900 text-white shadow-lg shadow-slate-900/20 transition-all duration-500 ${
+                compact ? 'min-h-[148px]' : 'min-h-[168px]'
+            } ${highlight ? 'ring-2 ring-white/40 scale-[1.01]' : ''}`}
         >
-            <div className={`${compact ? 'p-2.5' : 'p-3'} flex flex-col h-full`}>
+            <div
+                className="absolute inset-0 opacity-90"
+                style={{ background: `linear-gradient(145deg, ${accent} 0%, ${accent}cc 42%, #0f172a 100%)` }}
+            />
+            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
+
+            <div className={`relative flex h-full flex-col ${compact ? 'p-3' : 'p-3.5'}`}>
                 <div className="flex items-start justify-between gap-2">
-                    <span className="text-[10px] font-bold bg-white/20 rounded-full px-2 py-0.5">
+                    <span className="rounded-lg bg-black/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/90 backdrop-blur-sm">
                         คันที่ {index + 1}
                     </span>
                     {unit.broken && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-amber-400/90 text-amber-950 rounded-full px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-300/95 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
                             <AlertTriangle size={10} />
                             รถเสีย
                         </span>
                     )}
                 </div>
-                <div className="flex-1 flex flex-col items-center justify-center py-1">
-                    <div className={`font-black tabular-nums leading-none ${compact ? 'text-3xl' : 'text-4xl'}`}>
+
+                <div className="my-2 flex flex-1 flex-col items-center justify-center text-center">
+                    <p className={`font-black tabular-nums tracking-tight leading-none ${compact ? 'text-4xl' : 'text-5xl'}`}>
                         {unit.rounds}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">เที่ยว</p>
+                    <div className="mt-2">
+                        <PeriodPill morning={unit.morning} afternoon={unit.afternoon} />
                     </div>
-                    <div className="text-[11px] font-semibold opacity-90 mt-0.5">เที่ยว</div>
-                    {(unit.morning > 0 || unit.afternoon > 0) && (
-                        <div className="text-[10px] font-medium opacity-80 mt-1">
-                            เช้า {formatDashboardMetric(unit.morning)} · บ่าย {formatDashboardMetric(unit.afternoon)}
-                        </div>
-                    )}
                 </div>
-                <div className="text-center">
-                    <div className={`font-extrabold leading-tight ${compact ? 'text-xs' : 'text-sm'}`}>{unit.vehicleId}</div>
-                    <div className="text-[11px] font-medium opacity-90 truncate">คนขับ: {unit.driverLabel}</div>
+
+                <div className="rounded-xl bg-black/20 px-2.5 py-2 backdrop-blur-sm">
+                    <p className={`truncate font-bold leading-tight ${compact ? 'text-xs' : 'text-sm'}`}>{unit.vehicleId}</p>
+                    <p className="mt-0.5 flex items-center justify-center gap-1 truncate text-[10px] font-medium text-white/80">
+                        <UserRound size={10} />
+                        {unit.driverLabel}
+                    </p>
                     {lastLap && (
-                        <div className="text-[10px] opacity-75 mt-0.5 truncate">ล่าสุด {lastLap}</div>
+                        <p className="mt-1 flex items-center justify-center gap-1 truncate text-[10px] text-white/65">
+                            <Clock size={9} />
+                            {lastLap}
+                        </p>
                     )}
                 </div>
             </div>
-        </div>
+        </article>
     );
 }
 
-function SandLapChip({ roundNo, stamp }: { roundNo: number; stamp: string }) {
+function SandLapChip({ roundNo, stamp, latest }: { roundNo: number; stamp: string; latest?: boolean }) {
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-pink-300 bg-white px-2 py-1 text-[11px] font-semibold text-pink-900">
-            <span className="text-pink-600">รอบ {roundNo}</span>
-            <span className="text-slate-600">{stamp}</span>
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold ${
+                latest
+                    ? 'border-pink-300 bg-pink-600 text-white shadow-sm shadow-pink-500/25'
+                    : 'border-pink-200/80 bg-white text-pink-900'
+            }`}
+        >
+            <span className={latest ? 'text-pink-100' : 'text-pink-600'}>รอบ {roundNo}</span>
+            <span className={`font-mono tabular-nums ${latest ? 'text-white/90' : 'text-slate-500'}`}>{stamp}</span>
         </span>
+    );
+}
+
+function EmptyState({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon: typeof Truck }) {
+    return (
+        <div className="flex min-h-[168px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-8 text-center">
+            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-100">
+                <Icon size={22} strokeWidth={1.75} />
+            </span>
+            <p className="text-sm font-semibold text-slate-600">{title}</p>
+            <p className="mt-1 max-w-[220px] text-xs leading-relaxed text-slate-400">{subtitle}</p>
+        </div>
     );
 }
 
 function CountRecordPanelShell({
     title,
+    subtitle,
     icon,
-    iconColor,
-    backgroundColor,
-    borderColor,
+    accentClass,
     children,
+    highlight,
 }: {
     title: string;
+    subtitle?: string;
     icon: ReactNode;
-    iconColor: string;
-    backgroundColor: string;
-    borderColor: string;
+    accentClass: string;
     children: ReactNode;
+    highlight?: boolean;
 }) {
     return (
-        <div
-            className="rounded-[22px] border-2 overflow-hidden shadow-sm flex flex-col min-h-[220px]"
-            style={{ backgroundColor, borderColor }}
+        <section
+            className={`flex min-h-[280px] flex-col overflow-hidden rounded-[20px] border bg-white shadow-sm transition-all duration-500 ${
+                highlight ? 'border-slate-300 shadow-md shadow-slate-200/60' : 'border-slate-200/80 shadow-slate-200/30'
+            }`}
         >
-            <div className="px-3.5 py-3 flex items-center gap-2 text-white shrink-0" style={{ backgroundColor: iconColor }}>
-                {icon}
-                <span className="font-extrabold text-sm truncate">{title}</span>
-            </div>
-            <div className="flex-1 p-2 min-h-0">{children}</div>
-        </div>
+            <header className={`relative overflow-hidden px-4 py-3.5 ${accentClass}`}>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_55%)]" />
+                <div className="relative flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-sm ring-1 ring-white/20">
+                        {icon}
+                    </span>
+                    <div className="min-w-0">
+                        <h4 className="truncate text-sm font-bold tracking-tight text-white">{title}</h4>
+                        {subtitle && <p className="truncate text-[11px] font-medium text-white/75">{subtitle}</p>}
+                    </div>
+                </div>
+            </header>
+            <div className="flex-1 bg-gradient-to-b from-slate-50/30 to-white p-3">{children}</div>
+        </section>
     );
 }
 
@@ -120,12 +180,12 @@ const CountRecordOverview = ({
     showHeader = true,
     pulseToken = 0,
 }: CountRecordOverviewProps) => {
-    const [bump, setBump] = useState(false);
+    const [highlight, setHighlight] = useState(false);
 
     useEffect(() => {
         if (pulseToken <= 0) return;
-        setBump(true);
-        const timer = window.setTimeout(() => setBump(false), 520);
+        setHighlight(true);
+        const timer = window.setTimeout(() => setHighlight(false), 700);
         return () => window.clearTimeout(timer);
     }, [pulseToken]);
 
@@ -142,50 +202,65 @@ const CountRecordOverview = ({
         [dayKey, transactions],
     );
 
-    const sandRecentStart = sandUnit
-        ? Math.max(0, sandUnit.lapTimes.length - SAND_RECENT_LAPS)
-        : 0;
-
+    const tripTotal = tripUnits.reduce((s, u) => s + u.rounds, 0);
+    const sandRecentStart = sandUnit ? Math.max(0, sandUnit.lapTimes.length - SAND_RECENT_LAPS) : 0;
     const tripWithLaps = tripUnits.filter((u) => u.lapTimes.length > 0);
 
     return (
-        <div className={compact ? 'space-y-3' : 'space-y-4'}>
+        <div className={compact ? 'space-y-3' : 'space-y-5'}>
             {showHeader && (
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2 text-slate-800">
-                        <span className="w-8 h-8 rounded-xl bg-[#1565C0] flex items-center justify-center text-white">
-                            <Timer size={16} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-lg shadow-slate-900/20">
+                            <Timer size={18} />
                         </span>
                         <div>
-                            <h3 className="font-extrabold text-base">บันทึกและนับจำนวน</h3>
-                            {statusLabel && (
-                                <p className="text-xs font-semibold text-slate-500">{statusLabel}</p>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Count & Record
+                            </p>
+                            <h3 className="text-lg font-bold tracking-tight text-slate-900">บันทึกและนับจำนวน</h3>
+                            {statusLabel ? (
+                                <p className="mt-0.5 text-sm font-medium text-slate-500">{statusLabel}</p>
+                            ) : (
+                                <p className="mt-0.5 text-sm text-slate-400">รอข้อมูลจากแอปมือถือ</p>
                             )}
                         </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs font-semibold text-blue-900">
+                            <Truck size={14} className="text-blue-600" />
+                            {tripUnits.length} คัน · {formatDashboardMetric(tripTotal)} เที่ยว
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-xs font-semibold text-pink-900">
+                            <Droplets size={14} className="text-pink-600" />
+                            {sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} รอบ` : '0 รอบ'}
+                        </span>
                     </div>
                 </div>
             )}
 
-            <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
+            <div className={`grid gap-4 ${compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'}`}>
                 <CountRecordPanelShell
                     title="จำนวนเที่ยวรถ"
+                    subtitle={`${tripUnits.length} คัน · รวม ${formatDashboardMetric(tripTotal)} เที่ยว`}
                     icon={<Truck size={18} />}
-                    iconColor="#1565C0"
-                    backgroundColor="#E3F2FD"
-                    borderColor={bump ? '#1565C0' : '#90CAF9'}
+                    accentClass="bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600"
+                    highlight={highlight}
                 >
                     {tripUnits.length === 0 ? (
-                        <div className="h-full min-h-[140px] flex flex-col items-center justify-center text-center px-4">
-                            <p className="text-sm font-semibold text-slate-500">ยังไม่มีเที่ยวที่บันทึก</p>
-                            <p className="text-xs text-slate-400 mt-1">ข้อมูลจากแอปจะแสดงที่นี่แบบเรียลไทม์</p>
-                        </div>
+                        <EmptyState
+                            icon={Truck}
+                            title="ยังไม่มีเที่ยวที่บันทึก"
+                            subtitle="เมื่อกดนับเที่ยวในแอป ข้อมูลจะปรากฏที่นี่ทันที"
+                        />
                     ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             <div
                                 className={
                                     tripUnits.length <= 2
-                                        ? `grid gap-2 ${tripUnits.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`
-                                        : 'grid grid-cols-2 gap-2'
+                                        ? `grid gap-2.5 ${tripUnits.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`
+                                        : 'grid grid-cols-2 gap-2.5'
                                 }
                             >
                                 {tripUnits.map((unit, i) => (
@@ -194,22 +269,36 @@ const CountRecordOverview = ({
                                         unit={unit}
                                         index={i}
                                         compact={compact || tripUnits.length > 2}
-                                        bump={bump}
+                                        highlight={highlight}
                                     />
                                 ))}
                             </div>
-                            <div className="rounded-xl border border-[#DCE6F2] bg-[#F4F7FA] px-3 py-2.5">
-                                <div className="text-[13px] font-extrabold text-[#455A64]">บันทึกล่าสุด</div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                    บันทึกล่าสุด
+                                </p>
                                 {tripWithLaps.length > 0 ? (
-                                    <div className="mt-1.5 space-y-1">
+                                    <ul className="mt-2 space-y-2">
                                         {tripWithLaps.map((u) => (
-                                            <p key={u.id} className="text-[11.5px] font-semibold text-[#52647B] truncate">
-                                                {u.vehicleId}: {u.lapTimes[u.lapTimes.length - 1]} ({u.rounds} เที่ยว)
-                                            </p>
+                                            <li
+                                                key={u.id}
+                                                className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-xs font-bold text-slate-800">{u.vehicleId}</p>
+                                                    <p className="truncate font-mono text-[10px] tabular-nums text-slate-500">
+                                                        {u.lapTimes[u.lapTimes.length - 1]}
+                                                    </p>
+                                                </div>
+                                                <span className="shrink-0 rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-bold text-white">
+                                                    {u.rounds} เที่ยว
+                                                </span>
+                                            </li>
                                         ))}
-                                    </div>
+                                    </ul>
                                 ) : (
-                                    <p className="mt-1 text-[11.5px] font-semibold text-slate-500">ยังไม่มีเที่ยวที่บันทึก</p>
+                                    <p className="mt-2 text-xs font-medium text-slate-400">ยังไม่มี timestamp</p>
                                 )}
                             </div>
                         </div>
@@ -218,44 +307,60 @@ const CountRecordOverview = ({
 
                 <CountRecordPanelShell
                     title="การร่อนทราย"
+                    subtitle={sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} รอบวันนี้` : 'ยังไม่มีการนับรอบ'}
                     icon={<Droplets size={18} />}
-                    iconColor="#AD1457"
-                    backgroundColor="#FCE4EC"
-                    borderColor={bump ? '#AD1457' : '#F48FB1'}
+                    accentClass="bg-gradient-to-r from-pink-700 via-rose-600 to-fuchsia-600"
+                    highlight={highlight}
                 >
                     {!sandUnit || sandUnit.rounds <= 0 ? (
-                        <div className="h-full min-h-[140px] flex flex-col items-center justify-center text-center px-4">
-                            <p className="text-sm font-semibold text-slate-500">ยังไม่มีรอบที่บันทึก</p>
-                            <p className="text-xs text-slate-400 mt-1">กดบันทึกในแอปเพื่อนับรอบร่อนทราย</p>
-                        </div>
+                        <EmptyState
+                            icon={Droplets}
+                            title="ยังไม่มีรอบที่บันทึก"
+                            subtitle="กดนับรอบร่อนทรายในแอปเพื่อติดตามแบบเรียลไทม์"
+                        />
                     ) : (
-                        <div className="flex flex-col h-full min-h-[140px]">
+                        <div className="space-y-3">
                             <div
-                                className={`flex-1 flex flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-pink-600 to-pink-700 text-white shadow-inner mx-1 my-1 px-4 py-5 transition-transform duration-300 ${bump ? 'scale-[1.02] animate-bounce-short' : ''}`}
+                                className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-pink-600 via-rose-600 to-fuchsia-700 px-5 py-6 text-center text-white shadow-inner shadow-pink-900/20 transition-all duration-500 ${
+                                    highlight ? 'ring-2 ring-pink-200/80' : ''
+                                }`}
                             >
-                                <div className="text-5xl font-black tabular-nums leading-none">{sandUnit.rounds}</div>
-                                <div className="text-sm font-bold mt-1 opacity-95">รอบ</div>
-                                {(sandUnit.morning > 0 || sandUnit.afternoon > 0) && (
-                                    <div className="text-xs font-semibold mt-2 opacity-90">
-                                        เช้า {sandUnit.morning} · บ่าย {sandUnit.afternoon}
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_45%)]" />
+                                <div className="relative">
+                                    <p className="text-6xl font-black tabular-nums tracking-tight leading-none">
+                                        {sandUnit.rounds}
+                                    </p>
+                                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">รอบ</p>
+                                    <div className="mt-3 flex justify-center">
+                                        <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} />
                                     </div>
-                                )}
-                                {sandUnit.lapTimes.length > 0 && (
-                                    <div className="text-[11px] mt-2 opacity-80">
-                                        ล่าสุด {sandUnit.lapTimes[sandUnit.lapTimes.length - 1]}
-                                    </div>
-                                )}
+                                    {sandUnit.lapTimes.length > 0 && (
+                                        <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-black/15 px-2.5 py-1 text-[11px] font-mono text-white/85">
+                                            <Clock size={10} />
+                                            {sandUnit.lapTimes[sandUnit.lapTimes.length - 1]}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
+
                             {sandUnit.lapTimes.length > 0 && (
-                                <div className="px-1 pt-2 pb-1">
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {sandUnit.lapTimes.slice(sandRecentStart).map((stamp, i) => (
-                                            <SandLapChip
-                                                key={`${stamp}-${sandRecentStart + i}`}
-                                                roundNo={sandRecentStart + i + 1}
-                                                stamp={stamp}
-                                            />
-                                        ))}
+                                <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                        รอบล่าสุด
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {sandUnit.lapTimes.slice(sandRecentStart).map((stamp, i) => {
+                                            const roundNo = sandRecentStart + i + 1;
+                                            const isLatest = roundNo === sandUnit.lapTimes.length;
+                                            return (
+                                                <SandLapChip
+                                                    key={`${stamp}-${roundNo}`}
+                                                    roundNo={roundNo}
+                                                    stamp={stamp}
+                                                    latest={isLatest}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}

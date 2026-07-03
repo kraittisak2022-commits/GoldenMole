@@ -29,6 +29,9 @@ import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_menu_shell.dart';
+import '../widgets/count_record_tutorial.dart';
+import '../widgets/dashboard_loading_view.dart';
+import '../widgets/menu_panel_transition.dart';
 import '../widgets/record_module_card.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
@@ -143,8 +146,7 @@ const _kOfflineCapableModuleCategories = {
 bool _isOfflineCapableModule(String category) =>
     _kOfflineCapableModuleCategories.contains(category);
 
-/// เมนูบนหน้าแรกที่แสดงตอนไม่มีเน็ต — เฉพาะ «บันทึกและนับจำนวน»
-const _kOfflineHomeShowsCountRecordOnly = true;
+/// เมนูบนหน้าแรกที่แสดงตอนไม่มีเน็ต — โหมดออฟไลน์จะจางเมนูอื่น แต่ยังแสดงกริดเดิม
 
 /// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู»
 /// และเมนู **ทรายที่ล้างที่บ้าน** เมื่อวันนั้นในบันทึกการทำงานมีคนในกล่อง canvas งานที่บ้าน (`washHome` และคีย์รวมย้อนหลัง)
@@ -217,6 +219,89 @@ class _DashboardScreenState extends State<DashboardScreen>
   double _edgeSwipeAccum = 0;
   Timer? _navRailIntroTimer;
   Timer? _connectivityProbeTimer;
+  Timer? _offlineDebounceTimer;
+
+  void _applyServerReachability(bool online, {bool force = false}) {
+    if (!mounted) return;
+    if (online) {
+      _offlineDebounceTimer?.cancel();
+      _offlineDebounceTimer = null;
+      if (!_serverOnline) {
+        setState(() => _serverOnline = true);
+      }
+      _syncConnectivityProbe();
+      return;
+    }
+    if (!_serverOnline) return;
+    if (force) {
+      _offlineDebounceTimer?.cancel();
+      _offlineDebounceTimer = null;
+      setState(() => _serverOnline = false);
+      _syncConnectivityProbe();
+      return;
+    }
+    _offlineDebounceTimer ??= Timer(const Duration(milliseconds: 1600), () {
+      if (!mounted) return;
+      _offlineDebounceTimer = null;
+      setState(() => _serverOnline = false);
+      _syncConnectivityProbe();
+    });
+  }
+
+  void _applyPayloadQuietly(_HomePayload next) {
+    if (!mounted) return;
+    final prev = _lastHomePayload;
+    if (prev != null &&
+        identical(prev.dayTransactions, next.dayTransactions) &&
+        identical(prev.allTransactions, next.allTransactions) &&
+        identical(prev.employees, next.employees) &&
+        prev.summary == next.summary) {
+      return;
+    }
+    setState(() {
+      _lastHomePayload = next;
+      _homeFuture = SynchronousFuture<_HomePayload>(next);
+    });
+  }
+
+  /// อัปเดตข้อมูลแบบเงียบ — ไม่สลับ FutureBuilder เข้า waiting (กันแถบโหลดกระพริบ)
+  Future<void> _refreshHomeSilently({bool tryNetwork = true}) async {
+    if (!mounted) return;
+    final dayKey = _dateKey(_selectedDay);
+
+    final offlinePayload = await _loadHomeOfflineOrEmpty(dayKey);
+    if (mounted) _applyPayloadQuietly(offlinePayload);
+
+    if (!tryNetwork) return;
+
+    final client = Supabase.instance.client;
+    final online = await CountRecordOfflineSync.instance.isOnline(
+      client,
+      forceProbe: false,
+    );
+    if (!mounted) return;
+
+    if (!online) {
+      _applyServerReachability(false);
+      return;
+    }
+
+    _applyServerReachability(true);
+    try {
+      await CountRecordOfflineSync.instance
+          .uploadPendingImmediately(_txService, client)
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      final fresh = await _loadHomeFromNetwork(
+        client: client,
+        dayKey: dayKey,
+        networkRefresh: true,
+      ).timeout(const Duration(seconds: 12));
+      if (mounted) _applyPayloadQuietly(fresh);
+    } catch (_) {
+      // คงข้อมูลแคชบนจอ — ไม่กระพริบหรือสลับโหมดกะทันหัน
+    }
+  }
 
   void _syncConnectivityProbe() {
     unawaited(_syncConnectivityProbeAsync());
@@ -248,10 +333,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!online || !mounted) return;
 
     CountRecordOfflineSync.instance.noteServerReachable();
-    if (!_serverOnline) {
-      setState(() => _serverOnline = true);
-      _syncConnectivityProbe();
-    }
+    _applyServerReachability(true);
 
     try {
       await CountRecordOfflineSync.instance.uploadPendingImmediately(
@@ -260,25 +342,16 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     } catch (_) {}
     if (!mounted) return;
-    unawaited(_refreshHomeDataInPlace());
+    await _refreshHomeDataInPlace();
   }
 
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   Future<void> _refreshHomeDataInPlace() async {
     if (_countAndRecordMenuOpen) {
-      // เมนูนับจำนวนเปิดอยู่ — อัปเดตจากแคชในเครื่องแบบเงียบ ๆ
-      // ไม่สลับ _homeFuture เป็น future ใหม่ (กันแถบโหลด/พาเนลรีเฟรชกลางคัน)
       await _refreshAfterCountRecordChange();
       return;
     }
-    final nextHomeFuture = _futureWithSnapshot(
-      _loadHome(forceRefresh: true),
-    );
-    if (!mounted) return;
-    setState(() {
-      _homeFuture = nextHomeFuture;
-    });
-    await nextHomeFuture;
+    await _refreshHomeSilently(tryNetwork: true);
   }
 
   @override
@@ -291,7 +364,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       stepId: MobileScreenIds.stepDashboardHome,
     );
     _txService = TransactionService(Supabase.instance.client);
-    _homeFuture = _futureWithSnapshot(_loadHome());
+    _homeFuture = _futureWithSnapshot(_loadHome(cacheFirst: true));
+    unawaited(_warmHomeFromCache());
     _navRailOpen = true;
     _scheduleNavRailIntroHide();
     CountRecordOfflineSync.instance.startAutoSync(
@@ -324,6 +398,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     _persistNavRailOpen(_navRailOpen);
   }
 
+  /// โหลดแคชในเครื่องทันที — แสดงแดชบอร์ดได้เร็วโดยไม่รอเน็ต
+  Future<void> _warmHomeFromCache() async {
+    final cached = await _loadHomeFromLocalCache(_dateKey(_selectedDay));
+    if (cached != null && mounted) {
+      _applyPayloadQuietly(cached);
+    }
+  }
+
   /// เก็บ payload ชุดล่าสุดเพื่อโชว์แบบไม่เป็นหน้าว่างตอนดึงรีเฟรช
   Future<_HomePayload> _futureWithSnapshot(Future<_HomePayload> future) async {
     try {
@@ -341,6 +423,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     CountRecordOfflineSync.instance.stopAutoSync();
     _navRailIntroTimer?.cancel();
     _connectivityProbeTimer?.cancel();
+    _offlineDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -354,18 +437,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _onCountRecordOfflineSynced() {
     if (!mounted) return;
     CountRecordOfflineSync.instance.noteServerReachable();
-    if (!_serverOnline) {
-      setState(() => _serverOnline = true);
-      _syncConnectivityProbe();
-    }
+    _applyServerReachability(true);
     unawaited(_refreshHomeDataInPlace());
   }
 
   Future<void> _syncCountRecordQueueThenRefresh() async {
-    await CountRecordOfflineSync.instance.uploadPendingImmediately(
-      _txService,
-      Supabase.instance.client,
-    );
+    try {
+      await CountRecordOfflineSync.instance.uploadPendingImmediately(
+        _txService,
+        Supabase.instance.client,
+      );
+    } catch (_) {}
     if (!mounted) return;
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
@@ -373,12 +455,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     if (online) {
       CountRecordOfflineSync.instance.noteServerReachable();
-      if (!_serverOnline) {
-        setState(() => _serverOnline = true);
-      }
+      _applyServerReachability(true);
     }
     _syncConnectivityProbe();
-    unawaited(_refreshHomeDataInPlace());
+    await _refreshHomeDataInPlace();
   }
 
   Future<_HomePayload> _composeHomePayload({
@@ -407,12 +487,16 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<_HomePayload?> _loadHomeFromLocalCache(String dayKey) async {
-    final summary = await LocalDataCache.readDashboardAny();
-    final dayRows =
-        await LocalDataCache.readTransactionsForDayAny(dayKey) ?? const [];
-    final employees = await LocalDataCache.readEmployeesAny() ?? const [];
-    final allRows =
-        await LocalDataCache.readTransactionsFullAny() ?? dayRows;
+    final results = await Future.wait<dynamic>([
+      LocalDataCache.readDashboardAny(),
+      LocalDataCache.readTransactionsForDayAny(dayKey),
+      LocalDataCache.readEmployeesAny(),
+      LocalDataCache.readTransactionsFullAny(),
+    ]);
+    final summary = results[0] as DashboardSummary?;
+    final dayRows = results[1] as List<AppTransaction>? ?? const [];
+    final employees = results[2] as List<Employee>? ?? const [];
+    final allRows = results[3] as List<AppTransaction>? ?? dayRows;
     if (summary == null && dayRows.isEmpty && employees.isEmpty) {
       return null;
     }
@@ -468,12 +552,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         forceRefresh: networkRefresh,
       ),
       employeeService.fetchEmployees(forceRefresh: networkRefresh),
+      _txService.fetchTransactions(forceRefresh: networkRefresh),
     ]);
     final summary = results[0] as DashboardSummary;
     final dayRows = results[1] as List<AppTransaction>;
     final employees = results[2] as List<Employee>;
-    final allRows =
-        await _txService.fetchTransactions(forceRefresh: networkRefresh);
+    final allRows = results[3] as List<AppTransaction>;
     unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
     unawaited(
       CountRecordOfflineSync.instance.loadDropdownCatalog(
@@ -493,19 +577,31 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Future<_HomePayload> _loadHome({bool forceRefresh = false}) async {
+  Future<_HomePayload> _loadHome({
+    bool forceRefresh = false,
+    bool cacheFirst = false,
+  }) async {
     final client = Supabase.instance.client;
     final dayKey = _dateKey(_selectedDay);
+
+    if (cacheFirst && !forceRefresh) {
+      final cached = await _loadHomeFromLocalCache(dayKey);
+      if (cached != null && mounted) {
+        setState(() => _lastHomePayload = cached);
+      }
+    }
+
     final online = await CountRecordOfflineSync.instance.isOnline(
       client,
       forceProbe: forceRefresh,
     );
 
     if (mounted) {
-      if (online != _serverOnline) {
-        setState(() => _serverOnline = online);
+      if (online) {
+        _applyServerReachability(true);
+      } else {
+        _applyServerReachability(false, force: forceRefresh);
       }
-      _syncConnectivityProbe();
     }
 
     if (!online) {
@@ -531,18 +627,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       ).timeout(const Duration(seconds: 12));
     } catch (_) {
       CountRecordOfflineSync.instance.noteServerUnreachable();
-      if (mounted && _serverOnline) {
-        setState(() => _serverOnline = false);
-      }
-      if (mounted) _syncConnectivityProbe();
+      _applyServerReachability(false, force: forceRefresh);
       return _loadHomeOfflineOrEmpty(dayKey);
     }
   }
 
   void _refreshHome() {
-    setState(() {
-      _homeFuture = _futureWithSnapshot(_loadHome(forceRefresh: true));
-    });
+    unawaited(_refreshHomeSilently(tryNetwork: true));
   }
 
   /// อัปเดตข้อมูลหลังบันทึก/ลบในเมนูนับจำนวน — ทำงานเบื้องหลัง
@@ -572,11 +663,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       allTransactions: allTransactions,
       employees: base.employees,
     );
-    setState(() {
-      _lastHomePayload = next;
-      // SynchronousFuture = FutureBuilder ไม่เข้าสถานะ waiting → ไม่มีแถบโหลด
-      _homeFuture = SynchronousFuture<_HomePayload>(next);
-    });
+    _applyPayloadQuietly(next);
   }
 
   String _dateKey(DateTime d) {
@@ -632,8 +719,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           pickedDate.month,
           pickedDate.day,
         );
-        _homeFuture = _futureWithSnapshot(_loadHome(forceRefresh: false));
       });
+      unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
     }
   }
 
@@ -663,7 +750,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           _selectedDay.day,
         ),
       ),
-    ).then((_) => _refreshHome());
+    ).then((_) => unawaited(_refreshHomeSilently(tryNetwork: _serverOnline)));
   }
 
   Future<T?> _openWithAnimation<T>(Widget page) {
@@ -672,11 +759,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
         transitionDuration: isQuickInput
-            ? const Duration(milliseconds: 135)
-            : const Duration(milliseconds: 175),
+            ? const Duration(milliseconds: 280)
+            : const Duration(milliseconds: 220),
         reverseTransitionDuration: isQuickInput
-            ? const Duration(milliseconds: 95)
-            : const Duration(milliseconds: 115),
+            ? const Duration(milliseconds: 200)
+            : const Duration(milliseconds: 160),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
@@ -685,11 +772,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           );
           final slide = Tween<Offset>(
             begin: isQuickInput
-                ? const Offset(0.012, 0.02)
-                : const Offset(0.03, 0.015),
+                ? const Offset(0, 0.028)
+                : const Offset(0.02, 0.012),
             end: Offset.zero,
           ).animate(curved);
-          final fade = Tween<double>(begin: 0, end: 1).animate(curved);
+          final fade = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
           // หน้า Quick Input ไม่ย่อ/ขยาย — ลดงาน GPU บนเครื่องรุ่นเล็ก
           if (isQuickInput) {
             return FadeTransition(
@@ -784,14 +871,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                               final waiting =
                                   snapshot.connectionState ==
                                   ConnectionState.waiting;
-                              if (waiting && merged == null) {
-                                return const ColoredBox(
-                                  color: Color(0xFFF3FBFC),
+                              final data = merged;
+                              final Widget body;
+                              if ((waiting && data == null) || data == null) {
+                                body = const DashboardLoadingView(
+                                  key: ValueKey('dashboard_loading'),
                                 );
-                              }
-                              if (snapshot.hasError && merged == null) {
+                              } else if (snapshot.hasError) {
                                 final l10n = AppLocalizations.of(context);
-                                return Center(
+                                body = Center(
+                                  key: const ValueKey('dashboard_error'),
                                   child: Padding(
                                     padding: const EdgeInsets.all(24),
                                     child: Column(
@@ -813,70 +902,51 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     ),
                                   ),
                                 );
+                              } else {
+                                final reconnectingUi = _serverOnline &&
+                                    CountRecordOfflineSync
+                                        .instance
+                                        .uploadInFlight;
+                                body = _bodyPage == 0
+                                    ? _DailyHomeContent(
+                                        key: const ValueKey('dashboard_home'),
+                                        currentAdmin: widget.currentAdmin,
+                                        data: data,
+                                        serverOnline: _serverOnline,
+                                        serverReconnecting: reconnectingUi,
+                                        countAndRecordMenuOpen:
+                                            _countAndRecordMenuOpen,
+                                        onCountAndRecordMenuOpenChanged: (open) {
+                                          setState(
+                                            () =>
+                                                _countAndRecordMenuOpen = open,
+                                          );
+                                        },
+                                        selectedDay: _selectedDay,
+                                        onPullRefresh: _pullRefresh,
+                                        onCountRecordDataChanged:
+                                            _refreshAfterCountRecordChange,
+                                        onPickDay: _pickDay,
+                                        dateKey: _dateKey,
+                                        formatBuddhistDateButton:
+                                            _formatBuddhistDateButton,
+                                        onOpenModule: _openQuickInput,
+                                        txService: _txService,
+                                        employeeService:
+                                            EmployeeService(client),
+                                      )
+                                    : _MetricsContent(
+                                        key: const ValueKey('dashboard_metrics'),
+                                        data: data,
+                                        currentAdmin: widget.currentAdmin,
+                                        onRetry: _refreshHome,
+                                      );
                               }
-                              final data = merged;
-                              if (data == null) {
-                                return const ColoredBox(
-                                  color: Color(0xFFF3FBFC),
-                                );
-                              }
-                              // ในเมนูนับจำนวน อัปเดตเบื้องหลังโดยไม่โชว์แถบโหลด
-                              final showRefreshBar = waiting &&
-                                  merged != null &&
-                                  !_countAndRecordMenuOpen;
-                              final shell = _bodyPage == 0
-                                  ? _DailyHomeContent(
-                                      currentAdmin: widget.currentAdmin,
-                                      data: data,
-                                      serverOnline: _serverOnline,
-                                      countAndRecordMenuOpen:
-                                          _countAndRecordMenuOpen,
-                                      onCountAndRecordMenuOpenChanged: (open) {
-                                        setState(
-                                          () => _countAndRecordMenuOpen = open,
-                                        );
-                                      },
-                                      selectedDay: _selectedDay,
-                                      onPullRefresh: _pullRefresh,
-                                      onCountRecordDataChanged:
-                                          _refreshAfterCountRecordChange,
-                                      onPickDay: _pickDay,
-                                      dateKey: _dateKey,
-                                      formatBuddhistDateButton:
-                                          _formatBuddhistDateButton,
-                                      onOpenModule: _openQuickInput,
-                                      txService: _txService,
-                                      employeeService: EmployeeService(client),
-                                    )
-                                  : _MetricsContent(
-                                      data: data,
-                                      currentAdmin: widget.currentAdmin,
-                                      onRetry: _refreshHome,
-                                    );
-                              if (!showRefreshBar) return shell;
-                              return Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  shell,
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: Theme(
-                                      data: Theme.of(context).copyWith(
-                                        progressIndicatorTheme:
-                                            ProgressIndicatorThemeData(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                        ),
-                                      ),
-                                      child: const LinearProgressIndicator(
-                                        minHeight: 2,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              return AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 340),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeIn,
+                                child: body,
                               );
                             },
                           ),
@@ -950,28 +1020,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _pullRefresh() async {
-    final client = Supabase.instance.client;
-    final online = await CountRecordOfflineSync.instance.isOnline(
-      client,
-      forceProbe: true,
-    );
-    if (online) {
-      await CountRecordOfflineSync.instance.uploadPendingImmediately(
-        _txService,
-        client,
-      );
-    }
-    if (!mounted) return;
-    if (online != _serverOnline) {
-      setState(() => _serverOnline = online);
-    }
-    final nextHomeFuture = _futureWithSnapshot(
-      _loadHome(forceRefresh: online),
-    );
-    setState(() {
-      _homeFuture = nextHomeFuture;
-    });
-    await _homeFuture;
+    await _refreshHomeSilently(tryNetwork: true);
   }
 
   Widget _squircleNavRail({required SupabaseClient client}) {
@@ -1124,9 +1173,11 @@ class _HomePayload {
 
 class _DailyHomeContent extends StatefulWidget {
   const _DailyHomeContent({
+    super.key,
     required this.currentAdmin,
     required this.data,
     required this.serverOnline,
+    this.serverReconnecting = false,
     required this.countAndRecordMenuOpen,
     required this.onCountAndRecordMenuOpenChanged,
     required this.selectedDay,
@@ -1143,6 +1194,7 @@ class _DailyHomeContent extends StatefulWidget {
   final AdminUser currentAdmin;
   final _HomePayload data;
   final bool serverOnline;
+  final bool serverReconnecting;
   final bool countAndRecordMenuOpen;
   final ValueChanged<bool> onCountAndRecordMenuOpenChanged;
   final DateTime selectedDay;
@@ -1166,6 +1218,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   /// After the grid entrance animation finishes, drop stagger transforms so
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
+  bool _countRecordTutorialScheduled = false;
   static const _kPanelShadowColor = Color(0x12000000);
 
   void _onEntranceStatus(AnimationStatus status) {
@@ -1195,6 +1248,27 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     );
     _entranceController.addStatusListener(_onEntranceStatus);
     _entranceController.forward();
+    if (widget.countAndRecordMenuOpen) {
+      _scheduleCountRecordTutorialIfNeeded();
+    }
+  }
+
+  void _scheduleCountRecordTutorialIfNeeded() {
+    if (_countRecordTutorialScheduled) return;
+    _countRecordTutorialScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.countAndRecordMenuOpen) return;
+      unawaited(CountRecordTutorial.showIfFirstTime(context));
+    });
+  }
+
+  void _openCountRecordTutorial() {
+    unawaited(
+      CountRecordTutorial.show(
+        context,
+        markCompleteOnFinish: false,
+      ),
+    );
   }
 
   @override
@@ -1208,6 +1282,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     }
     if (oldWidget.countAndRecordMenuOpen != widget.countAndRecordMenuOpen) {
       _syncErrorTrackerStep();
+      if (widget.countAndRecordMenuOpen) {
+        _scheduleCountRecordTutorialIfNeeded();
+      }
     }
   }
 
@@ -1241,6 +1318,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final l10n = AppLocalizations.of(context);
     final localeScope = AppLocaleScope.of(context);
     final offlineMode = !widget.serverOnline;
+    final reconnecting = widget.serverReconnecting;
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? l10n.formatShortDateFromYmd(
@@ -1328,9 +1406,17 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         child: AnimatedSwitcher(
-          duration: Duration(milliseconds: useLiteAnimations ? 70 : 115),
-          transitionBuilder: (child, animation) =>
-              FadeTransition(opacity: animation, child: child),
+          duration: MenuPanelTransition.duration(lite: useLiteAnimations),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: MenuPanelTransition.build,
+          layoutBuilder: (current, previous) => Stack(
+            fit: StackFit.expand,
+            children: [
+              ...previous,
+              if (current != null) current,
+            ],
+          ),
           child: LayoutBuilder(
             key: ValueKey(
               '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
@@ -1424,40 +1510,67 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           const Spacer(),
-                          if (offlineMode)
-                            Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF3E0),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: const Color(0xFFFFCC80),
+                          if (offlineMode || reconnecting)
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 320),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              child: Container(
+                                key: ValueKey(
+                                  reconnecting ? 'reconnecting' : 'offline',
+                                ),
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: reconnecting
+                                      ? const Color(0xFFFFF8E1)
+                                      : const Color(0xFFFFF3E0),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: reconnecting
+                                        ? const Color(0xFFFFE082)
+                                        : const Color(0xFFFFCC80),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      reconnecting
+                                          ? Icons.sync_rounded
+                                          : Icons.cloud_off_outlined,
+                                      size: 16,
+                                      color: reconnecting
+                                          ? const Color(0xFFF57F17)
+                                          : const Color(0xFFE65100),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      reconnecting
+                                          ? 'กำลังซิงก์'
+                                          : 'โหมดออฟไลน์',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: reconnecting
+                                            ? const Color(0xFFF57F17)
+                                            : const Color(0xFFE65100),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Icon(
-                                    Icons.cloud_off_outlined,
-                                    size: 16,
-                                    color: Color(0xFFE65100),
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'โหมดออฟไลน์',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFFE65100),
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
+                          IconButton(
+                            tooltip: 'สอนใช้งาน',
+                            onPressed: _openCountRecordTutorial,
+                            icon: const Icon(Icons.school_outlined),
+                            color: const Color(0xFF1565C0),
+                            visualDensity: VisualDensity.compact,
+                          ),
                           TextButton(
                             onPressed: backToMainMenu,
                             style: TextButton.styleFrom(
@@ -1479,17 +1592,27 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                           ),
                         ],
                       ),
-                      if (offlineMode) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'แสดงเฉพาะเมนูที่บันทึกในเครื่องได้ — จะอัปโหลดเมื่อมีเน็ต',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF6B7280),
-                                height: 1.3,
-                              ),
-                        ),
-                      ],
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: offlineMode
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'แสดงเฉพาะเมนูที่บันทึกในเครื่องได้ — จะอัปโหลดเมื่อมีเน็ต',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF6B7280),
+                                        height: 1.3,
+                                      ),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                       const SizedBox(height: 10),
                       Expanded(
                         child: portrait
@@ -1514,60 +1637,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 );
               }
 
-              if (offlineMode &&
-                  _kOfflineHomeShowsCountRecordOnly &&
-                  !widget.countAndRecordMenuOpen) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3E0),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFFFCC80)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.cloud_off_outlined,
-                              size: 20,
-                              color: Color(0xFFE65100),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'โหมดออฟไลน์ — แตะการ์ดด้านล่างเพื่อเลือกเมนูบันทึก',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFF6B4C2E),
-                                      height: 1.35,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: buildCountRecordEntryCard(),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              final visibleModules = offlineMode && _kOfflineHomeShowsCountRecordOnly
-                  ? const <_DailyModuleDef>[]
-                  : _kDailyModules;
+              final visibleModules = _kDailyModules;
               final gridItemCount = visibleModules.length + 1;
               const gap = 10.0;
               const sideInset = 2.0;
@@ -1682,21 +1752,39 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       employees: widget.data.employees,
                       allTransactionsForStock: widget.data.allTransactions,
                     );
-                    final card = RecordModuleCard(
-                      title: l10n.moduleTitle(m.category),
-                      icon: m.icon,
-                      tileColor: m.color,
-                      showLightStyle: index.isOdd,
-                      fillStatus: fill,
-                      completeStatusLabelOverride: translateDailyCardStatus(
-                        rawStatus,
-                        localeScope.locale,
+                    final moduleOfflineLocked = offlineMode &&
+                        !_isOfflineCapableModule(m.category);
+                    final card = Opacity(
+                      opacity: moduleOfflineLocked ? 0.38 : 1.0,
+                      child: RecordModuleCard(
+                        title: l10n.moduleTitle(m.category),
+                        icon: m.icon,
+                        tileColor: m.color,
+                        showLightStyle: index.isOdd,
+                        fillStatus: fill,
+                        completeStatusLabelOverride: translateDailyCardStatus(
+                          rawStatus,
+                          localeScope.locale,
+                        ),
+                        statusMaxLines:
+                            _kDailyMenuDetailCategories.contains(m.category)
+                            ? 3
+                            : 2,
+                        onTap: moduleOfflineLocked
+                            ? () {
+                                ScaffoldMessenger.maybeOf(context)
+                                    ?.showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'ไม่มีเน็ต — ใช้เมนู «บันทึกและนับจำนวน» เท่านั้น',
+                                    ),
+                                    duration: Duration(seconds: 2),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            : () => widget.onOpenModule(m),
                       ),
-                      statusMaxLines:
-                          _kDailyMenuDetailCategories.contains(m.category)
-                          ? 3
-                          : 2,
-                      onTap: () => widget.onOpenModule(m),
                     );
                     if (_gridEntranceCompleted) {
                       return RepaintBoundary(
@@ -1728,34 +1816,47 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!widget.countAndRecordMenuOpen) ...[
-                FadeTransition(
-                  opacity: headerAnim,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, -0.08),
-                      end: Offset.zero,
-                    ).animate(headerAnim),
-                    child: _HomeHeaderCompact(
-                      appName: widget.data.summary.appName,
-                      lastLabel: lastLabel,
-                      serverOnline: widget.serverOnline,
-                      selectedDateLabel: l10n.formatSelectedDate(
-                        widget.selectedDay,
-                      ),
-                      doneCount: offlineMode ? 0 : doneCount,
-                      incompleteMenuCount: offlineMode ? 0 : incompleteCount,
-                      totalCount: offlineMode ? 0 : headerTotalMenuCount,
-                      hideMenuProgress: offlineMode,
-                      onPickDay: widget.onPickDay,
-                      onRefresh: widget.onPullRefresh,
-                      locale: localeScope.locale,
-                      onLocaleChanged: localeScope.onLocaleChanged,
-                    ),
-                  ),
+              AnimatedSize(
+                duration: Duration(
+                  milliseconds: useLiteAnimations ? 180 : 300,
                 ),
-                const SizedBox(height: 12),
-              ],
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: widget.countAndRecordMenuOpen
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          FadeTransition(
+                            opacity: headerAnim,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, -0.08),
+                                end: Offset.zero,
+                              ).animate(headerAnim),
+                              child: _HomeHeaderCompact(
+                                appName: widget.data.summary.appName,
+                                lastLabel: lastLabel,
+                                serverOnline: widget.serverOnline,
+                                serverReconnecting: widget.serverReconnecting,
+                                selectedDateLabel: l10n.formatSelectedDate(
+                                  widget.selectedDay,
+                                ),
+                                doneCount: doneCount,
+                                incompleteMenuCount: incompleteCount,
+                                totalCount: headerTotalMenuCount,
+                                onPickDay: widget.onPickDay,
+                                onRefresh: widget.onPullRefresh,
+                                locale: localeScope.locale,
+                                onLocaleChanged: localeScope.onLocaleChanged,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+              ),
               Expanded(
                 child: _gridEntranceCompleted
                     ? dailyMenuPanel
@@ -1977,11 +2078,11 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.appName,
     required this.lastLabel,
     required this.serverOnline,
+    this.serverReconnecting = false,
     required this.selectedDateLabel,
     required this.doneCount,
     required this.incompleteMenuCount,
     required this.totalCount,
-    this.hideMenuProgress = false,
     required this.onPickDay,
     required this.onRefresh,
     required this.locale,
@@ -1991,11 +2092,11 @@ class _HomeHeaderCompact extends StatelessWidget {
   final String appName;
   final String lastLabel;
   final bool serverOnline;
+  final bool serverReconnecting;
   final String selectedDateLabel;
   final int doneCount;
   final int incompleteMenuCount;
   final int totalCount;
-  final bool hideMenuProgress;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
   final AppLocale locale;
@@ -2181,7 +2282,7 @@ class _HomeHeaderCompact extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (!hideMenuProgress && totalCount > 0)
+              if (totalCount > 0)
                 _HeaderStatChip(
                   icon: Icons.today_rounded,
                   label: doneCount >= totalCount
@@ -2194,25 +2295,39 @@ class _HomeHeaderCompact extends StatelessWidget {
                             )
                           : l10n.headerMenusSimple(doneCount, totalCount),
                 ),
-              if (hideMenuProgress)
-                const _HeaderStatChip(
-                  icon: Icons.cloud_off_outlined,
-                  label: 'โหมดออฟไลน์ — เมนูบันทึกและนับจำนวน',
-                  iconColor: Color(0xFFE65100),
-                ),
               _HeaderStatChip(
                 icon: Icons.access_time_filled_rounded,
                 label: '${l10n.latestPrefix} $lastLabel',
               ),
               _LiveClockChip(l10n: l10n),
-              _HeaderStatChip(
-                icon: serverOnline
-                    ? Icons.cloud_done_rounded
-                    : Icons.cloud_off_rounded,
-                label: serverOnline ? l10n.serverOnline : l10n.serverOffline,
-                iconColor: serverOnline
-                    ? const Color(0xFF1E8E56)
-                    : const Color(0xFFC25050),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: KeyedSubtree(
+                  key: ValueKey(
+                    serverReconnecting
+                        ? 'reconnecting'
+                        : (serverOnline ? 'online' : 'offline'),
+                  ),
+                  child: _HeaderStatChip(
+                    icon: serverReconnecting
+                        ? Icons.sync_rounded
+                        : (serverOnline
+                            ? Icons.cloud_done_rounded
+                            : Icons.cloud_off_rounded),
+                    label: serverReconnecting
+                        ? 'กำลังซิงก์...'
+                        : (serverOnline
+                            ? l10n.serverOnline
+                            : l10n.serverOffline),
+                    iconColor: serverReconnecting
+                        ? const Color(0xFFF9A825)
+                        : (serverOnline
+                            ? const Color(0xFF1E8E56)
+                            : const Color(0xFFC25050)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -2348,6 +2463,7 @@ class _PressScaleButtonState extends State<_PressScaleButton> {
 
 class _MetricsContent extends StatelessWidget {
   const _MetricsContent({
+    super.key,
     required this.data,
     required this.currentAdmin,
     required this.onRetry,

@@ -59,8 +59,8 @@ class DevicePerf {
       cache.maximumSize = 24;
       cache.maximumSizeBytes = 20 << 20; // 20 MiB
     } else {
-      cache.maximumSize = 100;
-      cache.maximumSizeBytes = 56 << 20; // 56 MiB
+      cache.maximumSize = 80;
+      cache.maximumSizeBytes = 48 << 20; // 48 MiB
     }
   }
 }

@@ -18,17 +18,74 @@ import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
 import 'widgets/bootstrap_splash.dart';
 
-Future<void> _preloadKanitFonts() async {
+Future<void> _preloadAppFonts() async {
   try {
     await GoogleFonts.pendingFonts([
       GoogleFonts.kanit(),
       GoogleFonts.kanit(fontWeight: FontWeight.w600),
       GoogleFonts.kanit(fontWeight: FontWeight.w700),
       GoogleFonts.kanit(fontWeight: FontWeight.w800),
+      GoogleFonts.orbitron(fontWeight: FontWeight.w700),
     ]);
   } catch (e, st) {
     debugPrint('Font preload skipped: $e\n$st');
   }
+}
+
+ThemeData _buildAppTheme() {
+  final baseLight = ThemeData(
+    brightness: Brightness.light,
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF11A8BA),
+      brightness: Brightness.light,
+    ),
+    scaffoldBackgroundColor: const Color(0xFFF3FBFC),
+  );
+  return baseLight.copyWith(
+    textTheme: GoogleFonts.kanitTextTheme(baseLight.textTheme),
+    appBarTheme: AppBarTheme(
+      backgroundColor: Colors.white,
+      foregroundColor: const Color(0xFF17374C),
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      titleTextStyle: GoogleFonts.kanit(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF17374C),
+      ),
+    ),
+    cardTheme: CardThemeData(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFF11A8BA),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFFFAFCFF),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF11A8BA), width: 1.4),
+      ),
+    ),
+  );
 }
 
 Future<void> main() async {
@@ -36,10 +93,10 @@ Future<void> main() async {
   final appRootNavigatorKey = GlobalKey<NavigatorState>();
 
   try {
-    await DevicePerf.init();
-
-    // Load environment variables
-    await dotenv.load(fileName: '.env');
+    await Future.wait([
+      DevicePerf.init(),
+      dotenv.load(fileName: '.env'),
+    ]);
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
@@ -53,7 +110,7 @@ Future<void> main() async {
 
     AppErrorBinding.install(appRootNavigatorKey);
 
-    await _preloadKanitFonts();
+    await _preloadAppFonts();
 
     runApp(MobileApp(navigatorKey: appRootNavigatorKey));
   } catch (e) {
@@ -93,6 +150,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   AppLocale _locale = AppLocale.th;
   final SessionService _sessionService = SessionService();
   final LocaleService _localeService = LocaleService();
+  final ThemeData _appTheme = _buildAppTheme();
 
   @override
   void initState() {
@@ -134,8 +192,13 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
+    final minSplash = Future<void>.delayed(const Duration(milliseconds: 850));
     try {
-      final admin = await _sessionService.getSavedAdmin();
+      final results = await Future.wait([
+        _sessionService.getSavedAdmin(),
+        minSplash,
+      ]);
+      final admin = results[0] as AdminUser?;
       if (admin != null) {
         try {
           await ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client);
@@ -150,6 +213,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
       });
     } catch (e) {
       debugPrint('Error restoring session: $e');
+      await minSplash;
       if (!mounted) return;
       setState(() {
         _bootstrapping = false;
@@ -161,59 +225,6 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final client = Supabase.instance.client;
 
-    final baseLight = ThemeData(
-      brightness: Brightness.light,
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF11A8BA),
-        brightness: Brightness.light,
-      ),
-      scaffoldBackgroundColor: const Color(0xFFF3FBFC),
-    );
-    final appTheme = baseLight.copyWith(
-      textTheme: GoogleFonts.kanitTextTheme(baseLight.textTheme),
-      appBarTheme: AppBarTheme(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF17374C),
-        elevation: 0,
-        titleTextStyle: GoogleFonts.kanit(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFF17374C),
-        ),
-      ),
-      cardTheme: CardThemeData(
-        color: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF11A8BA),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: const Color(0xFFFAFCFF),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF11A8BA), width: 1.4),
-        ),
-      ),
-    );
-
     return MaterialApp(
       navigatorKey: widget.navigatorKey,
       title: 'GoldenMole for Users',
@@ -222,8 +233,8 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
       scrollBehavior: DevicePerf.isConstrainedDevice
           ? const _AppScrollBehaviorConstrained()
           : const _AppScrollBehavior(),
-      theme: appTheme,
-      darkTheme: appTheme,
+      theme: _appTheme,
+      darkTheme: _appTheme,
       locale: _locale.materialLocale,
       supportedLocales: const [
         Locale('th', 'TH'),
@@ -241,43 +252,59 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      home: _bootstrapping
-          ? const BootstrapSplash()
-          : _currentAdmin == null
-          ? LoginScreen(
-              authService: AuthService(client),
-              sessionService: _sessionService,
-              onLoginSuccess: (admin, persistSession) async {
-                if (persistSession) {
-                  await _sessionService.saveAdmin(admin);
-                } else {
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (currentChild, previousChildren) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ...previousChildren,
+              ?currentChild,
+            ],
+          );
+        },
+        child: _bootstrapping
+            ? const BootstrapSplash(key: ValueKey('bootstrap'))
+            : _currentAdmin == null
+            ? LoginScreen(
+                key: const ValueKey('login'),
+                authService: AuthService(client),
+                sessionService: _sessionService,
+                onLoginSuccess: (admin, persistSession) async {
+                  if (persistSession) {
+                    await _sessionService.saveAdmin(admin);
+                  } else {
+                    await _sessionService.clear();
+                  }
+                  try {
+                    await ensureSupabaseSessionForEdgeFunctions(
+                      Supabase.instance.client,
+                    );
+                  } catch (e, st) {
+                    debugPrint('ensureSupabaseSession after login: $e\n$st');
+                  }
+                  if (!mounted) return;
+                  setState(() => _currentAdmin = admin);
+                },
+              )
+            : DashboardScreen(
+                key: ValueKey('dashboard_${_currentAdmin!.id}'),
+                currentAdmin: _currentAdmin!,
+                dashboardService: DashboardService(client),
+                onLogout: () async {
+                  try {
+                    await Supabase.instance.client.auth.signOut();
+                  } catch (e, st) {
+                    debugPrint('Supabase signOut: $e\n$st');
+                  }
                   await _sessionService.clear();
-                }
-                try {
-                  await ensureSupabaseSessionForEdgeFunctions(
-                    Supabase.instance.client,
-                  );
-                } catch (e, st) {
-                  debugPrint('ensureSupabaseSession after login: $e\n$st');
-                }
-                if (!mounted) return;
-                setState(() => _currentAdmin = admin);
-              },
-            )
-          : DashboardScreen(
-              currentAdmin: _currentAdmin!,
-              dashboardService: DashboardService(client),
-              onLogout: () async {
-                try {
-                  await Supabase.instance.client.auth.signOut();
-                } catch (e, st) {
-                  debugPrint('Supabase signOut: $e\n$st');
-                }
-                await _sessionService.clear();
-                if (!mounted) return;
-                setState(() => _currentAdmin = null);
-              },
-            ),
+                  if (!mounted) return;
+                  setState(() => _currentAdmin = null);
+                },
+              ),
+      ),
     );
   }
 }
