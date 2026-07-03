@@ -51,6 +51,7 @@ const Dashboard = ({
     onDeleteTransaction,
     setSettings,
     isMobile = false,
+    onRefreshTransactions,
 }: {
     transactions: Transaction[];
     settings: AppSettings;
@@ -59,6 +60,7 @@ const Dashboard = ({
     onDeleteTransaction: (id: string) => void;
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     isMobile?: boolean;
+    onRefreshTransactions?: () => void | Promise<void>;
 }) => {
     const viewportNarrow = useViewportNarrow(1024);
     const wizardMobileShell = isMobile || viewportNarrow;
@@ -136,7 +138,7 @@ const Dashboard = ({
             {subTab === 'Overview' ? <DashboardOverview transactions={transactions} dateFilter={dateFilter} /> :
                 subTab === 'Analytics' ? <AnalyticsView transactions={transactions} settings={settings} dateFilter={dateFilter} /> :
                     subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
-                        subTab === 'V4' ? <DashboardV4 transactions={transactions} dateFilter={dateFilter} employees={employees} settings={settings} /> :
+                        subTab === 'V4' ? <DashboardV4 transactions={transactions} dateFilter={dateFilter} employees={employees} settings={settings} onRefreshTransactions={onRefreshTransactions} /> :
                             subTab === 'V5' ? <DashboardV5 transactions={transactions} dateFilter={dateFilter} /> :
                             subTab === 'Wizard' ? (
                                 <DailyStepRecorder

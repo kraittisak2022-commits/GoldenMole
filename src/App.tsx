@@ -52,6 +52,10 @@ import * as db from './services/dataService';
 import { notifyAdvanceLineSaved, notifyLeaveLineSaved } from './services/lineAdvanceNotify';
 import { supabase, hasSupabaseConfig } from './lib/supabase';
 import { ensureSupabaseSessionForEdgeFunctions } from './utils/supabaseFunctionSession';
+import {
+    emitTransactionsRealtime,
+    setTransactionsRealtimeStatus,
+} from './services/transactionsRealtimeBus';
 
 // --- Default Admin Account (รหัสผ่านเก็บเป็น SHA-256 — ค่าเริ่มต้นเข้าได้ด้วย 1234) ---
 const DEFAULT_ADMINS: AdminUser[] = [
@@ -660,6 +664,7 @@ function App() {
                             const id = oldRow?.id != null ? String(oldRow.id) : '';
                             if (!id) return;
                             setTransactions(prev => prev.filter(x => x.id !== id));
+                            emitTransactionsRealtime({ type: 'DELETE', id, at: Date.now() });
                             const own = recentWebSaveTxAt.current.get(id);
                             if (own && Date.now() - own < 4000) return;
                             const now = Date.now();
@@ -687,6 +692,12 @@ function App() {
                             return [...prev, tx];
                         });
 
+                        emitTransactionsRealtime({
+                            type: eventType === 'INSERT' ? 'INSERT' : 'UPDATE',
+                            tx,
+                            at: Date.now(),
+                        });
+
                         const own = recentWebSaveTxAt.current.get(tx.id);
                         if (own && Date.now() - own < 4000) return;
 
@@ -705,8 +716,15 @@ function App() {
                 },
             )
             .subscribe((status) => {
-                if (status === 'CHANNEL_ERROR') {
+                if (status === 'SUBSCRIBED') {
+                    setTransactionsRealtimeStatus('connected');
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    setTransactionsRealtimeStatus('error');
                     console.warn('transactions realtime channel error');
+                } else if (status === 'CLOSED') {
+                    setTransactionsRealtimeStatus('closed');
+                } else {
+                    setTransactionsRealtimeStatus('connecting');
                 }
             });
 
@@ -1321,6 +1339,11 @@ function App() {
         };
     }, [isLoggedIn, activeMenu]);
 
+    const refreshTransactionsFromServer = useCallback(async () => {
+        const latest = await db.fetchTransactions();
+        setTransactions(normalizeTransactionsCreatedAt(latest));
+    }, []);
+
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {
         setProjects(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -1405,7 +1428,7 @@ function App() {
             return <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึงเมนูนี้</div>;
         }
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} />;
+            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} onRefreshTransactions={refreshTransactionsFromServer} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={visibleTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={visibleTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} />;

@@ -239,10 +239,23 @@ List<String> dailyLeaveEmployeeNamesOnDay(
   return calendarLeaveNames(rows, employees);
 }
 
+/// แถวการนับ «บันทึกและนับจำนวน → การร่อนทราย» (มี lapTimes/จำนวนรอบ)
+/// แยกออกจากแถวฟอร์ม «บันทึกการร่อนทราย» (เครื่องร่อนใหม่/เก่า, จำนวนถัง)
+bool isCountRecordSandTapRow(AppTransaction t) {
+  if (t.category != 'DailyLog') return false;
+  if ((t.subCategory ?? '').trim().toLowerCase() != 'sand') return false;
+  final desc = t.description;
+  if (desc.contains('เครื่องร่อน')) return false;
+  if (desc.contains('จำนวนถัง')) return false;
+  if (desc.contains('ทรายที่ล้างที่บ้าน')) return false;
+  return desc.contains('ร่อนทราย');
+}
+
 /// แถวล้างทรายเครื่องร่อน (มีคิวเช้า/บ่าย — ไม่นับถังอย่างเดียว / ทรายที่บ้าน / ตัดรอบ)
 bool countsAsSandWashCubicRow(AppTransaction t) {
   if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
   if (isHomeSandRoundCloseRow(t)) return false;
+  if (isCountRecordSandTapRow(t)) return false;
   final sub = (t.subCategory ?? '').trim().toLowerCase();
   if (t.category == 'DailyLog' && sub == 'sand') {
     if (t.description.contains('จำนวนถัง')) return false;
@@ -274,7 +287,7 @@ bool countsAsSandWashCubicRow(AppTransaction t) {
   return (morning: morning, afternoon: afternoon);
 }
 
-/// จำนวนถังที่ได้วันนี้ — จากแถว «จำนวนถังที่ได้วันนี้» เท่านั้น (ไม่ใช้ drumsObtained บนแถวเครื่องร่อน)
+/// จำนวนถังที่ได้รับวันนี้ — จากแถวบันทึกเฉพาะ (ไม่รวมการนับรอบ / เครื่องร่อน)
 double sandWashDrumsObtainedForDay(
   String dayKey,
   Iterable<AppTransaction> transactions,
@@ -282,9 +295,8 @@ double sandWashDrumsObtainedForDay(
   var drums = 0.0;
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (!transactionTouchesDailyModule(t, dayKey, 'บันทึกการร่อนทราย')) {
-      continue;
-    }
+    if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
+    if (isCountRecordSandTapRow(t)) continue;
     if (!t.description.contains('จำนวนถัง')) continue;
     final d = (t.drumsObtained ?? 0).toDouble();
     if (d > drums) drums = d;
@@ -382,16 +394,9 @@ bool isOtLaborRow(AppTransaction t) {
     if (!transactionMatchesVehicleTripModuleList(t)) continue;
     final v = (t.vehicleId ?? '').trim();
     if (v.isNotEmpty) vehicles.add(v);
-    final tm = (t.tripMorning ?? 0).toDouble();
-    final ta = (t.tripAfternoon ?? 0).toDouble();
-    if (tm == 0 && ta == 0) {
-      // บันทึกจากตัวนับ «จำนวนเที่ยวรถ» เก็บยอดรวมไว้ใน perCarTrips/tripCount
-      // (ไม่แยกเช้า/บ่าย) — นับรวมไว้ฝั่งเช้าให้สอดคล้องกับฟอร์มบันทึกรถดรัม
-      morning += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
-    } else {
-      morning += tm;
-      afternoon += ta;
-    }
+    final split = vehicleTripPeriodSplit(t);
+    morning += split.morning;
+    afternoon += split.afternoon;
   }
   return (
     vehicleCount: vehicles.length,
@@ -570,26 +575,40 @@ List<({String empId, double hours})> otHoursByEmployeeForDay(
       .toList();
 }
 
-/// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — ถังที่ได้วันนี้ + คิวรวมเช้า/บ่าย
+/// ข้อความสถานะการ์ดเมนู «บันทึกการร่อนทราย» — คิวล้างช่วงเช้า/บ่าย + ถังที่ได้รับ
 String dailySandWashModuleStatusLabel(
   String dayKey,
   Iterable<AppTransaction> transactions,
 ) {
   final totals = sandWashPeriodTotalsForDay(dayKey, transactions);
-  final totalCubic = totals.morning + totals.afternoon;
   final drums = sandWashDrumsObtainedForDay(dayKey, transactions);
-
   final parts = <String>[];
+  var morning = totals.morning;
+  var afternoon = totals.afternoon;
+  var usedCountRecordFallback = false;
+  // ยังไม่ได้บันทึกฟอร์มเครื่องร่อน → ใช้จำนวนรอบที่นับใน
+  // «บันทึกและนับจำนวน → การร่อนทราย» (ค่าเดียวกับที่ฟอร์ม prefill)
+  if (morning <= 0 && afternoon <= 0) {
+    final rounds = countRecordSandPeriodTotals(dayKey, transactions);
+    morning = rounds.morning.toDouble();
+    afternoon = rounds.afternoon.toDouble();
+    usedCountRecordFallback = true;
+  }
+  if (morning > 0 || afternoon > 0) {
+    parts.add('เช้า ${formatSandWashCubic(morning)} คิว');
+    parts.add('บ่าย ${formatSandWashCubic(afternoon)} คิว');
+  } else if (usedCountRecordFallback) {
+    // มีการนับรอบแต่แยกช่วงเช้า/บ่ายไม่ได้ (ไม่มี lapTimes) → โชว์ยอดรวมรอบ
+    final totalRounds = countRecordSandRoundsForDay(dayKey, transactions);
+    if (totalRounds > 0) {
+      parts.add('ร่อน ${formatDashboardMetric(totalRounds)} รอบ');
+    }
+  }
   if (drums > 0) {
     parts.add('ถัง ${formatSandWashCubic(drums)}');
   }
-  if (totalCubic > 0) {
-    parts.add('${formatSandWashCubic(totalCubic)} คิว');
-  } else if (drums > 0) {
-    parts.add('ยังไม่มีคิว');
-  }
-  if (parts.isEmpty) return 'ยังไม่มีบันทึกล้างทราย';
-  return _joinStatusParts(parts);
+  if (parts.isNotEmpty) return _joinStatusParts(parts);
+  return 'ยังไม่มีบันทึกล้างทราย';
 }
 
 /// ข้อความสถานะการ์ดเมนู «บันทึกรถดรัมและจำนวนเที่ยว»
@@ -980,6 +999,30 @@ int? _countRecordLapHour(String lap) {
   return (morning: morning, afternoon: afternoon, unknown: unknown);
 }
 
+/// แยกจำนวนเที่ยวของแถว VehicleTrip ออกเป็นช่วงเช้า/บ่าย ให้สอดคล้องกันทุกที่
+///
+/// ลำดับการตัดสิน:
+/// 1) ถ้ามีค่า `tripMorning`/`tripAfternoon` (กรอกจากฟอร์มดรัม) ใช้ค่านั้นตรงๆ
+/// 2) ไม่งั้นแยกจาก `lapTimes` ของตัวนับ — เช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
+///    (lap ที่อ่านเวลาไม่ได้ นับเป็นช่วงเช้า)
+/// 3) ไม่งั้นใช้ยอดรวม `perCarTrips`/`tripCount` ทั้งหมดเป็นช่วงเช้า
+({double morning, double afternoon}) vehicleTripPeriodSplit(AppTransaction t) {
+  final tm = (t.tripMorning ?? 0).toDouble();
+  final ta = (t.tripAfternoon ?? 0).toDouble();
+  if (tm != 0 || ta != 0) {
+    return (morning: tm, afternoon: ta);
+  }
+  final periods = _countRecordLapPeriods(t);
+  if (periods.morning > 0 || periods.afternoon > 0 || periods.unknown > 0) {
+    return (
+      morning: (periods.morning + periods.unknown).toDouble(),
+      afternoon: periods.afternoon.toDouble(),
+    );
+  }
+  final total = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
+  return (morning: total, afternoon: 0);
+}
+
 /// ข้อความสถานะการ์ดเมนู «บันทึกและนับจำนวน»
 String? countRecordMenuStatusLabel(
   String dayKey,
@@ -1023,18 +1066,6 @@ String? countRecordMenuStatusLabel(
   return _joinStatusParts(parts);
 }
 
-/// แถวการนับ «บันทึกและนับจำนวน → การร่อนทราย» (มี lapTimes/จำนวนรอบ)
-/// แยกออกจากแถวฟอร์ม «บันทึกการร่อนทราย» (เครื่องร่อนใหม่/เก่า, จำนวนถัง)
-bool isCountRecordSandTapRow(AppTransaction t) {
-  if (t.category != 'DailyLog') return false;
-  if ((t.subCategory ?? '').trim().toLowerCase() != 'sand') return false;
-  final desc = t.description;
-  if (desc.contains('เครื่องร่อน')) return false;
-  if (desc.contains('จำนวนถัง')) return false;
-  if (desc.contains('ทรายที่ล้างที่บ้าน')) return false;
-  return desc.contains('ร่อนทราย');
-}
-
 /// รวมจำนวนรอบที่นับได้ในวันนั้นแยกช่วงเช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
 ({int morning, int afternoon}) countRecordSandPeriodTotals(
   String dayKey,
@@ -1050,6 +1081,21 @@ bool isCountRecordSandTapRow(AppTransaction t) {
     afternoon += p.afternoon;
   }
   return (morning: morning, afternoon: afternoon);
+}
+
+/// รวมจำนวนรอบร่อนทรายทั้งวันจากแถว «บันทึกและนับจำนวน → การร่อนทราย»
+/// (ใช้ตอนแยกช่วงเช้า/บ่ายไม่ได้เพราะไม่มี lapTimes)
+double countRecordSandRoundsForDay(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var rounds = 0.0;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!isCountRecordSandTapRow(t)) continue;
+    rounds += (t.drumsObtained ?? 0).toDouble();
+  }
+  return rounds;
 }
 
 /// แบ่งจำนวนรอบให้เครื่องร่อนใหม่/เก่า โดยเศษที่เหลือให้เครื่องใหม่ก่อน

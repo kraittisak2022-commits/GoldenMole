@@ -266,6 +266,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   Future<void> _refreshHomeDataInPlace() async {
+    if (_countAndRecordMenuOpen) {
+      // เมนูนับจำนวนเปิดอยู่ — อัปเดตจากแคชในเครื่องแบบเงียบ ๆ
+      // ไม่สลับ _homeFuture เป็น future ใหม่ (กันแถบโหลด/พาเนลรีเฟรชกลางคัน)
+      await _refreshAfterCountRecordChange();
+      return;
+    }
     final nextHomeFuture = _futureWithSnapshot(
       _loadHome(forceRefresh: true),
     );
@@ -818,8 +824,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       .loadingData,
                                 );
                               }
-                              final showRefreshBar =
-                                  waiting && merged != null;
+                              // ในเมนูนับจำนวน อัปเดตเบื้องหลังโดยไม่โชว์แถบโหลด
+                              final showRefreshBar = waiting &&
+                                  merged != null &&
+                                  !_countAndRecordMenuOpen;
                               final shell = _bodyPage == 0
                                   ? _DailyHomeContent(
                                       currentAdmin: widget.currentAdmin,

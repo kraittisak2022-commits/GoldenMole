@@ -68,10 +68,8 @@ double? defaultCubicPerTripForVehicleName(String vehicleName) {
       RegExp(r'10\s*ล้อ').hasMatch(n)) {
     return 7;
   }
-  if (n.contains('ดั๊ม') || n.contains('ดั้ม')) {
-    return 3;
-  }
-  return null;
+  // ค่ามาตรฐานคิวต่อเที่ยว = 3 คิว (รถดรัม/ดั๊ม และรถอื่นที่ไม่มีกฎเฉพาะ)
+  return 3;
 }
 
 void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
@@ -7269,17 +7267,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         modeRaw.toLowerCase() == 'lumpsum' || modeRaw == 'เหมา';
     d.tripBillingMode = isLump ? 'LumpSum' : 'PerTrip';
 
-    var tm = (t.tripMorning ?? 0).toDouble();
-    var ta = (t.tripAfternoon ?? 0).toDouble();
     // ดึงค่าจาก "บันทึกและนับจำนวน > จำนวนเที่ยวรถ" ให้สอดคล้องกัน:
-    // ตัวนับเที่ยวบันทึกจำนวนรวมไว้ใน perCarTrips/tripCount โดยไม่แยกเช้า/บ่าย
-    // ถ้าฟอร์มยังไม่มีการแยกเช้า/บ่าย ให้นำจำนวนเที่ยวรวมมาใส่ช่องเช้า
-    if (tm == 0 && ta == 0) {
-      final counted = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
-      if (counted > 0) tm = counted;
-    }
-    d.tripMorning = _strNum(tm);
-    d.tripAfternoon = _strNum(ta);
+    // แยกช่วงเช้า/บ่ายตามเวลาที่กดนับจริง (lapTimes) ไม่ใช่เทไว้ช่องเช้าอย่างเดียว
+    final split = vehicleTripPeriodSplit(t);
+    d.tripMorning = _strNum(split.morning);
+    d.tripAfternoon = _strNum(split.afternoon);
     d.tripMorningController.text = d.tripMorning;
     d.tripAfternoonController.text = d.tripAfternoon;
 
@@ -7293,7 +7285,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       d.lumpSumTotalCubic = '';
       d.lumpSumTotalCubicController.clear();
       final cptVal = t.cubicPerTrip ?? 0;
-      d.cubicPerTrip = cptVal > 0 ? _strNum(cptVal) : '';
+      // ใช้ค่ามาตรฐานคิวต่อเที่ยว (3 คิว) เมื่อบันทึกไม่ได้ระบุ เช่น มาจากตัวนับเที่ยว
+      final cpt = cptVal > 0
+          ? cptVal.toDouble()
+          : (defaultCubicPerTripForVehicleName(d.vehicleId) ?? 3);
+      d.cubicPerTrip = _strNum(cpt);
       d.cubicPerTripController.text = d.cubicPerTrip;
     }
 
@@ -7329,12 +7325,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final driver = _driverLabelFromId((t.driverId ?? '').trim());
     final mode = (t.tripBillingMode ?? '').trim();
     final isLump = mode.toLowerCase() == 'lumpsum' || mode == 'เหมา';
-    final tm = t.tripMorning ?? 0;
-    final ta = t.tripAfternoon ?? 0;
-    final cubic = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
-    final cpt = t.cubicPerTrip ?? 0;
+    // แยกเช้า/บ่ายให้สอดคล้องกับตัวนับ «จำนวนเที่ยวรถ» (lapTimes)
+    final split = vehicleTripPeriodSplit(t);
+    final tm = split.morning;
+    final ta = split.afternoon;
     final totalTripCount = (t.perCarTrips ?? t.tripCount ?? (tm + ta))
         .toDouble();
+    // คิวต่อเที่ยว: ใช้ค่าที่บันทึก ถ้าไม่มี (เช่น มาจากตัวนับ) ใช้ค่ามาตรฐาน 3 คิว
+    var cpt = (t.cubicPerTrip ?? 0).toDouble();
+    if (!isLump && cpt <= 0) {
+      cpt = defaultCubicPerTripForVehicleName((t.vehicleId ?? '').trim()) ?? 3;
+    }
+    var cubic = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
+    if (!isLump && cubic <= 0) {
+      cubic = totalTripCount * cpt;
+    }
     final wd = _stripRecorderSuffix(t.workDetails ?? '').trim();
     final wtLabel = _vehicleTripWorkTypeLabel(t.workType);
     final modeLabel = isLump ? 'เหมา' : 'คิดเป็นเที่ยว';

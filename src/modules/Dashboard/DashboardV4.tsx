@@ -4,7 +4,6 @@ import {
     Wallet,
     CreditCard,
     ChevronDown,
-    ChevronUp,
     Users,
     Truck,
     Droplets,
@@ -17,13 +16,19 @@ import {
 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import { Transaction, Employee, AppSettings } from '../../types';
-import { normalizeDate } from '../../utils';
+import { getToday, normalizeDate } from '../../utils';
+import { useCountRecordRealtime } from '../../hooks/useCountRecordRealtime';
+import CountRecordOverview from './CountRecordOverview';
+import CountRecordActivityFeed from './CountRecordActivityFeed';
+import RealtimeLiveBadge from './RealtimeLiveBadge';
+import { countRecordMenuStatusLabel } from './countRecordUtils';
 
 interface DashboardV4Props {
     transactions: Transaction[];
     dateFilter: { start: string; end: string };
     employees?: Employee[];
     settings?: AppSettings;
+    onRefreshTransactions?: () => void | Promise<void>;
 }
 
 const formatThaiDate = (d: string) =>
@@ -40,7 +45,7 @@ const isDailyWizardTx = (t: Transaction) =>
     (t.category === 'DailyLog' && (t.subCategory === 'VehicleTrip' || t.subCategory === 'Sand' || t.subCategory === 'Event')) ||
     t.category === 'Fuel';
 
-const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: DashboardV4Props) => {
+const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRefreshTransactions }: DashboardV4Props) => {
     const [expandedDate, setExpandedDate] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState('');
 
@@ -82,10 +87,31 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
         };
     }, [displayTransactions, byDate.length]);
 
+    const focusDate = useMemo(() => {
+        if (selectedDate) return selectedDate;
+        const today = getToday();
+        const inRange = filteredByRange.some((t) => normalizeDate(t.date) === today);
+        if (inRange) return today;
+        return byDate[0]?.[0] ?? '';
+    }, [selectedDate, filteredByRange, byDate]);
+
+    const focusCountRecordStatus = useMemo(
+        () => (focusDate ? countRecordMenuStatusLabel(focusDate, transactions) : null),
+        [focusDate, transactions],
+    );
+
+    const realtime = useCountRecordRealtime({
+        dayKey: focusDate,
+        transactions,
+        employees,
+        onRefresh: onRefreshTransactions,
+        pollIntervalMs: 12000,
+    });
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
                     <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                         <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
@@ -94,9 +120,18 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
                         Real-time V.4
                     </h2>
                     <p className="text-sm text-slate-500 mt-1">
-                        บันทึกงานประจำวัน • ค่าใช้จ่าย • รายรับ • อัปเดตรายวัน
+                        บันทึกและนับจำนวน • เที่ยวรถ • ร่อนทราย • อัปเดตเรียลไทม์
                     </p>
+                    {focusCountRecordStatus && (
+                        <p className="text-xs font-semibold text-indigo-600 mt-1">{focusCountRecordStatus}</p>
+                    )}
                 </div>
+                <RealtimeLiveBadge
+                    isLive={realtime.isLive}
+                    channelStatus={realtime.channelStatus}
+                    lastSyncAt={realtime.lastSyncAt}
+                    syncSource={realtime.syncSource}
+                />
             </div>
 
             {/* Date selector for V4 detail view */}
@@ -128,6 +163,26 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
                     </p>
                 </div>
             </div>
+
+            {focusDate && (
+                <div
+                    className={`rounded-2xl border bg-white p-4 sm:p-5 shadow-sm transition-all duration-500 ${
+                        realtime.pulseToken > 0
+                            ? 'border-indigo-300 ring-2 ring-indigo-200/60'
+                            : 'border-slate-200'
+                    }`}
+                >
+                    <CountRecordOverview
+                        dayKey={focusDate}
+                        transactions={transactions}
+                        employees={employees}
+                        pulseToken={realtime.pulseToken}
+                    />
+                    <div className="mt-4">
+                        <CountRecordActivityFeed activities={realtime.activities} />
+                    </div>
+                </div>
+            )}
 
             {/* Summary Cards — แดชบอร์ดสรุปทันสมัย */}
             {byDate.length > 0 && (
@@ -231,6 +286,13 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings }: Das
 
                                     {isExpanded && (
                                         <div className="px-4 sm:px-5 pb-5 pt-0 space-y-5 border-t border-slate-100 bg-slate-50/50">
+                                            <CountRecordOverview
+                                                dayKey={dateStr}
+                                                transactions={transactions}
+                                                employees={employees}
+                                                compact
+                                                showHeader={false}
+                                            />
                                             <div>
                                                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                                                     <ClipboardList size={14} className="text-indigo-500" />

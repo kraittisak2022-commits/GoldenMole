@@ -337,25 +337,29 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _initPanel() async {
-    await _refreshConnectivity();
-    if (_isOnline) {
-      await _trySyncPending(silent: true);
-    } else {
-      await _refreshPendingCount();
-    }
+    // แสดงข้อมูลจากแคช/คิวในเครื่องทันที — งานเครือข่ายทำเบื้องหลังต่อ
+    // (ไม่ให้ผู้ใช้เห็นหน้าว่าง/แถบโหลดระหว่างรอ probe หรืออัปโหลดคิว)
     final merged = await _mergedPanelDayRows();
     if (!mounted) return;
     setState(() {
       _units.clear();
       _bootstrapFromTransactions(merged);
+      if (widget.mode == CounterMode.trip && _units.isEmpty) {
+        _addVehiclePanelOpen = false;
+      }
     });
+    await _refreshPendingCount();
+    if (!mounted) return;
+    await _refreshConnectivity();
+    if (!mounted) return;
+    if (_isOnline) {
+      // ถ้ามีคิวค้าง _trySyncPending จะอัปโหลดแล้วรีเฟรชตัวเลขให้เอง (มีการ์ดกันรีเซ็ต)
+      await _trySyncPending(silent: true);
+    }
+    if (!mounted) return;
     await _refreshDropdownLists(
       tryNetwork: widget.serverOnline || _isOnline,
     );
-    await _refreshPendingCount();
-    if (widget.mode == CounterMode.trip && _units.isEmpty && mounted) {
-      setState(() => _addVehiclePanelOpen = false);
-    }
   }
 
   bool _sandRowIsEmpty(AppTransaction t) {
@@ -1330,7 +1334,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
     final rowCount = (_units.length + 1) ~/ 2;
     if (rowCount > 2) {
-      const rowHeight = 108.0;
+      const rowHeight = 116.0;
       return ListView.separated(
         padding: EdgeInsets.zero,
         itemCount: rowCount,
@@ -1345,15 +1349,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       );
     }
 
-    return Column(
-      children: [
-        for (var row = 0; row < rowCount; row++) ...[
-          if (row > 0) const SizedBox(height: 8),
-          Expanded(
-            child: _buildTripVehicleGridRow(row * 2, compact: true),
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gap = (rowCount - 1) * 8.0;
+        final rowHeight = rowCount > 0
+            ? ((constraints.maxHeight - gap) / rowCount).clamp(72.0, 999.0)
+            : constraints.maxHeight;
+        return Column(
+          children: [
+            for (var row = 0; row < rowCount; row++) ...[
+              if (row > 0) const SizedBox(height: 8),
+              SizedBox(
+                height: rowHeight,
+                child: _buildTripVehicleGridRow(row * 2, compact: true),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -1390,49 +1403,53 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
             onTap: _toggleAddVehiclePanel,
           ),
           if (_addVehiclePanelOpen)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF1565C0),
-                      backgroundColor: const Color(0xFFE3F2FD),
-                      side: const BorderSide(
-                        color: Color(0xFF90CAF9),
-                        width: 1.5,
+            Flexible(
+              fit: FlexFit.loose,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1565C0),
+                        backgroundColor: const Color(0xFFE3F2FD),
+                        side: const BorderSide(
+                          color: Color(0xFF90CAF9),
+                          width: 1.5,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () {
-                      _openSelectDialog();
-                      _hideAddVehiclePanel();
-                    },
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                    label: const Text(
-                      'เพิ่มรถเพิ่มเติม',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.center,
-                    child: TextButton(
-                      onPressed: _hideAddVehiclePanel,
-                      child: const Text(
-                        'ปิด',
+                      onPressed: () {
+                        _openSelectDialog();
+                        _hideAddVehiclePanel();
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 20),
+                      label: const Text(
+                        'เพิ่มรถเพิ่มเติม',
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF78909C),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    Align(
+                      alignment: Alignment.center,
+                      child: TextButton(
+                        onPressed: _hideAddVehiclePanel,
+                        child: const Text(
+                          'ปิด',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF78909C),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -1443,80 +1460,59 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Widget _buildSandPanel() {
     final u = _sandUnit;
     if (u == null) return const SizedBox.shrink();
+    final showLapStrip = u.lapTimes.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             child: _SandRecordButton(
               unit: u,
+              showLatestLapInline: !showLapStrip,
               onTap: () => _recordTap(u),
               onHoldToUndo: () => _confirmUndoLastRecord(u),
             ),
           ),
-          if (u.lapTimes.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (var i = _recentSandLapStartIndex(u.lapTimes.length);
-                    i < u.lapTimes.length;
-                    i++)
-                  _SandLapChip(
-                    roundNo: i + 1,
-                    stamp: u.lapTimes[i],
-                    onLongPress: () => _confirmUndoSandRoundAt(u, i),
+          if (showLapStrip)
+            Flexible(
+              fit: FlexFit.loose,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 48),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (var i = _recentSandLapStartIndex(u.lapTimes.length);
+                            i < u.lapTimes.length;
+                            i++)
+                          _SandLapChip(
+                            roundNo: i + 1,
+                            stamp: u.lapTimes[i],
+                            onLongPress: () => _confirmUndoSandRoundAt(u, i),
+                          ),
+                      ],
+                    ),
                   ),
-              ],
+                ),
+              ),
             ),
-          ],
         ],
       ),
     );
   }
 
   Widget? _buildSyncBanner() {
-    if (_isOnline && _pendingCount == 0) return null;
-    final message = !_isOnline
-        ? (_pendingCount > 0
-            ? 'ไม่มีเน็ต • บันทึกในเครื่อง $_pendingCount รายการ'
-            : 'ไม่มีเน็ต — บันทึกเก็บในเครื่องก่อน')
-        : 'เชื่อมต่อเน็ตแล้ว • รออัปโหลด $_pendingCount รายการ';
-    return Container(
-      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: !_isOnline ? const Color(0xFFFFF3E0) : const Color(0xFFE8F5E9),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: !_isOnline ? const Color(0xFFFFCC80) : const Color(0xFFA5D6A7),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            !_isOnline ? Icons.cloud_off_outlined : Icons.cloud_upload_outlined,
-            size: 18,
-            color: !_isOnline ? const Color(0xFFE65100) : const Color(0xFF2E7D32),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: !_isOnline
-                    ? const Color(0xFFBF360C)
-                    : const Color(0xFF1B5E20),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // ออฟไลน์: ซ่อนสถานะ "ไม่มีเน็ต/บันทึกในเครื่อง" ทั้งหมด — บันทึกเงียบๆ ในเครื่อง
+    if (!_isOnline) return null;
+    // ออนไลน์และไม่มีคิวค้าง: ไม่ต้องมีแบนเนอร์
+    if (_pendingCount == 0) return null;
+    // ออนไลน์ + มีคิวค้าง: โชว์อนิเมชั่นอัปโหลดแบบเกมสวยๆ
+    return _GameUploadBanner(count: _pendingCount);
   }
 
   @override
@@ -1533,6 +1529,210 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         banner,
         Expanded(child: body),
       ],
+    );
+  }
+}
+
+/// แบนเนอร์อัปโหลดแบบเกม — โชว์ตอนออนไลน์แล้วมีคิวค้างรออัปโหลด
+class _GameUploadBanner extends StatefulWidget {
+  const _GameUploadBanner({required this.count});
+
+  final int count;
+
+  @override
+  State<_GameUploadBanner> createState() => _GameUploadBannerState();
+}
+
+class _GameUploadBannerState extends State<_GameUploadBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(
+        milliseconds: DevicePerf.isConstrainedDevice ? 2200 : 1500,
+      ),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFF00BFA5), Color(0xFF1DE9B6), Color(0xFF00B0FF)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF00BFA5).withValues(alpha: 0.45),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) {
+          final t = _ctrl.value;
+          return Row(
+            children: [
+              _uploadIcon(t),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.bolt_rounded,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            'กำลังอัปโหลด ${widget.count} รายการเข้าระบบ',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(color: Colors.black26, blurRadius: 2),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _progressBar(t),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _uploadIcon(double t) {
+    final bob = math.sin(t * math.pi * 2) * 2.5;
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < 3; i++) _risingParticle(t, i),
+          Transform.translate(
+            offset: Offset(0, bob),
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  width: 1.5,
+                ),
+              ),
+              child: const Icon(
+                Icons.cloud_upload_rounded,
+                size: 19,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _risingParticle(double t, int i) {
+    final phase = (t + i / 3) % 1.0;
+    final y = 15 - phase * 32;
+    final fadeIn = phase < 0.15 ? phase / 0.15 : 1.0;
+    final opacity = (1 - phase).clamp(0.0, 1.0) * fadeIn;
+    final dx = (i - 1) * 6.5;
+    return Transform.translate(
+      offset: Offset(dx, y),
+      child: Opacity(
+        opacity: opacity.toDouble(),
+        child: Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.8),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _progressBar(double t) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 5,
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            final barW = w * 0.35;
+            final x = -barW + (w + barW) * t;
+            return Stack(
+              children: [
+                Container(color: Colors.white.withValues(alpha: 0.25)),
+                Positioned(
+                  left: x,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: barW,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: 0),
+                          Colors.white,
+                          Colors.white.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -1609,6 +1809,14 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
   void _setHoldLock(bool locked) {
     // คงไว้เป็น callback ของตัวการ์ด แต่ไม่ทำอะไรกับสถานะปัดอีกต่อไป
     // (เดิมเคยสั่ง _snap(none) ทำให้ปุ่มลบ/แก้ไขที่ปัดเผยแล้วหายทันทีเมื่อปล่อยนิ้ว)
+  }
+
+  /// หลีกเลี่ยง setState บน ancestor ระหว่าง build (เช่น didUpdateWidget ของปุ่มลูก)
+  void _deferHoldLock(bool locked) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _setHoldLock(locked);
+    });
   }
 
   void _onHorizontalDragStart(DragStartDetails details) {
@@ -1729,7 +1937,7 @@ class _SwipeRevealActionsState extends State<_SwipeRevealActions> {
                     ignoring: !_interactionsEnabled,
                     child: widget.childBuilder(
                       _interactionsEnabled,
-                      _setHoldLock,
+                      _deferHoldLock,
                     ),
                   ),
                 ),
@@ -2192,7 +2400,7 @@ class _RecordButtonShell extends StatelessWidget {
             ? bgColor.withValues(alpha: 0.72)
             : bgColor;
     final lifted = !busy && !dimmed && !pressed;
-    final liftY = lifted ? -4.0 : 0.0;
+    final liftY = lifted ? -2.0 : 0.0;
     final elevation = busy ? 0.0 : pressed ? 3.0 : 8.0;
 
     return Transform.scale(
@@ -2561,9 +2769,14 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       _holdTimer = null;
       _pointerDownAt = null;
       _holdTriggered = false;
-      widget.setHoldLock(false);
-      _releasePress();
-      if (mounted) setState(() => _holdProgress = 0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.setHoldLock(false);
+        setState(() {
+          _holdProgress = 0;
+          _isPressed = false;
+        });
+      });
     }
   }
 
@@ -2822,19 +3035,6 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
             color: Colors.white.withValues(alpha: 0.92),
           ),
         ),
-        if (unit.lapTimes.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          Text(
-            'ล่าสุด ${unit.lapTimes.last}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 9,
-              color: Colors.white.withValues(alpha: 0.78),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -2876,8 +3076,8 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
           : null,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 8 : 10,
-          vertical: widget.compact ? 8 : 10,
+          horizontal: widget.compact ? 6 : 10,
+          vertical: widget.compact ? 6 : 8,
         ),
         child: busy
             ? const Center(
@@ -2890,17 +3090,35 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   ),
                 ),
               )
-            : widget.compact
-                ? _buildCompactVehicleBody(
-                    unit: unit,
-                    carNo: carNo,
-                    onCooldown: onCooldown,
-                  )
-                : _buildStandardVehicleBody(
-                    unit: unit,
-                    carNo: carNo,
-                    onCooldown: onCooldown,
-                  ),
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final body = widget.compact
+                      ? _buildCompactVehicleBody(
+                          unit: unit,
+                          carNo: carNo,
+                          onCooldown: onCooldown,
+                        )
+                      : _buildStandardVehicleBody(
+                          unit: unit,
+                          carNo: carNo,
+                          onCooldown: onCooldown,
+                        );
+                  return SizedBox(
+                    height: constraints.maxHeight,
+                    width: constraints.maxWidth,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: widget.compact
+                          ? Alignment.center
+                          : Alignment.centerLeft,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: body,
+                      ),
+                    ),
+                  );
+                },
+              ),
       ),
     ),
     );
@@ -3333,11 +3551,14 @@ class _SandRecordButton extends StatefulWidget {
     required this.unit,
     required this.onTap,
     required this.onHoldToUndo,
+    this.showLatestLapInline = true,
   });
 
   final _CounterUnit unit;
   final VoidCallback onTap;
   final VoidCallback onHoldToUndo;
+  /// แสดงแถบ «ล่าสุด» ในการ์ด — ปิดเมื่อมีชิปรอบด้านล่างแล้ว (กันพื้นที่ซ้ำ/ล้น)
+  final bool showLatestLapInline;
 
   @override
   State<_SandRecordButton> createState() => _SandRecordButtonState();
@@ -3449,7 +3670,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
       busy: busy,
       dimmed: onCooldown,
       pressed: _isPressed,
-      shimmer: true,
+      shimmer: false,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
@@ -3485,32 +3706,8 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                 ),
               ),
             ),
-            Positioned(
-              top: -28,
-              right: -20,
-              child: Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -36,
-              left: -24,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               child: busy
                   ? const Center(
                       child: SizedBox(
@@ -3522,82 +3719,105 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                         ),
                       ),
                     )
-                  : Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.water_drop_rounded,
-                              size: 22,
-                              color: Colors.white.withValues(alpha: 0.92),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                'บันทึกการร่อนทราย',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white.withValues(alpha: 0.95),
-                                  letterSpacing: -0.2,
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SizedBox(
+                          height: constraints.maxHeight,
+                          width: constraints.maxWidth,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.water_drop_rounded,
+                                    size: 22,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.92),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      'บันทึกการร่อนทราย',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.95),
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              // วงกลมรอบขยายเต็มพื้นที่ที่เหลือ (ไม่เหลือที่ว่าง)
+                              Expanded(
+                                child: Center(
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    child: _SandRoundCountHero(
+                                      rounds: unit.rounds,
+                                      burstTick: unit.burstTick,
+                                      dimmed: onCooldown,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: Center(
-                            child: _SandRoundCountHero(
-                              rounds: unit.rounds,
-                              burstTick: unit.burstTick,
-                              dimmed: onCooldown,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          onCooldown
-                              ? 'รอ ${unit.recordCooldownSecondsLeft} วินาที'
-                              : 'แตะการ์ดเพื่อบันทึก +1 รอบ',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(
-                              alpha: onCooldown ? 0.75 : 0.88,
-                            ),
-                          ),
-                        ),
-                        if (unit.lapTimes.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.22),
+                              const SizedBox(height: 8),
+                              Text(
+                                onCooldown
+                                    ? 'รอ ${unit.recordCooldownSecondsLeft} วินาที'
+                                    : 'แตะการ์ดเพื่อบันทึก +1 รอบ',
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white.withValues(
+                                    alpha: onCooldown ? 0.75 : 0.88,
+                                  ),
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              'ล่าสุด ${unit.lapTimes.last}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
+                              if (widget.showLatestLapInline &&
+                                  unit.lapTimes.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.22),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'ล่าสุด ${unit.lapTimes.last}',
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
-                      ],
+                        );
+                      },
                     ),
             ),
           ],

@@ -13,8 +13,18 @@ class AppErrorBinding {
 
   static bool _routeOpen = false;
 
+  static bool _isBenignLayoutError(Object error) {
+    final msg = error.toString();
+    return msg.contains('RenderFlex overflowed') ||
+        msg.contains('overflowed by');
+  }
+
   static void install(GlobalKey<NavigatorState> navigatorKey) {
     FlutterError.onError = (FlutterErrorDetails details) {
+      if (_isBenignLayoutError(details.exception)) {
+        if (kDebugMode) FlutterError.presentError(details);
+        return;
+      }
       FlutterError.presentError(details);
       _tryOpen(
         navigatorKey,
@@ -25,6 +35,12 @@ class AppErrorBinding {
     };
 
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      if (_isBenignLayoutError(error)) {
+        if (kDebugMode) {
+          debugPrint('Layout overflow (suppressed fatal route): $error');
+        }
+        return true;
+      }
       _tryOpen(navigatorKey, error, stack, 'uncaught_zone');
       return true;
     };
