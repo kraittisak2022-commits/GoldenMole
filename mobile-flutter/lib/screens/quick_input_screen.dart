@@ -719,13 +719,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ymd,
         _moduleDayAllTransactions,
       );
-      final mergedAll =
-          await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
-        _moduleDayAllTransactions,
-      );
       if (mounted) {
         setState(() {
-          _moduleDayAllTransactions = mergedAll;
+          _moduleDayAllTransactions = mergedDay;
           _moduleDayTransactions = mergedDay
               .where(
                 (row) => transactionMatchesDailyModule(
@@ -762,13 +758,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         date,
         _moduleDayAllTransactions,
       );
-      final mergedAll =
-          await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
-        _moduleDayAllTransactions,
-      );
       if (mounted) {
         setState(() {
-          _moduleDayAllTransactions = mergedAll;
+          _moduleDayAllTransactions = mergedDay;
           _moduleDayTransactions = mergedDay
               .where(
                 (row) => transactionMatchesDailyModule(
