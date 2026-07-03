@@ -41,6 +41,9 @@ class QuickInputScreen extends StatefulWidget {
 
     /// วันที่ตามที่เลือกบนแดชบอร์ด (ให้โหลดธุรกรรมเดิมของวันนั้นได้)
     this.selectedDateForModule,
+
+    /// สถานะเน็ตจากแดชบอร์ด — false = ใช้คิวออฟไลน์สำหรับเมนูที่รองรับ
+    this.serverOnlineHint = true,
   });
 
   final TransactionService service;
@@ -51,6 +54,7 @@ class QuickInputScreen extends StatefulWidget {
   final String? initialCategory;
   final String? appBarTitle;
   final DateTime? selectedDateForModule;
+  final bool serverOnlineHint;
 
   @override
   State<QuickInputScreen> createState() => _QuickInputScreenState();
@@ -81,6 +85,12 @@ void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
   row.cubicPerTrip = s;
   row.cubicPerTripController.text = s;
 }
+
+/// หมวดเมนูบันทึกประจำวันที่ทำงานออฟไลน์ได้ (คิวเดียวกับ «บันทึกและนับจำนวน»)
+const _kOfflineCapableModuleCategories = {
+  'จำนวนเที่ยวรถ',
+  'บันทึกการร่อนทราย',
+};
 
 const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
 const Color _kGeneralWorkColor = Color(0xFF5F6AD8);
@@ -293,6 +303,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('เที่ยวรถ');
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
   bool get _isMacroVehicleMode => widget.initialCategory == 'การใช้รถแม็คโคร';
+
+  bool get _isOfflineCapableCategory =>
+      _kOfflineCapableModuleCategories.contains(
+        widget.initialCategory?.trim(),
+      );
+
+  bool _lastPersistQueued = false;
 
   void _deferDisposeVehicleDrafts(Iterable<_VehicleTripDraft> rows) {
     final old = rows.toList();
@@ -686,8 +703,87 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final omitCreated =
         _persistOmitCreatedForIds.contains(t.id) ||
         _persistOmitCreatedSessionIds.contains(t.id);
+    if (_isOfflineCapableCategory) {
+      final queued = await CountRecordOfflineSync.instance.persist(
+        service: widget.service,
+        client: Supabase.instance.client,
+        transaction: t,
+        omitCreatedAt: omitCreated,
+        dayServerRows: _moduleDayAllTransactions,
+        serverOnlineHint: widget.serverOnlineHint,
+      );
+      _lastPersistQueued = queued;
+      _persistOmitCreatedSessionIds.add(t.id);
+      final ymd = t.date;
+      final mergedDay = await CountRecordOfflineSync.instance.mergeForDayAsync(
+        ymd,
+        _moduleDayAllTransactions,
+      );
+      final mergedAll =
+          await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
+        _moduleDayAllTransactions,
+      );
+      if (mounted) {
+        setState(() {
+          _moduleDayAllTransactions = mergedAll;
+          _moduleDayTransactions = mergedDay
+              .where(
+                (row) => transactionMatchesDailyModule(
+                  row,
+                  ymd,
+                  widget.initialCategory!.trim(),
+                ),
+              )
+              .toList();
+        });
+      }
+      return;
+    }
+    _lastPersistQueued = false;
     await widget.service.upsertTransaction(t, omitCreatedAt: omitCreated);
     _persistOmitCreatedSessionIds.add(t.id);
+  }
+
+  Future<bool> _deleteTransactionOfflineAware(
+    String id, {
+    String? ymd,
+  }) async {
+    final date = ymd ?? _quickYmd(_selectedDate);
+    if (_isOfflineCapableCategory) {
+      final queued = await CountRecordOfflineSync.instance.delete(
+        service: widget.service,
+        client: Supabase.instance.client,
+        id: id,
+        ymd: date,
+        dayServerRows: _moduleDayAllTransactions,
+        serverOnlineHint: widget.serverOnlineHint,
+      );
+      final mergedDay = await CountRecordOfflineSync.instance.mergeForDayAsync(
+        date,
+        _moduleDayAllTransactions,
+      );
+      final mergedAll =
+          await CountRecordOfflineSync.instance.mergeAllTransactionsAsync(
+        _moduleDayAllTransactions,
+      );
+      if (mounted) {
+        setState(() {
+          _moduleDayAllTransactions = mergedAll;
+          _moduleDayTransactions = mergedDay
+              .where(
+                (row) => transactionMatchesDailyModule(
+                  row,
+                  date,
+                  widget.initialCategory!.trim(),
+                ),
+              )
+              .toList();
+        });
+      }
+      return queued;
+    }
+    await widget.service.deleteTransaction(id, affectingDate: date);
+    return false;
   }
 
   void _clearHydrationSlots() {
@@ -722,13 +818,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final persistedId = row.tripTxId?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
       try {
-        await widget.service.deleteTransaction(persistedId);
+        final queued = await _deleteTransactionOfflineAware(persistedId);
         if (!mounted) return;
-        await _loadModuleTransactions(forceRefresh: true);
+        await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+            content: Text(
+              queued
+                  ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
+                  : 'ลบรายการจากฐานข้อมูลแล้ว',
+              style: GoogleFonts.kanit(),
+            ),
           ),
         );
       } catch (e) {
@@ -756,13 +857,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final persistedId = row.txId?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
       try {
-        await widget.service.deleteTransaction(persistedId);
+        final queued = await _deleteTransactionOfflineAware(persistedId);
         if (!mounted) return;
-        await _loadModuleTransactions(forceRefresh: true);
+        await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+            content: Text(
+              queued
+                  ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
+                  : 'ลบรายการจากฐานข้อมูลแล้ว',
+              style: GoogleFonts.kanit(),
+            ),
           ),
         );
       } catch (e) {
@@ -968,11 +1074,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
         }
       }
+      if (_isOfflineCapableCategory && cachedRows != null) {
+        cachedRows = await CountRecordOfflineSync.instance.mergeForDayAsync(
+          ymd,
+          cachedRows,
+        );
+      }
       if (cachedRows != null && cachedRows.isNotEmpty) {
         if (!isCurrentLoad()) return;
         _clearHydrationSlots();
         await applyRows(cachedRows, clearForm: true);
       }
+    }
+
+    final skipNetwork =
+        _isOfflineCapableCategory && !widget.serverOnlineHint;
+    if (skipNetwork) {
+      if (!isCurrentLoad()) return;
+      if (_moduleDayTransactions.isEmpty) {
+        var rows = await LocalDataCache.readTransactionsForDayAny(ymd) ??
+            const <AppTransaction>[];
+        rows = await CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows);
+        if (rows.isNotEmpty) {
+          _clearHydrationSlots();
+          await applyRows(rows, clearForm: true);
+          return;
+        }
+      }
+      if (mounted && isCurrentLoad()) {
+        setState(() => _moduleDayLoading = false);
+      }
+      return;
     }
 
     if (!isCurrentLoad()) return;
@@ -1003,8 +1135,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               forceRefresh: forceServer,
             );
       if (!isCurrentLoad()) return;
+      final mergedRows = _isOfflineCapableCategory
+          ? await CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows)
+          : rows;
       _clearHydrationSlots();
-      await applyRows(rows, clearForm: _moduleDayTransactions.isEmpty);
+      await applyRows(
+        mergedRows,
+        clearForm: _moduleDayTransactions.isEmpty,
+      );
     } catch (_) {
       if (!mounted || !isCurrentLoad()) return;
       if (_moduleDayTransactions.isEmpty) {
@@ -1652,6 +1790,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _loadAppCars() async {
+    Future<void> applyCars(List<String> cars) async {
+      if (cars.isEmpty || !mounted) return;
+      setState(() {
+        _cars = cars;
+        if (_isFuelMode) {
+          _syncFuelVehicleDraftsFromMacroCars();
+        }
+        if (_isMacroVehicleMode) {
+          _syncMacroVehicleDraftsFromMacroCars();
+        }
+      });
+    }
+
+    if (_isOfflineCapableCategory && !widget.serverOnlineHint) {
+      await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
+      return;
+    }
+
     try {
       final client = Supabase.instance.client;
       final rows = await client
@@ -1665,17 +1821,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (raw is List)
           ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
       ];
-      if (!mounted) return;
-      setState(() {
-        _cars = cars;
-        if (_isFuelMode) {
-          _syncFuelVehicleDraftsFromMacroCars();
-        }
-        if (_isMacroVehicleMode) {
-          _syncMacroVehicleDraftsFromMacroCars();
-        }
-      });
-    } catch (_) {}
+      if (cars.isNotEmpty) {
+        await CountRecordOfflineSync.instance.cacheCars(cars);
+      }
+      await applyCars(cars);
+    } catch (_) {
+      await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
+    }
   }
 
   Future<void> _loadAppExpenseIncomeTypes() async {
@@ -1980,13 +2132,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await WidgetsBinding.instance.endOfFrame;
         }
         if (!mounted) return;
+        final msg = _lastPersistQueued
+            ? '$successMessage (บันทึกในเครื่อง — รออัปโหลด)'
+            : successMessage;
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(successMessage, style: GoogleFonts.kanit())),
+          SnackBar(content: Text(msg, style: GoogleFonts.kanit())),
         );
         await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
       } else {
         _releaseKeyboardFocus();
-        await _showSuccessPopupAndPopToHome(successMessage);
+        final msg = _lastPersistQueued
+            ? '$successMessage (บันทึกในเครื่อง — รออัปโหลด)'
+            : successMessage;
+        await _showSuccessPopupAndPopToHome(msg);
       }
     } catch (error) {
       if (savingDialogOpen && mounted) {
@@ -3455,16 +3613,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
     if (ok != true || !mounted) return;
     try {
-      await widget.service.deleteTransaction(t.id);
+      final queued = await _deleteTransactionOfflineAware(
+        t.id,
+        ymd: t.date.trim(),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('ลบรายการจากฐานข้อมูลแล้ว', style: GoogleFonts.kanit()),
+          content: Text(
+            queued
+                ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
+                : 'ลบรายการจากฐานข้อมูลแล้ว',
+            style: GoogleFonts.kanit(),
+          ),
         ),
       );
       await _loadModuleTransactions(
         preserveIncomeUtilitiesForm: _isIncomeUtilitiesEntryMode,
-        forceRefresh: true,
+        forceRefresh: !_isOfflineCapableCategory,
       );
     } catch (e) {
       if (!mounted) return;
