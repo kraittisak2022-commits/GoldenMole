@@ -28,7 +28,6 @@ import '../utils/record_success_speaker.dart';
 import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
-import '../widgets/page_loading_view.dart';
 import '../widgets/count_record_menu_shell.dart';
 import '../widgets/record_module_card.dart';
 import 'app_settings_screen.dart';
@@ -786,11 +785,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   snapshot.connectionState ==
                                   ConnectionState.waiting;
                               if (waiting && merged == null) {
-                                final l10n = AppLocalizations.of(context);
-                                final loadingLabel = _bodyPage == 0
-                                    ? l10n.loadingDashboard
-                                    : l10n.loadingData;
-                                return PageLoadingView(label: loadingLabel);
+                                return const ColoredBox(
+                                  color: Color(0xFFF3FBFC),
+                                );
                               }
                               if (snapshot.hasError && merged == null) {
                                 final l10n = AppLocalizations.of(context);
@@ -819,9 +816,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                               }
                               final data = merged;
                               if (data == null) {
-                                return PageLoadingView(
-                                  label: AppLocalizations.of(context)
-                                      .loadingData,
+                                return const ColoredBox(
+                                  color: Color(0xFFF3FBFC),
                                 );
                               }
                               // ในเมนูนับจำนวน อัปเดตเบื้องหลังโดยไม่โชว์แถบโหลด

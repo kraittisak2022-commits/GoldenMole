@@ -145,6 +145,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     super.initState();
     _syncErrorTrackerStep();
     _isOnline = widget.serverOnline;
+    // โหลดรายการรถ/คนขับจากแคชทันที — เปิด popup เพิ่มรถได้เร็ว
+    unawaited(_refreshDropdownLists(tryNetwork: false));
     unawaited(_initPanel());
     unawaited(RecordSuccessSpeaker.instance.warmUp());
     _syncDropdownRefreshTimer();
@@ -339,6 +341,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Future<void> _initPanel() async {
     // แสดงข้อมูลจากแคช/คิวในเครื่องทันที — งานเครือข่ายทำเบื้องหลังต่อ
     // (ไม่ให้ผู้ใช้เห็นหน้าว่าง/แถบโหลดระหว่างรอ probe หรืออัปโหลดคิว)
+    await _refreshDropdownLists(tryNetwork: false);
+    if (!mounted) return;
     final merged = await _mergedPanelDayRows();
     if (!mounted) return;
     setState(() {
@@ -357,8 +361,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       await _trySyncPending(silent: true);
     }
     if (!mounted) return;
-    await _refreshDropdownLists(
-      tryNetwork: widget.serverOnline || _isOnline,
+    unawaited(
+      _refreshDropdownLists(
+        tryNetwork: widget.serverOnline || _isOnline,
+      ),
     );
   }
 
@@ -421,6 +427,30 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       if (cars.isNotEmpty) _cars = cars;
       _applyDriverList(catalog.employees);
     });
+  }
+
+  /// เติมรายการจากแคชก่อนเปิด dialog — รอเครือข่ายเฉพาะเมื่อแคชว่าง
+  Future<bool> _ensureDropdownListsForDialog({
+    required bool needCars,
+    required bool needDrivers,
+  }) async {
+    if ((needCars && _cars.isEmpty) || (needDrivers && _drivers.isEmpty)) {
+      await _refreshDropdownLists(tryNetwork: false);
+    }
+    if (!mounted) return false;
+
+    final hasCars = !needCars || _cars.isNotEmpty;
+    final hasDrivers = !needDrivers || _drivers.isNotEmpty;
+    if (hasCars && hasDrivers) {
+      unawaited(_refreshDropdownLists(tryNetwork: true));
+      return true;
+    }
+
+    await _refreshDropdownLists(tryNetwork: true);
+    if (!mounted) return false;
+    if (needCars && _cars.isEmpty) return false;
+    if (needDrivers && _drivers.isEmpty) return false;
+    return true;
   }
 
   Future<void> _refreshConnectivity({bool forceProbe = false}) async {
@@ -965,10 +995,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _openSelectDialog() async {
-    await _refreshDropdownLists(tryNetwork: true);
-    if (!mounted) return;
-    if (_cars.isEmpty) {
-      _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
+    final ready = await _ensureDropdownListsForDialog(
+      needCars: true,
+      needDrivers: false,
+    );
+    if (!ready || !mounted) {
+      if (mounted && _cars.isEmpty) {
+        _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
+      }
       return;
     }
     final already = _units
@@ -1089,10 +1123,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _openChangeDriverDialog(_CounterUnit u) async {
-    await _refreshDropdownLists(tryNetwork: true);
-    if (!mounted) return;
-    if (_drivers.isEmpty) {
-      _toast('ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"', error: true);
+    final ready = await _ensureDropdownListsForDialog(
+      needCars: false,
+      needDrivers: true,
+    );
+    if (!ready || !mounted) {
+      if (mounted && _drivers.isEmpty) {
+        _toast('ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"', error: true);
+      }
       return;
     }
     final driverId = await showDialog<String>(
@@ -1461,48 +1499,42 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final u = _sandUnit;
     if (u == null) return const SizedBox.shrink();
     final showLapStrip = u.lapTimes.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _SandRecordButton(
-              unit: u,
-              showLatestLapInline: !showLapStrip,
-              onTap: () => _recordTap(u),
-              onHoldToUndo: () => _confirmUndoLastRecord(u),
-            ),
-          ),
-          if (showLapStrip)
-            Flexible(
-              fit: FlexFit.loose,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 48),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (var i = _recentSandLapStartIndex(u.lapTimes.length);
-                            i < u.lapTimes.length;
-                            i++)
-                          _SandLapChip(
-                            roundNo: i + 1,
-                            stamp: u.lapTimes[i],
-                            onLongPress: () => _confirmUndoSandRoundAt(u, i),
-                          ),
-                      ],
-                    ),
-                  ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _SandRecordButton(
+          unit: u,
+          showLatestLapInline: !showLapStrip,
+          onTap: () => _recordTap(u),
+          onHoldToUndo: () => _confirmUndoLastRecord(u),
+        ),
+        if (showLapStrip)
+          Positioned(
+            left: 6,
+            right: 6,
+            bottom: 4,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 44),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var i = _recentSandLapStartIndex(u.lapTimes.length);
+                        i < u.lapTimes.length;
+                        i++)
+                      _SandLapChip(
+                        roundNo: i + 1,
+                        stamp: u.lapTimes[i],
+                        onLongPress: () => _confirmUndoSandRoundAt(u, i),
+                      ),
+                  ],
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -2375,6 +2407,7 @@ class _RecordButtonShell extends StatelessWidget {
     this.busyBgColor,
     this.bottomOverlay,
     this.shimmer = false,
+    this.borderRadius = 16,
   });
 
   final Color bgColor;
@@ -2390,6 +2423,7 @@ class _RecordButtonShell extends StatelessWidget {
   final Color? busyBgColor;
   final Widget? bottomOverlay;
   final bool shimmer;
+  final double borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -2410,7 +2444,7 @@ class _RecordButtonShell extends StatelessWidget {
         child: Material(
           elevation: elevation,
           shadowColor: shadowColor.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(borderRadius),
           color: bg,
           clipBehavior: Clip.antiAlias,
           child: Listener(
@@ -3056,7 +3090,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       busy: busy,
       dimmed: onCooldown || broken,
       pressed: _isPressed,
-      shimmer: !broken,
+      shimmer: false,
       onPointerDown: _onPointerDown,
       onPointerMove: _onPointerMove,
       onPointerUp: _onPointerUp,
@@ -3090,34 +3124,18 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   ),
                 ),
               )
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final body = widget.compact
-                      ? _buildCompactVehicleBody(
-                          unit: unit,
-                          carNo: carNo,
-                          onCooldown: onCooldown,
-                        )
-                      : _buildStandardVehicleBody(
-                          unit: unit,
-                          carNo: carNo,
-                          onCooldown: onCooldown,
-                        );
-                  return SizedBox(
-                    height: constraints.maxHeight,
-                    width: constraints.maxWidth,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: widget.compact
-                          ? Alignment.center
-                          : Alignment.centerLeft,
-                      child: SizedBox(
-                        width: constraints.maxWidth,
-                        child: body,
+            : ClipRect(
+                child: widget.compact
+                    ? _buildCompactVehicleBody(
+                        unit: unit,
+                        carNo: carNo,
+                        onCooldown: onCooldown,
+                      )
+                    : _buildStandardVehicleBody(
+                        unit: unit,
+                        carNo: carNo,
+                        onCooldown: onCooldown,
                       ),
-                    ),
-                  );
-                },
               ),
       ),
     ),
@@ -3660,7 +3678,8 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
     final unit = widget.unit;
     final busy = unit.busy;
     final onCooldown = unit.isOnRecordCooldown && !busy;
-    return _withRecordBurst(
+    return SizedBox.expand(
+      child: _withRecordBurst(
       unit: unit,
       isTrip: false,
       child: _RecordButtonShell(
@@ -3671,6 +3690,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
       dimmed: onCooldown,
       pressed: _isPressed,
       shimmer: false,
+      borderRadius: 0,
       onPointerDown: _onPointerDown,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
@@ -3688,7 +3708,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
             )
           : null,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.zero,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -3721,98 +3741,119 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
                     )
                   : LayoutBuilder(
                       builder: (context, constraints) {
+                        final header = Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.water_drop_rounded,
+                              size: 22,
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'บันทึกการร่อนทราย',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color:
+                                      Colors.white.withValues(alpha: 0.95),
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                        final hint = Text(
+                          onCooldown
+                              ? 'รอ ${unit.recordCooldownSecondsLeft} วินาที'
+                              : 'แตะการ์ดเพื่อบันทึก +1 รอบ',
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(
+                              alpha: onCooldown ? 0.75 : 0.88,
+                            ),
+                          ),
+                        );
+                        final latest = (widget.showLatestLapInline &&
+                                unit.lapTimes.isNotEmpty)
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.22),
+                                  ),
+                                ),
+                                child: Text(
+                                  'ล่าสุด ${unit.lapTimes.last}',
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : null;
+                        final hero = _SandRoundCountHero(
+                          rounds: unit.rounds,
+                          burstTick: unit.burstTick,
+                          dimmed: onCooldown,
+                        );
+                        // ถ้าไม่มีความสูงจำกัด (เช่นถูกวางในกล่องยืด) — ไม่ใช้ Expanded
+                        if (!constraints.hasBoundedHeight) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              header,
+                              const SizedBox(height: 8),
+                              hero,
+                              const SizedBox(height: 8),
+                              hint,
+                              if (latest != null) ...[
+                                const SizedBox(height: 8),
+                                latest,
+                              ],
+                            ],
+                          );
+                        }
                         return SizedBox(
                           height: constraints.maxHeight,
                           width: constraints.maxWidth,
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.water_drop_rounded,
-                                    size: 22,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.92),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      'บันทึกการร่อนทราย',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.95),
-                                        letterSpacing: -0.2,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              header,
                               const SizedBox(height: 8),
-                              // วงกลมรอบขยายเต็มพื้นที่ที่เหลือ (ไม่เหลือที่ว่าง)
+                              // วงกลมรอบขยายเต็มพื้นที่ที่เหลือ
                               Expanded(
                                 child: Center(
                                   child: FittedBox(
                                     fit: BoxFit.contain,
-                                    child: _SandRoundCountHero(
-                                      rounds: unit.rounds,
-                                      burstTick: unit.burstTick,
-                                      dimmed: onCooldown,
-                                    ),
+                                    child: hero,
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                onCooldown
-                                    ? 'รอ ${unit.recordCooldownSecondsLeft} วินาที'
-                                    : 'แตะการ์ดเพื่อบันทึก +1 รอบ',
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white.withValues(
-                                    alpha: onCooldown ? 0.75 : 0.88,
-                                  ),
-                                ),
-                              ),
-                              if (widget.showLatestLapInline &&
-                                  unit.lapTimes.isNotEmpty) ...[
+                              hint,
+                              if (latest != null) ...[
                                 const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.16),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: Colors.white
-                                          .withValues(alpha: 0.22),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'ล่าสุด ${unit.lapTimes.last}',
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
+                                latest,
                               ],
                             ],
                           ),
@@ -3823,6 +3864,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
           ],
         ),
       ),
+    ),
     ),
     );
   }

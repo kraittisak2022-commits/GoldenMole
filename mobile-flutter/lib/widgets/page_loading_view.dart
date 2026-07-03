@@ -4,9 +4,12 @@ class PageLoadingView extends StatefulWidget {
   const PageLoadingView({
     super.key,
     this.label = 'กำลังโหลดข้อมูล',
+    this.showPercent = true,
   });
 
   final String label;
+  /// แสดงตัวเลข % และแถบความคืบหน้าแบบจำลอง (ปิดบนแดชบอร์ด)
+  final bool showPercent;
 
   @override
   State<PageLoadingView> createState() => _PageLoadingViewState();
@@ -23,7 +26,17 @@ class _PageLoadingViewState extends State<PageLoadingView>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     );
-    _progressCtrl.forward();
+    if (widget.showPercent) {
+      _progressCtrl.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PageLoadingView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showPercent && !oldWidget.showPercent) {
+      _progressCtrl.forward(from: 0);
+    }
   }
 
   @override
@@ -124,46 +137,62 @@ class _PageLoadingViewState extends State<PageLoadingView>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ShaderMask(
-                      shaderCallback: (rect) => LinearGradient(
-                        colors: [scheme.primary, scheme.tertiary],
-                      ).createShader(rect),
-                      blendMode: BlendMode.srcIn,
-                      child: Text('${pct.toString().padLeft(2, '0')}%', style: headStyle),
-                    ),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: Stack(
-                        children: [
-                          LinearProgressIndicator(
-                            value: barValue,
-                            minHeight: 11,
-                            backgroundColor: const Color(0xFFE3EAF3),
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(scheme.primary),
-                          ),
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment(shimmerX, 0),
-                                    end: Alignment(shimmerX + 0.9, 0),
-                                    colors: const [
-                                      Color(0x00FFFFFF),
-                                      Color(0x66FFFFFF),
-                                      Color(0x00FFFFFF),
-                                    ],
+                    if (widget.showPercent) ...[
+                      ShaderMask(
+                        shaderCallback: (rect) => LinearGradient(
+                          colors: [scheme.primary, scheme.tertiary],
+                        ).createShader(rect),
+                        blendMode: BlendMode.srcIn,
+                        child: Text(
+                          '${pct.toString().padLeft(2, '0')}%',
+                          style: headStyle,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: Stack(
+                          children: [
+                            LinearProgressIndicator(
+                              value: barValue,
+                              minHeight: 11,
+                              backgroundColor: const Color(0xFFE3EAF3),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(scheme.primary),
+                            ),
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment(shimmerX, 0),
+                                      end: Alignment(shimmerX + 0.9, 0),
+                                      colors: const [
+                                        Color(0x00FFFFFF),
+                                        Color(0x66FFFFFF),
+                                        Color(0x00FFFFFF),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 11),
+                      const SizedBox(height: 11),
+                    ] else ...[
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: scheme.primary,
+                          backgroundColor: const Color(0xFFE3EAF3),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     Text(widget.label, style: labelStyle),
                   ],
                 ),
