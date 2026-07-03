@@ -729,7 +729,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(
           content: Text(
-            'ไม่มีเน็ต — ใช้เมนู «บันทึกและนับจำนวน» เท่านั้น',
+            'ไม่มีเน็ต — ใช้เมนู «บันทึกการร่อนทราย» «บันทึกรถดรัม» หรือ «บันทึกและนับจำนวน»',
           ),
           duration: Duration(seconds: 3),
         ),
@@ -749,6 +749,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           _selectedDay.month,
           _selectedDay.day,
         ),
+        serverOnlineHint: _serverOnline,
       ),
     ).then((_) => unawaited(_refreshHomeSilently(tryNetwork: _serverOnline)));
   }
