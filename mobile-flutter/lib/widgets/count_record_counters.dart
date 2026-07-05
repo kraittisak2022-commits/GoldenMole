@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -22,6 +28,25 @@ import 'count_record_panel_skeleton.dart';
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
+
+/// อ่านชั่วโมงจาก lap stamp รูปแบบ `dd/MM HH:mm:ss` — คืน null ถ้าอ่านไม่ได้
+int? _lapHourOf(String stamp) {
+  final space = stamp.indexOf(' ');
+  final timePart = space >= 0 ? stamp.substring(space + 1) : stamp;
+  final colon = timePart.indexOf(':');
+  if (colon <= 0) return null;
+  final h = int.tryParse(timePart.substring(0, colon));
+  if (h == null || h < 0 || h > 23) return null;
+  return h;
+}
+
+/// เวลา `HH:mm` สั้นๆ จาก lap stamp — ใช้บนชิปไทม์ไลน์
+String _lapClockOf(String stamp) {
+  final space = stamp.indexOf(' ');
+  final timePart = space >= 0 ? stamp.substring(space + 1) : stamp;
+  final lastColon = timePart.lastIndexOf(':');
+  return lastColon > 0 ? timePart.substring(0, lastColon) : timePart;
+}
 
 /// 1 หน่วยนับ = 1 ธุรกรรมที่บันทึกสดลงฐานข้อมูล
 class _CounterUnit {
@@ -121,6 +146,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     with AutomaticKeepAliveClientMixin {
   static const _recordTapCooldown = Duration(seconds: 3);
   static const _sandRecentLapsVisible = 4;
+  static const _kTripGoalPrefKey = 'count_record_trip_goal_v1';
+
+  /// เป้าหมายเที่ยวต่อคันต่อวัน (0 = ปิด)
+  int _tripGoal = 0;
+  final GlobalKey _shareCardKey = GlobalKey();
 
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
@@ -153,6 +183,24 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     unawaited(RecordSuccessSpeaker.instance.warmUp());
     _syncDropdownRefreshTimer();
     _syncOfflinePollTimer();
+    if (widget.mode == CounterMode.trip) {
+      unawaited(_loadTripGoal());
+    }
+  }
+
+  Future<void> _loadTripGoal() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getInt(_kTripGoalPrefKey) ?? 10;
+      if (mounted && v != _tripGoal) setState(() => _tripGoal = v);
+    } catch (_) {}
+  }
+
+  Future<void> _saveTripGoal(int value) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_kTripGoalPrefKey, value);
+    } catch (_) {}
   }
 
   void _syncErrorTrackerStep() {
@@ -874,14 +922,15 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       if (mounted) {
         HapticFeedback.mediumImpact();
         unawaited(RecordSuccessSpeaker.instance.speakSuccess());
-        final base = widget.mode == CounterMode.trip
-            ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
-            : 'รอบที่ ${u.rounds} • $stamp';
-        _toast(
-          queued
-              ? '$base\n(บันทึกในเครื่องแล้ว — จะอัปโหลดทันทีเมื่อมีเน็ต)'
-              : base,
-        );
+        final reachedGoal = widget.mode == CounterMode.trip &&
+            _tripGoal > 0 &&
+            u.rounds == _tripGoal;
+        if (reachedGoal) {
+          HapticFeedback.heavyImpact();
+          _toast('${u.title} ครบเป้า $_tripGoal เที่ยวแล้ว!');
+        } else {
+          _showRecordSnackBar(u, stamp, queued: queued);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1409,6 +1458,208 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
+  /// Snackbar หลังบันทึกสำเร็จ — มีปุ่ม «เลิกทำ» ย้อนรายการล่าสุดได้ทันที (Gmail-style)
+  void _showRecordSnackBar(_CounterUnit u, String stamp, {required bool queued}) {
+    if (!mounted) return;
+    final isTrip = widget.mode == CounterMode.trip;
+    final base = isTrip
+        ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
+        : 'รอบที่ ${u.rounds} • $stamp';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            queued ? '$base\n(บันทึกในเครื่อง — จะอัปโหลดเมื่อมีเน็ต)' : base,
+          ),
+          backgroundColor: const Color(0xFF2E7D32),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'เลิกทำ',
+            textColor: const Color(0xFFFFE082),
+            onPressed: () {
+              final idx = u.lapTimes.lastIndexOf(stamp);
+              if (idx >= 0) unawaited(_undoRecordAt(u, idx));
+            },
+          ),
+        ),
+      );
+  }
+
+  /// รวมยอดทั้งวันจากทุกหน่วยนับ แยกช่วงเช้า (ก่อน 12:00) / บ่าย
+  ({int total, int morning, int afternoon}) _panelPeriodTotals() {
+    var total = 0;
+    var morning = 0;
+    var afternoon = 0;
+    for (final u in _units) {
+      total += u.rounds;
+      for (final lap in u.lapTimes) {
+        final h = _lapHourOf(lap);
+        if (h != null && h >= 12) {
+          afternoon++;
+        } else {
+          morning++;
+        }
+      }
+      // แถวที่มี rounds มากกว่า lapTimes (ข้อมูลเก่า) นับส่วนเกินเป็นช่วงเช้า
+      final extra = u.rounds - u.lapTimes.length;
+      if (extra > 0) morning += extra;
+    }
+    return (total: total, morning: morning, afternoon: afternoon);
+  }
+
+  Future<void> _openTripGoalDialog() async {
+    var draft = _tripGoal;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('เป้าหมายเที่ยวต่อคัน'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: draft > 0
+                        ? () => setDialogState(() => draft--)
+                        : null,
+                    icon: const Icon(Icons.remove_rounded),
+                  ),
+                  SizedBox(
+                    width: 84,
+                    child: Text(
+                      draft == 0 ? 'ปิด' : '$draft',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1565C0),
+                      ),
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    onPressed: draft < 99
+                        ? () => setDialogState(() => draft++)
+                        : null,
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                draft == 0
+                    ? 'ไม่แสดงเป้าหมายบนการ์ดรถ'
+                    : 'ครบ $draft เที่ยว/คัน = ถึงเป้า มีฉลองพิเศษ',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF78909C)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ยกเลิก'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, draft),
+              child: const Text('บันทึก'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _tripGoal = result);
+    unawaited(_saveTripGoal(result));
+  }
+
+  /// แชร์สรุปประจำวันเป็นรูปภาพ — เปิด sheet พรีวิวการ์ดแล้วกดแชร์
+  Future<void> _openShareSummarySheet() async {
+    HapticFeedback.selectionClick();
+    final isTrip = widget.mode == CounterMode.trip;
+    final totals = _panelPeriodTotals();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'แชร์สรุปประจำวัน',
+                textAlign: TextAlign.center,
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1A2433),
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: RepaintBoundary(
+                    key: _shareCardKey,
+                    child: _DailyShareCard(
+                      isTrip: isTrip,
+                      dateYmd: widget.dateYmd,
+                      units: _units,
+                      totals: totals,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D98A5),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                ),
+                onPressed: () => _shareSummaryImage(ctx),
+                icon: const Icon(Icons.ios_share_rounded, size: 20),
+                label: const Text(
+                  'แชร์รูปสรุป',
+                  style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareSummaryImage(BuildContext sheetContext) async {
+    try {
+      final boundary = _shareCardKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 3);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}/count_summary_${widget.dateYmd}_${widget.mode.name}.png',
+      );
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path, mimeType: 'image/png')]),
+      );
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
+    } catch (e) {
+      _toast('แชร์ไม่สำเร็จ: $e', error: true);
+    }
+  }
+
   void _toggleAddVehiclePanel() {
     HapticFeedback.lightImpact();
     if (_units.isEmpty) {
@@ -1432,6 +1683,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         unit: unit,
         index: index,
         compact: compact,
+        goal: _tripGoal,
         interactionsEnabled: interactionsEnabled,
         setHoldLock: setHoldLock,
         onTap: () => _recordTap(unit),
@@ -1508,11 +1760,22 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Widget _buildTripPanel() {
+    final totals = _panelPeriodTotals();
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_units.isNotEmpty) ...[
+            _CountStatsStrip(
+              isTrip: true,
+              totals: totals,
+              goal: _tripGoal,
+              onGoalTap: _openTripGoalDialog,
+              onShareTap: _openShareSummarySheet,
+            ),
+            const SizedBox(height: 8),
+          ],
           Expanded(
             child: _units.isEmpty
                 ? _FirstTripSetupCard(onTap: _openSelectDialog)
@@ -1583,41 +1846,61 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final u = _sandUnit;
     if (u == null) return const SizedBox.shrink();
     final showLapStrip = u.lapTimes.isNotEmpty;
-    return Stack(
-      fit: StackFit.expand,
+    final totals = _panelPeriodTotals();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SandRecordButton(
-          unit: u,
-          showLatestLapInline: !showLapStrip,
-          onTap: () => _recordTap(u),
-          onHoldToUndo: () => _confirmUndoLastRecord(u),
-        ),
-        if (showLapStrip)
-          Positioned(
-            left: 6,
-            right: 6,
-            bottom: 4,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 44),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (var i = _recentSandLapStartIndex(u.lapTimes.length);
-                        i < u.lapTimes.length;
-                        i++)
-                      _SandLapChip(
-                        roundNo: i + 1,
-                        stamp: u.lapTimes[i],
-                        onLongPress: () => _confirmUndoSandRoundAt(u, i),
-                      ),
-                  ],
-                ),
-              ),
+        if (u.rounds > 0) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+            child: _CountStatsStrip(
+              isTrip: false,
+              totals: totals,
+              goal: 0,
+              onShareTap: _openShareSummarySheet,
             ),
           ),
+        ],
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _SandRecordButton(
+                unit: u,
+                showLatestLapInline: !showLapStrip,
+                onTap: () => _recordTap(u),
+                onHoldToUndo: () => _confirmUndoLastRecord(u),
+              ),
+              if (showLapStrip)
+                Positioned(
+                  left: 6,
+                  right: 6,
+                  bottom: 4,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 44),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (var i =
+                                  _recentSandLapStartIndex(u.lapTimes.length);
+                              i < u.lapTimes.length;
+                              i++)
+                            _SandLapChip(
+                              roundNo: i + 1,
+                              stamp: u.lapTimes[i],
+                              onLongPress: () => _confirmUndoSandRoundAt(u, i),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1625,8 +1908,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Widget? _buildSyncBanner() {
     final pending = _pendingCount;
     final uploading = CountRecordOfflineSync.instance.uploadInFlight;
-    if (pending == 0 && !uploading) return null;
     final offlineQueued = !widget.serverOnline || !_isOnline;
+    // โหมดออฟไลน์ — ซ่อนแบนเนอร์ (จำนวนรอซิงก์แสดงที่หัวข้อ «บันทึกและนับจำนวน» แทน)
+    if (offlineQueued) return null;
+    if (pending == 0 && !uploading) return null;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOutCubic,
@@ -2726,21 +3011,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                 ),
                 if (withLaps.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  ...withLaps.map(
-                    (u) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '${u.title}: ${u.lapTimes.last} (${u.rounds} เที่ยว)',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: Color(0xFF52647B),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildTimeline(),
                 ] else
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -2759,6 +3030,75 @@ class _LatestTripRecordsBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// ไทม์ไลน์เหตุการณ์ล่าสุด — chip มีจุดสีตามคันรถ เรียงล่าสุดก่อน เลื่อนแนวนอน
+  Widget _buildTimeline() {
+    final events = <({int unitIndex, String title, int roundNo, String stamp})>[];
+    for (var i = 0; i < units.length; i++) {
+      final u = units[i];
+      for (var lap = 0; lap < u.lapTimes.length; lap++) {
+        events.add((
+          unitIndex: i,
+          title: u.title,
+          roundNo: lap + 1,
+          stamp: u.lapTimes[lap],
+        ));
+      }
+    }
+    // stamp รูปแบบ dd/MM HH:mm:ss — วันเดียวกันเทียบ string ได้ตรงตามเวลา
+    events.sort((a, b) => b.stamp.compareTo(a.stamp));
+    final visible = events.take(14).toList(growable: false);
+    return SizedBox(
+      height: 30,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: visible.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final e = visible[i];
+          final color = _vehicleButtonColor(e.unitIndex);
+          final latest = i == 0;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: latest ? color.withValues(alpha: 0.1) : Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: latest
+                    ? color.withValues(alpha: 0.55)
+                    : const Color(0xFFDCE6F2),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${e.title} • เที่ยว ${e.roundNo} • ${_lapClockOf(e.stamp)}',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: latest ? color : const Color(0xFF52647B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2873,6 +3213,7 @@ class _VehicleRecordButton extends StatefulWidget {
     required this.onTap,
     required this.onHoldToUndo,
     this.compact = false,
+    this.goal = 0,
     this.interactionsEnabled = true,
     required this.setHoldLock,
   });
@@ -2882,6 +3223,9 @@ class _VehicleRecordButton extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onHoldToUndo;
   final bool compact;
+
+  /// เป้าหมายเที่ยวต่อวัน (0 = ไม่แสดง)
+  final int goal;
   final bool interactionsEnabled;
   final void Function(bool locked) setHoldLock;
 
@@ -3117,6 +3461,14 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
                   ),
                 ),
               ],
+              if (widget.goal > 0) ...[
+                const SizedBox(height: 6),
+                _GoalProgressBar(
+                  rounds: unit.rounds,
+                  goal: widget.goal,
+                  compact: false,
+                ),
+              ],
             ],
           ),
         ),
@@ -3192,6 +3544,14 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
             color: Colors.white.withValues(alpha: 0.92),
           ),
         ),
+        if (widget.goal > 0) ...[
+          const SizedBox(height: 5),
+          _GoalProgressBar(
+            rounds: unit.rounds,
+            goal: widget.goal,
+            compact: true,
+          ),
+        ],
       ],
     );
   }
@@ -4456,6 +4816,439 @@ class _SelectRow extends StatelessWidget {
                     row.driverId = v ?? '';
                     onChanged();
                   },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// แถบสรุปยอดรวมวันนี้ — รวม/เช้า/บ่าย + ป้ายช่วงกะ + ปุ่มเป้าหมาย/แชร์
+class _CountStatsStrip extends StatelessWidget {
+  const _CountStatsStrip({
+    required this.isTrip,
+    required this.totals,
+    required this.goal,
+    this.onGoalTap,
+    required this.onShareTap,
+  });
+
+  final bool isTrip;
+  final ({int total, int morning, int afternoon}) totals;
+  final int goal;
+  final VoidCallback? onGoalTap;
+  final VoidCallback onShareTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final unitLabel = isTrip ? 'เที่ยว' : 'รอบ';
+    final accent =
+        isTrip ? const Color(0xFF1565C0) : const Color(0xFFAD1457);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE0E9F2)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'รวม',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: accent.withValues(alpha: 0.75),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _PunchScale(
+            trigger: totals.total,
+            punch: 1.25,
+            child: _RollingCount(
+              value: totals.total,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: accent,
+                height: 1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            unitLabel,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: accent.withValues(alpha: 0.75),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'เช้า ${totals.morning} · บ่าย ${totals.afternoon}',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF52647B),
+                ),
+              ),
+            ),
+          ),
+          const _ShiftBadge(),
+          if (isTrip && onGoalTap != null) ...[
+            const SizedBox(width: 6),
+            _StatsStripIconButton(
+              icon: goal > 0 ? Icons.flag_rounded : Icons.flag_outlined,
+              color: goal > 0 ? const Color(0xFFE65100) : const Color(0xFF90A4AE),
+              tooltip: goal > 0 ? 'เป้า $goal เที่ยว/คัน' : 'ตั้งเป้าหมาย',
+              onTap: onGoalTap!,
+            ),
+          ],
+          const SizedBox(width: 6),
+          _StatsStripIconButton(
+            icon: Icons.ios_share_rounded,
+            color: const Color(0xFF0D98A5),
+            tooltip: 'แชร์สรุปประจำวัน',
+            onTap: onShareTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsStripIconButton extends StatelessWidget {
+  const _StatsStripIconButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon, size: 18, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ป้ายช่วงกะอัตโนมัติ — ก่อนเที่ยง «ช่วงเช้า» / ตั้งแต่เที่ยง «ช่วงบ่าย»
+class _ShiftBadge extends StatefulWidget {
+  const _ShiftBadge();
+
+  @override
+  State<_ShiftBadge> createState() => _ShiftBadgeState();
+}
+
+class _ShiftBadgeState extends State<_ShiftBadge> {
+  Timer? _timer;
+  bool _morning = DateTime.now().hour < 12;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final m = DateTime.now().hour < 12;
+      if (mounted && m != _morning) setState(() => _morning = m);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _morning ? const Color(0xFFF57F17) : const Color(0xFF4527A0);
+    final bg = _morning ? const Color(0xFFFFF8E1) : const Color(0xFFEDE7F6);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _morning ? Icons.wb_sunny_rounded : Icons.wb_twilight_rounded,
+              size: 13,
+              color: color,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              _morning ? 'ช่วงเช้า' : 'ช่วงบ่าย',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// แถบความคืบหน้าเทียบเป้ารายวันบนการ์ดรถ — ครบเป้าเปลี่ยนเป็นสีทอง + ดาว
+class _GoalProgressBar extends StatelessWidget {
+  const _GoalProgressBar({
+    required this.rounds,
+    required this.goal,
+    required this.compact,
+  });
+
+  final int rounds;
+  final int goal;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final reached = rounds >= goal;
+    final frac = goal <= 0 ? 0.0 : (rounds / goal).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: frac),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) => LinearProgressIndicator(
+                value: v,
+                minHeight: compact ? 4 : 5,
+                backgroundColor: Colors.white.withValues(alpha: 0.25),
+                color: reached
+                    ? const Color(0xFFFFD54F)
+                    : Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 5),
+        if (reached)
+          const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFD54F))
+        else
+          Text(
+            '$rounds/$goal',
+            style: TextStyle(
+              fontSize: compact ? 9.5 : 10.5,
+              fontWeight: FontWeight.w800,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// การ์ดสรุปประจำวันสำหรับแชร์เป็นรูปภาพ
+class _DailyShareCard extends StatelessWidget {
+  const _DailyShareCard({
+    required this.isTrip,
+    required this.dateYmd,
+    required this.units,
+    required this.totals,
+  });
+
+  final bool isTrip;
+  final String dateYmd;
+  final List<_CounterUnit> units;
+  final ({int total, int morning, int afternoon}) totals;
+
+  static const _thMonths = [
+    'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+  ];
+
+  String get _dateLabel {
+    final parts = dateYmd.split('-');
+    if (parts.length != 3) return dateYmd;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null || m < 1 || m > 12) return dateYmd;
+    return '$d ${_thMonths[m - 1]} ${y + 543}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = isTrip ? const Color(0xFF1565C0) : const Color(0xFFAD1457);
+    final unitLabel = isTrip ? 'เที่ยว' : 'รอบ';
+    final withData =
+        units.where((u) => u.rounds > 0).toList(growable: false);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [accent, Color.lerp(accent, Colors.black, 0.35)!],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isTrip ? Icons.fire_truck_outlined : Icons.water_drop_outlined,
+                color: Colors.white,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isTrip ? 'สรุปจำนวนเที่ยวรถ' : 'สรุปการร่อนทราย',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Text(
+                _dateLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${totals.total}',
+                style: const TextStyle(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '$unitLabel รวมวันนี้',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'เช้า ${totals.morning} $unitLabel',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'บ่าย ${totals.afternoon} $unitLabel',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (isTrip && withData.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.25)),
+            const SizedBox(height: 10),
+            for (final u in withData)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _vehicleButtonColor(units.indexOf(u)),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${u.title} • ${u.subtitle}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.95),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${u.rounds} เที่ยว',
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'จากแอพบันทึกประจำวัน',
+            style: TextStyle(
+              fontSize: 10.5,
+              color: Colors.white.withValues(alpha: 0.65),
+            ),
           ),
         ],
       ),

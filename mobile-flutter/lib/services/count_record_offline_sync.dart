@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,6 +13,11 @@ import 'local_data_cache.dart';
 import 'transaction_service.dart';
 
 /// คิวบันทึกออฟไลน์สำหรับเมนู "บันทึกและนับจำนวน"
+///
+/// - ฟัง connectivity ของ OS (connectivity_plus)
+/// - scheduler เดียว + exponential backoff
+/// - คิวใน memory (อ่าน prefs ครั้งเดียว)
+/// - retry ต่อรายการ + batch upload
 class CountRecordOfflineSync {
   CountRecordOfflineSync._();
 
@@ -22,49 +28,149 @@ class CountRecordOfflineSync {
   static const _kEmployees = 'v1_count_record_employees_json';
   static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
 
-  Timer? _autoSyncTimer;
+  static const _reachabilityTtlOnline = Duration(seconds: 8);
+  static const _reachabilityTtlOffline = Duration(seconds: 18);
+  static const _failuresBeforeOffline = 2;
+  static const _probeTimeout = Duration(milliseconds: 2500);
+  static const _batchChunkSize = 25;
+  static const _maxItemRetries = 8;
+
+  static const _schedulerMinDelay = Duration(seconds: 2);
+  static const _schedulerMaxDelay = Duration(seconds: 30);
+
   TransactionService? _autoSyncService;
   SupabaseClient? _autoSyncClient;
   VoidCallback? _onAutoSynced;
-  bool _autoSyncTickRunning = false;
+  ValueChanged<bool>? _onServerReachabilityChanged;
+
+  Timer? _schedulerTimer;
+  Duration _schedulerDelay = _schedulerMinDelay;
+  bool _schedulerRunning = false;
+  bool _uploadInFlight = false;
+
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _lastHasNetworkLink = true;
+
+  List<_PendingOp>? _memoryQueue;
+  bool _queueLoaded = false;
 
   bool? _cachedReachable;
   DateTime? _reachabilityCheckedAt;
   int _probeFailStreak = 0;
-  static const _reachabilityTtlOnline = Duration(seconds: 8);
-  static const _reachabilityTtlOffline = Duration(seconds: 18);
-  static const _failuresBeforeOffline = 2;
-  static const _probeTimeout = Duration(milliseconds: 1200);
   bool _awaitingUploadAfterOffline = false;
-  bool _uploadInFlight = false;
 
   bool get uploadInFlight => _uploadInFlight;
-
   bool get awaitingUploadAfterOffline => _awaitingUploadAfterOffline;
+
+  /// หน่วง retry ต่อรายการ (วินาที) — ใช้ใน unit test ได้
+  @visibleForTesting
+  static Duration retryDelayForCount(int retryCount) {
+    final capped = retryCount.clamp(0, 5);
+    final seconds = (2 * (1 << capped)).clamp(2, 30);
+    return Duration(seconds: seconds);
+  }
 
   Duration _reachabilityTtlFor(bool? reachable) =>
       reachable == false ? _reachabilityTtlOffline : _reachabilityTtlOnline;
 
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
-  /// แดชบอร์ดรายงานออฟไลน์ — ข้ามการยิงเครือข่ายชั่วคราว
   void noteServerUnreachable() {
+    final wasOnline = _cachedReachable != false;
     _cachedReachable = false;
     _reachabilityCheckedAt = DateTime.now();
     _probeFailStreak = _failuresBeforeOffline;
     _awaitingUploadAfterOffline = true;
+    if (wasOnline) _onServerReachabilityChanged?.call(false);
   }
 
   void noteServerReachable() {
+    final wasOffline = _cachedReachable == false;
     _cachedReachable = true;
     _reachabilityCheckedAt = DateTime.now();
     _probeFailStreak = 0;
+    if (wasOffline) _onServerReachabilityChanged?.call(true);
+  }
+
+  Future<void> _ensureQueueLoaded() async {
+    if (_queueLoaded) return;
+    _memoryQueue = await _readQueueFromDisk();
+    _queueLoaded = true;
+  }
+
+  Future<List<_PendingOp>> _readQueueFromDisk() async {
+    final p = await _prefs();
+    final raw = p.getString(_kQueue);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(_PendingOp.fromMap)
+          .whereType<_PendingOp>()
+          .toList();
+    } catch (e, st) {
+      debugPrint('CountRecordOfflineSync._readQueueFromDisk: $e\n$st');
+      return [];
+    }
+  }
+
+  Future<List<_PendingOp>> _readQueue() async {
+    await _ensureQueueLoaded();
+    return _memoryQueue!;
+  }
+
+  Future<void> _writeQueue(List<_PendingOp> ops) async {
+    _memoryQueue = List<_PendingOp>.from(ops);
+    _queueLoaded = true;
+    final p = await _prefs();
+    if (ops.isEmpty) {
+      await p.remove(_kQueue);
+      return;
+    }
+    await p.setString(
+      _kQueue,
+      jsonEncode(ops.map((e) => e.toMap()).toList()),
+    );
+  }
+
+  Future<int> pendingCount() async {
+    await _ensureQueueLoaded();
+    return _memoryQueue!.length;
+  }
+
+  int get pendingCountSync =>
+      _queueLoaded ? (_memoryQueue?.length ?? 0) : -1;
+
+  Future<bool> hasPendingForDay(String ymd) async {
+    final ops = await _readQueue();
+    return ops.any((o) => o.affectsDate(ymd));
+  }
+
+  bool _hasNetworkLink(List<ConnectivityResult> results) {
+    return results.any((r) => r != ConnectivityResult.none);
+  }
+
+  Future<bool> _checkOsNetworkLink() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      _lastHasNetworkLink = _hasNetworkLink(results);
+      return _lastHasNetworkLink;
+    } catch (_) {
+      return _lastHasNetworkLink;
+    }
   }
 
   Future<bool> isOnline(
     SupabaseClient client, {
     bool forceProbe = false,
   }) async {
+    if (!await _checkOsNetworkLink()) {
+      noteServerUnreachable();
+      return false;
+    }
+
     final cached = _cachedReachable;
     final checkedAt = _reachabilityCheckedAt;
     if (!forceProbe && cached != null && checkedAt != null) {
@@ -88,50 +194,88 @@ class CountRecordOfflineSync {
         noteServerUnreachable();
         return false;
       }
-      // สัญญาณหลุดชั่วคราว — คงสถานะเดิมก่อน ไม่สลับออฟไลน์ทันที
       return cached ?? true;
     }
   }
 
-  Future<List<_PendingOp>> _readQueue() async {
-    final p = await _prefs();
-    final raw = p.getString(_kQueue);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(_PendingOp.fromMap)
-          .whereType<_PendingOp>()
-          .toList();
-    } catch (e, st) {
-      debugPrint('CountRecordOfflineSync._readQueue: $e\n$st');
-      return [];
-    }
+  void _resetSchedulerBackoff() {
+    _schedulerDelay = _schedulerMinDelay;
   }
 
-  Future<void> _writeQueue(List<_PendingOp> ops) async {
-    final p = await _prefs();
-    if (ops.isEmpty) {
-      await p.remove(_kQueue);
-      return;
-    }
-    await p.setString(
-      _kQueue,
-      jsonEncode(ops.map((e) => e.toMap()).toList()),
+  void _increaseSchedulerBackoff() {
+    final nextMs = (_schedulerDelay.inMilliseconds * 2)
+        .clamp(_schedulerMinDelay.inMilliseconds, _schedulerMaxDelay.inMilliseconds);
+    _schedulerDelay = Duration(milliseconds: nextMs);
+  }
+
+  void _scheduleNextCycle({Duration? overrideDelay}) {
+    _schedulerTimer?.cancel();
+    final delay = overrideDelay ?? _schedulerDelay;
+    _schedulerTimer = Timer(delay, () => unawaited(_runSchedulerCycle()));
+  }
+
+  void _startConnectivityWatch() {
+    _connectivitySub ??= Connectivity().onConnectivityChanged.listen(
+      (results) {
+        final hasLink = _hasNetworkLink(results);
+        _lastHasNetworkLink = hasLink;
+        if (hasLink) {
+          _resetSchedulerBackoff();
+          unawaited(_runSchedulerCycle(immediate: true));
+        } else {
+          noteServerUnreachable();
+          _increaseSchedulerBackoff();
+          _scheduleNextCycle();
+        }
+      },
     );
   }
 
-  Future<int> pendingCount() async {
-    final ops = await _readQueue();
-    return ops.length;
+  Future<void> _runSchedulerCycle({bool immediate = false}) async {
+    if (_schedulerRunning || _uploadInFlight) {
+      if (!immediate) _scheduleNextCycle();
+      return;
+    }
+    final service = _autoSyncService;
+    final client = _autoSyncClient;
+    if (service == null || client == null) return;
+
+    _schedulerRunning = true;
+    try {
+      await _ensureQueueLoaded();
+      final pending = _memoryQueue!.length;
+
+      if (!await _checkOsNetworkLink()) {
+        _increaseSchedulerBackoff();
+        _scheduleNextCycle();
+        return;
+      }
+
+      final needsWork = pending > 0 || _awaitingUploadAfterOffline;
+      final online = await isOnline(
+        client,
+        forceProbe: needsWork || !(_cachedReachable ?? true),
+      );
+
+      if (!online) {
+        _increaseSchedulerBackoff();
+        _scheduleNextCycle();
+        return;
+      }
+
+      _resetSchedulerBackoff();
+
+      if (needsWork) {
+        await uploadPendingImmediately(service, client);
+      }
+
+      _scheduleNextCycle();
+    } finally {
+      _schedulerRunning = false;
+    }
   }
 
-  Future<bool> hasPendingForDay(String ymd) async {
-    final ops = await _readQueue();
-    return ops.any((o) => o.affectsDate(ymd));
-  }
+  // --- dropdown cache (unchanged API) ---
 
   Future<void> cacheCars(List<String> cars) async {
     if (cars.isEmpty) return;
@@ -179,7 +323,6 @@ class CountRecordOfflineSync {
     }
   }
 
-  /// รวมแหล่งพนักงาน — widget / แคช count-record / แคชแอpp
   Future<List<Employee>> mergedEmployeeSources([
     List<Employee>? fromWidget,
   ]) async {
@@ -198,7 +341,6 @@ class CountRecordOfflineSync {
     return byId.values.toList();
   }
 
-  /// ดึงรถ+พนักงานล่าสุด — ออนไลน์อัปเดตแคช, ออฟไลน์อ่านแคชที่มี
   Future<({List<String> cars, List<Employee> employees})> loadDropdownCatalog({
     required SupabaseClient client,
     EmployeeService? employeeService,
@@ -252,6 +394,8 @@ class CountRecordOfflineSync {
     return (cars: cars, employees: employees);
   }
 
+  // --- merge ---
+
   List<AppTransaction> mergeForDay(
     String ymd,
     List<AppTransaction> serverRows,
@@ -267,7 +411,6 @@ class CountRecordOfflineSync {
     return _applyQueueSync(ymd, serverRows, ops);
   }
 
-  /// รวมคิวออฟไลน์กับธุรกรรมทั้งหมด — ให้ประวัติเที่ยวรถตรงกับข้อมูลที่บันทึก
   Future<List<AppTransaction>> mergeAllTransactionsAsync(
     List<AppTransaction> serverRows,
   ) async {
@@ -387,6 +530,8 @@ class CountRecordOfflineSync {
       mergedDayRows: merged,
       touchedTx: transaction,
     );
+    _resetSchedulerBackoff();
+    unawaited(_runSchedulerCycle(immediate: true));
   }
 
   Future<void> _deleteOffline({
@@ -401,10 +546,10 @@ class CountRecordOfflineSync {
       mergedDayRows: merged,
       removedId: id,
     );
+    _resetSchedulerBackoff();
+    unawaited(_runSchedulerCycle(immediate: true));
   }
 
-  /// บันทึก — ออนไลน์ส่ง server ทันที, ออฟไลน์เก็บคิว + แคชวัน
-  /// [serverOnlineHint] false = บังคับ probe เน็ตก่อนตัดสินใจ
   Future<bool> persist({
     required TransactionService service,
     required SupabaseClient client,
@@ -423,7 +568,8 @@ class CountRecordOfflineSync {
         final ops = await _readQueue();
         ops.removeWhere(
           (o) =>
-              o.transaction?.id == transaction.id || o.deleteId == transaction.id,
+              o.transaction?.id == transaction.id ||
+              o.deleteId == transaction.id,
         );
         await _writeQueue(ops);
         final merged = _mergedDayRowsAfterUpsert(ymd, dayServerRows, transaction);
@@ -450,7 +596,6 @@ class CountRecordOfflineSync {
     return true;
   }
 
-  /// ลบ — ออนไลน์ลบ server ทันที, ออฟไลน์เก็บคิว
   Future<bool> delete({
     required TransactionService service,
     required SupabaseClient client,
@@ -490,40 +635,69 @@ class CountRecordOfflineSync {
     return true;
   }
 
-  /// อัปโหลดคิวที่ค้าง — คืนจำนวนที่สำเร็จ (ลองทีละรายการ ไม่หยุดทั้งคิวเมื่อรายการเดียวล้ม)
+  List<_PendingOp> _readyOps(List<_PendingOp> ops, int nowMs) {
+    return ops.where((op) => op.isReadyToRetry(nowMs)).toList();
+  }
+
   Future<int> syncPending(
     TransactionService service,
     SupabaseClient client, {
     bool forceProbe = false,
   }) async {
     if (!await isOnline(client, forceProbe: forceProbe)) return 0;
-    final ops = await _readQueue();
-    if (ops.isEmpty) return 0;
+    await _ensureQueueLoaded();
+    if (_memoryQueue!.isEmpty) return 0;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final ready = _readyOps(_memoryQueue!, nowMs);
+    if (ready.isEmpty) return 0;
 
     var synced = 0;
-    final stillPending = <_PendingOp>[];
-    for (final op in ops) {
-      try {
-        switch (op.type) {
-          case _PendingOpType.upsert:
-            final tx = op.transaction;
-            if (tx == null) continue;
-            await service.upsertTransaction(
-              tx,
-              omitCreatedAt: op.omitCreatedAt,
-            );
-          case _PendingOpType.delete:
-            final id = op.deleteId;
-            if (id == null || id.isEmpty) continue;
-            await service.deleteTransaction(
-              id,
-              affectingDate: op.date,
-            );
+    final stillPending = <_PendingOp>[
+      ..._memoryQueue!.where((op) => !ready.contains(op)),
+    ];
+
+    final upserts = ready.where((o) => o.type == _PendingOpType.upsert).toList();
+    final deletes =
+        ready.where((o) => o.type == _PendingOpType.delete).toList();
+
+    for (var i = 0; i < upserts.length; i += _batchChunkSize) {
+      final chunk = upserts.skip(i).take(_batchChunkSize).toList();
+      final batchItems = <({AppTransaction item, bool omitCreatedAt})>[];
+      for (final op in chunk) {
+        final tx = op.transaction;
+        if (tx != null) {
+          batchItems.add((item: tx, omitCreatedAt: op.omitCreatedAt));
         }
-        synced += 1;
+      }
+      if (batchItems.isEmpty) continue;
+      try {
+        synced += await service.upsertTransactionsBatch(batchItems);
       } catch (e) {
-        debugPrint('CountRecordOfflineSync.syncPending item failed: $e');
-        stillPending.add(op);
+        debugPrint('CountRecordOfflineSync.syncPending batch upsert: $e');
+        for (final op in chunk) {
+          stillPending.add(op.withRetryFailure(nowMs));
+        }
+      }
+    }
+
+    for (var i = 0; i < deletes.length; i += _batchChunkSize) {
+      final chunk = deletes.skip(i).take(_batchChunkSize).toList();
+      final batchItems = <({String id, String? affectingDate})>[];
+      for (final op in chunk) {
+        final id = op.deleteId;
+        if (id != null && id.isNotEmpty) {
+          batchItems.add((id: id, affectingDate: op.date));
+        }
+      }
+      if (batchItems.isEmpty) continue;
+      try {
+        synced += await service.deleteTransactionsBatch(batchItems);
+      } catch (e) {
+        debugPrint('CountRecordOfflineSync.syncPending batch delete: $e');
+        for (final op in chunk) {
+          stillPending.add(op.withRetryFailure(nowMs));
+        }
       }
     }
 
@@ -534,7 +708,6 @@ class CountRecordOfflineSync {
     return synced;
   }
 
-  /// อัปโหลดคิวที่ค้างทันทีเมื่อกลับมาออนไลน์ (Wi‑Fi/เน็ต)
   Future<int> uploadPendingImmediately([
     TransactionService? service,
     SupabaseClient? client,
@@ -545,6 +718,7 @@ class CountRecordOfflineSync {
 
     _uploadInFlight = true;
     try {
+      if (!await _checkOsNetworkLink()) return 0;
       if (!await isOnline(c, forceProbe: true)) return 0;
       final wasAwaiting = _awaitingUploadAfterOffline;
       final synced = await syncPending(s, c, forceProbe: true);
@@ -562,7 +736,6 @@ class CountRecordOfflineSync {
     }
   }
 
-  /// ซิงค์ทันทีถ้าเชื่อมต่อได้ — ใช้ก่อนโหลดแดชบอร์ด / ตอนกลับมาออนไลน์
   Future<int> syncPendingIfPossible(
     TransactionService service,
     SupabaseClient client, {
@@ -574,47 +747,32 @@ class CountRecordOfflineSync {
     return syncPending(service, client, forceProbe: forceProbe);
   }
 
-  /// ตรวจและอัปโหลดคิวเป็นระยะ (เรียกจากแดชบอร์ดตลอดที่ล็อกอินอยู่)
+  /// ตรวจและอัปโหลดคิว — scheduler เดียว + connectivity listener
   void startAutoSync({
     required TransactionService service,
     required SupabaseClient client,
     VoidCallback? onSynced,
+    ValueChanged<bool>? onServerReachabilityChanged,
   }) {
     _autoSyncService = service;
     _autoSyncClient = client;
     _onAutoSynced = onSynced;
-    _autoSyncTimer ??= Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(_autoSyncTick()),
-    );
-    unawaited(_autoSyncTick());
+    _onServerReachabilityChanged = onServerReachabilityChanged;
+    _startConnectivityWatch();
+    _resetSchedulerBackoff();
+    unawaited(_runSchedulerCycle(immediate: true));
   }
 
   void stopAutoSync() {
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = null;
+    _schedulerTimer?.cancel();
+    _schedulerTimer = null;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     _autoSyncService = null;
     _autoSyncClient = null;
     _onAutoSynced = null;
-  }
-
-  Future<void> _autoSyncTick() async {
-    if (_autoSyncTickRunning || _uploadInFlight) return;
-    final service = _autoSyncService;
-    final client = _autoSyncClient;
-    if (service == null || client == null) return;
-    final pending = await pendingCount();
-    if (pending == 0 && !_awaitingUploadAfterOffline) return;
-
-    _autoSyncTickRunning = true;
-    try {
-      final synced = await uploadPendingImmediately(service, client);
-      if (synced == 0 && pending == 0 && _cachedReachable == true) {
-        _awaitingUploadAfterOffline = false;
-      }
-    } finally {
-      _autoSyncTickRunning = false;
-    }
+    _onServerReachabilityChanged = null;
+    _schedulerRunning = false;
   }
 }
 
@@ -628,6 +786,8 @@ class _PendingOp {
     this.deleteId,
     this.date,
     required this.queuedAtMs,
+    this.retryCount = 0,
+    this.nextAttemptMs,
   });
 
   factory _PendingOp.upsert({
@@ -657,6 +817,31 @@ class _PendingOp {
   final String? deleteId;
   final String? date;
   final int queuedAtMs;
+  final int retryCount;
+  final int? nextAttemptMs;
+
+  bool isReadyToRetry(int nowMs) {
+    if (retryCount >= CountRecordOfflineSync._maxItemRetries) {
+      return nowMs >= (nextAttemptMs ?? 0);
+    }
+    if (retryCount == 0 || nextAttemptMs == null) return true;
+    return nowMs >= nextAttemptMs!;
+  }
+
+  _PendingOp withRetryFailure(int nowMs) {
+    final nextRetry = retryCount + 1;
+    final delay = CountRecordOfflineSync.retryDelayForCount(nextRetry);
+    return _PendingOp._(
+      type: type,
+      transaction: transaction,
+      omitCreatedAt: omitCreatedAt,
+      deleteId: deleteId,
+      date: date,
+      queuedAtMs: queuedAtMs,
+      retryCount: nextRetry,
+      nextAttemptMs: nowMs + delay.inMilliseconds,
+    );
+  }
 
   bool affectsDate(String ymd) {
     if (type == _PendingOpType.upsert) {
@@ -674,6 +859,8 @@ class _PendingOp {
       if (deleteId != null) 'delete_id': deleteId,
       if (date != null) 'date': date,
       'queued_at_ms': queuedAtMs,
+      'retry_count': retryCount,
+      if (nextAttemptMs != null) 'next_attempt_ms': nextAttemptMs,
     };
   }
 
@@ -698,6 +885,8 @@ class _PendingOp {
       date: map['date']?.toString(),
       queuedAtMs: (map['queued_at_ms'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
+      retryCount: (map['retry_count'] as num?)?.toInt() ?? 0,
+      nextAttemptMs: (map['next_attempt_ms'] as num?)?.toInt(),
     );
   }
 }

@@ -172,7 +172,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _countAndRecordMenuOpen = false;
   late Future<_HomePayload> _homeFuture;
   _HomePayload? _lastHomePayload;
-  Timer? _connectivityProbeTimer;
   Timer? _offlineDebounceTimer;
 
   void _applyServerReachability(bool online, {bool force = false}) {
@@ -183,7 +182,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!_serverOnline) {
         setState(() => _serverOnline = true);
       }
-      _syncConnectivityProbe();
       return;
     }
     if (!_serverOnline) return;
@@ -191,14 +189,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       _offlineDebounceTimer?.cancel();
       _offlineDebounceTimer = null;
       setState(() => _serverOnline = false);
-      _syncConnectivityProbe();
       return;
     }
     _offlineDebounceTimer ??= Timer(const Duration(milliseconds: 1600), () {
       if (!mounted) return;
       _offlineDebounceTimer = null;
       setState(() => _serverOnline = false);
-      _syncConnectivityProbe();
     });
   }
 
@@ -257,48 +253,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  void _syncConnectivityProbe() {
-    unawaited(_syncConnectivityProbeAsync());
-    _connectivityProbeTimer ??= Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(_syncConnectivityProbeAsync()),
-    );
-  }
-
-  Future<void> _syncConnectivityProbeAsync() async {
-    final pending = await CountRecordOfflineSync.instance.pendingCount();
-    if (_serverOnline && pending == 0) {
-      _connectivityProbeTimer?.cancel();
-      _connectivityProbeTimer = null;
-      return;
-    }
-    await _probeBackOnline();
-  }
-
-  Future<void> _probeBackOnline() async {
-    if (!mounted) return;
-    final pending = await CountRecordOfflineSync.instance.pendingCount();
-    if (_serverOnline && pending == 0) return;
-
-    final online = await CountRecordOfflineSync.instance.isOnline(
-      Supabase.instance.client,
-      forceProbe: true,
-    );
-    if (!online || !mounted) return;
-
-    CountRecordOfflineSync.instance.noteServerReachable();
-    _applyServerReachability(true);
-
-    try {
-      await CountRecordOfflineSync.instance.uploadPendingImmediately(
-        _txService,
-        Supabase.instance.client,
-      );
-    } catch (_) {}
-    if (!mounted) return;
-    await _refreshHomeDataInPlace();
-  }
-
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   Future<void> _refreshHomeDataInPlace() async {
     if (_countAndRecordMenuOpen) {
@@ -324,6 +278,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       service: _txService,
       client: Supabase.instance.client,
       onSynced: _onCountRecordOfflineSynced,
+      onServerReachabilityChanged: (online) {
+        if (online) {
+          _applyServerReachability(true);
+        } else {
+          _applyServerReachability(false);
+        }
+      },
     );
   }
 
@@ -350,7 +311,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     CountRecordOfflineSync.instance.stopAutoSync();
-    _connectivityProbeTimer?.cancel();
     _offlineDebounceTimer?.cancel();
     super.dispose();
   }
@@ -385,7 +345,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       CountRecordOfflineSync.instance.noteServerReachable();
       _applyServerReachability(true);
     }
-    _syncConnectivityProbe();
     await _refreshHomeDataInPlace();
   }
 
@@ -1289,15 +1248,26 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              'บันทึกและนับจำนวน',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF1A2433),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    'บันทึกและนับจำนวน',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF1A2433),
+                                        ),
                                   ),
+                                ),
+                                if (offlineMode)
+                                  const _CountRecordPendingBadge(),
+                              ],
                             ),
                           ),
                           const Spacer(),
@@ -1382,27 +1352,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                         ],
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 280),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: offlineMode
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(
-                                  'แสดงเฉพาะเมนูที่บันทึกในเครื่องได้ — จะอัปโหลดเมื่อมีเน็ต',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF6B7280),
-                                        height: 1.3,
-                                      ),
-                                ),
-                              )
-                            : const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 10),
                       Expanded(
@@ -1663,6 +1612,76 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// จำนวนรายการรอซิงก์ — แสดงข้างหัวข้อ «บันทึกและนับจำนวน» ตอนโหมดออฟไลน์
+class _CountRecordPendingBadge extends StatefulWidget {
+  const _CountRecordPendingBadge();
+
+  @override
+  State<_CountRecordPendingBadge> createState() =>
+      _CountRecordPendingBadgeState();
+}
+
+class _CountRecordPendingBadgeState extends State<_CountRecordPendingBadge> {
+  int _pending = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final n = await CountRecordOfflineSync.instance.pendingCount();
+    if (!mounted || n == _pending) return;
+    setState(() => _pending = n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pending <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFFFCC80)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.cloud_upload_outlined,
+                size: 14,
+                color: Color(0xFFE65100),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'รอซิงก $_pending',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

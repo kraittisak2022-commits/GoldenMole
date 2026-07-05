@@ -93,8 +93,49 @@ class TransactionService {
     await _invalidateAfterMutation(affectingDate: item.date);
   }
 
+  /// อัปโหลดหลายแถวในครั้งเดียว — ใช้ตอนซิงค์คิวออฟไลน์
+  Future<int> upsertTransactionsBatch(
+    List<({AppTransaction item, bool omitCreatedAt})> items,
+  ) async {
+    if (items.isEmpty) return 0;
+    final maps = items
+        .map((e) => e.item.toInsertMap(omitCreatedAt: e.omitCreatedAt))
+        .toList();
+    final rows = await _client
+        .from('transactions')
+        .upsert(maps, onConflict: 'id')
+        .select('id');
+    if (rows.length != maps.length) {
+      throw Exception(
+        'batch upsert ไม่ครบ (${rows.length}/${maps.length})',
+      );
+    }
+    await LocalDataCache.invalidateDashboard();
+    await LocalDataCache.invalidateTransactionsFull();
+    for (final d in items.map((e) => e.item.date).toSet()) {
+      await LocalDataCache.invalidateTransactionsForDay(d);
+    }
+    return rows.length;
+  }
+
   Future<void> deleteTransaction(String id, {String? affectingDate}) async {
     await _client.from('transactions').delete().eq('id', id);
     await _invalidateAfterMutation(affectingDate: affectingDate);
+  }
+
+  /// ลบหลายแถวในครั้งเดียว — ใช้ตอนซิงค์คิวออฟไลน์
+  Future<int> deleteTransactionsBatch(
+    List<({String id, String? affectingDate})> items,
+  ) async {
+    if (items.isEmpty) return 0;
+    final ids = items.map((e) => e.id).where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return 0;
+    await _client.from('transactions').delete().inFilter('id', ids);
+    await LocalDataCache.invalidateDashboard();
+    await LocalDataCache.invalidateTransactionsFull();
+    for (final d in items.map((e) => e.affectingDate).whereType<String>()) {
+      await LocalDataCache.invalidateTransactionsForDay(d);
+    }
+    return ids.length;
   }
 }
