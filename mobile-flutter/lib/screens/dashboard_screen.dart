@@ -1415,7 +1415,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
             fit: StackFit.expand,
             children: [
               ...previous,
-              if (current != null) current,
+              ?current,
             ],
           ),
           child: LayoutBuilder(

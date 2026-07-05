@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,45 +36,99 @@ Future<void> _preloadAppFonts() async {
 }
 
 ThemeData _buildAppTheme() {
+  const brand = Color(0xFF11A8BA);
+  const ink = Color(0xFF17374C);
   final baseLight = ThemeData(
     brightness: Brightness.light,
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF11A8BA),
+      seedColor: brand,
       brightness: Brightness.light,
     ),
     scaffoldBackgroundColor: const Color(0xFFF3FBFC),
   );
+  // ripple แบบ M3 ใหม่ — เครื่องรุ่นเล็กใช้ ripple เดิม (InkSparkle ใช้ shader)
+  final splash = DevicePerf.isConstrainedDevice
+      ? InkRipple.splashFactory
+      : InkSparkle.splashFactory;
   return baseLight.copyWith(
     textTheme: GoogleFonts.kanitTextTheme(baseLight.textTheme),
+    splashFactory: splash,
+    visualDensity: VisualDensity.standard,
+    // ทรานสิชันเปลี่ยนหน้าแบบ M3 ใหม่ + predictive back บน Android
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF17374C),
+      foregroundColor: ink,
       elevation: 0,
       scrolledUnderElevation: 0,
+      centerTitle: false,
+      surfaceTintColor: Colors.transparent,
+      systemOverlayStyle: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
       titleTextStyle: GoogleFonts.kanit(
         fontSize: 20,
         fontWeight: FontWeight.w700,
-        color: const Color(0xFF17374C),
+        color: ink,
       ),
     ),
     cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: const Color(0x1417374C),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xFF11A8BA),
+        backgroundColor: brand,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+        minimumSize: const Size(64, 46),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        elevation: 0,
+        backgroundColor: brand,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(64, 46),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: ink,
+        minimumSize: const Size(64, 46),
+        side: const BorderSide(color: Color(0xFFC8DDE7)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 15),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: brand,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+        textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 15),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: const Color(0xFFFAFCFF),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      hintStyle: GoogleFonts.kanit(color: const Color(0xFF90A9B7)),
+      labelStyle: GoogleFonts.kanit(color: const Color(0xFF5B7A8A)),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
@@ -82,7 +139,122 @@ ThemeData _buildAppTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF11A8BA), width: 1.4),
+        borderSide: const BorderSide(color: brand, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE05B5B)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE05B5B), width: 1.4),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF1E3A4C),
+      contentTextStyle: GoogleFonts.kanit(color: Colors.white, fontSize: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      elevation: 4,
+      actionTextColor: const Color(0xFF6FE3F0),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      titleTextStyle: GoogleFonts.kanit(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: ink,
+      ),
+      contentTextStyle: GoogleFonts.kanit(
+        fontSize: 14.5,
+        color: const Color(0xFF3D5666),
+        height: 1.45,
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+      dragHandleColor: Color(0xFFC8DDE7),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      clipBehavior: Clip.antiAlias,
+    ),
+    chipTheme: baseLight.chipTheme.copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      side: const BorderSide(color: Color(0xFFDDEAF1)),
+      labelStyle: GoogleFonts.kanit(fontSize: 13, color: ink),
+      backgroundColor: Colors.white,
+      selectedColor: const Color(0xFFDDF6F9),
+    ),
+    dividerTheme: const DividerThemeData(
+      color: Color(0xFFE3EEF3),
+      thickness: 1,
+      space: 1,
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: const Color(0xFF4E6E80),
+      titleTextStyle: GoogleFonts.kanit(fontSize: 15, color: ink),
+      subtitleTextStyle: GoogleFonts.kanit(
+        fontSize: 12.5,
+        color: const Color(0xFF6C8899),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: brand,
+      linearTrackColor: Color(0xFFDDF0F3),
+      circularTrackColor: Color(0xFFDDF0F3),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shadowColor: const Color(0x2617374C),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: GoogleFonts.kanit(fontSize: 14.5, color: ink),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: const Color(0xE61E3A4C),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      textStyle: GoogleFonts.kanit(fontSize: 12, color: Colors.white),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: brand,
+      foregroundColor: Colors.white,
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(18)),
+      ),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+      side: const BorderSide(color: Color(0xFFA5C2CF), width: 1.6),
+    ),
+    switchTheme: SwitchThemeData(
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.transparent
+            : const Color(0xFFC8DDE7),
+      ),
+    ),
+    timePickerTheme: TimePickerThemeData(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+    ),
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      headerHeadlineStyle: GoogleFonts.kanit(
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
       ),
     ),
   );
@@ -90,6 +262,19 @@ ThemeData _buildAppTheme() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // แสดงผลเต็มจอแบบแอพยุคใหม่ — เนื้อหาลอดใต้ status bar / gesture bar
+  unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   final appRootNavigatorKey = GlobalKey<NavigatorState>();
 
   try {
@@ -106,7 +291,7 @@ Future<void> main() async {
     }
 
     // Initialize Supabase
-    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
 
     AppErrorBinding.install(appRootNavigatorKey);
 
