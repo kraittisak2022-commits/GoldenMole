@@ -1679,7 +1679,27 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
-  /// 1–2 คัน: แถวเดียวเต็มความกว้าง | 3+ คัน: กริด 2 คอลัมน์
+  /// 1–2 คัน: แถวเดียวเต็มความกว้าง | 3+ คัน: กริดปรับจำนวนคอลัมน์อัตโนมัติ
+  /// ให้เห็นทุกการ์ดพร้อมกัน — เลื่อนเฉพาะเมื่อย่อสุดแล้วพื้นที่ยังไม่พอจริงๆ
+  static const _tripGridRowHeight = 116.0;
+  static const _tripGridRowGap = 8.0;
+  static const _tripGridMinRowHeight = 56.0;
+
+  Widget _buildTripVehicleScrollableGrid(int rowCount, {required int cols}) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      physics: const ClampingScrollPhysics(),
+      itemCount: rowCount,
+      separatorBuilder: (_, _) => const SizedBox(height: _tripGridRowGap),
+      itemBuilder: (context, row) {
+        return SizedBox(
+          height: _tripGridRowHeight,
+          child: _buildTripVehicleGridRow(row * cols, cols: cols),
+        );
+      },
+    );
+  }
+
   Widget _buildTripVehicleCards() {
     if (_units.length <= 2) {
       return Row(
@@ -1693,36 +1713,40 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       );
     }
 
-    final rowCount = (_units.length + 1) ~/ 2;
-    if (rowCount > 2) {
-      const rowHeight = 116.0;
-      return ListView.separated(
-        padding: EdgeInsets.zero,
-        itemCount: rowCount,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (context, row) {
-          final start = row * 2;
-          return SizedBox(
-            height: rowHeight,
-            child: _buildTripVehicleGridRow(start, compact: true),
-          );
-        },
-      );
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final gap = (rowCount - 1) * 8.0;
-        final rowHeight = rowCount > 0
-            ? ((constraints.maxHeight - gap) / rowCount).clamp(72.0, 999.0)
-            : constraints.maxHeight;
+        final h = constraints.maxHeight;
+        final maxCols = constraints.maxWidth >= 520 ? 4 : 3;
+
+        int rowsFor(int cols) => (_units.length + cols - 1) ~/ cols;
+        double rowHeightFor(int cols) {
+          final rows = rowsFor(cols);
+          return (h - _tripGridRowGap * (rows - 1)) / rows;
+        }
+
+        var cols = 2;
+        if (h.isFinite) {
+          // เพิ่มคอลัมน์เมื่อแถวเตี้ยเกินไป — เฉพาะเมื่อช่วยลดจำนวนแถวได้จริง
+          while (cols < maxCols &&
+              rowsFor(cols + 1) < rowsFor(cols) &&
+              rowHeightFor(cols) < 100) {
+            cols++;
+          }
+        }
+
+        final rows = rowsFor(cols);
+        if (!h.isFinite || rowHeightFor(cols) < _tripGridMinRowHeight) {
+          return _buildTripVehicleScrollableGrid(rows, cols: cols);
+        }
+
+        final rowHeight = rowHeightFor(cols);
         return Column(
           children: [
-            for (var row = 0; row < rowCount; row++) ...[
-              if (row > 0) const SizedBox(height: 8),
+            for (var row = 0; row < rows; row++) ...[
+              if (row > 0) const SizedBox(height: _tripGridRowGap),
               SizedBox(
                 height: rowHeight,
-                child: _buildTripVehicleGridRow(row * 2, compact: true),
+                child: _buildTripVehicleGridRow(row * cols, cols: cols),
               ),
             ],
           ],
@@ -1731,17 +1755,18 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
-  Widget _buildTripVehicleGridRow(int startIndex, {required bool compact}) {
-    final pairIndex = startIndex + 1;
-    if (pairIndex >= _units.length) {
-      return _tripVehicleCard(startIndex, compact: compact);
-    }
+  Widget _buildTripVehicleGridRow(int startIndex, {required int cols}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _tripVehicleCard(startIndex, compact: compact)),
-        const SizedBox(width: 8),
-        Expanded(child: _tripVehicleCard(pairIndex, compact: compact)),
+        for (var i = 0; i < cols; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: startIndex + i < _units.length
+                ? _tripVehicleCard(startIndex + i, compact: true)
+                : const SizedBox.shrink(),
+          ),
+        ],
       ],
     );
   }
@@ -3499,78 +3524,94 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
     required int carNo,
     required bool onCooldown,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.22),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                'คันที่ $carNo',
-                style: const TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'คันที่ $carNo',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (unit.isBrokenReported) ...[
+                      const SizedBox(width: 4),
+                      const _BrokenVehicleBadge(compact: true),
+                    ],
+                  ],
                 ),
-              ),
+                const SizedBox(height: 5),
+                Center(
+                  child: _VehicleTripCountRail(
+                    compact: true,
+                    rounds: unit.rounds,
+                    burstTick: unit.burstTick,
+                    onCooldown: onCooldown,
+                    cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
+                    recordingEnabled: !unit.isBrokenReported,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  unit.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.12,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  unit.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+                if (widget.goal > 0) ...[
+                  const SizedBox(height: 4),
+                  _GoalProgressBar(
+                    rounds: unit.rounds,
+                    goal: widget.goal,
+                    compact: true,
+                  ),
+                ],
+              ],
             ),
-            if (unit.isBrokenReported) ...[
-              const SizedBox(width: 4),
-              const _BrokenVehicleBadge(compact: true),
-            ],
-          ],
-        ),
-        const SizedBox(height: 6),
-        Center(
-          child: _VehicleTripCountRail(
-            compact: true,
-            rounds: unit.rounds,
-            burstTick: unit.burstTick,
-            onCooldown: onCooldown,
-            cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
-            recordingEnabled: !unit.isBrokenReported,
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          unit.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            height: 1.15,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          unit.subtitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Colors.white.withValues(alpha: 0.92),
-          ),
-        ),
-        if (widget.goal > 0) ...[
-          const SizedBox(height: 5),
-          _GoalProgressBar(
-            rounds: unit.rounds,
-            goal: widget.goal,
-            compact: true,
-          ),
-        ],
-      ],
+        );
+      },
     );
   }
 
