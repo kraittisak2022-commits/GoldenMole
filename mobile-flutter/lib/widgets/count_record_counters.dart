@@ -1702,14 +1702,22 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   Widget _buildTripVehicleCards() {
     if (_units.length <= 2) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < _units.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: _tripVehicleCard(i, compact: false)),
-          ],
-        ],
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // โหมดเต็มต้องการความสูง ~145px+ — แคบกว่านี้ใช้ compact
+          final useCompact = constraints.maxHeight < 145;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < _units.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: _tripVehicleCard(i, compact: useCompact),
+                ),
+              ],
+            ],
+          );
+        },
       );
     }
 
@@ -2950,7 +2958,7 @@ class _IdleShimmerState extends State<_IdleShimmer>
   }
 }
 
-/// แถบ «บันทึกล่าสุด» — แตะเพื่อแสดง/ซ่อนเพิ่มรถ
+/// แถบ «บันทึกล่าสุด» — ซ่อนไทม์ไลน์ไว้ก่อน แตะเพื่อแสดง/ซ่อน + เปิดแผงเพิ่มรถ
 class _LatestTripRecordsBar extends StatelessWidget {
   const _LatestTripRecordsBar({
     required this.expanded,
@@ -2962,10 +2970,12 @@ class _LatestTripRecordsBar extends StatelessWidget {
   final List<_CounterUnit> units;
   final VoidCallback onTap;
 
+  int get _lapCount =>
+      units.fold<int>(0, (sum, u) => sum + u.lapTimes.length);
+
   @override
   Widget build(BuildContext context) {
-    final withLaps =
-        units.where((u) => u.lapTimes.isNotEmpty).toList(growable: false);
+    final hasLaps = _lapCount > 0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2986,6 +2996,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
@@ -2997,9 +3008,32 @@ class _LatestTripRecordsBar extends StatelessWidget {
                         color: Color(0xFF455A64),
                       ),
                     ),
+                    if (!expanded && hasLaps) ...[
+                      const SizedBox(width: 6),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1565C0).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          child: Text(
+                            '$_lapCount',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1565C0),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const Spacer(),
                     Text(
-                      expanded ? 'ซ่อน' : 'เพิ่มรถ',
+                      expanded ? 'ซ่อน' : 'ดู',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -3021,23 +3055,49 @@ class _LatestTripRecordsBar extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (withLaps.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  _buildTimeline(),
-                ] else
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      expanded
-                          ? 'เลือกรถด้านล่าง'
-                          : 'ยังไม่มีเที่ยวที่บันทึก',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 220),
+                  crossFadeState: expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstCurve: Curves.easeIn,
+                  secondCurve: Curves.easeOut,
+                  sizeCurve: Curves.easeOutCubic,
+                  firstChild: hasLaps
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'ยังไม่มีเที่ยวที่บันทึก',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                  secondChild: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasLaps) ...[
+                        const SizedBox(height: 8),
+                        _buildTimeline(),
+                      ] else
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'เลือกรถด้านล่าง',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
@@ -3426,7 +3486,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
     required bool onCooldown,
   }) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _VehicleTripCountRail(
           rounds: unit.rounds,
@@ -3437,82 +3497,93 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  unit.isBrokenReported
-                      ? 'คันที่ $carNo • หยุดบันทึกเที่ยว'
-                      : 'คันที่ $carNo • บันทึกเที่ยว',
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              if (unit.isBrokenReported) ...[
-                const SizedBox(height: 6),
-                const _BrokenVehicleBadge(compact: false),
-              ],
-              const SizedBox(height: 8),
-              FittedBox(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  unit.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1.12,
-                    letterSpacing: -0.2,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          unit.isBrokenReported
+                              ? 'คันที่ $carNo • หยุดบันทึกเที่ยว'
+                              : 'คันที่ $carNo • บันทึกเที่ยว',
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      if (unit.isBrokenReported) ...[
+                        const SizedBox(height: 5),
+                        const _BrokenVehicleBadge(compact: false),
+                      ],
+                      const SizedBox(height: 6),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          unit.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.12,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        unit.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.95),
+                          height: 1.12,
+                        ),
+                      ),
+                      if (unit.lapTimes.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'ล่าสุด ${unit.lapTimes.last}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: Colors.white.withValues(alpha: 0.82),
+                          ),
+                        ),
+                      ],
+                      if (widget.goal > 0) ...[
+                        const SizedBox(height: 4),
+                        _GoalProgressBar(
+                          rounds: unit.rounds,
+                          goal: widget.goal,
+                          compact: false,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                unit.subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.95),
-                  height: 1.15,
-                ),
-              ),
-              if (unit.lapTimes.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'ล่าสุด ${unit.lapTimes.last}',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: Colors.white.withValues(alpha: 0.82),
-                  ),
-                ),
-              ],
-              if (widget.goal > 0) ...[
-                const SizedBox(height: 6),
-                _GoalProgressBar(
-                  rounds: unit.rounds,
-                  goal: widget.goal,
-                  compact: false,
-                ),
-              ],
-            ],
+              );
+            },
           ),
         ),
       ],
