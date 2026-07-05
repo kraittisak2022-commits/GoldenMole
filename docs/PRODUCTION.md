@@ -51,4 +51,4 @@ The shipped SQL in `supabase-schema.sql` enables RLS but uses **permissive polic
 
 ## Flutter SDK
 
-The app declares `environment: sdk: ^3.10.8` in `mobile-flutter/pubspec.yaml`. CI uses **Flutter stable** from `subos/flutter-action`; if analyze fails after a Flutter upgrade, bump the SDK constraint or pin Flutter in the workflow.
+The app declares `environment: sdk: ^3.10.8` in `mobile-flutter/pubspec.yaml`. CI uses **Flutter stable** from `subosito/flutter-action`; if analyze fails after a Flutter upgrade, bump the SDK constraint or pin Flutter in the workflow.
