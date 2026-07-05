@@ -12,10 +12,12 @@ import 'models/admin_user.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
+import 'services/count_record_offline_sync.dart';
 import 'services/dashboard_service.dart';
 import 'services/locale_service.dart';
 import 'services/session_service.dart';
 import 'widgets/app_locale_scope.dart';
+import 'widgets/app_sync_banner.dart';
 import 'utils/app_error_binding.dart';
 import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
@@ -393,6 +395,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed || _currentAdmin == null) {
       return;
     }
+    CountRecordOfflineSync.instance.onAppResumed();
     ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client).catchError(
       (Object e, StackTrace st) {
         debugPrint('ensureSupabaseSession on resume: $e\n$st');
@@ -458,7 +461,9 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
         return AppLocaleScope(
           locale: _locale,
           onLocaleChanged: _setLocale,
-          child: child ?? const SizedBox.shrink(),
+          child: AppSyncBannerHost(
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
       home: AnimatedSwitcher(

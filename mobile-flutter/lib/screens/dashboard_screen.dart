@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/app_sync_snapshot.dart';
 import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
@@ -198,6 +199,27 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
+  void _onSyncStateChanged() {
+    if (!mounted) return;
+    final sync = CountRecordOfflineSync.instance.syncState.value;
+    final online = sync.isEffectivelyOnline;
+    if (online) {
+      _applyServerReachability(true);
+    } else {
+      _applyServerReachability(false, force: true);
+    }
+  }
+
+  void _configureTransactionRealtime() {
+    CountRecordOfflineSync.instance.configureTransactionRealtime(
+      dateYmd: _dateKey(_selectedDay),
+      onRemoteChange: () {
+        if (!mounted) return;
+        unawaited(_refreshHomeDataInPlace());
+      },
+    );
+  }
+
   void _applyPayloadQuietly(_HomePayload next) {
     if (!mounted) return;
     final prev = _lastHomePayload;
@@ -282,10 +304,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (online) {
           _applyServerReachability(true);
         } else {
-          _applyServerReachability(false);
+          _applyServerReachability(false, force: true);
         }
       },
     );
+    CountRecordOfflineSync.instance.syncState.addListener(_onSyncStateChanged);
+    _configureTransactionRealtime();
   }
 
   /// โหลดแคชในเครื่องทันที — แสดงแดชบอร์ดได้เร็วโดยไม่รอเน็ต
@@ -310,6 +334,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    CountRecordOfflineSync.instance.syncState
+        .removeListener(_onSyncStateChanged);
     CountRecordOfflineSync.instance.stopAutoSync();
     _offlineDebounceTimer?.cancel();
     super.dispose();
@@ -607,6 +633,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           pickedDate.day,
         );
       });
+      _configureTransactionRealtime();
       unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
     }
   }
@@ -831,6 +858,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _pullRefresh() async {
+    await CountRecordOfflineSync.instance.syncNow();
     await _refreshHomeSilently(tryNetwork: true);
   }
 
@@ -1444,11 +1472,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     sideInset,
                     menuScrolls ? 10 : 0,
                   ),
-                  physics: menuScrolls
-                      ? const AlwaysScrollableScrollPhysics(
-                          parent: ClampingScrollPhysics(),
-                        )
-                      : const NeverScrollableScrollPhysics(),
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: ClampingScrollPhysics(),
+                  ),
                   addAutomaticKeepAlives: true,
                   addRepaintBoundaries: true,
                   cacheExtent:
@@ -1578,8 +1604,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               child: _HomeHeaderCompact(
                                 appName: widget.data.summary.appName,
                                 lastLabel: lastLabel,
-                                serverOnline: widget.serverOnline,
-                                serverReconnecting: widget.serverReconnecting,
                                 selectedDateLabel: l10n.formatSelectedDate(
                                   widget.selectedDay,
                                 ),
@@ -1595,18 +1619,22 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
               ),
               Expanded(
-                child: _gridEntranceCompleted
-                    ? dailyMenuPanel
-                    : FadeTransition(
-                        opacity: panelAnim,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.05),
-                            end: Offset.zero,
-                          ).animate(panelAnim),
-                          child: dailyMenuPanel,
+                child: RefreshIndicator(
+                  onRefresh: widget.onPullRefresh,
+                  color: const Color(0xFF11A8BA),
+                  child: _gridEntranceCompleted
+                      ? dailyMenuPanel
+                      : FadeTransition(
+                          opacity: panelAnim,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.05),
+                              end: Offset.zero,
+                            ).animate(panelAnim),
+                            child: dailyMenuPanel,
+                          ),
                         ),
-                      ),
+                ),
               ),
             ],
           ),
@@ -1626,31 +1654,25 @@ class _CountRecordPendingBadge extends StatefulWidget {
 }
 
 class _CountRecordPendingBadgeState extends State<_CountRecordPendingBadge> {
-  int _pending = 0;
-  Timer? _timer;
-
   @override
   void initState() {
     super.initState();
-    unawaited(_refresh());
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    final n = await CountRecordOfflineSync.instance.pendingCount();
-    if (!mounted || n == _pending) return;
-    setState(() => _pending = n);
+    // บังคับโหลดคิวจากดิสก์ครั้งแรก — จากนั้นฟังค่าผ่าน notifier ไม่ต้อง polling
+    unawaited(CountRecordOfflineSync.instance.pendingCount());
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_pending <= 0) return const SizedBox.shrink();
+    return ValueListenableBuilder<int>(
+      valueListenable: CountRecordOfflineSync.instance.pendingCountListenable,
+      builder: (context, pending, _) {
+        if (pending <= 0) return const SizedBox.shrink();
+        return _buildBadge(pending);
+      },
+    );
+  }
+
+  Widget _buildBadge(int pending) {
     return Padding(
       padding: const EdgeInsets.only(left: 8),
       child: DecoratedBox(
@@ -1671,7 +1693,7 @@ class _CountRecordPendingBadgeState extends State<_CountRecordPendingBadge> {
               ),
               const SizedBox(width: 4),
               Text(
-                'รอซิงก $_pending',
+                'รอซิงก $pending',
                 style: const TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
@@ -1884,8 +1906,6 @@ class _HomeHeaderCompact extends StatelessWidget {
   const _HomeHeaderCompact({
     required this.appName,
     required this.lastLabel,
-    required this.serverOnline,
-    this.serverReconnecting = false,
     required this.selectedDateLabel,
     required this.onPickDay,
     required this.onRefresh,
@@ -1895,8 +1915,6 @@ class _HomeHeaderCompact extends StatelessWidget {
 
   final String appName;
   final String lastLabel;
-  final bool serverOnline;
-  final bool serverReconnecting;
   final String selectedDateLabel;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
@@ -2108,34 +2126,40 @@ class _HomeHeaderCompact extends StatelessWidget {
                         label: '${l10n.latestPrefix} $lastLabel',
                       ),
                       _LiveClockChip(l10n: l10n),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 320),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        child: KeyedSubtree(
-                          key: ValueKey(
-                            serverReconnecting
-                                ? 'reconnecting'
-                                : (serverOnline ? 'online' : 'offline'),
-                          ),
-                          child: _HeaderStatChip(
-                            icon: serverReconnecting
-                                ? Icons.sync_rounded
-                                : (serverOnline
-                                    ? Icons.cloud_done_rounded
-                                    : Icons.cloud_off_rounded),
-                            label: serverReconnecting
-                                ? 'กำลังซิงก์...'
-                                : (serverOnline
-                                    ? l10n.serverOnline
-                                    : l10n.serverOffline),
-                            iconColor: serverReconnecting
-                                ? const Color(0xFFF9A825)
-                                : (serverOnline
-                                    ? const Color(0xFF1E8E56)
-                                    : const Color(0xFFC25050)),
-                          ),
-                        ),
+                      ValueListenableBuilder<AppSyncSnapshot>(
+                        valueListenable:
+                            CountRecordOfflineSync.instance.syncState,
+                        builder: (context, sync, _) {
+                          IconData icon;
+                          Color iconColor;
+                          String label;
+                          if (sync.isSyncing) {
+                            icon = Icons.sync_rounded;
+                            iconColor = const Color(0xFFF9A825);
+                            label = sync.headerStatusLabel;
+                          } else if (sync.network == NetworkLinkState.unlink) {
+                            icon = Icons.wifi_off_rounded;
+                            iconColor = const Color(0xFF78909C);
+                            label = sync.headerStatusLabel;
+                          } else if (sync.server == ServerReachState.offline) {
+                            icon = Icons.cloud_off_rounded;
+                            iconColor = const Color(0xFFC25050);
+                            label = sync.headerStatusLabel;
+                          } else if (sync.pendingCount > 0) {
+                            icon = Icons.cloud_upload_outlined;
+                            iconColor = const Color(0xFF1565C0);
+                            label = sync.headerStatusLabel;
+                          } else {
+                            icon = Icons.cloud_done_rounded;
+                            iconColor = const Color(0xFF1E8E56);
+                            label = l10n.serverOnline;
+                          }
+                          return _HeaderStatChip(
+                            icon: icon,
+                            label: label,
+                            iconColor: iconColor,
+                          );
+                        },
                       ),
                     ],
                   ),

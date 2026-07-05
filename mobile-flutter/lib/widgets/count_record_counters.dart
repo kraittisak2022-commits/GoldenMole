@@ -155,7 +155,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
-  Timer? _cooldownTicker;
   Timer? _offlineSyncTicker;
   Timer? _dropdownRefreshTicker;
   Timer? _parentRefreshDebounce;
@@ -310,7 +309,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   @override
   void dispose() {
-    _cooldownTicker?.cancel();
     _offlineSyncTicker?.cancel();
     _dropdownRefreshTicker?.cancel();
     _parentRefreshDebounce?.cancel();
@@ -320,9 +318,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   void _syncDropdownRefreshTimer() {
     _dropdownRefreshTicker?.cancel();
     final offline = !widget.serverOnline || !_isOnline;
+    // รายชื่อรถ/คนขับแทบไม่เปลี่ยนระหว่างวัน — รีเฟรชห่างๆ พอ
+    // (ตอนเปิด popup เพิ่มรถจะรีเฟรชสดผ่าน _ensureDropdownListsForDialog อยู่แล้ว)
     final interval = offline
-        ? const Duration(seconds: 5)
-        : const Duration(seconds: 12);
+        ? const Duration(seconds: 45)
+        : const Duration(seconds: 90);
     _dropdownRefreshTicker = Timer.periodic(interval, (_) {
       if (!mounted) return;
       unawaited(
@@ -333,22 +333,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     });
   }
 
-  void _ensureCooldownTicker() {
-    if (_cooldownTicker != null) return;
-    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final active = _units.any((u) => u.isOnRecordCooldown);
-      setState(() {});
-      if (!active) {
-        _cooldownTicker?.cancel();
-        _cooldownTicker = null;
-      }
-    });
-  }
-
   void _armRecordCooldown(_CounterUnit u) {
+    // การ์ดแต่ละใบนับถอยหลังเอง (_CardCooldownTicker) — ไม่ต้อง rebuild ทั้งแผง
     u.recordCooldownUntil = DateTime.now().add(_recordTapCooldown);
-    _ensureCooldownTicker();
   }
 
   int _recentSandLapStartIndex(int total) {
@@ -552,7 +539,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   void _syncOfflinePollTimer() {
     if (_pendingCount > 0 || !_isOnline) {
       _offlineSyncTicker ??= Timer.periodic(
-        const Duration(seconds: 2),
+        const Duration(seconds: 5),
         (_) {
           if (!mounted) return;
           unawaited(_pollOfflineQueue());
@@ -3233,7 +3220,34 @@ class _VehicleRecordButton extends StatefulWidget {
   State<_VehicleRecordButton> createState() => _VehicleRecordButtonState();
 }
 
-class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
+/// นับถอยหลัง cooldown ภายในการ์ดของตัวเอง — rebuild เฉพาะการ์ดใบเดียว
+/// แทนการตั้ง timer ระดับแผงที่ rebuild การ์ดทุกใบพร้อมกันทุกวินาที
+mixin _CardCooldownTicker<T extends StatefulWidget> on State<T> {
+  Timer? _cooldownTickTimer;
+
+  _CounterUnit get cooldownUnit;
+
+  /// เรียกตอนต้น build — เริ่ม timer เมื่อการ์ดอยู่ในช่วง cooldown
+  void syncCooldownTicker() {
+    if (!cooldownUnit.isOnRecordCooldown) return;
+    _cooldownTickTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+      if (!cooldownUnit.isOnRecordCooldown) {
+        _cooldownTickTimer?.cancel();
+        _cooldownTickTimer = null;
+      }
+    });
+  }
+
+  void disposeCooldownTicker() {
+    _cooldownTickTimer?.cancel();
+    _cooldownTickTimer = null;
+  }
+}
+
+class _VehicleRecordButtonState extends State<_VehicleRecordButton>
+    with _CardCooldownTicker<_VehicleRecordButton> {
   static const _holdDuration = Duration(seconds: 3);
   static const _tapMax = Duration(milliseconds: 400);
   static const _swipeSlop = 6.0;
@@ -3256,8 +3270,12 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
       _canPress && !widget.unit.isBrokenReported;
 
   @override
+  _CounterUnit get cooldownUnit => widget.unit;
+
+  @override
   void dispose() {
     _holdTimer?.cancel();
+    disposeCooldownTicker();
     widget.setHoldLock(false);
     super.dispose();
   }
@@ -3558,6 +3576,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton> {
 
   @override
   Widget build(BuildContext context) {
+    syncCooldownTicker();
     final unit = widget.unit;
     final busy = unit.busy;
     final broken = unit.isBrokenReported;
@@ -4065,7 +4084,8 @@ class _SandRecordButton extends StatefulWidget {
   State<_SandRecordButton> createState() => _SandRecordButtonState();
 }
 
-class _SandRecordButtonState extends State<_SandRecordButton> {
+class _SandRecordButtonState extends State<_SandRecordButton>
+    with _CardCooldownTicker<_SandRecordButton> {
   static const _holdDuration = Duration(seconds: 3);
   static const _tapMax = Duration(milliseconds: 400);
   static const _sandBg = Color(0xFFAD1457);
@@ -4081,8 +4101,12 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
       !widget.unit.busy && !widget.unit.isOnRecordCooldown;
 
   @override
+  _CounterUnit get cooldownUnit => widget.unit;
+
+  @override
   void dispose() {
     _holdTimer?.cancel();
+    disposeCooldownTicker();
     super.dispose();
   }
 
@@ -4158,6 +4182,7 @@ class _SandRecordButtonState extends State<_SandRecordButton> {
 
   @override
   Widget build(BuildContext context) {
+    syncCooldownTicker();
     final unit = widget.unit;
     final busy = unit.busy;
     final onCooldown = unit.isOnRecordCooldown && !busy;

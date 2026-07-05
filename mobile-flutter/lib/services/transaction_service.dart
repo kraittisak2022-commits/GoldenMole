@@ -72,6 +72,29 @@ class TransactionService {
     }
   }
 
+  /// ดึง created_at จากเซิร์ฟเวอร์ — ใช้ตรวจ conflict ก่อน upsert
+  Future<Map<String, DateTime?>> fetchCreatedAtByIds(List<String> ids) async {
+    if (ids.isEmpty) return {};
+    final rows = await _client
+        .from('transactions')
+        .select('id, created_at')
+        .inFilter('id', ids);
+    final out = <String, DateTime?>{};
+    for (final row in rows) {
+      final id = row['id']?.toString();
+      if (id == null || id.isEmpty) continue;
+      final raw = row['created_at'];
+      if (raw == null) {
+        out[id] = null;
+      } else if (raw is DateTime) {
+        out[id] = raw;
+      } else {
+        out[id] = DateTime.tryParse(raw.toString());
+      }
+    }
+    return out;
+  }
+
   Future<void> upsertTransaction(
     AppTransaction item, {
     bool omitCreatedAt = false,

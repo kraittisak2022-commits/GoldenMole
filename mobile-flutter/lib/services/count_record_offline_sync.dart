@@ -3,9 +3,11 @@ import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/app_sync_snapshot.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import 'employee_service.dart';
@@ -24,6 +26,7 @@ class CountRecordOfflineSync {
   static final CountRecordOfflineSync instance = CountRecordOfflineSync._();
 
   static const _kQueue = 'v1_count_record_offline_queue_v1';
+  static const _kFailedQueue = 'v1_count_record_failed_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
   static const _kEmployees = 'v1_count_record_employees_json';
   static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
@@ -50,9 +53,27 @@ class CountRecordOfflineSync {
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _lastHasNetworkLink = true;
+  bool _connectivityPluginAvailable = true;
+
+  /// สถานะซิงค์กลาง — UI ทั้งแอปฟังค่านี้
+  final ValueNotifier<AppSyncSnapshot> syncState =
+      ValueNotifier(const AppSyncSnapshot());
 
   List<_PendingOp>? _memoryQueue;
+  List<_PendingOp>? _memoryFailedQueue;
   bool _queueLoaded = false;
+  bool _failedQueueLoaded = false;
+
+  NetworkLinkState _networkLinkState = NetworkLinkState.unknown;
+  ServerReachState _serverReachState = ServerReachState.unknown;
+  Timer? _syncFlashTimer;
+
+  RealtimeChannel? _realtimeChannel;
+  String? _realtimeDateFilter;
+  VoidCallback? _onRemoteDataChanged;
+
+  /// จำนวนรายการค้างในคิว — ให้ UI ฟังค่าแทนการตั้ง timer polling เอง
+  final ValueNotifier<int> pendingCountListenable = ValueNotifier<int>(0);
 
   bool? _cachedReachable;
   DateTime? _reachabilityCheckedAt;
@@ -75,7 +96,47 @@ class CountRecordOfflineSync {
 
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
+  void _publishSyncState({SyncActivity? activity}) {
+    AppSyncSnapshot.uploadInFlightHint = _uploadInFlight;
+    syncState.value = AppSyncSnapshot(
+      network: _networkLinkState,
+      server: _serverReachState,
+      activity: activity ?? syncState.value.activity,
+      pendingCount: _memoryQueue?.length ?? pendingCountListenable.value,
+      failedCount: _memoryFailedQueue?.length ?? 0,
+    );
+  }
+
+  void _flashSyncSuccess() {
+    _syncFlashTimer?.cancel();
+    _publishSyncState(activity: SyncActivity.syncedFlash);
+    _syncFlashTimer = Timer(const Duration(seconds: 2), () {
+      if (syncState.value.activity == SyncActivity.syncedFlash) {
+        _publishSyncState(activity: SyncActivity.idle);
+      }
+    });
+  }
+
+  void _noteNoNetworkLink() {
+    _networkLinkState = NetworkLinkState.unlink;
+    _serverReachState = ServerReachState.offline;
+    _publishSyncState();
+    final wasOnline = _cachedReachable != false;
+    _cachedReachable = false;
+    _reachabilityCheckedAt = DateTime.now();
+    _probeFailStreak = _failuresBeforeOffline;
+    _awaitingUploadAfterOffline = true;
+    if (wasOnline) _onServerReachabilityChanged?.call(false);
+  }
+
   void noteServerUnreachable() {
+    if (_networkLinkState == NetworkLinkState.unlink) {
+      _noteNoNetworkLink();
+      return;
+    }
+    _networkLinkState = NetworkLinkState.linked;
+    _serverReachState = ServerReachState.offline;
+    _publishSyncState();
     final wasOnline = _cachedReachable != false;
     _cachedReachable = false;
     _reachabilityCheckedAt = DateTime.now();
@@ -85,6 +146,9 @@ class CountRecordOfflineSync {
   }
 
   void noteServerReachable() {
+    _networkLinkState = NetworkLinkState.linked;
+    _serverReachState = ServerReachState.online;
+    _publishSyncState();
     final wasOffline = _cachedReachable == false;
     _cachedReachable = true;
     _reachabilityCheckedAt = DateTime.now();
@@ -96,6 +160,64 @@ class CountRecordOfflineSync {
     if (_queueLoaded) return;
     _memoryQueue = await _readQueueFromDisk();
     _queueLoaded = true;
+    pendingCountListenable.value = _memoryQueue!.length;
+    _publishSyncState();
+  }
+
+  Future<void> _ensureFailedQueueLoaded() async {
+    if (_failedQueueLoaded) return;
+    _memoryFailedQueue = await _readFailedQueueFromDisk();
+    _failedQueueLoaded = true;
+    _publishSyncState();
+  }
+
+  Future<List<_PendingOp>> _readFailedQueueFromDisk() async {
+    final p = await _prefs();
+    final raw = p.getString(_kFailedQueue);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(_PendingOp.fromMap)
+          .whereType<_PendingOp>()
+          .toList();
+    } catch (e, st) {
+      debugPrint('CountRecordOfflineSync._readFailedQueueFromDisk: $e\n$st');
+      return [];
+    }
+  }
+
+  Future<List<_PendingOp>> _readFailedQueue() async {
+    await _ensureFailedQueueLoaded();
+    return _memoryFailedQueue!;
+  }
+
+  Future<void> _writeFailedQueue(List<_PendingOp> ops) async {
+    _memoryFailedQueue = List<_PendingOp>.from(ops);
+    _failedQueueLoaded = true;
+    _publishSyncState();
+    final p = await _prefs();
+    if (ops.isEmpty) {
+      await p.remove(_kFailedQueue);
+      return;
+    }
+    await p.setString(
+      _kFailedQueue,
+      jsonEncode(ops.map((e) => e.toMap()).toList()),
+    );
+  }
+
+  Future<void> _moveToFailedQueue(
+    _PendingOp op,
+    SyncFailureReason reason,
+  ) async {
+    final failed = op.asFailed(reason);
+    final failedOps = await _readFailedQueue();
+    failedOps.removeWhere((o) => o.itemKey == failed.itemKey);
+    failedOps.add(failed);
+    await _writeFailedQueue(failedOps);
   }
 
   Future<List<_PendingOp>> _readQueueFromDisk() async {
@@ -124,6 +246,8 @@ class CountRecordOfflineSync {
   Future<void> _writeQueue(List<_PendingOp> ops) async {
     _memoryQueue = List<_PendingOp>.from(ops);
     _queueLoaded = true;
+    pendingCountListenable.value = ops.length;
+    _publishSyncState();
     final p = await _prefs();
     if (ops.isEmpty) {
       await p.remove(_kQueue);
@@ -152,13 +276,130 @@ class CountRecordOfflineSync {
     return results.any((r) => r != ConnectivityResult.none);
   }
 
+  static bool get _mayUseConnectivityPlugin {
+    if (kIsWeb) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android ||
+      TargetPlatform.iOS ||
+      TargetPlatform.windows ||
+      TargetPlatform.macOS ||
+      TargetPlatform.linux =>
+        true,
+      _ => false,
+    };
+  }
+
+  void _disableConnectivityPlugin({required String reason}) {
+    if (!_connectivityPluginAvailable) return;
+    _connectivityPluginAvailable = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
+    debugPrint(
+      'CountRecordOfflineSync: connectivity_plus unavailable ($reason); '
+      'using scheduler-only probing.',
+    );
+  }
+
+  Future<bool> _probeConnectivityPlugin() async {
+    if (!_mayUseConnectivityPlugin) {
+      _disableConnectivityPlugin(reason: 'unsupported platform');
+      return false;
+    }
+    try {
+      final results = await Connectivity().checkConnectivity();
+      _lastHasNetworkLink = _hasNetworkLink(results);
+      return true;
+    } on MissingPluginException catch (e) {
+      _disableConnectivityPlugin(reason: e.toString());
+      return false;
+    } on PlatformException catch (e) {
+      _disableConnectivityPlugin(reason: e.toString());
+      return false;
+    } catch (e) {
+      debugPrint('CountRecordOfflineSync: connectivity probe failed — $e');
+      return false;
+    }
+  }
+
   Future<bool> _checkOsNetworkLink() async {
+    if (!_connectivityPluginAvailable) return true;
     try {
       final results = await Connectivity().checkConnectivity();
       _lastHasNetworkLink = _hasNetworkLink(results);
       return _lastHasNetworkLink;
+    } on MissingPluginException catch (e) {
+      _disableConnectivityPlugin(reason: e.toString());
+      return true;
+    } on PlatformException catch (_) {
+      return _lastHasNetworkLink;
     } catch (_) {
       return _lastHasNetworkLink;
+    }
+  }
+
+  Future<void> _startConnectivityWatch() async {
+    if (!_connectivityPluginAvailable || _connectivitySub != null) return;
+    if (!await _probeConnectivityPlugin()) return;
+
+    try {
+      _connectivitySub = Connectivity()
+          .onConnectivityChanged
+          .handleError((Object e, StackTrace st) {
+            if (e is MissingPluginException || e is PlatformException) {
+              _disableConnectivityPlugin(reason: e.toString());
+            }
+          })
+          .listen(
+            (results) {
+              if (!_connectivityPluginAvailable) return;
+              final hasLink = _hasNetworkLink(results);
+              _lastHasNetworkLink = hasLink;
+              if (hasLink) {
+                _networkLinkState = NetworkLinkState.linked;
+                _publishSyncState();
+                _resetSchedulerBackoff();
+                unawaited(_runSchedulerCycle(immediate: true));
+              } else {
+                _noteNoNetworkLink();
+                _increaseSchedulerBackoff();
+                _scheduleNextCycle();
+              }
+            },
+            onError: (Object e, StackTrace st) {
+              if (e is MissingPluginException || e is PlatformException) {
+                _disableConnectivityPlugin(reason: e.toString());
+              }
+            },
+            cancelOnError: false,
+          );
+    } on MissingPluginException catch (e) {
+      _disableConnectivityPlugin(reason: e.toString());
+    } on PlatformException catch (e) {
+      _disableConnectivityPlugin(reason: e.toString());
+    }
+  }
+
+  Future<bool> _probeServerReachability(
+    SupabaseClient client, {
+    bool force = false,
+  }) async {
+    try {
+      await client
+          .from('app_settings')
+          .select('id')
+          .eq('id', 'default')
+          .limit(1)
+          .timeout(_probeTimeout);
+      _probeFailStreak = 0;
+      noteServerReachable();
+      return true;
+    } catch (_) {
+      _probeFailStreak++;
+      if (force || _probeFailStreak >= _failuresBeforeOffline) {
+        noteServerUnreachable();
+        return false;
+      }
+      return _cachedReachable ?? true;
     }
   }
 
@@ -167,9 +408,11 @@ class CountRecordOfflineSync {
     bool forceProbe = false,
   }) async {
     if (!await _checkOsNetworkLink()) {
-      noteServerUnreachable();
+      _noteNoNetworkLink();
       return false;
     }
+    _networkLinkState = NetworkLinkState.linked;
+    _publishSyncState();
 
     final cached = _cachedReachable;
     final checkedAt = _reachabilityCheckedAt;
@@ -179,23 +422,7 @@ class CountRecordOfflineSync {
         return cached;
       }
     }
-    try {
-      await client
-          .from('transactions')
-          .select('id')
-          .limit(1)
-          .timeout(_probeTimeout);
-      _probeFailStreak = 0;
-      noteServerReachable();
-      return true;
-    } catch (_) {
-      _probeFailStreak++;
-      if (forceProbe || _probeFailStreak >= _failuresBeforeOffline) {
-        noteServerUnreachable();
-        return false;
-      }
-      return cached ?? true;
-    }
+    return _probeServerReachability(client, force: forceProbe);
   }
 
   void _resetSchedulerBackoff() {
@@ -212,23 +439,6 @@ class CountRecordOfflineSync {
     _schedulerTimer?.cancel();
     final delay = overrideDelay ?? _schedulerDelay;
     _schedulerTimer = Timer(delay, () => unawaited(_runSchedulerCycle()));
-  }
-
-  void _startConnectivityWatch() {
-    _connectivitySub ??= Connectivity().onConnectivityChanged.listen(
-      (results) {
-        final hasLink = _hasNetworkLink(results);
-        _lastHasNetworkLink = hasLink;
-        if (hasLink) {
-          _resetSchedulerBackoff();
-          unawaited(_runSchedulerCycle(immediate: true));
-        } else {
-          noteServerUnreachable();
-          _increaseSchedulerBackoff();
-          _scheduleNextCycle();
-        }
-      },
-    );
   }
 
   Future<void> _runSchedulerCycle({bool immediate = false}) async {
@@ -517,11 +727,13 @@ class CountRecordOfflineSync {
     required AppTransaction transaction,
     required bool omitCreatedAt,
     required List<AppTransaction> dayServerRows,
+    int? knownServerCreatedAtMs,
   }) async {
     await _enqueue(
       _PendingOp.upsert(
         transaction: transaction,
         omitCreatedAt: omitCreatedAt,
+        knownServerCreatedAtMs: knownServerCreatedAtMs,
       ),
     );
     final merged = _applyQueueSync(ymd, dayServerRows, await _readQueue());
@@ -591,6 +803,7 @@ class CountRecordOfflineSync {
       transaction: transaction,
       omitCreatedAt: omitCreatedAt,
       dayServerRows: dayServerRows,
+      knownServerCreatedAtMs: _createdAtMsForId(dayServerRows, transaction.id),
     );
     _awaitingUploadAfterOffline = true;
     return true;
@@ -635,6 +848,52 @@ class CountRecordOfflineSync {
     return true;
   }
 
+  int? _createdAtMsForId(List<AppTransaction> rows, String id) {
+    for (final row in rows) {
+      if (row.id == id) return row.createdAt?.millisecondsSinceEpoch;
+    }
+    return null;
+  }
+
+  Future<List<_PendingOp>> _splitConflicts(
+    TransactionService service,
+    List<_PendingOp> upserts,
+  ) async {
+    if (upserts.isEmpty) return upserts;
+    final withBaseline = upserts
+        .where((o) =>
+            o.knownServerCreatedAtMs != null && o.transaction != null)
+        .toList();
+    if (withBaseline.isEmpty) return upserts;
+
+    final ids = withBaseline.map((o) => o.transaction!.id).toList();
+    final serverTimes = await service.fetchCreatedAtByIds(ids);
+    final conflicts = <_PendingOp>[];
+    final ok = <_PendingOp>[];
+
+    for (final op in upserts) {
+      final tx = op.transaction;
+      if (tx == null) {
+        ok.add(op);
+        continue;
+      }
+      final baseline = op.knownServerCreatedAtMs;
+      final serverAt = serverTimes[tx.id];
+      if (baseline != null &&
+          serverAt != null &&
+          serverAt.millisecondsSinceEpoch > baseline) {
+        conflicts.add(op);
+        continue;
+      }
+      ok.add(op);
+    }
+
+    for (final c in conflicts) {
+      await _moveToFailedQueue(c, SyncFailureReason.conflict);
+    }
+    return ok;
+  }
+
   List<_PendingOp> _readyOps(List<_PendingOp> ops, int nowMs) {
     return ops.where((op) => op.isReadyToRetry(nowMs)).toList();
   }
@@ -661,8 +920,10 @@ class CountRecordOfflineSync {
     final deletes =
         ready.where((o) => o.type == _PendingOpType.delete).toList();
 
-    for (var i = 0; i < upserts.length; i += _batchChunkSize) {
-      final chunk = upserts.skip(i).take(_batchChunkSize).toList();
+    final upsertsToSend = await _splitConflicts(service, upserts);
+
+    for (var i = 0; i < upsertsToSend.length; i += _batchChunkSize) {
+      final chunk = upsertsToSend.skip(i).take(_batchChunkSize).toList();
       final batchItems = <({AppTransaction item, bool omitCreatedAt})>[];
       for (final op in chunk) {
         final tx = op.transaction;
@@ -676,7 +937,15 @@ class CountRecordOfflineSync {
       } catch (e) {
         debugPrint('CountRecordOfflineSync.syncPending batch upsert: $e');
         for (final op in chunk) {
-          stillPending.add(op.withRetryFailure(nowMs));
+          final failed = op.withRetryFailure(nowMs);
+          if (failed.retryCount >= _maxItemRetries) {
+            await _moveToFailedQueue(
+              failed,
+              SyncFailureReason.retryExhausted,
+            );
+          } else {
+            stillPending.add(failed);
+          }
         }
       }
     }
@@ -696,7 +965,15 @@ class CountRecordOfflineSync {
       } catch (e) {
         debugPrint('CountRecordOfflineSync.syncPending batch delete: $e');
         for (final op in chunk) {
-          stillPending.add(op.withRetryFailure(nowMs));
+          final failed = op.withRetryFailure(nowMs);
+          if (failed.retryCount >= _maxItemRetries) {
+            await _moveToFailedQueue(
+              failed,
+              SyncFailureReason.retryExhausted,
+            );
+          } else {
+            stillPending.add(failed);
+          }
         }
       }
     }
@@ -717,6 +994,7 @@ class CountRecordOfflineSync {
     if (s == null || c == null || _uploadInFlight) return 0;
 
     _uploadInFlight = true;
+    _publishSyncState(activity: SyncActivity.syncing);
     try {
       if (!await _checkOsNetworkLink()) return 0;
       if (!await isOnline(c, forceProbe: true)) return 0;
@@ -729,11 +1007,119 @@ class CountRecordOfflineSync {
       }
       if (synced > 0 || (wasAwaiting && remaining == 0)) {
         _onAutoSynced?.call();
+        if (synced > 0) _flashSyncSuccess();
       }
       return synced;
     } finally {
       _uploadInFlight = false;
+      _publishSyncState(activity: SyncActivity.idle);
     }
+  }
+
+  /// ซิงค์ทันที — ใช้จากปุ่ม "ซิงค์เลย" / pull-to-refresh
+  Future<int> syncNow() async {
+    return uploadPendingImmediately();
+  }
+
+  /// เรียกเมื่อแอปกลับ foreground
+  void onAppResumed() {
+    unawaited(_runSchedulerCycle(immediate: true));
+  }
+
+  /// Realtime สำหรับวันที่เลือก — อัปเดต UI เมื่อมีข้อมูลจากเครื่องอื่น
+  void configureTransactionRealtime({
+    required String dateYmd,
+    VoidCallback? onRemoteChange,
+  }) {
+    _realtimeDateFilter = dateYmd;
+    _onRemoteDataChanged = onRemoteChange;
+    final client = _autoSyncClient;
+    if (client != null) {
+      unawaited(_restartRealtime(client));
+    }
+  }
+
+  Future<void> _restartRealtime(SupabaseClient client) async {
+    await _realtimeChannel?.unsubscribe();
+    _realtimeChannel = null;
+    final day = _realtimeDateFilter;
+    if (day == null || day.isEmpty) return;
+
+    _realtimeChannel = client
+        .channel('mobile_tx_$day')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'transactions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'date',
+            value: day,
+          ),
+          callback: (payload) {
+            debugPrint(
+              'CountRecordOfflineSync realtime: ${payload.eventType}',
+            );
+            _onRemoteDataChanged?.call();
+          },
+        )
+        .subscribe();
+  }
+
+  Future<List<FailedSyncItem>> listFailedItems() async {
+    final ops = await _readFailedQueue();
+    return ops.map(_toFailedSyncItem).toList();
+  }
+
+  FailedSyncItem _toFailedSyncItem(_PendingOp op) {
+    final isDelete = op.type == _PendingOpType.delete;
+    final label = isDelete
+        ? 'ลบ ${op.deleteId ?? 'รายการ'}'
+        : (op.transaction?.description.trim().isNotEmpty == true
+            ? op.transaction!.description
+            : 'บันทึก ${op.transaction?.id ?? ''}');
+    return FailedSyncItem(
+      key: op.itemKey,
+      label: label,
+      date: op.date ?? op.transaction?.date ?? '',
+      reason: op.failureReason ?? SyncFailureReason.serverError,
+      failedAtMs: op.failedAtMs ?? op.queuedAtMs,
+      isDelete: isDelete,
+    );
+  }
+
+  Future<void> retryFailedItem(String key) async {
+    final failedOps = await _readFailedQueue();
+    final idx = failedOps.indexWhere((o) => o.itemKey == key);
+    if (idx < 0) return;
+    final op = failedOps.removeAt(idx).resetForRetry();
+    await _writeFailedQueue(failedOps);
+    final queue = await _readQueue();
+    queue.removeWhere((o) => o.itemKey == key);
+    queue.add(op);
+    await _writeQueue(queue);
+    _resetSchedulerBackoff();
+    unawaited(_runSchedulerCycle(immediate: true));
+  }
+
+  Future<void> discardFailedItem(String key) async {
+    final failedOps = await _readFailedQueue();
+    failedOps.removeWhere((o) => o.itemKey == key);
+    await _writeFailedQueue(failedOps);
+  }
+
+  Future<void> retryAllFailed() async {
+    final failedOps = await _readFailedQueue();
+    if (failedOps.isEmpty) return;
+    final queue = await _readQueue();
+    for (final op in failedOps) {
+      queue.removeWhere((o) => o.itemKey == op.itemKey);
+      queue.add(op.resetForRetry());
+    }
+    await _writeQueue(queue);
+    await _writeFailedQueue([]);
+    _resetSchedulerBackoff();
+    unawaited(_runSchedulerCycle(immediate: true));
   }
 
   Future<int> syncPendingIfPossible(
@@ -758,21 +1144,31 @@ class CountRecordOfflineSync {
     _autoSyncClient = client;
     _onAutoSynced = onSynced;
     _onServerReachabilityChanged = onServerReachabilityChanged;
-    _startConnectivityWatch();
+    unawaited(_startConnectivityWatch());
     _resetSchedulerBackoff();
+    unawaited(_ensureFailedQueueLoaded());
     unawaited(_runSchedulerCycle(immediate: true));
+    if (_realtimeDateFilter != null) {
+      unawaited(_restartRealtime(client));
+    }
   }
 
   void stopAutoSync() {
     _schedulerTimer?.cancel();
     _schedulerTimer = null;
+    _syncFlashTimer?.cancel();
+    _syncFlashTimer = null;
     _connectivitySub?.cancel();
     _connectivitySub = null;
+    unawaited(_realtimeChannel?.unsubscribe());
+    _realtimeChannel = null;
     _autoSyncService = null;
     _autoSyncClient = null;
     _onAutoSynced = null;
     _onServerReachabilityChanged = null;
+    _onRemoteDataChanged = null;
     _schedulerRunning = false;
+    _publishSyncState(activity: SyncActivity.idle);
   }
 }
 
@@ -788,16 +1184,21 @@ class _PendingOp {
     required this.queuedAtMs,
     this.retryCount = 0,
     this.nextAttemptMs,
+    this.knownServerCreatedAtMs,
+    this.failureReason,
+    this.failedAtMs,
   });
 
   factory _PendingOp.upsert({
     required AppTransaction transaction,
     required bool omitCreatedAt,
+    int? knownServerCreatedAtMs,
   }) {
     return _PendingOp._(
       type: _PendingOpType.upsert,
       transaction: transaction,
       omitCreatedAt: omitCreatedAt,
+      knownServerCreatedAtMs: knownServerCreatedAtMs,
       queuedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
   }
@@ -819,11 +1220,19 @@ class _PendingOp {
   final int queuedAtMs;
   final int retryCount;
   final int? nextAttemptMs;
+  final int? knownServerCreatedAtMs;
+  final SyncFailureReason? failureReason;
+  final int? failedAtMs;
+
+  String get itemKey {
+    if (type == _PendingOpType.delete) {
+      return 'del:${deleteId ?? ''}';
+    }
+    return 'ups:${transaction?.id ?? queuedAtMs}';
+  }
 
   bool isReadyToRetry(int nowMs) {
-    if (retryCount >= CountRecordOfflineSync._maxItemRetries) {
-      return nowMs >= (nextAttemptMs ?? 0);
-    }
+    if (retryCount >= CountRecordOfflineSync._maxItemRetries) return false;
     if (retryCount == 0 || nextAttemptMs == null) return true;
     return nowMs >= nextAttemptMs!;
   }
@@ -840,6 +1249,37 @@ class _PendingOp {
       queuedAtMs: queuedAtMs,
       retryCount: nextRetry,
       nextAttemptMs: nowMs + delay.inMilliseconds,
+      knownServerCreatedAtMs: knownServerCreatedAtMs,
+    );
+  }
+
+  _PendingOp asFailed(SyncFailureReason reason) {
+    return _PendingOp._(
+      type: type,
+      transaction: transaction,
+      omitCreatedAt: omitCreatedAt,
+      deleteId: deleteId,
+      date: date,
+      queuedAtMs: queuedAtMs,
+      retryCount: retryCount,
+      nextAttemptMs: nextAttemptMs,
+      knownServerCreatedAtMs: knownServerCreatedAtMs,
+      failureReason: reason,
+      failedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  _PendingOp resetForRetry() {
+    return _PendingOp._(
+      type: type,
+      transaction: transaction,
+      omitCreatedAt: omitCreatedAt,
+      deleteId: deleteId,
+      date: date,
+      queuedAtMs: queuedAtMs,
+      retryCount: 0,
+      nextAttemptMs: null,
+      knownServerCreatedAtMs: knownServerCreatedAtMs,
     );
   }
 
@@ -861,6 +1301,10 @@ class _PendingOp {
       'queued_at_ms': queuedAtMs,
       'retry_count': retryCount,
       if (nextAttemptMs != null) 'next_attempt_ms': nextAttemptMs,
+      if (knownServerCreatedAtMs != null)
+        'known_server_created_at_ms': knownServerCreatedAtMs,
+      if (failureReason != null) 'failure_reason': failureReason!.name,
+      if (failedAtMs != null) 'failed_at_ms': failedAtMs,
     };
   }
 
@@ -877,6 +1321,16 @@ class _PendingOp {
     if (txRaw is Map<String, dynamic>) {
       tx = AppTransaction.fromMap(txRaw);
     }
+    SyncFailureReason? failureReason;
+    final reasonRaw = map['failure_reason']?.toString();
+    if (reasonRaw != null) {
+      for (final r in SyncFailureReason.values) {
+        if (r.name == reasonRaw) {
+          failureReason = r;
+          break;
+        }
+      }
+    }
     return _PendingOp._(
       type: type,
       transaction: tx,
@@ -887,6 +1341,10 @@ class _PendingOp {
           DateTime.now().millisecondsSinceEpoch,
       retryCount: (map['retry_count'] as num?)?.toInt() ?? 0,
       nextAttemptMs: (map['next_attempt_ms'] as num?)?.toInt(),
+      knownServerCreatedAtMs:
+          (map['known_server_created_at_ms'] as num?)?.toInt(),
+      failureReason: failureReason,
+      failedAtMs: (map['failed_at_ms'] as num?)?.toInt(),
     );
   }
 }
