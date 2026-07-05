@@ -225,6 +225,30 @@ ThemeData _buildAppTheme() {
       ),
       textStyle: GoogleFonts.kanit(fontSize: 12, color: Colors.white),
     ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: const Color(0xFFD5F2F5),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          size: 24,
+          color: states.contains(WidgetState.selected)
+              ? const Color(0xFF0D98A5)
+              : const Color(0xFF7A8FA0),
+        ),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => GoogleFonts.kanit(
+          fontSize: 11.5,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
+          color: states.contains(WidgetState.selected)
+              ? const Color(0xFF0D98A5)
+              : const Color(0xFF7A8FA0),
+        ),
+      ),
+    ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: brand,
       foregroundColor: Colors.white,

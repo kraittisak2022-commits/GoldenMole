@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
 import '../utils/device_perf.dart';
@@ -214,7 +215,10 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: widget.onTap,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                widget.onTap();
+              },
               onTapDown: (_) => setState(() => _pressed = true),
               onTapUp: (_) => setState(() => _pressed = false),
               onTapCancel: () => setState(() => _pressed = false),

@@ -5,7 +5,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
-import '../widgets/page_loading_view.dart';
+import '../widgets/list_page_skeleton.dart';
 
 class EmployeesScreen extends StatefulWidget {
   const EmployeesScreen({super.key, required this.service});
@@ -106,7 +106,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
           future: _employeesFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-            return const PageLoadingView(label: 'กำลังโหลดข้อมูลพนักงาน');
+              return const ListPageSkeleton(rowCount: 8);
             }
             if (snapshot.hasError) {
               return Center(

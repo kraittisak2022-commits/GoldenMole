@@ -5,7 +5,7 @@ import '../models/land_project.dart';
 import '../services/project_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
-import '../widgets/page_loading_view.dart';
+import '../widgets/list_page_skeleton.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key, required this.service});
@@ -67,7 +67,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           future: _projectsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-            return const PageLoadingView(label: 'กำลังโหลดข้อมูลโครงการ');
+              return const ListPageSkeleton(rowCount: 6);
             }
             if (snapshot.hasError) {
               return Center(

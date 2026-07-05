@@ -11,7 +11,8 @@ import '../utils/daily_module_transactions.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../utils/thai_holidays.dart';
-import '../widgets/page_loading_view.dart';
+import '../widgets/empty_state_view.dart';
+import '../widgets/list_page_skeleton.dart';
 
 String _stripRecorderSuffix(String raw) =>
     raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
@@ -346,27 +347,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                 ),
               if (!day.hasAnyPlannerEntry)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  alignment: Alignment.center,
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.event_available_outlined,
-                        size: 40,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'ไม่มีรายการในวันนี้',
-                        style: GoogleFonts.kanit(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
+                const EmptyStateView(
+                  icon: Icons.event_available_outlined,
+                  title: 'ไม่มีรายการในวันนี้',
+                  subtitle: 'เพิ่มงานหรือเหตุการณ์ได้จากปุ่มด้านล่าง',
+                  compact: true,
                 ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -1000,7 +985,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const PageLoadingView(label: 'กำลังโหลดปฏิทิน');
+              return const ListPageSkeleton(
+                rowCount: 4,
+                showHeaderBlock: true,
+              );
             }
             if (snapshot.hasError) {
               return Center(

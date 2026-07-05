@@ -15,6 +15,7 @@ import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
+import '../widgets/soft_sync_indicator.dart';
 import '../widgets/thai_text_pad.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
@@ -2111,11 +2112,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       savingDialogOpen = true;
       await body();
       if (!mounted) return;
-      _dismissSavingPopup();
-      savingDialogOpen = false;
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
       if (stayOnPage) {
+        _dismissSavingPopup();
+        savingDialogOpen = false;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
         _releaseKeyboardFocus();
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
@@ -2132,6 +2133,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
         await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
       } else {
+        // dialog เดิม morph เป็น success ต่อเนื่อง — ไม่ปิดแล้วเปิดใหม่
+        savingDialogOpen = false;
         _releaseKeyboardFocus();
         final msg = _lastPersistQueued
             ? '$successMessage (บันทึกในเครื่อง — รออัปโหลด)'
@@ -5722,20 +5725,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
               ),
-              if (_softModuleRefreshing)
-                const Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    bottom: false,
-                    child: LinearProgressIndicator(
-                      minHeight: 2.5,
-                      backgroundColor: Color(0x33FFFFFF),
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
               SafeArea(
                 child: FadeTransition(
                   opacity: _entranceFade,
@@ -5927,6 +5916,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ],
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: SoftSyncIndicator(visible: _softModuleRefreshing),
                 ),
               ),
             ],

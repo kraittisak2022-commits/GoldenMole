@@ -5,7 +5,8 @@ import '../models/app_transaction.dart';
 import '../services/transaction_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
-import '../widgets/page_loading_view.dart';
+import '../widgets/empty_state_view.dart';
+import '../widgets/list_page_skeleton.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key, required this.service});
@@ -102,7 +103,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           future: _transactionsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-            return const PageLoadingView(label: 'กำลังโหลดข้อมูลธุรกรรม');
+              return const ListPageSkeleton(rowCount: 8);
             }
             if (snapshot.hasError) {
               return Center(
@@ -192,11 +193,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 Expanded(
                   child: items.isEmpty
-                      ? Center(
-                          child: Text(
-                            'ไม่พบรายการธุรกรรม',
-                            style: GoogleFonts.kanit(),
-                          ),
+                      ? const EmptyStateView(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'ไม่พบรายการธุรกรรม',
+                          subtitle:
+                              'ลองเปลี่ยนตัวกรองหรือคำค้นหา แล้วดูอีกครั้ง',
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),

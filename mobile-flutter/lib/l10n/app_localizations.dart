@@ -16,6 +16,16 @@ class AppLocalizations {
 
   String get dailyLogTitle => _pick('บันทึกประจำวัน', '每日记录');
 
+  /// คำทักทายตามช่วงเวลา — ใช้บน header หน้าแรก
+  String greetingForHour(int hour) {
+    if (hour >= 5 && hour < 12) return _pick('สวัสดีตอนเช้า', '早上好');
+    if (hour >= 12 && hour < 16) return _pick('สวัสดีตอนบ่าย', '下午好');
+    if (hour >= 16 && hour < 19) return _pick('สวัสดีตอนเย็น', '傍晚好');
+    return _pick('สวัสดีตอนค่ำ', '晚上好');
+  }
+
+  String get progressRingLabel => _pick('ความคืบหน้า', '进度');
+
   String get languageLabel => _pick('ภาษา', '语言');
 
   String get statusComplete => _pick('ครบแล้ว', '已完成');
@@ -51,6 +61,11 @@ class AppLocalizations {
   String get navHideMenu => _pick('ซ่อนเมนู', '隐藏菜单');
 
   String get navLogout => _pick('ออกจากระบบ', '退出登录');
+
+  String get logoutConfirmMessage =>
+      _pick('ยืนยันออกจากระบบตอนนี้?', '确认退出登录？');
+
+  String get cancel => _pick('ยกเลิก', '取消');
 
   String headerMenusComplete(int total) =>
       _pick('วันนี้บันทึกครบทุกเมนูแล้ว ($total เมนู)', '今日已全部完成 ($total 项)');

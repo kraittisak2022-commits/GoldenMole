@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -148,44 +147,6 @@ bool _isOfflineCapableModule(String category) =>
 
 /// เมนูบนหน้าแรกที่แสดงตอนไม่มีเน็ต — โหมดออฟไลน์จะจางเมนูอื่น แต่ยังแสดงกริดเดิม
 
-/// เมนูที่นับในชิป «บันทึกครบ X/Y เมนู»
-/// และเมนู **ทรายที่ล้างที่บ้าน** เมื่อวันนั้นในบันทึกการทำงานมีคนในกล่อง canvas งานที่บ้าน (`washHome` และคีย์รวมย้อนหลัง)
-bool _laborWorkRecordAssignsWashHome(Iterable<AppTransaction> dayTransactions) {
-  for (final t in dayTransactions) {
-    if (t.category != 'Labor') continue;
-    final wa = t.workAssignments;
-    if (wa == null || wa.isEmpty) continue;
-    for (final key in [
-      'washHome',
-      'wash_home',
-      'wash_yard_house',
-      'sift_home',
-    ]) {
-      final ids = wa[key];
-      if (ids != null && ids.isNotEmpty) return true;
-    }
-  }
-  return false;
-}
-
-List<_DailyModuleDef> _dailyHeaderCountedModules(
-  List<AppTransaction> dayTransactions,
-) {
-  const core = {
-    'บันทึกการร่อนทราย',
-    'น้ำมัน',
-    'ค่าแรง',
-    'เหตุการณ์',
-    'การใช้รถแม็คโคร',
-  };
-  final needHomeSand = _laborWorkRecordAssignsWashHome(dayTransactions);
-  return _kDailyModules.where((m) {
-    if (core.contains(m.category)) return true;
-    if (m.category == 'ทรายที่ล้างที่บ้าน' && needHomeSand) return true;
-    return false;
-  }).toList(growable: false);
-}
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -204,9 +165,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
-  static const _kNavRailExpandedPrefKey = 'dashboard_nav_rail_expanded_v1';
-  static const _kNavRailWidth = 72.0;
-
   late final TransactionService _txService;
   int _bodyPage = 0;
   DateTime _selectedDay = DateTime.now();
@@ -214,10 +172,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _countAndRecordMenuOpen = false;
   late Future<_HomePayload> _homeFuture;
   _HomePayload? _lastHomePayload;
-  /// แถบเมนูซ้าย (ไอคอนสควอร์เคิล): true = แสดง, false = ซ่อน — ปัดจากซ้ายไปขวาที่ขอบจอเพื่อเปิด
-  bool _navRailOpen = true;
-  double _edgeSwipeAccum = 0;
-  Timer? _navRailIntroTimer;
   Timer? _connectivityProbeTimer;
   Timer? _offlineDebounceTimer;
 
@@ -366,36 +320,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     _txService = TransactionService(Supabase.instance.client);
     _homeFuture = _futureWithSnapshot(_loadHome(cacheFirst: true));
     unawaited(_warmHomeFromCache());
-    _navRailOpen = true;
-    _scheduleNavRailIntroHide();
     CountRecordOfflineSync.instance.startAutoSync(
       service: _txService,
       client: Supabase.instance.client,
       onSynced: _onCountRecordOfflineSynced,
     );
-  }
-
-  /// เปิดหน้าบันทึกประจำวัน — แสดงแถบเมนู 3 วินาที แล้วเก็บซ่อน (ปัดขอบซ้ายเปิดได้อีก)
-  void _scheduleNavRailIntroHide() {
-    _navRailIntroTimer?.cancel();
-    _navRailIntroTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted || !_navRailOpen) return;
-      setState(() => _navRailOpen = false);
-      _persistNavRailOpen(false);
-    });
-  }
-
-  Future<void> _persistNavRailOpen(bool value) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setBool(_kNavRailExpandedPrefKey, value);
-    } catch (_) {}
-  }
-
-  void _toggleNavRail() {
-    _navRailIntroTimer?.cancel();
-    setState(() => _navRailOpen = !_navRailOpen);
-    _persistNavRailOpen(_navRailOpen);
   }
 
   /// โหลดแคชในเครื่องทันที — แสดงแดชบอร์ดได้เร็วโดยไม่รอเน็ต
@@ -421,7 +350,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     CountRecordOfflineSync.instance.stopAutoSync();
-    _navRailIntroTimer?.cancel();
     _connectivityProbeTimer?.cancel();
     _offlineDebounceTimer?.cancel();
     super.dispose();
@@ -844,30 +772,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           final bodyW =
               rawBody > safeMq ? safeMq : rawBody;
           return SafeArea(
+            bottom: false,
             child: SizedBox(
               width: bodyW,
               child: ClipRect(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      width: _navRailOpen ? _kNavRailWidth : 0,
-                      child: _navRailOpen
-                          ? ClipRect(
-                              child: _squircleNavRail(client: client),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    Expanded(
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Positioned.fill(
-                            child: FutureBuilder<_HomePayload>(
-                              future: _homeFuture,
-                              builder: (context, snapshot) {
+                child: FutureBuilder<_HomePayload>(
+                  future: _homeFuture,
+                  builder: (context, snapshot) {
                               final merged = snapshot.data ?? _lastHomePayload;
                               final waiting =
                                   snapshot.connectionState ==
@@ -950,73 +861,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 child: body,
                               );
                             },
-                          ),
-                        ),
-                          if (!_navRailOpen)
-                            Positioned(
-                              left: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: 36,
-                              child: Listener(
-                                behavior: HitTestBehavior.translucent,
-                                onPointerDown: (_) => _edgeSwipeAccum = 0,
-                                onPointerMove: (e) {
-                                  if (e.delta.dx > 0) {
-                                    _edgeSwipeAccum += e.delta.dx;
-                                    if (_edgeSwipeAccum >= 56) {
-                                      _edgeSwipeAccum = 0;
-                                      HapticFeedback.lightImpact();
-                                      _toggleNavRail();
-                                    }
-                                  }
-                                },
-                                onPointerUp: (_) => _edgeSwipeAccum = 0,
-                                onPointerCancel: (_) =>
-                                    _edgeSwipeAccum = 0,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Material(
-                                    elevation: 4,
-                                    shadowColor: Colors.black26,
-                                    borderRadius: const BorderRadius.horizontal(
-                                      right: Radius.circular(16),
-                                    ),
-                                    color: Colors.white,
-                                    child: InkWell(
-                                      borderRadius:
-                                          const BorderRadius.horizontal(
-                                        right: Radius.circular(16),
-                                      ),
-                                      onTap: () {
-                                        HapticFeedback.lightImpact();
-                                        _toggleNavRail();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(
-                                          vertical: 16,
-                                          horizontal: 6,
-                                        ),
-                                        child: Icon(
-                                          Icons.chevron_right,
-                                          color: Color(0xFF546E7A),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
           );
         },
       ),
+      bottomNavigationBar: _buildBottomNav(client),
     );
   }
 
@@ -1024,126 +875,83 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _refreshHomeSilently(tryNetwork: true);
   }
 
-  Widget _squircleNavRail({required SupabaseClient client}) {
+  /// แถบนำทางล่างแบบ Material 3 — หน้าแรก / ปฏิทิน / ตั้งค่า / ออกจากระบบ
+  Widget _buildBottomNav(SupabaseClient client) {
     final l10n = AppLocalizations.of(context);
-    return Material(
-      color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 10),
-          _SquircleNavIcon(
-            icon: Icons.home_outlined,
-            selected: _bodyPage == 0,
-            tooltip: l10n.navHome,
-            onTap: () => setState(() => _bodyPage = 0),
-          ),
-          const SizedBox(height: 8),
-          _SquircleNavIcon(
-            icon: Icons.calendar_month_outlined,
-            selected: false,
-            tooltip: l10n.navCalendar,
-            onTap: () => _openCalendarScreen(client),
-          ),
-          const SizedBox(height: 8),
-          _SquircleNavIcon(
-            icon: Icons.settings_outlined,
-            selected: false,
-            tooltip: l10n.navSettings,
-            onTap: () => _openAppSettingsScreen(client),
-          ),
-          Expanded(
-            child: Center(
-              child: Tooltip(
-                message: l10n.navHideMenu,
-                child: Material(
-                  color: const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(22),
-                  elevation: 0,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(22),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      _toggleNavRail();
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      child: Icon(
-                        Icons.chevron_left,
-                        size: 22,
-                        color: Color(0xFF546E7A),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE7ECF3))),
+      ),
+      child: NavigationBar(
+        height: 64,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: const Color(0xFFD5F2F5),
+        elevation: 0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        selectedIndex: 0,
+        onDestinationSelected: (index) {
+          HapticFeedback.selectionClick();
+          switch (index) {
+            case 0:
+              setState(() => _bodyPage = 0);
+            case 1:
+              _openCalendarScreen(client);
+            case 2:
+              _openAppSettingsScreen(client);
+            case 3:
+              _confirmLogout();
+          }
+        },
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(
+              Icons.home_rounded,
+              color: Color(0xFF0D98A5),
             ),
+            label: l10n.navHome,
           ),
-          _SquircleNavIcon(
-            icon: Icons.logout,
-            selected: false,
-            tooltip: l10n.navLogout,
-            onTap: widget.onLogout,
+          NavigationDestination(
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: l10n.navCalendar,
           ),
-          const SizedBox(height: 12),
+          NavigationDestination(
+            icon: const Icon(Icons.settings_outlined),
+            label: l10n.navSettings,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.logout_rounded),
+            label: l10n.navLogout,
+          ),
         ],
       ),
     );
   }
-}
 
-class _SquircleNavIcon extends StatelessWidget {
-  const _SquircleNavIcon({
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  final String? tooltip;
-
-  static const Color _teal = Color(0xFF00897B);
-  static const Color _inactiveBorder = Color(0xFFE0E0E0);
-  static const Color _inactiveIcon = Color(0xFF9E9E9E);
-
-  @override
-  Widget build(BuildContext context) {
-    final borderColor = selected ? _teal : _inactiveBorder;
-    final iconColor = selected ? _teal : _inactiveIcon;
-    final core = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: borderColor,
-                width: selected ? 2 : 1.2,
-              ),
-            ),
-            child: Icon(icon, size: 22, color: iconColor),
+  Future<void> _confirmLogout() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.navLogout),
+        content: Text(l10n.logoutConfirmMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.cancel),
           ),
-        ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.navLogout),
+          ),
+        ],
       ),
     );
-    if (tooltip != null && tooltip!.isNotEmpty) {
-      return Tooltip(message: tooltip!, child: core);
+    if (confirmed == true) {
+      widget.onLogout();
     }
-    return core;
   }
 }
 
@@ -1361,24 +1169,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         },
       );
     }
-    final modulesForHeaderTotals = _dailyHeaderCountedModules(
-      widget.data.dayTransactions,
-    );
-    final doneCount = modulesForHeaderTotals
-        .where(
-          (m) =>
-              menuStatusByCategory[m.category] ==
-              DailyModuleFillStatus.complete,
-        )
-        .length;
-    final incompleteCount = modulesForHeaderTotals
-        .where(
-          (m) =>
-              menuStatusByCategory[m.category] ==
-              DailyModuleFillStatus.incomplete,
-        )
-        .length;
-    final headerTotalMenuCount = modulesForHeaderTotals.length;
     final headerAnim = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
@@ -1844,9 +1634,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 selectedDateLabel: l10n.formatSelectedDate(
                                   widget.selectedDay,
                                 ),
-                                doneCount: doneCount,
-                                incompleteMenuCount: incompleteCount,
-                                totalCount: headerTotalMenuCount,
                                 onPickDay: widget.onPickDay,
                                 onRefresh: widget.onPullRefresh,
                                 locale: localeScope.locale,
@@ -2081,9 +1868,6 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.serverOnline,
     this.serverReconnecting = false,
     required this.selectedDateLabel,
-    required this.doneCount,
-    required this.incompleteMenuCount,
-    required this.totalCount,
     required this.onPickDay,
     required this.onRefresh,
     required this.locale,
@@ -2095,244 +1879,252 @@ class _HomeHeaderCompact extends StatelessWidget {
   final bool serverOnline;
   final bool serverReconnecting;
   final String selectedDateLabel;
-  final int doneCount;
-  final int incompleteMenuCount;
-  final int totalCount;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
   final AppLocale locale;
   final ValueChanged<AppLocale> onLocaleChanged;
+
+  static const _teal = Color(0xFF0D98A5);
+  static const _tealDark = Color(0xFF0A6270);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE7ECF3)),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF2)),
         boxShadow: [
           BoxShadow(
             color: _DailyHomeContentState._kPanelShadowColor,
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const AppLogo(size: 40),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.dailyLogTitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1A2433),
-                      ),
-                    ),
-                    Text(
-                      appName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF6B7788), fontSize: 14),
-                    ),
-                  ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 3,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF00C4D4), _teal],
                 ),
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                flex: 3,
-                child: LayoutBuilder(
-                  builder: (context, dateConstraints) {
-                    final raw = dateConstraints.maxWidth;
-                    final slot = (raw.isFinite && raw > 0)
-                        ? raw
-                        : (MediaQuery.sizeOf(context).width * 0.35)
-                            .clamp(96.0, 280.0);
-                    return Align(
-                      alignment: Alignment.centerRight,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: slot),
-                        child: _PressScaleButton(
-                          child: InkWell(
-                            onTap: onPickDay,
-                            borderRadius: BorderRadius.circular(20),
-                            child: Ink(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: slot < 200 ? 8 : 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5F8FC),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: const Color(0xFFD9E1EC),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  const Icon(
-                                    Icons.calendar_today,
-                                    color: Color(0xFF00A8C4),
-                                    size: 14,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      selectedDateLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.start,
-                                      style: const TextStyle(
-                                        color: Color(0xFF00A8C4),
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: _teal.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: AppLogo(size: 36),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.dailyLogTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF152535),
+                                letterSpacing: -0.3,
+                                height: 1.15,
                               ),
                             ),
+                            const SizedBox(height: 2),
+                            Text(
+                              appName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF7A8FA0),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SegmentedButton<AppLocale>(
+                        segments: [
+                          ButtonSegment(
+                            value: AppLocale.th,
+                            label: Text(
+                              AppLocale.th.shortLabel,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          ButtonSegment(
+                            value: AppLocale.zh,
+                            label: Text(
+                              AppLocale.zh.shortLabel,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                        selected: {locale},
+                        onSelectionChanged: (next) {
+                          if (next.isEmpty) return;
+                          onLocaleChanged(next.first);
+                        },
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: const WidgetStatePropertyAll(
+                            EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          ),
+                          minimumSize: const WidgetStatePropertyAll(
+                            Size(28, 32),
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-              _PressScaleButton(
-                child: IconButton(
-                  style: IconButton.styleFrom(
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(6),
-                    minimumSize: Size.zero,
+                      _PressScaleButton(
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.all(6),
+                            minimumSize: Size.zero,
+                          ),
+                          onPressed: () => onRefresh(),
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            color: Color(0xFF546E7A),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: () => onRefresh(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                    color: Color(0xFF3A4A5E),
-                    size: 22,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                l10n.languageLabel,
-                style: const TextStyle(
-                  color: Color(0xFF6B7788),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SegmentedButton<AppLocale>(
-                  segments: [
-                    ButtonSegment(
-                      value: AppLocale.th,
-                      label: Text(
-                        AppLocale.th.shortLabel,
-                        style: const TextStyle(fontSize: 13),
+                  const SizedBox(height: 14),
+                  _PressScaleButton(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onPickDay,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Ink(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [Color(0xFFE8F8FA), Color(0xFFF4FCFD)],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFB8E4EA)),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: _teal.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Icon(
+                                    Icons.calendar_month_rounded,
+                                    color: _teal,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  selectedDateLabel,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                    color: _tealDark,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: _teal,
+                                size: 24,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    ButtonSegment(
-                      value: AppLocale.zh,
-                      label: Text(
-                        AppLocale.zh.shortLabel,
-                        style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _HeaderStatChip(
+                        icon: Icons.access_time_filled_rounded,
+                        label: '${l10n.latestPrefix} $lastLabel',
                       ),
-                    ),
-                  ],
-                  selected: {locale},
-                  onSelectionChanged: (next) {
-                    if (next.isEmpty) return;
-                    onLocaleChanged(next.first);
-                  },
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding: const WidgetStatePropertyAll(
-                      EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    ),
+                      _LiveClockChip(l10n: l10n),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 320),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: KeyedSubtree(
+                          key: ValueKey(
+                            serverReconnecting
+                                ? 'reconnecting'
+                                : (serverOnline ? 'online' : 'offline'),
+                          ),
+                          child: _HeaderStatChip(
+                            icon: serverReconnecting
+                                ? Icons.sync_rounded
+                                : (serverOnline
+                                    ? Icons.cloud_done_rounded
+                                    : Icons.cloud_off_rounded),
+                            label: serverReconnecting
+                                ? 'กำลังซิงก์...'
+                                : (serverOnline
+                                    ? l10n.serverOnline
+                                    : l10n.serverOffline),
+                            iconColor: serverReconnecting
+                                ? const Color(0xFFF9A825)
+                                : (serverOnline
+                                    ? const Color(0xFF1E8E56)
+                                    : const Color(0xFFC25050)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (totalCount > 0)
-                _HeaderStatChip(
-                  icon: Icons.today_rounded,
-                  label: doneCount >= totalCount
-                      ? l10n.headerMenusComplete(totalCount)
-                      : incompleteMenuCount > 0
-                          ? l10n.headerMenusProgress(
-                              doneCount,
-                              incompleteMenuCount,
-                              totalCount,
-                            )
-                          : l10n.headerMenusSimple(doneCount, totalCount),
-                ),
-              _HeaderStatChip(
-                icon: Icons.access_time_filled_rounded,
-                label: '${l10n.latestPrefix} $lastLabel',
-              ),
-              _LiveClockChip(l10n: l10n),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: KeyedSubtree(
-                  key: ValueKey(
-                    serverReconnecting
-                        ? 'reconnecting'
-                        : (serverOnline ? 'online' : 'offline'),
-                  ),
-                  child: _HeaderStatChip(
-                    icon: serverReconnecting
-                        ? Icons.sync_rounded
-                        : (serverOnline
-                            ? Icons.cloud_done_rounded
-                            : Icons.cloud_off_rounded),
-                    label: serverReconnecting
-                        ? 'กำลังซิงก์...'
-                        : (serverOnline
-                            ? l10n.serverOnline
-                            : l10n.serverOffline),
-                    iconColor: serverReconnecting
-                        ? const Color(0xFFF9A825)
-                        : (serverOnline
-                            ? const Color(0xFF1E8E56)
-                            : const Color(0xFFC25050)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
