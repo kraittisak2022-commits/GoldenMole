@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../utils/app_haptics.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
+import 'soft_press_button.dart';
 
 Color _iconTint(Color accent) {
   return Color.lerp(accent, const Color(0xFF334155), 0.28)!;
@@ -215,18 +216,20 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                widget.onTap();
+              onTap: widget.onTap,
+              onTapDown: (_) {
+                AppHaptics.tap();
+                setState(() => _pressed = true);
               },
-              onTapDown: (_) => setState(() => _pressed = true),
               onTapUp: (_) => setState(() => _pressed = false),
               onTapCancel: () => setState(() => _pressed = false),
               borderRadius: BorderRadius.circular(radius),
-              child: AnimatedScale(
-                scale: _pressed ? 0.97 : 1,
-                duration: Duration(milliseconds: useLiteChrome ? 80 : 110),
-                curve: Curves.easeOutCubic,
+              child: SoftPressShell(
+                pressed: _pressed,
+                size: SoftPressSize.medium,
+                borderRadius: radius,
+                isDarkSurface: false,
+                showHighlight: true,
                 child: shapedCard,
               ),
             ),

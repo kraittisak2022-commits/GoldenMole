@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,10 +20,12 @@ import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
+import '../utils/app_haptics.dart';
 import '../utils/device_perf.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
 import 'count_record_panel_skeleton.dart';
+import 'soft_press_button.dart';
 
 /// โหมดของแผงนับ — เที่ยวรถ (ต้องเลือกรถ/คนขับก่อน) หรือ ร่อนทราย (หน่วยเดียว)
 enum CounterMode { trip, sand }
@@ -902,18 +903,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       u.comboCount = keepsCombo ? u.comboCount + 1 : 1;
       u.lastRecordAt = now;
     });
-    HapticFeedback.selectionClick();
     unawaited(RecordFeedbackSound.playRecordTap());
     try {
       final queued = await _save(u);
       if (mounted) {
-        HapticFeedback.mediumImpact();
+        AppHaptics.success();
         unawaited(RecordSuccessSpeaker.instance.speakSuccess());
         final reachedGoal = widget.mode == CounterMode.trip &&
             _tripGoal > 0 &&
             u.rounds == _tripGoal;
         if (reachedGoal) {
-          HapticFeedback.heavyImpact();
+          AppHaptics.warn();
           _toast('${u.title} ครบเป้า $_tripGoal เที่ยวแล้ว!');
         } else {
           _showRecordSnackBar(u, stamp, queued: queued);
@@ -1566,7 +1566,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   /// แชร์สรุปประจำวันเป็นรูปภาพ — เปิด sheet พรีวิวการ์ดแล้วกดแชร์
   Future<void> _openShareSummarySheet() async {
-    HapticFeedback.selectionClick();
+    AppHaptics.tap();
     final isTrip = widget.mode == CounterMode.trip;
     final totals = _panelPeriodTotals();
     await showModalBottomSheet<void>(
@@ -1648,7 +1648,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   void _toggleAddVehiclePanel() {
-    HapticFeedback.lightImpact();
+    AppHaptics.confirm();
     if (_units.isEmpty) {
       unawaited(_openSelectDialog());
       return;
@@ -2855,43 +2855,59 @@ class _RecordButtonShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pressScale = pressed ? 0.98 : 1.0;
+    final animDuration = pressed
+        ? SoftPressMotion.downDuration()
+        : SoftPressMotion.upDuration();
+    final animCurve =
+        pressed ? SoftPressMotion.downCurve() : SoftPressMotion.upCurve();
     final bg = busy
         ? (busyBgColor ?? bgColor.withValues(alpha: 0.55))
         : dimmed
             ? bgColor.withValues(alpha: 0.72)
             : bgColor;
-    final lifted = !busy && !dimmed && !pressed;
-    final liftY = lifted ? -2.0 : 0.0;
-    final elevation = busy ? 0.0 : pressed ? 3.0 : 8.0;
+    final shadowBlur = busy ? 0.0 : pressed ? 6.0 : 14.0;
+    final shadowY = busy ? 0.0 : pressed ? 2.0 : 6.0;
 
-    return Transform.scale(
-      scale: pressScale,
-      child: Transform.translate(
-        offset: Offset(0, liftY),
-        child: Material(
-          elevation: elevation,
-          shadowColor: shadowColor.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(borderRadius),
+    return SoftPressShell(
+      pressed: pressed && !busy,
+      size: SoftPressSize.large,
+      borderRadius: borderRadius,
+      showHighlight: !busy && !dimmed,
+      isDarkSurface: true,
+      liftWhenIdle: !busy && !dimmed,
+      child: AnimatedContainer(
+        duration: animDuration,
+        curve: animCurve,
+        decoration: BoxDecoration(
           color: bg,
-          clipBehavior: Clip.antiAlias,
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (_) => onPointerDown(),
-            onPointerMove: onPointerMove,
-            onPointerUp: (_) => onPointerUp(),
-            onPointerCancel: (_) => onPointerCancel(),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                child,
-                if (shimmer && !busy && !dimmed && !pressed)
-                  const Positioned.fill(
-                    child: IgnorePointer(child: _IdleShimmer()),
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: busy
+              ? null
+              : [
+                  BoxShadow(
+                    color: shadowColor.withValues(alpha: 0.45),
+                    blurRadius: shadowBlur,
+                    offset: Offset(0, shadowY),
                   ),
-                ?bottomOverlay,
-              ],
-            ),
+                ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) => onPointerDown(),
+          onPointerMove: onPointerMove,
+          onPointerUp: (_) => onPointerUp(),
+          onPointerCancel: (_) => onPointerCancel(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              child,
+              if (shimmer && !busy && !dimmed && !pressed)
+                const Positioned.fill(
+                  child: IgnorePointer(child: _IdleShimmer()),
+                ),
+              ?bottomOverlay,
+            ],
           ),
         ),
       ),
@@ -3191,7 +3207,7 @@ class _FirstTripSetupCardState extends State<_FirstTripSetupCard> {
 
   void _onPointerDown() {
     setState(() => _pressed = true);
-    HapticFeedback.lightImpact();
+    AppHaptics.confirm();
   }
 
   void _onPointerUp() {
@@ -3397,7 +3413,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
         _holdTimer?.cancel();
         _holdTimer = null;
         _holdTriggered = true;
-        HapticFeedback.heavyImpact();
+        AppHaptics.warn();
         setState(() => _holdProgress = 0);
         widget.onHoldToUndo();
       }
@@ -3411,7 +3427,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
     _swipeTakeover = false;
     if (_canRecordTrip) {
       setState(() => _isPressed = true);
-      HapticFeedback.lightImpact();
+      AppHaptics.confirm();
     }
     _pointerDownAt = DateTime.now();
     _holdTriggered = false;
@@ -4065,17 +4081,22 @@ class _SandLapChipState extends State<_SandLapChip> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onLongPressStart: (_) {
-        HapticFeedback.mediumImpact();
+        AppHaptics.confirm();
         setState(() => _pressed = true);
       },
       onLongPressEnd: (_) => setState(() => _pressed = false),
       onLongPressCancel: () => setState(() => _pressed = false),
       onLongPress: () {
-        HapticFeedback.heavyImpact();
+        AppHaptics.warn();
         setState(() => _pressed = false);
         widget.onLongPress();
       },
-      child: AnimatedContainer(
+      child: SoftPressShell(
+        pressed: _pressed,
+        size: SoftPressSize.small,
+        borderRadius: 8,
+        isDarkSurface: false,
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -4093,6 +4114,7 @@ class _SandLapChipState extends State<_SandLapChip> {
             color: _pressed ? const Color(0xFFC62828) : const Color(0xFF52647B),
           ),
         ),
+      ),
       ),
     );
   }
@@ -4235,7 +4257,7 @@ class _SandRecordButtonState extends State<_SandRecordButton>
         _holdTimer?.cancel();
         _holdTimer = null;
         _holdTriggered = true;
-        HapticFeedback.heavyImpact();
+        AppHaptics.warn();
         setState(() => _holdProgress = 0);
         widget.onHoldToUndo();
       }
@@ -4246,7 +4268,7 @@ class _SandRecordButtonState extends State<_SandRecordButton>
     if (widget.unit.busy) return;
     if (_canPress) {
       setState(() => _isPressed = true);
-      HapticFeedback.lightImpact();
+      AppHaptics.confirm();
     }
     _pointerDownAt = DateTime.now();
     _holdTriggered = false;
@@ -5076,14 +5098,13 @@ class _StatsStripIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: color.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onTap();
-          },
+      child: SoftPressButton(
+        size: SoftPressSize.small,
+        borderRadius: 10,
+        isDarkSurface: false,
+        onTap: onTap,
+        child: Material(
+          color: color.withValues(alpha: 0.09),
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.all(6),

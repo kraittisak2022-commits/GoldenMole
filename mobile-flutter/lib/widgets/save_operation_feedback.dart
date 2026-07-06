@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../utils/app_haptics.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 enum _SavePhase { saving, success }
@@ -366,7 +366,7 @@ class _SuccessContentState extends State<_SuccessContent>
 
     _entrance.forward();
     _ripple.repeat();
-    HapticFeedback.mediumImpact();
+    AppHaptics.success();
   }
 
   @override

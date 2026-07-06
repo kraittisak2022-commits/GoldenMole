@@ -77,6 +77,22 @@ flutter:
   assets:
     - .env
     - assets/branding/app_logo.png
+    - assets/google_fonts/
+
+  fonts:
+    - family: Kanit
+      fonts:
+        - asset: assets/google_fonts/Kanit-Regular.ttf
+        - asset: assets/google_fonts/Kanit-SemiBold.ttf
+          weight: 600
+        - asset: assets/google_fonts/Kanit-Bold.ttf
+          weight: 700
+        - asset: assets/google_fonts/Kanit-ExtraBold.ttf
+          weight: 800
+    - family: Orbitron
+      fonts:
+        - asset: assets/google_fonts/Orbitron-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -116,5 +132,7 @@ flutter_launcher_icons:
   image_path: assets/branding/app_logo.png
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: assets/branding/app_logo.png
+  # Android 13+ themed icon (monochrome)
+  adaptive_icon_monochrome: assets/branding/app_logo.png
   # ให้โลโก้เต็มกรอบ adaptive มากขึ้น (ค่าเริ่มต้นแพ็กเกจมัก inset 16%)
   adaptive_icon_foreground_inset: 10

@@ -19,9 +19,19 @@ class AppErrorBinding {
         msg.contains('overflowed by');
   }
 
+  static bool _isBenignFontError(Object error) {
+    final msg = error.toString();
+    return msg.contains('Failed to load font') ||
+        msg.contains('fonts.gstatic.com') ||
+        msg.contains('allowRuntimeFetching');
+  }
+
+  static bool _isBenignError(Object error) =>
+      _isBenignLayoutError(error) || _isBenignFontError(error);
+
   static void install(GlobalKey<NavigatorState> navigatorKey) {
     FlutterError.onError = (FlutterErrorDetails details) {
-      if (_isBenignLayoutError(details.exception)) {
+      if (_isBenignError(details.exception)) {
         if (kDebugMode) FlutterError.presentError(details);
         return;
       }
@@ -35,9 +45,9 @@ class AppErrorBinding {
     };
 
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-      if (_isBenignLayoutError(error)) {
+      if (_isBenignError(error)) {
         if (kDebugMode) {
-          debugPrint('Layout overflow (suppressed fatal route): $error');
+          debugPrint('Benign error (suppressed fatal route): $error');
         }
         return true;
       }

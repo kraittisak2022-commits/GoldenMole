@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_sync_snapshot.dart';
@@ -20,6 +19,7 @@ import '../services/transaction_service.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/daily_status_translator.dart';
+import '../utils/app_haptics.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
@@ -33,6 +33,7 @@ import '../widgets/count_record_tutorial.dart';
 import '../widgets/dashboard_loading_view.dart';
 import '../widgets/menu_panel_transition.dart';
 import '../widgets/record_module_card.dart';
+import '../widgets/soft_press_button.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
 import 'employees_screen.dart';
@@ -650,7 +651,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
       return;
     }
-    HapticFeedback.lightImpact();
+    AppHaptics.confirm();
     _openWithAnimation(
       QuickInputScreen(
         service: _txService,
@@ -879,7 +880,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: 0,
         onDestinationSelected: (index) {
-          HapticFeedback.selectionClick();
+          AppHaptics.tap();
           switch (index) {
             case 0:
               setState(() => _bodyPage = 0);
@@ -2036,7 +2037,9 @@ class _HomeHeaderCompact extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _PressScaleButton(
+                      SoftPressButton(
+                        size: SoftPressSize.small,
+                        borderRadius: 11,
                         child: IconButton(
                           style: IconButton.styleFrom(
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2055,7 +2058,10 @@ class _HomeHeaderCompact extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  _PressScaleButton(
+                  SoftPressButton(
+                    size: SoftPressSize.medium,
+                    borderRadius: 16,
+                    isDarkSurface: false,
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
@@ -2265,34 +2271,6 @@ class _HeaderStatChip extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _PressScaleButton extends StatefulWidget {
-  const _PressScaleButton({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_PressScaleButton> createState() => _PressScaleButtonState();
-}
-
-class _PressScaleButtonState extends State<_PressScaleButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 48),
-        curve: Curves.easeOutCubic,
-        scale: _pressed ? 0.96 : 1,
-        child: widget.child,
-      ),
     );
   }
 }

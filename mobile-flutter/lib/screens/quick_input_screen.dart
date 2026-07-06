@@ -17,6 +17,7 @@ import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
 import '../widgets/soft_sync_indicator.dart';
 import '../widgets/thai_text_pad.dart';
+import '../utils/app_haptics.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
@@ -5360,7 +5361,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                     ),
                     onPressed: () {
-                      HapticFeedback.selectionClick();
+                      AppHaptics.tap();
                       setState(
                         () => _moduleHistoryVisible = !_moduleHistoryVisible,
                       );
@@ -11088,7 +11089,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
       onTapCancel: () => setState(() => _pressedScale = 1.0),
       onTapUp: (_) {
         setState(() => _pressedScale = 1.0);
-        HapticFeedback.selectionClick();
+        AppHaptics.tap();
         widget.onTap();
       },
       child: AnimatedScale(
@@ -11202,7 +11203,7 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
     if (k == '.' && !widget.allowDecimal) return;
     if (k == '.') {
       if (_digits.contains('.')) return;
-      HapticFeedback.selectionClick();
+      AppHaptics.tap();
       setState(() {
         _digits = _digits.isEmpty ? '0.' : '$_digits.';
       });
@@ -11213,18 +11214,18 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
       final decimals = _digits.substring(idx + 1);
       if (decimals.length >= widget.maxDecimalPlaces) return;
     }
-    HapticFeedback.selectionClick();
+    AppHaptics.tap();
     setState(() => _digits += k);
   }
 
   void _clear() {
-    HapticFeedback.selectionClick();
+    AppHaptics.tap();
     setState(() => _digits = '');
   }
 
   void _backspace() {
     if (_digits.isEmpty) return;
-    HapticFeedback.selectionClick();
+    AppHaptics.tap();
     setState(() => _digits = _digits.substring(0, _digits.length - 1));
   }
 
@@ -13939,7 +13940,7 @@ class _SmoothPressableState extends State<_SmoothPressable> {
     return GestureDetector(
       onTapDown: widget.enabled
           ? (_) {
-              HapticFeedback.lightImpact();
+              AppHaptics.confirm();
               setState(() => _pressed = true);
             }
           : null,

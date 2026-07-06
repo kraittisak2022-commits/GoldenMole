@@ -11,6 +11,7 @@ import '../services/session_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/app_version_label.dart';
 
 /// หลังล็อกอินสำเร็จ — [persistSession] คือจะบันทึก session ลงเครื่องหรือไม่
 typedef LoginSuccessCallback = Future<void> Function(
@@ -289,6 +290,18 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                     ),
+                  ),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: AppVersionLabel(
+                    color: textSecondary.withValues(alpha: 0.75),
+                    fontSize: 11,
                   ),
                 ),
               ),

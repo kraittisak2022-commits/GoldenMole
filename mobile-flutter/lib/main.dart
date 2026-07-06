@@ -289,6 +289,9 @@ ThemeData _buildAppTheme() {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ใช้ฟอนต์ที่ bundle ในแอพ — ไม่ดาวน์โหลดจากเน็ตตอนเปิด
+  GoogleFonts.config.allowRuntimeFetching = false;
+
   // แสดงผลเต็มจอแบบแอพยุคใหม่ — เนื้อหาลอดใต้ status bar / gesture bar
   unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   SystemChrome.setSystemUIOverlayStyle(
@@ -321,9 +324,9 @@ Future<void> main() async {
 
     AppErrorBinding.install(appRootNavigatorKey);
 
-    await _preloadAppFonts();
-
     runApp(MobileApp(navigatorKey: appRootNavigatorKey));
+    // โหลดฟอนต์เบื้องหลังหลัง runApp — ไม่บล็อกหน้าแรก
+    unawaited(_preloadAppFonts());
   } catch (e) {
     debugPrint('Error during initialization: $e');
     runApp(
@@ -404,7 +407,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
-    final minSplash = Future<void>.delayed(const Duration(milliseconds: 850));
+    final minSplash = Future<void>.delayed(const Duration(milliseconds: 400));
     try {
       final results = await Future.wait([
         _sessionService.getSavedAdmin(),
@@ -412,11 +415,12 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
       ]);
       final admin = results[0] as AdminUser?;
       if (admin != null) {
-        try {
-          await ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client);
-        } catch (e, st) {
-          debugPrint('ensureSupabaseSessionForEdgeFunctions: $e\n$st');
-        }
+        unawaited(
+          ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client)
+              .catchError((Object e, StackTrace st) {
+            debugPrint('ensureSupabaseSessionForEdgeFunctions: $e\n$st');
+          }),
+        );
       }
       if (!mounted) return;
       setState(() {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../utils/app_haptics.dart';
 
 /// เปิดแป้นพิมพ์ภาษาไทย (ใช้ IME ระบบใน locale ไทย) — รูปแบบเดียวกับแป้นตัวเลขในแอป
 Future<String?> showThaiTextPad({
@@ -201,7 +202,7 @@ class _ThaiTextPadPanelState extends State<_ThaiTextPadPanel> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      HapticFeedback.selectionClick();
+                      AppHaptics.tap();
                       setState(() {
                         _controller.clear();
                         _focusNode.requestFocus();

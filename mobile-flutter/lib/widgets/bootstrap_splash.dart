@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../utils/device_perf.dart';
 import 'app_logo.dart';
+import 'app_version_label.dart';
 
 /// หน้าโหลดตอนเปิดแอพ — โทนสว่างสอดคล้องกับแดชบอร์ด
 class BootstrapSplash extends StatefulWidget {
@@ -64,58 +65,73 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                 ),
               ),
             SafeArea(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _logoHero(c),
-                      const SizedBox(height: 28),
-                      Text(
-                        'Golden Mole',
-                        style: GoogleFonts.kanit(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: _ink,
-                          letterSpacing: 0.2,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'ระบบบันทึกงานก่อสร้าง',
-                        style: GoogleFonts.kanit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF5C6F82),
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      if (c != null)
-                        _ProgressBeam(progress: c)
-                      else
-                        const SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.8,
-                            color: _teal,
+              child: Stack(
+                children: [
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _logoHero(c),
+                          const SizedBox(height: 28),
+                          Text(
+                            'Golden Mole',
+                            style: GoogleFonts.kanit(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              color: _ink,
+                              letterSpacing: 0.2,
+                              height: 1.1,
+                            ),
                           ),
-                        ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'กำลังเตรียมระบบ...',
-                        style: GoogleFonts.kanit(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF7A8FA3),
-                        ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'ระบบบันทึกงานก่อสร้าง',
+                            style: GoogleFonts.kanit(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF5C6F82),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          if (c != null)
+                            _ProgressBeam(progress: c)
+                          else
+                            const SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.8,
+                                color: _teal,
+                              ),
+                            ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'กำลังเตรียมระบบ...',
+                            style: GoogleFonts.kanit(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF7A8FA3),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: Center(
+                      child: AppVersionLabel(
+                        color: Color(0xFF9AAFBF),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
