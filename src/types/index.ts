@@ -160,6 +160,8 @@ export interface AppDefaults {
     weeklyOffMoveReasonByMonday?: Record<string, string>;
     sandCubicPerTrip?: number;
     vehicleDefaultMachineWage?: number;
+    /** ชื่อรถ → employeeId คนขับเริ่มต้น */
+    vehicleDefaultDrivers?: Record<string, string>;
     laborWorkCategories?: Array<{ id: string; label: string }>;
     openRouterApiKey?: string;
     workPlannerByAdmin?: Record<string, {

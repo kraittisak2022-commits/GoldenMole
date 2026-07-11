@@ -157,6 +157,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   final List<_CounterUnit> _units = [];
   List<String> _cars = const [];
   List<Employee> _drivers = const [];
+  Map<String, String> _vehicleDefaultDrivers = const {};
   Timer? _offlineSyncTicker;
   Timer? _dropdownRefreshTicker;
   Timer? _parentRefreshDebounce;
@@ -478,6 +479,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     setState(() {
       if (cars.isNotEmpty) _cars = cars;
       _applyDriverList(catalog.employees);
+      if (catalog.vehicleDefaultDrivers.isNotEmpty) {
+        _vehicleDefaultDrivers = catalog.vehicleDefaultDrivers;
+      }
     });
   }
 
@@ -1141,6 +1145,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         drivers: _drivers,
         alreadyAdded: already,
         tripHistory: widget.tripHistoryTransactions,
+        vehicleDefaultDrivers: _vehicleDefaultDrivers,
       ),
     );
     if (picks == null || !mounted) return;
@@ -4652,12 +4657,14 @@ class _SelectDialog extends StatefulWidget {
     required this.drivers,
     required this.alreadyAdded,
     required this.tripHistory,
+    required this.vehicleDefaultDrivers,
   });
 
   final List<String> cars;
   final List<Employee> drivers;
   final Set<String> alreadyAdded;
   final List<AppTransaction> tripHistory;
+  final Map<String, String> vehicleDefaultDrivers;
 
   @override
   State<_SelectDialog> createState() => _SelectDialogState();
@@ -4692,6 +4699,7 @@ class _SelectDialogState extends State<_SelectDialog> {
       vehicleId: vehicleId,
       drivers: widget.drivers,
       tripHistory: widget.tripHistory,
+      vehicleDefaultDrivers: widget.vehicleDefaultDrivers,
     );
     if (defaultId != null) {
       row.driverId = defaultId;
@@ -4773,6 +4781,7 @@ class _SelectDialogState extends State<_SelectDialog> {
                           cars: available,
                           drivers: widget.drivers,
                           tripHistory: widget.tripHistory,
+                          vehicleDefaultDrivers: widget.vehicleDefaultDrivers,
                           canRemove: _rows.length > 1,
                           onRemove: () =>
                               setState(() => _rows.removeAt(i)),
@@ -4841,6 +4850,7 @@ class _SelectRow extends StatelessWidget {
     required this.cars,
     required this.drivers,
     required this.tripHistory,
+    required this.vehicleDefaultDrivers,
     required this.canRemove,
     required this.onRemove,
     required this.onVehicleChanged,
@@ -4852,6 +4862,7 @@ class _SelectRow extends StatelessWidget {
   final List<String> cars;
   final List<Employee> drivers;
   final List<AppTransaction> tripHistory;
+  final Map<String, String> vehicleDefaultDrivers;
   final bool canRemove;
   final VoidCallback onRemove;
   final ValueChanged<String?> onVehicleChanged;
@@ -4863,6 +4874,7 @@ class _SelectRow extends StatelessWidget {
       vehicleId: vehicleId,
       drivers: drivers,
       tripHistory: tripHistory,
+      vehicleDefaultDrivers: vehicleDefaultDrivers,
     );
   }
 
@@ -4881,6 +4893,7 @@ class _SelectRow extends StatelessWidget {
             vehicleId: vehicleId,
             drivers: drivers,
             tripHistory: tripHistory,
+            vehicleDefaultDrivers: vehicleDefaultDrivers,
           );
     final driverValue = (row.driverId.isEmpty ||
             !drivers.any((e) => e.id == row.driverId))

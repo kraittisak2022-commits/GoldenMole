@@ -50,6 +50,22 @@ void main() {
     );
   });
 
+  test('settings vehicleDefaultDrivers takes priority over hardcoded nickname', () {
+    final drivers = [
+      _driver('d9', 'พี่นุ'),
+      _driver('d2', 'เดี่ยว'),
+    ];
+    expect(
+      resolveCountRecordDefaultDriverId(
+        vehicleId: 'รถดรัมโอเว่น',
+        drivers: drivers,
+        tripHistory: const [],
+        vehicleDefaultDrivers: const {'รถดรัมโอเว่น': 'd2'},
+      ),
+      'd2',
+    );
+  });
+
   test('resolves default driver id from nickname', () {
     final drivers = [
       _driver('d1', 'พี่นุ'),

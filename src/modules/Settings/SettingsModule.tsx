@@ -3,7 +3,16 @@ import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Serve
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
+import Select from '../../components/ui/Select';
 import { AppSettings, AdminUser, AdminUiTheme, Employee, Transaction, LandProject, AdminLog } from '../../types';
+import {
+    driverLabel,
+    getDriverEmployees,
+    getVehicleDefaultDriversMap,
+    removeVehicleDefaultDriver,
+    renameVehicleDefaultDriver,
+    setVehicleDefaultDriver,
+} from '../../utils/vehicleDefaultDriverUtils';
 import { supabase } from '../../lib/supabase';
 import { runBackup } from '../../services/backupService';
 import type { MobileErrorReportRow } from '../../types/mobileErrorReport';
@@ -35,7 +44,7 @@ interface SettingsModuleProps {
 }
 
 const TAB_HELP: Record<string, string> = {
-    cars: 'รายชื่อรถ/แม็คโคร/ดรัม ใช้ในเมนู «การใช้รถ», «น้ำมัน», และบันทึกงานประจำวัน (เที่ยวรถ / เติมน้ำมัน)',
+    cars: 'รายชื่อรถ/แม็คโคร/ดรัม ใช้ในเมนู «การใช้รถ», «น้ำมัน», และบันทึกงานประจำวัน — สามารถกำหนดคนขับเริ่มต้นต่อคันได้ (จะถูกเลือกอัตโนมัติในเที่ยวรถ/ใช้รถ)',
     jobDescriptions: 'ตัวเลือก «งานที่ทำ» สำหรับค่าแรงและรายงานที่เกี่ยวข้อง',
     incomeTypes: 'ประเภทรายรับ ใช้ตอนบันทึกรายรับและบางรายงานสรุป',
     expenseTypes: 'ประเภทค่าใช้จ่ายในเมนู «สาธารณูปโภค» (ไฟ น้ำ ฯลฯ)',
@@ -48,7 +57,7 @@ const TAB_HELP: Record<string, string> = {
     mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
 };
 
-const LIST_TAB_KEYS = ['cars', 'jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
+const LIST_TAB_KEYS = ['jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
@@ -59,6 +68,10 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     const defaultDriveClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
     const [activeTab, setActiveTab] = useState('general');
     const [newItem, setNewItem] = useState('');
+    const [newCarName, setNewCarName] = useState('');
+    const [newCarDriverId, setNewCarDriverId] = useState('');
+    const [editingCar, setEditingCar] = useState<{ index: number; name: string; driverId: string } | null>(null);
+    const driverEmployees = getDriverEmployees(backupPayload.employees);
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
     const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
     const [status, setStatus] = useState<{
@@ -441,6 +454,76 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         }
     };
 
+    const handleAddCar = () => {
+        const name = newCarName.trim();
+        if (!name) return;
+        if (settings.cars.some((c) => c.trim() === name)) {
+            alert('มีรถชื่อนี้อยู่แล้ว');
+            return;
+        }
+        const driversMap = setVehicleDefaultDriver(
+            getVehicleDefaultDriversMap(settings),
+            name,
+            newCarDriverId || null,
+        );
+        setSettings((prev) => ({
+            ...prev,
+            cars: [...prev.cars, name],
+            appDefaults: {
+                ...prev.appDefaults,
+                vehicleDefaultDrivers: driversMap,
+            },
+        }));
+        setNewCarName('');
+        setNewCarDriverId('');
+    };
+
+    const handleDeleteCar = (index: number) => {
+        const car = settings.cars[index];
+        if (!car || !confirm(`ลบรถ "${car}"?`)) return;
+        const driversMap = removeVehicleDefaultDriver(getVehicleDefaultDriversMap(settings), car);
+        setSettings((prev) => ({
+            ...prev,
+            cars: prev.cars.filter((_, i) => i !== index),
+            appDefaults: {
+                ...prev.appDefaults,
+                vehicleDefaultDrivers: driversMap,
+            },
+        }));
+        if (editingCar?.index === index) setEditingCar(null);
+    };
+
+    const saveCarEdit = () => {
+        if (!editingCar) return;
+        const name = editingCar.name.trim();
+        if (!name) return;
+        const oldName = settings.cars[editingCar.index];
+        if (!oldName) return;
+        const duplicate = settings.cars.some((c, i) => i !== editingCar.index && c.trim() === name);
+        if (duplicate) {
+            alert('มีรถชื่อนี้อยู่แล้ว');
+            return;
+        }
+        let driversMap = getVehicleDefaultDriversMap(settings);
+        if (oldName !== name) {
+            driversMap = renameVehicleDefaultDriver(driversMap, oldName, name);
+        }
+        driversMap = setVehicleDefaultDriver(driversMap, name, editingCar.driverId || null);
+        setSettings((prev) => {
+            const cars = [...prev.cars];
+            cars[editingCar.index] = name;
+            return {
+                ...prev,
+                cars,
+                appDefaults: {
+                    ...prev.appDefaults,
+                    vehicleDefaultDrivers: driversMap,
+                },
+            };
+        });
+        setEditingCar(null);
+    };
+
     const saveGeneral = () => {
         setSettings({
             ...settings,
@@ -701,6 +784,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
 
     const clearEditOnTabChange = (key: string) => {
         setEditingItem(null);
+        setEditingCar(null);
         setActiveTab(key);
     };
 
@@ -1642,6 +1726,107 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                     );
                                 })}
                                 {positions.length === 0 && <p className="text-sm text-slate-400">ยังไม่มีตำแหน่งที่บันทึกไว้</p>}
+                            </div>
+                        </div>
+                    ) : activeTab === 'cars' ? (
+                        <div className="space-y-6">
+                            <div className="mb-2">
+                                <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">รถ / เครื่องจักร</h3>
+                                {TAB_HELP.cars && (
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 flex items-start gap-2">
+                                        <Info size={15} className="shrink-0 mt-0.5 opacity-70" />
+                                        {TAB_HELP.cars}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                                <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">เพิ่มรถใหม่</p>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Input
+                                        placeholder="ชื่อรถ / เครื่องจักร"
+                                        value={newCarName}
+                                        onChange={(e: any) => setNewCarName(e.target.value)}
+                                        onKeyDown={(e: any) => { if (e.key === 'Enter') handleAddCar(); }}
+                                    />
+                                    <Select
+                                        label="คนขับเริ่มต้น (ไม่บังคับ)"
+                                        value={newCarDriverId}
+                                        onChange={(e: any) => setNewCarDriverId(e.target.value)}
+                                    >
+                                        <option value="">-- ไม่ระบุ --</option>
+                                        {driverEmployees.map((e) => (
+                                            <option key={e.id} value={e.id}>{e.nickname || e.name}</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                                <Button onClick={handleAddCar} className="mt-3">
+                                    <Plus size={18} /> เพิ่มรถ
+                                </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                                {settings.cars.map((car, idx) => {
+                                    const driverId = settings.appDefaults?.vehicleDefaultDrivers?.[car];
+                                    const isEditing = editingCar?.index === idx;
+                                    return (
+                                        <div key={`${car}-${idx}`} className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3 group sm:flex-row sm:items-center dark:bg-white/[0.04]">
+                                            {isEditing ? (
+                                                <>
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={editingCar.name}
+                                                        onChange={(e: any) => setEditingCar({ ...editingCar, name: e.target.value })}
+                                                        onKeyDown={(e: any) => { if (e.key === 'Enter') saveCarEdit(); if (e.key === 'Escape') setEditingCar(null); }}
+                                                        autoFocus
+                                                    />
+                                                    <Select
+                                                        className="sm:w-56"
+                                                        value={editingCar.driverId}
+                                                        onChange={(e: any) => setEditingCar({ ...editingCar, driverId: e.target.value })}
+                                                    >
+                                                        <option value="">-- ไม่ระบุ --</option>
+                                                        {driverEmployees.map((e) => (
+                                                            <option key={e.id} value={e.id}>{e.nickname || e.name}</option>
+                                                        ))}
+                                                    </Select>
+                                                    <div className="flex gap-1">
+                                                        <button onClick={saveCarEdit} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="บันทึก"><Check size={18} /></button>
+                                                        <button onClick={() => setEditingCar(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="ยกเลิก"><X size={18} /></button>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="font-semibold text-slate-800 dark:text-slate-100">{car}</p>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                            คนขับเริ่มต้น: {driverLabel(backupPayload.employees, driverId)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            onClick={() => setEditingCar({ index: idx, name: car, driverId: driverId ?? '' })}
+                                                            className="p-1.5 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100"
+                                                            title="แก้ไข"
+                                                        >
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteCar(idx)}
+                                                            className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                                                            title="ลบ"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {settings.cars.length === 0 && (
+                                    <p className="text-sm text-slate-400">ยังไม่มีรถที่บันทึกไว้</p>
+                                )}
                             </div>
                         </div>
                     ) : LIST_TAB_KEYS.includes(activeTab as (typeof LIST_TAB_KEYS)[number]) ? (

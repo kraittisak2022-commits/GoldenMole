@@ -353,6 +353,8 @@ export function diffCountRecordIncrements(
     const out: CountRecordIncrement[] = [];
 
     const prevTripMap = new Map(prevTrips.map((u) => [u.id, u]));
+    const nextTripMap = new Map(nextTrips.map((u) => [u.id, u]));
+
     for (const u of nextTrips) {
         const old = prevTripMap.get(u.id);
         if (!old) {
@@ -368,7 +370,7 @@ export function diffCountRecordIncrements(
             }
             continue;
         }
-        if (u.rounds > old.rounds) {
+        if (u.rounds !== old.rounds) {
             out.push({
                 id: `${u.id}-${u.rounds}-${at}`,
                 at,
@@ -380,14 +382,29 @@ export function diffCountRecordIncrements(
         }
     }
 
-    if (nextSand && (!prevSand || nextSand.rounds > prevSand.rounds)) {
-        const delta = prevSand ? nextSand.rounds - prevSand.rounds : nextSand.rounds;
+    for (const old of prevTrips) {
+        if (!nextTripMap.has(old.id) && old.rounds > 0) {
+            out.push({
+                id: `${old.id}-removed-${at}`,
+                at,
+                kind: 'trip',
+                delta: -old.rounds,
+                unitId: old.id,
+                vehicleId: old.vehicleId,
+            });
+        }
+    }
+
+    const prevSandRounds = prevSand?.rounds ?? 0;
+    const nextSandRounds = nextSand?.rounds ?? 0;
+    if (nextSandRounds !== prevSandRounds) {
+        const sandId = nextSand?.id ?? prevSand?.id ?? 'sand';
         out.push({
-            id: `${nextSand.id}-${nextSand.rounds}-${at}`,
+            id: `${sandId}-${nextSandRounds}-${at}`,
             at,
             kind: 'sand',
-            delta,
-            unitId: nextSand.id,
+            delta: nextSandRounds - prevSandRounds,
+            unitId: sandId,
         });
     }
 

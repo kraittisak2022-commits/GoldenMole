@@ -7,6 +7,34 @@ import {
 } from './countRecordUtils';
 
 const TZ_OFFSET_MS = 7 * 60 * 60 * 1000;
+const MS_PER_MIN = 60 * 1000;
+
+/** Lunch window on same calendar day as startMs (Bangkok) */
+export function lunchWindowMs(dayKey: string, refMs: number): { startMs: number; endMs: number } {
+    const d = new Date(refMs + TZ_OFFSET_MS);
+    const yy = d.getUTCFullYear();
+    const mm = d.getUTCMonth();
+    const dd = d.getUTCDate();
+    const startMs = Date.UTC(yy, mm, dd, 12, 0, 0) - TZ_OFFSET_MS;
+    const endMs = Date.UTC(yy, mm, dd, 13, 0, 0) - TZ_OFFSET_MS;
+    void dayKey;
+    return { startMs, endMs };
+}
+
+export function lunchOverlapMs(startMs: number, endMs: number): number {
+    if (endMs <= startMs) return 0;
+    const { startMs: lunchStart, endMs: lunchEnd } = lunchWindowMs('', startMs);
+    const overlapStart = Math.max(startMs, lunchStart);
+    const overlapEnd = Math.min(endMs, lunchEnd);
+    return Math.max(0, overlapEnd - overlapStart);
+}
+
+export function activeDurationSec(startMs: number, endMs: number): number {
+    if (endMs <= startMs) return 0;
+    const rawMs = endMs - startMs;
+    const lunchMs = lunchOverlapMs(startMs, endMs);
+    return Math.max(0, Math.round((rawMs - lunchMs) / 1000));
+}
 
 export function addDaysToYmd(ymd: string, deltaDays: number): string {
     const base = normalizeDate(ymd);
@@ -61,8 +89,8 @@ export function computeLapIntervals(lapTimes: string[], dayKey: string): LapInte
         const prev = parseLapStamp(lapTimes[i - 1]!, dayKey);
         const curr = parseLapStamp(lapTimes[i]!, dayKey);
         if (prev == null || curr == null) continue;
-        const sec = Math.round((curr - prev) / 1000);
-        if (sec < 0) continue;
+        const sec = activeDurationSec(prev, curr);
+        if (sec <= 0) continue;
         intervalsSec.push(sec);
         labels.push(`รอบ ${i}→${i + 1}`);
     }
@@ -226,6 +254,117 @@ export function formatWorkSpanLabel(span: WorkSpan): string | null {
         return `เริ่ม ${span.startClock}`;
     }
     return `เริ่ม ${span.startClock} · เลิก ${span.endClock}`;
+}
+
+export interface SandWorkDurationSummary {
+    totalActiveHours: number;
+    lunchDeductedHours: number;
+    startClock: string | null;
+    endClock: string | null;
+}
+
+export function computeSandWorkDurationSummary(lapTimes: string[], dayKey: string): SandWorkDurationSummary | null {
+    const span = computeWorkSpan(lapTimes, dayKey);
+    if (!span.startStamp || !span.endStamp) return null;
+    const startMs = parseLapStamp(span.startStamp, dayKey);
+    const endMs = parseLapStamp(span.endStamp, dayKey);
+    if (startMs == null || endMs == null) return null;
+    const rawSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+    const activeSec = activeDurationSec(startMs, endMs);
+    const lunchDeductedSec = Math.max(0, rawSec - activeSec);
+    return {
+        totalActiveHours: activeSec / 3600,
+        lunchDeductedHours: lunchDeductedSec / 3600,
+        startClock: span.startClock,
+        endClock: span.endClock,
+    };
+}
+
+export interface HourlyActiveWorkBucket {
+    hour: number;
+    activeMinutes: number;
+    activeHours: number;
+    label: string;
+}
+
+export function computeHourlyActiveWork(lapTimes: string[], dayKey: string): HourlyActiveWorkBucket[] {
+    const span = computeWorkSpan(lapTimes, dayKey);
+    if (!span.startStamp || !span.endStamp) return [];
+    const startMs = parseLapStamp(span.startStamp, dayKey);
+    const endMs = parseLapStamp(span.endStamp, dayKey);
+    if (startMs == null || endMs == null || endMs <= startMs) return [];
+
+    const startD = new Date(startMs + TZ_OFFSET_MS);
+    const startHour = startD.getUTCHours();
+    const endD = new Date(endMs + TZ_OFFSET_MS);
+    const endHour = endD.getUTCHours();
+
+    const buckets: HourlyActiveWorkBucket[] = [];
+    for (let hour = startHour; hour <= endHour; hour++) {
+        const hourStartD = new Date(startMs + TZ_OFFSET_MS);
+        hourStartD.setUTCHours(hour, 0, 0, 0);
+        const hourStartMs = hourStartD.getTime() - TZ_OFFSET_MS;
+        const hourEndMs = hourStartMs + 60 * MS_PER_MIN;
+
+        const segStart = Math.max(startMs, hourStartMs);
+        const segEnd = Math.min(endMs, hourEndMs);
+        if (segEnd <= segStart) continue;
+
+        const activeSec = activeDurationSec(segStart, segEnd);
+        const activeMinutes = activeSec / 60;
+        buckets.push({
+            hour,
+            activeMinutes,
+            activeHours: activeMinutes / 60,
+            label: `${String(hour).padStart(2, '0')}:00`,
+        });
+    }
+    return buckets;
+}
+
+export interface SpeedBucket {
+    label: string;
+    speed: number;
+    count: number;
+}
+
+export function computeHourlySandSpeed(lapTimes: string[], dayKey: string): SpeedBucket[] {
+    const buckets = computeHourlyBuckets(lapTimes, dayKey);
+    return buckets.map((b) => ({
+        label: b.label,
+        speed: b.count,
+        count: b.count,
+    }));
+}
+
+export function computeMinuteSandSpeed(lapTimes: string[], dayKey: string): SpeedBucket[] {
+    const counts = new Map<string, number>();
+    for (const lap of lapTimes) {
+        const ms = parseLapStamp(lap, dayKey);
+        if (ms == null) continue;
+        const d = new Date(ms + TZ_OFFSET_MS);
+        const hh = String(d.getUTCHours()).padStart(2, '0');
+        const mm = String(d.getUTCMinutes()).padStart(2, '0');
+        const key = `${hh}:${mm}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([label, count]) => ({
+            label,
+            speed: count,
+            count,
+        }));
+}
+
+export function formatActiveHours(hours: number): string {
+    if (!Number.isFinite(hours) || hours <= 0) return '0 ชม.';
+    if (hours < 1) {
+        const mins = Math.round(hours * 60);
+        return `${mins} นาที`;
+    }
+    const rounded = Math.round(hours * 10) / 10;
+    return `${rounded} ชม.`;
 }
 
 export function formatDurationSec(sec: number | null): string {

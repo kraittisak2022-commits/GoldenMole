@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { getToday, normalizeDate, formatDateBE } from '../../utils';
+import { driverOptionLabel, getVehicleDefaultDriverId } from '../../utils/vehicleDefaultDriverUtils';
 import { AppSettings, Employee, Transaction, WorkType } from '../../types';
 import { dailyWageForWorkType } from '../../utils/laborWage';
 
@@ -69,7 +70,15 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
     useEffect(() => {
         if (form.car) {
             const defaultRate = VEHICLE_DEFAULT_RATES[form.car] || 0;
-            setForm(prev => ({ ...prev, vehicleWage: defaultRate > 0 ? String(defaultRate) : prev.vehicleWage }));
+            const defaultDriverId = getVehicleDefaultDriverId(form.car, settings);
+            setForm(prev => ({
+                ...prev,
+                vehicleWage: defaultRate > 0 ? String(defaultRate) : prev.vehicleWage,
+                driver: defaultDriverId || prev.driver,
+            }));
+            if (defaultDriverId) {
+                void applyDriverAllowance(defaultDriverId, workType);
+            }
         }
     }, [form.car]);
 
@@ -212,7 +221,11 @@ const VehicleEntry = ({ settings, employees, transactions = [], onSave, onDelete
                         }}
                     >
                         <option value="">-- เลือกคนขับ --</option>
-                        {drivers.map((e: Employee) => <option key={e.id} value={e.id}>{e.nickname || e.name || e.id}</option>)}
+                        {drivers.map((e: Employee) => (
+                            <option key={e.id} value={e.id}>
+                                {driverOptionLabel(e, getVehicleDefaultDriverId(form.car, settings))}
+                            </option>
+                        ))}
                     </Select>
                     <Input label="ค่าเบี้ยเลี้ยงคนขับ" type="number" value={form.wage} onChange={(e: any) => setForm({ ...form, wage: e.target.value })} />
                 </div>

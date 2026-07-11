@@ -131,9 +131,17 @@ String? resolveCountRecordDefaultDriverId({
   required String vehicleId,
   required Iterable<Employee> drivers,
   required Iterable<AppTransaction> tripHistory,
+  Map<String, String>? vehicleDefaultDrivers,
 }) {
   final vehicle = vehicleId.trim();
   if (vehicle.isEmpty) return null;
+
+  final configuredId = vehicleDefaultDrivers?[vehicle]?.trim();
+  if (configuredId != null &&
+      configuredId.isNotEmpty &&
+      drivers.any((e) => e.id == configuredId)) {
+    return configuredId;
+  }
 
   final mappedNick = defaultDriverNicknameForVehicle(vehicle);
   if (mappedNick != null) {
@@ -156,12 +164,14 @@ List<Employee> orderDriversForVehicle({
   required String vehicleId,
   required List<Employee> drivers,
   required Iterable<AppTransaction> tripHistory,
+  Map<String, String>? vehicleDefaultDrivers,
 }) {
   if (drivers.length <= 1) return List<Employee>.from(drivers);
   final defaultId = resolveCountRecordDefaultDriverId(
     vehicleId: vehicleId,
     drivers: drivers,
     tripHistory: tripHistory,
+    vehicleDefaultDrivers: vehicleDefaultDrivers,
   );
   if (defaultId == null) return List<Employee>.from(drivers);
 

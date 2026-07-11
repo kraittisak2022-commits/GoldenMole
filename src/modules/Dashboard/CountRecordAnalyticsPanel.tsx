@@ -9,9 +9,14 @@ import {
 import {
     buildDayComparison,
     computeCumulativeSeries,
+    computeHourlyActiveWork,
     computeHourlyBuckets,
+    computeHourlySandSpeed,
     computeIntervalStats,
     computeLapIntervals,
+    computeMinuteSandSpeed,
+    computeSandWorkDurationSummary,
+    formatActiveHours,
     formatDurationSec,
     formatPaceDelta,
     mergeTripLapTimeline,
@@ -118,9 +123,13 @@ function CumulativeLineChart({
 function HourlyBarChart({
     buckets,
     color,
+    valueKey = 'count',
+    unitLabel,
 }: {
-    buckets: { label: string; count: number }[];
+    buckets: { label: string; count: number; speed?: number }[];
     color: string;
+    valueKey?: 'count' | 'speed';
+    unitLabel?: string;
 }) {
     if (buckets.length === 0) {
         return (
@@ -129,17 +138,86 @@ function HourlyBarChart({
             </p>
         );
     }
-    const max = Math.max(...buckets.map((b) => b.count), 1);
+    const values = buckets.map((b) => (valueKey === 'speed' ? (b.speed ?? b.count) : b.count));
+    const max = Math.max(...values, 1);
     return (
         <div className="flex h-24 items-end justify-between gap-0.5 px-0.5">
+            {buckets.map((b, i) => {
+                const val = values[i]!;
+                return (
+                    <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
+                        <span className="text-[8px] font-bold tabular-nums text-slate-500">{val}</span>
+                        <div
+                            className="w-full rounded-t-sm"
+                            style={{ height: `${(val / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
+                        />
+                        <span className="w-full truncate text-center text-[7px] text-slate-400">{b.label}</span>
+                        {unitLabel && <span className="text-[7px] text-slate-300">{unitLabel}</span>}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function WorkHoursBarChart({
+    buckets,
+    color,
+}: {
+    buckets: { label: string; activeHours: number }[];
+    color: string;
+}) {
+    if (buckets.length === 0) {
+        return (
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400">
+                ยังไม่มีข้อมูลเวลาทำงาน
+            </p>
+        );
+    }
+    const max = Math.max(...buckets.map((b) => b.activeHours), 0.1);
+    return (
+        <div className="flex h-28 items-end justify-between gap-1 px-0.5">
             {buckets.map((b, i) => (
                 <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                    <span className="text-[8px] font-bold tabular-nums text-slate-500">{b.count}</span>
+                    <span className="text-[8px] font-bold tabular-nums text-slate-500">
+                        {formatActiveHours(b.activeHours)}
+                    </span>
                     <div
-                        className="w-full rounded-t-sm"
-                        style={{ height: `${(b.count / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
+                        className="w-full rounded-t-md"
+                        style={{ height: `${(b.activeHours / max) * 80}px`, backgroundColor: color, minHeight: 4 }}
                     />
                     <span className="w-full truncate text-center text-[7px] text-slate-400">{b.label}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function MinuteSpeedChart({
+    buckets,
+    color,
+}: {
+    buckets: { label: string; speed: number }[];
+    color: string;
+}) {
+    if (buckets.length === 0) {
+        return (
+            <p className="flex h-20 items-center justify-center text-xs font-medium text-slate-400">
+                ยังไม่มีข้อมูลรายนาที
+            </p>
+        );
+    }
+    const max = Math.max(...buckets.map((b) => b.speed), 1);
+    return (
+        <div className="flex h-20 items-end gap-0.5 overflow-x-auto px-0.5 pb-1">
+            {buckets.map((b, i) => (
+                <div key={i} className="flex w-7 shrink-0 flex-col items-center justify-end gap-0.5">
+                    <span className="text-[7px] font-bold tabular-nums text-slate-500">{b.speed}</span>
+                    <div
+                        className="w-full rounded-t-sm"
+                        style={{ height: `${(b.speed / max) * 52}px`, backgroundColor: color, minHeight: 3 }}
+                    />
+                    <span className="w-full truncate text-center text-[6px] text-slate-400">{b.label}</span>
                 </div>
             ))}
         </div>
@@ -303,6 +381,22 @@ const CountRecordAnalyticsPanel = ({
     const stats = useMemo(() => computeIntervalStats(intervals.intervalsSec), [intervals]);
     const hourly = useMemo(() => computeHourlyBuckets(lapTimes, dayKey), [lapTimes, dayKey]);
     const cumulative = useMemo(() => computeCumulativeSeries(lapTimes, dayKey), [lapTimes, dayKey]);
+    const sandWorkSummary = useMemo(
+        () => (mode === 'sand' ? computeSandWorkDurationSummary(lapTimes, dayKey) : null),
+        [mode, lapTimes, dayKey],
+    );
+    const hourlyActiveWork = useMemo(
+        () => (mode === 'sand' ? computeHourlyActiveWork(lapTimes, dayKey) : []),
+        [mode, lapTimes, dayKey],
+    );
+    const hourlySandSpeed = useMemo(
+        () => (mode === 'sand' ? computeHourlySandSpeed(lapTimes, dayKey) : []),
+        [mode, lapTimes, dayKey],
+    );
+    const minuteSandSpeed = useMemo(
+        () => (mode === 'sand' ? computeMinuteSandSpeed(lapTimes, dayKey) : []),
+        [mode, lapTimes, dayKey],
+    );
 
     const roundLabel = mode === 'sand' ? 'รอบ' : 'เที่ยว';
     const hasAnyLaps = lapTimes.length > 0;
@@ -318,7 +412,20 @@ const CountRecordAnalyticsPanel = ({
 
             <KpiRow stats={stats} comparison={modeComparison} roundLabel={roundLabel} />
 
-            <ChartBlock title={`ช่วงเวลาระหว่าง${roundLabel} (วินาที)`}>
+            {mode === 'sand' && sandWorkSummary && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-pink-200 bg-pink-50 px-2.5 py-1.5 text-[10px] font-semibold text-pink-900 shadow-sm">
+                        <Clock size={11} className="text-pink-500" />
+                        เวลาทำงาน {formatActiveHours(sandWorkSummary.totalActiveHours)}
+                        {sandWorkSummary.lunchDeductedHours > 0
+                            ? ` (หักพักเที่ยง ${formatActiveHours(sandWorkSummary.lunchDeductedHours)})`
+                            : ''}
+                    </span>
+                    <span className="text-[10px] font-medium text-slate-400">หักพักเที่ยง 12:00–13:00</span>
+                </div>
+            )}
+
+            <ChartBlock title={`ช่วงเวลาระหว่าง${roundLabel} (วินาที · หักพักเที่ยง)`}>
                 <IntervalBarChart values={intervals.intervalsSec} labels={intervals.labels} color={color} />
             </ChartBlock>
 
@@ -330,6 +437,27 @@ const CountRecordAnalyticsPanel = ({
                     <HourlyBarChart buckets={hourly} color={color} />
                 </ChartBlock>
             </div>
+
+            {mode === 'sand' && (
+                <div className="space-y-3">
+                    <ChartBlock title="เวลาทำงานรายชั่วโมง (ชม.)">
+                        <WorkHoursBarChart buckets={hourlyActiveWork} color={color} />
+                    </ChartBlock>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <ChartBlock title="ความเร็วร่อนต่อชั่วโมง (รอบ/ชม.)">
+                            <HourlyBarChart
+                                buckets={hourlySandSpeed}
+                                color={color}
+                                valueKey="speed"
+                                unitLabel="รอบ/ชม."
+                            />
+                        </ChartBlock>
+                        <ChartBlock title="ความเร็วร่อนต่อนาที (รอบ/นาที)">
+                            <MinuteSpeedChart buckets={minuteSandSpeed} color={color} />
+                        </ChartBlock>
+                    </div>
+                </div>
+            )}
 
             {mode === 'trip' && tripUnits.filter((u) => u.lapTimes.length > 0).length > 0 && (
                 <div className="space-y-2">

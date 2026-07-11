@@ -28,6 +28,7 @@ class CountRecordOfflineSync {
   static const _kQueue = 'v1_count_record_offline_queue_v1';
   static const _kFailedQueue = 'v1_count_record_failed_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
+  static const _kVehicleDefaultDrivers = 'v1_count_record_vehicle_default_drivers_json';
   static const _kEmployees = 'v1_count_record_employees_json';
   static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
 
@@ -506,6 +507,40 @@ class CountRecordOfflineSync {
     }
   }
 
+  Future<void> cacheVehicleDefaultDrivers(Map<String, String> map) async {
+    if (map.isEmpty) return;
+    final p = await _prefs();
+    await p.setString(_kVehicleDefaultDrivers, jsonEncode(map));
+  }
+
+  Future<Map<String, String>> readCachedVehicleDefaultDrivers() async {
+    final p = await _prefs();
+    final raw = p.getString(_kVehicleDefaultDrivers);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+      return decoded.map(
+        (key, value) => MapEntry('$key'.trim(), '$value'.trim()),
+      )..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static Map<String, String> parseVehicleDefaultDrivers(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, String>{};
+    raw.forEach((key, value) {
+      final vehicle = '$key'.trim();
+      final driverId = '$value'.trim();
+      if (vehicle.isNotEmpty && driverId.isNotEmpty) {
+        out[vehicle] = driverId;
+      }
+    });
+    return out;
+  }
+
   Future<void> cacheEmployees(List<Employee> employees) async {
     if (employees.isEmpty) return;
     final p = await _prefs();
@@ -551,7 +586,11 @@ class CountRecordOfflineSync {
     return byId.values.toList();
   }
 
-  Future<({List<String> cars, List<Employee> employees})> loadDropdownCatalog({
+  Future<({
+    List<String> cars,
+    List<Employee> employees,
+    Map<String, String> vehicleDefaultDrivers,
+  })> loadDropdownCatalog({
     required SupabaseClient client,
     EmployeeService? employeeService,
     List<Employee>? widgetEmployees,
@@ -560,22 +599,28 @@ class CountRecordOfflineSync {
   }) async {
     var cars = await readCachedCars();
     var employees = await mergedEmployeeSources(widgetEmployees);
+    var vehicleDefaultDrivers = await readCachedVehicleDefaultDrivers();
 
     final shouldFetch = forceNetwork ||
         (serverOnlineHint && await isOnline(client, forceProbe: forceNetwork));
     if (!shouldFetch || employeeService == null) {
-      return (cars: cars, employees: employees);
+      return (
+        cars: cars,
+        employees: employees,
+        vehicleDefaultDrivers: vehicleDefaultDrivers,
+      );
     }
 
     try {
       final rows = await client
           .from('app_settings')
-          .select('cars')
+          .select('cars, app_defaults')
           .eq('id', 'default')
           .limit(1)
           .timeout(_probeTimeout);
       if (rows.isNotEmpty) {
-        final raw = rows.first['cars'];
+        final row = rows.first;
+        final raw = row['cars'];
         final all = <String>[
           if (raw is List)
             ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
@@ -583,6 +628,17 @@ class CountRecordOfflineSync {
         if (all.isNotEmpty) {
           cars = all;
           await cacheCars(cars);
+        }
+
+        final appDefaults = row['app_defaults'];
+        if (appDefaults is Map) {
+          final parsed = parseVehicleDefaultDrivers(
+            appDefaults['vehicleDefaultDrivers'],
+          );
+          if (parsed.isNotEmpty) {
+            vehicleDefaultDrivers = parsed;
+            await cacheVehicleDefaultDrivers(vehicleDefaultDrivers);
+          }
         }
       }
     } catch (e) {
@@ -601,7 +657,11 @@ class CountRecordOfflineSync {
       debugPrint('CountRecordOfflineSync.loadDropdownCatalog employees: $e');
     }
 
-    return (cars: cars, employees: employees);
+    return (
+      cars: cars,
+      employees: employees,
+      vehicleDefaultDrivers: vehicleDefaultDrivers,
+    );
   }
 
   // --- merge ---

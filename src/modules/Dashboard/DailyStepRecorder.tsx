@@ -7,6 +7,7 @@ import DatePicker from '../../components/ui/DatePicker';
 import NumberPickerInput from '../../components/ui/NumberPickerInput';
 import Select from '../../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate, formatDisplayNumber } from '../../utils';
+import { driverOptionLabel, getVehicleDefaultDriverId } from '../../utils/vehicleDefaultDriverUtils';
 import { toDailyWage } from '../../utils/laborWage';
 import { Employee, Transaction, AppSettings, WorkType } from '../../types';
 import { useSessionDialog } from '../../context/useSessionDialog';
@@ -2959,14 +2960,26 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                     )}
                                     <p className="text-xs text-slate-500">คนขับ: แสดงเฉพาะพนักงานที่มีตำแหน่ง &quot;คนขับรถ&quot; — เลือกแล้วเบี้ยเลี้ยงจะใช้ค่าแรงในวันนั้น</p>
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5">
-                                        <Select label="รถ/เครื่องจักร" value={vehCar} onChange={(e: any) => setVehCar(e.target.value)}><option value="">-- เลือกรถ --</option>{settings.cars.map(c => <option key={c}>{c}</option>)}</Select>
+                                        <Select label="รถ/เครื่องจักร" value={vehCar} onChange={(e: any) => {
+                                            const nextCar = e.target.value;
+                                            setVehCar(nextCar);
+                                            const defaultDriverId = getVehicleDefaultDriverId(nextCar, settings);
+                                            if (defaultDriverId) {
+                                                setVehDriver(defaultDriverId);
+                                                void applyVehicleDriverAllowance(defaultDriverId, vehWorkType);
+                                            }
+                                        }}><option value="">-- เลือกรถ --</option>{settings.cars.map(c => <option key={c}>{c}</option>)}</Select>
                                         <Select label="คนขับ" value={vehDriver} onChange={(e: any) => {
                                             const val = e.target.value;
                                             setVehDriver(val);
                                             void applyVehicleDriverAllowance(val, vehWorkType);
                                         }}>
                                             <option value="">-- เลือกคนขับ --</option>
-                                            {driverEmployees.map(e => <option key={e.id} value={e.id}>{e.nickname || e.name || e.id}</option>)}
+                                            {driverEmployees.map(e => (
+                                                <option key={e.id} value={e.id}>
+                                                    {driverOptionLabel(e, getVehicleDefaultDriverId(vehCar, settings))}
+                                                </option>
+                                            ))}
                                         </Select>
                                     </div>
                                     <div className="flex flex-col gap-2">
@@ -3239,12 +3252,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                             <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-2 md:mb-3 md:gap-4">
                                                 <Select label="รถ" value={entry.vehicle} onChange={(e: any) => {
                                                     const nextVehicle = e.target.value;
+                                                    const defaultDriverId = getVehicleDefaultDriverId(nextVehicle, settings);
                                                     setTripEntries(prev => prev.map(item => {
                                                         if (item.id !== entry.id) return item;
                                                         const autoCubic = detectDefaultCubicPerTrip(nextVehicle, 3);
                                                         return {
                                                             ...item,
                                                             vehicle: nextVehicle,
+                                                            driver: defaultDriverId || item.driver,
                                                             cubicPerTrip: item.cubicPerTrip || String(autoCubic),
                                                         };
                                                     }));
@@ -3254,7 +3269,14 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 </Select>
                                                 <Select label="คนขับ" value={entry.driver} onChange={(e: any) => updateTripCard(entry.id, 'driver', e.target.value)}>
                                                     <option value="">-- เลือกคนขับ --</option>
-                                                    {driverEmployees.map(e => <option key={e.id} value={e.id}>{e.nickname || e.name}</option>)}
+                                                    {driverEmployees.map((e) => {
+                                                        const defaultId = getVehicleDefaultDriverId(entry.vehicle, settings);
+                                                        return (
+                                                            <option key={e.id} value={e.id}>
+                                                                {driverOptionLabel(e, defaultId)}
+                                                            </option>
+                                                        );
+                                                    })}
                                                 </Select>
                                             </div>
                                             <div className="mb-2 flex flex-wrap gap-2">

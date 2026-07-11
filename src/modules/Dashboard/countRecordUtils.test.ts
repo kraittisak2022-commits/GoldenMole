@@ -124,4 +124,30 @@ describe('diffCountRecordIncrements', () => {
         expect(inc.find((i) => i.kind === 'trip')?.delta).toBe(1);
         expect(inc.find((i) => i.kind === 'sand')?.delta).toBe(1);
     });
+
+    it('detects trip and sand decrements', () => {
+        const prev: Transaction[] = [
+            trip({ id: 'v1', perCarTrips: 3, lapTimes: ['26/06 08:00:00', '26/06 09:00:00', '26/06 10:00:00'] }),
+            sand({ id: 's1', drumsObtained: 2, lapTimes: ['26/06 07:00:00', '26/06 08:00:00'] }),
+        ];
+        const next: Transaction[] = [
+            trip({ id: 'v1', perCarTrips: 2, lapTimes: ['26/06 08:00:00', '26/06 09:00:00'] }),
+            sand({ id: 's1', drumsObtained: 1, lapTimes: ['26/06 07:00:00'] }),
+        ];
+        const inc = diffCountRecordIncrements('2026-06-26', prev, next, []);
+        expect(inc).toHaveLength(2);
+        expect(inc.find((i) => i.kind === 'trip')?.delta).toBe(-1);
+        expect(inc.find((i) => i.kind === 'sand')?.delta).toBe(-1);
+    });
+
+    it('detects removed trip unit', () => {
+        const prev: Transaction[] = [
+            trip({ id: 'v1', perCarTrips: 2, lapTimes: ['26/06 08:00:00', '26/06 09:00:00'] }),
+        ];
+        const next: Transaction[] = [];
+        const inc = diffCountRecordIncrements('2026-06-26', prev, next, []);
+        expect(inc).toHaveLength(1);
+        expect(inc[0]?.delta).toBe(-2);
+        expect(inc[0]?.kind).toBe('trip');
+    });
 });

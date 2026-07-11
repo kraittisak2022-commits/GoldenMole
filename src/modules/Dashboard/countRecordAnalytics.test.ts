@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
+    activeDurationSec,
     buildDayComparison,
+    computeHourlyActiveWork,
+    computeHourlySandSpeed,
     computeIntervalStats,
     computeLapIntervals,
+    computeMinuteSandSpeed,
     computePaceDeltaPercent,
+    computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
     computeWorkSpan,
+    formatActiveHours,
     formatLapClock,
     formatPaceDelta,
     formatWorkSpanLabel,
+    lunchOverlapMs,
     mergeTripLapTimeline,
     parseLapStamp,
     timelineToLapStamps,
@@ -76,6 +83,70 @@ describe('computeLapIntervals', () => {
     it('returns empty for single lap', () => {
         const { intervalsSec } = computeLapIntervals(['26/06 08:00:00'], '2026-06-26');
         expect(intervalsSec).toEqual([]);
+    });
+
+    it('excludes lunch break from interval spanning 12:00–13:00', () => {
+        const { intervalsSec } = computeLapIntervals(
+            ['26/06 11:50:00', '26/06 13:10:00'],
+            '2026-06-26',
+        );
+        expect(intervalsSec).toEqual([20 * 60]);
+    });
+});
+
+describe('lunch overlap', () => {
+    it('deducts one hour for full-day span crossing lunch', () => {
+        const start = parseLapStamp('26/06 08:00:00', '2026-06-26')!;
+        const end = parseLapStamp('26/06 17:00:00', '2026-06-26')!;
+        expect(lunchOverlapMs(start, end)).toBe(60 * 60 * 1000);
+        expect(activeDurationSec(start, end)).toBe(8 * 60 * 60);
+    });
+});
+
+describe('computeSandWorkDurationSummary', () => {
+    it('returns active hours excluding lunch', () => {
+        const summary = computeSandWorkDurationSummary(
+            ['26/06 08:00:00', '26/06 12:30:00', '26/06 17:00:00'],
+            '2026-06-26',
+        );
+        expect(summary).not.toBeNull();
+        expect(summary!.totalActiveHours).toBe(8);
+        expect(summary!.lunchDeductedHours).toBe(1);
+        expect(formatActiveHours(summary!.totalActiveHours)).toBe('8 ชม.');
+    });
+});
+
+describe('sand speed and work hour buckets', () => {
+    const laps = [
+        '26/06 08:10:00',
+        '26/06 08:40:00',
+        '26/06 09:15:00',
+        '26/06 14:00:00',
+    ];
+
+    it('computes hourly sand speed', () => {
+        const speed = computeHourlySandSpeed(laps, '2026-06-26');
+        expect(speed.some((b) => b.label === '08:00' && b.speed === 2)).toBe(true);
+        expect(speed.some((b) => b.label === '09:00' && b.speed === 1)).toBe(true);
+        expect(speed.some((b) => b.label === '14:00' && b.speed === 1)).toBe(true);
+    });
+
+    it('computes minute sand speed for active minutes', () => {
+        const speed = computeMinuteSandSpeed(laps, '2026-06-26');
+        expect(speed.find((b) => b.label === '08:10')?.speed).toBe(1);
+        expect(speed.find((b) => b.label === '08:40')?.speed).toBe(1);
+    });
+
+    it('computes hourly active work buckets', () => {
+        const buckets = computeHourlyActiveWork(
+            ['26/06 08:00:00', '26/06 17:00:00'],
+            '2026-06-26',
+        );
+        expect(buckets.length).toBeGreaterThan(0);
+        const lunchHour = buckets.find((b) => b.hour === 12);
+        expect(lunchHour?.activeMinutes).toBe(0);
+        const morning = buckets.find((b) => b.hour === 8);
+        expect(morning?.activeHours).toBe(1);
     });
 });
 

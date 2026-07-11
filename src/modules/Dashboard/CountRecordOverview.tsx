@@ -126,11 +126,21 @@ function TripVehicleCard({
 
                 <div className="my-2 flex flex-1 flex-col items-center justify-center text-center">
                     <div className="relative">
-                        <p className={`font-black tabular-nums tracking-tight leading-none ${compact ? 'text-4xl' : 'text-5xl'}`}>
+                        <p
+                            key={`${unit.id}-count-${unit.rounds}-${incrementDelta ?? 0}`}
+                            className={`font-black tabular-nums tracking-tight leading-none ${compact ? 'text-4xl' : 'text-5xl'} ${
+                                incrementDelta != null && incrementDelta !== 0 ? 'count-number-punch' : ''
+                            }`}
+                        >
                             {unit.rounds}
                         </p>
-                        {incrementDelta != null && incrementDelta > 0 && (
-                            <CountIncrementPop key={`${unit.id}-${unit.rounds}`} delta={incrementDelta} color="#fef08a" />
+                        {incrementDelta != null && incrementDelta !== 0 && (
+                            <CountIncrementPop
+                                key={`${unit.id}-${unit.rounds}-${incrementDelta}`}
+                                delta={incrementDelta}
+                                color="#fef08a"
+                                decrementColor="#fca5a5"
+                            />
                         )}
                     </div>
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">เที่ยว</p>
@@ -423,14 +433,20 @@ const CountRecordOverview = ({
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_45%)]" />
                                 <div className="relative">
                                     <div className="relative">
-                                        <p className="text-6xl font-black tabular-nums tracking-tight leading-none">
+                                        <p
+                                            key={`sand-count-${sandUnit.rounds}-${latestSandIncrement}`}
+                                            className={`text-6xl font-black tabular-nums tracking-tight leading-none ${
+                                                latestSandIncrement !== 0 ? 'count-number-punch' : ''
+                                            }`}
+                                        >
                                             {sandUnit.rounds}
                                         </p>
-                                        {latestSandIncrement > 0 && (
+                                        {latestSandIncrement !== 0 && (
                                             <CountIncrementPop
-                                                key={`sand-${sandUnit.rounds}`}
+                                                key={`sand-${sandUnit.rounds}-${latestSandIncrement}`}
                                                 delta={latestSandIncrement}
                                                 color="#fce7f3"
+                                                decrementColor="#fca5a5"
                                             />
                                         )}
                                     </div>
