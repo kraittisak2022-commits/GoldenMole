@@ -12,6 +12,7 @@ import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/app_version_label.dart';
+import '../widgets/soft_press_button.dart';
 
 /// หลังล็อกอินสำเร็จ — [persistSession] คือจะบันทึก session ลงเครื่องหรือไม่
 typedef LoginSuccessCallback = Future<void> Function(
@@ -851,57 +852,58 @@ class _LoginScreenState extends State<LoginScreen>
           : [_gold, _goldDark],
     );
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _submitting ? null : _submit,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: gradient,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: (_darkMode ? const Color(0xFF0080FF) : _gold).withValues(
-                  alpha: 0.35,
+    return SoftPressButton(
+      onTap: _submitting ? null : _submit,
+      size: SoftPressSize.large,
+      borderRadius: 16,
+      useConfirmHaptic: true,
+      isDarkSurface: true,
+      liftWhenIdle: true,
+      depthShadow: SoftPressDepthShadow(
+        color: (_darkMode ? const Color(0xFF0080FF) : _gold).withValues(
+          alpha: 0.35,
+        ),
+        blurRadius: 18,
+        offsetY: 8,
+        pressedBlurRadius: 8,
+        pressedOffsetY: 3,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_submitting)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.lock_outline_rounded,
+                  color: Colors.white,
+                  size: 20,
                 ),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
+              const SizedBox(width: 10),
+              Text(
+                _submitting ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ',
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  letterSpacing: 0.3,
+                ),
               ),
             ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_submitting)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: Colors.white,
-                    ),
-                  )
-                else
-                  const Icon(
-                    Icons.lock_outline_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                const SizedBox(width: 10),
-                Text(
-                  _submitting ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ',
-                  style: GoogleFonts.kanit(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),

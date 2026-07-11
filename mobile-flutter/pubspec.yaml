@@ -83,6 +83,8 @@ flutter:
     - family: Kanit
       fonts:
         - asset: assets/google_fonts/Kanit-Regular.ttf
+        - asset: assets/google_fonts/Kanit-Medium.ttf
+          weight: 500
         - asset: assets/google_fonts/Kanit-SemiBold.ttf
           weight: 600
         - asset: assets/google_fonts/Kanit-Bold.ttf

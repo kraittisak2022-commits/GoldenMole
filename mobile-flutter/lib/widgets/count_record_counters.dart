@@ -17,6 +17,7 @@ import '../services/count_record_offline_sync.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/count_record_vehicle_defaults.dart';
+import '../utils/touch_profile.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
@@ -2892,22 +2893,25 @@ class _RecordButtonShell extends StatelessWidget {
                 ],
         ),
         clipBehavior: Clip.antiAlias,
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (_) => onPointerDown(),
-          onPointerMove: onPointerMove,
-          onPointerUp: (_) => onPointerUp(),
-          onPointerCancel: (_) => onPointerCancel(),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              child,
-              if (shimmer && !busy && !dimmed && !pressed)
-                const Positioned.fill(
-                  child: IgnorePointer(child: _IdleShimmer()),
-                ),
-              ?bottomOverlay,
-            ],
+        child: Padding(
+          padding: TouchProfile.of(context).extraHitPadding,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (_) => onPointerDown(),
+            onPointerMove: onPointerMove,
+            onPointerUp: (_) => onPointerUp(),
+            onPointerCancel: (_) => onPointerCancel(),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                child,
+                if (shimmer && !busy && !dimmed && !pressed)
+                  const Positioned.fill(
+                    child: IgnorePointer(child: _IdleShimmer()),
+                  ),
+                ?bottomOverlay,
+              ],
+            ),
           ),
         ),
       ),

@@ -8,7 +8,9 @@ import {
 } from '../services/transactionsRealtimeBus';
 import {
     CountRecordActivity,
+    CountRecordIncrement,
     diffCountRecordActivities,
+    diffCountRecordIncrements,
     isCountRecordRelatedTransaction,
 } from '../modules/Dashboard/countRecordUtils';
 
@@ -29,6 +31,7 @@ export interface UseCountRecordRealtimeResult {
     syncSource: CountRecordSyncSource | null;
     channelStatus: RealtimeChannelStatus;
     activities: CountRecordActivity[];
+    increments: CountRecordIncrement[];
     isLive: boolean;
 }
 
@@ -47,14 +50,20 @@ export function useCountRecordRealtime({
     const [syncSource, setSyncSource] = useState<CountRecordSyncSource | null>(null);
     const [channelStatus, setChannelStatus] = useState<RealtimeChannelStatus>('connecting');
     const [activities, setActivities] = useState<CountRecordActivity[]>([]);
+    const [increments, setIncrements] = useState<CountRecordIncrement[]>([]);
 
     const prevTransactionsRef = useRef<Transaction[]>(transactions);
     const dayKeyRef = useRef(dayKey);
 
     const pushActivities = useCallback(
-        (items: CountRecordActivity[], source: CountRecordSyncSource) => {
-            if (items.length === 0) return;
-            setActivities((prev) => [...items, ...prev].slice(0, maxActivities));
+        (items: CountRecordActivity[], incrementItems: CountRecordIncrement[], source: CountRecordSyncSource) => {
+            if (items.length === 0 && incrementItems.length === 0) return;
+            if (items.length > 0) {
+                setActivities((prev) => [...items, ...prev].slice(0, maxActivities));
+            }
+            if (incrementItems.length > 0) {
+                setIncrements((prev) => [...incrementItems, ...prev].slice(0, maxActivities));
+            }
             setPulseToken((t) => t + 1);
             setLastSyncAt(Date.now());
             setSyncSource(source);
@@ -71,7 +80,8 @@ export function useCountRecordRealtime({
         const prev = prevTransactionsRef.current;
         if (prev !== transactions) {
             const items = diffCountRecordActivities(dayKey, prev, transactions, employees);
-            if (items.length > 0) pushActivities(items, 'local');
+            const incItems = diffCountRecordIncrements(dayKey, prev, transactions, employees);
+            if (items.length > 0 || incItems.length > 0) pushActivities(items, incItems, 'local');
         }
         prevTransactionsRef.current = transactions;
     }, [dayKey, transactions, employees, pushActivities]);
@@ -130,6 +140,7 @@ export function useCountRecordRealtime({
         syncSource,
         channelStatus,
         activities,
+        increments,
         isLive,
     };
 }

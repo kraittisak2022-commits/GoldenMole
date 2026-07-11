@@ -21,7 +21,9 @@ import 'widgets/app_sync_banner.dart';
 import 'utils/app_error_binding.dart';
 import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
+import 'widgets/app_page_route.dart';
 import 'widgets/bootstrap_splash.dart';
+import 'utils/touch_profile.dart';
 
 Future<void> _preloadAppFonts() async {
   try {
@@ -60,8 +62,8 @@ ThemeData _buildAppTheme() {
     // ทรานสิชันเปลี่ยนหน้าแบบ M3 ใหม่ + predictive back บน Android
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
-        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-        TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.android: AppPageTransitionsBuilder(),
+        TargetPlatform.fuchsia: AppPageTransitionsBuilder(),
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
       },
     ),
@@ -462,11 +464,21 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: (context, child) {
-        return AppLocaleScope(
-          locale: _locale,
-          onLocaleChanged: _setLocale,
-          child: AppSyncBannerHost(
-            child: child ?? const SizedBox.shrink(),
+        DevicePerf.updateScreenClass(context);
+        final profile = TouchProfile.of(context);
+        final themed = Theme.of(context).copyWith(
+          visualDensity: profile.isTablet
+              ? VisualDensity.comfortable
+              : VisualDensity.standard,
+        );
+        return Theme(
+          data: themed,
+          child: AppLocaleScope(
+            locale: _locale,
+            onLocaleChanged: _setLocale,
+            child: AppSyncBannerHost(
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },
@@ -552,6 +564,13 @@ class _AppScrollBehaviorConstrained extends MaterialScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
+    final isTablet = MediaQuery.sizeOf(context).shortestSide >=
+        TouchProfile.tabletBreakpoint;
+    if (isTablet) {
+      return const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      );
+    }
     switch (Theme.of(context).platform) {
       case TargetPlatform.android:
       case TargetPlatform.fuchsia:

@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
-import '../utils/app_haptics.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 import 'soft_press_button.dart';
@@ -11,8 +10,16 @@ Color _iconTint(Color accent) {
   return Color.lerp(accent, const Color(0xFF334155), 0.28)!;
 }
 
+const _cardDepthShadow = SoftPressDepthShadow(
+  color: Color(0x0A0F172A),
+  blurRadius: 8,
+  offsetY: 2,
+  pressedBlurRadius: 3,
+  pressedOffsetY: 1,
+);
+
 /// การ์ดเมนูบันทึกประจำวัน — จัตุรัสในแนวตั้ง / สี่เหลี่ยมผืนผ้าในแนวนอน
-class RecordModuleCard extends StatefulWidget {
+class RecordModuleCard extends StatelessWidget {
   const RecordModuleCard({
     super.key,
     required this.title,
@@ -35,23 +42,14 @@ class RecordModuleCard extends StatefulWidget {
   final int statusMaxLines;
 
   @override
-  State<RecordModuleCard> createState() => _RecordModuleCardState();
-}
-
-class _RecordModuleCardState extends State<RecordModuleCard> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
-        DevicePerf.isConstrainedDevice;
-    final status = widget.fillStatus;
+    final status = fillStatus;
     final recorded = status == DailyModuleFillStatus.complete;
     final partial = status == DailyModuleFillStatus.incomplete;
 
-    final overrideComplete = widget.completeStatusLabelOverride?.trim();
+    final overrideComplete = completeStatusLabelOverride?.trim();
     final hasDetailOverride =
         overrideComplete != null && overrideComplete.isNotEmpty;
     final statusLabel = hasDetailOverride && (recorded || partial)
@@ -68,7 +66,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
         ? const Color(0xFFB45309)
         : const Color(0xFF94A3B8);
 
-    final accent = widget.tileColor;
+    final accent = tileColor;
     final iconColor = _iconTint(accent);
     final borderColor = recorded
         ? const Color(0xFFBBF7D0)
@@ -84,7 +82,6 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
         final maxH = constraints.maxHeight.isFinite && constraints.maxHeight > 0
             ? constraints.maxHeight
             : maxW;
-        // ช่องกว้างกว่าสูง = แนวนอน → เติมเต็มช่องเป็นสี่เหลี่ยมผืนผ้า
         final isLandscapeCell = maxW > maxH * 1.08;
         final cardW = isLandscapeCell ? maxW : (maxW < maxH ? maxW : maxH);
         final cardH = isLandscapeCell ? maxH : cardW;
@@ -109,7 +106,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
               SizedBox(
                 width: textMaxWidth,
                 child: Text(
-                  widget.title,
+                  title,
                   textAlign: TextAlign.center,
                   maxLines: isLandscapeCell ? 2 : 3,
                   overflow: TextOverflow.ellipsis,
@@ -127,7 +124,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                 child: Text(
                   statusLabel,
                   textAlign: TextAlign.center,
-                  maxLines: widget.statusMaxLines,
+                  maxLines: statusMaxLines,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: statusSize,
@@ -150,7 +147,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Icon(
-                    widget.icon,
+                    icon,
                     size: iconSize,
                     color: iconColor,
                   ),
@@ -166,7 +163,7 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Icon(
-                widget.icon,
+                icon,
                 size: iconSize,
                 color: iconColor,
               ),
@@ -176,6 +173,9 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
           );
         }
 
+        final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
+            DevicePerf.isConstrainedDevice;
+
         final shapedCard = SizedBox(
           width: cardW,
           height: cardH,
@@ -184,15 +184,6 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: borderColor, width: 1),
-              boxShadow: useLiteChrome || _pressed
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
             ),
             child: Stack(
               fit: StackFit.expand,
@@ -213,26 +204,14 @@ class _RecordModuleCardState extends State<RecordModuleCard> {
 
         return Align(
           alignment: Alignment.center,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget.onTap,
-              onTapDown: (_) {
-                AppHaptics.tap();
-                setState(() => _pressed = true);
-              },
-              onTapUp: (_) => setState(() => _pressed = false),
-              onTapCancel: () => setState(() => _pressed = false),
-              borderRadius: BorderRadius.circular(radius),
-              child: SoftPressShell(
-                pressed: _pressed,
-                size: SoftPressSize.medium,
-                borderRadius: radius,
-                isDarkSurface: false,
-                showHighlight: true,
-                child: shapedCard,
-              ),
-            ),
+          child: SoftPressButton(
+            onTap: onTap,
+            size: SoftPressSize.medium,
+            borderRadius: radius,
+            isDarkSurface: false,
+            liftWhenIdle: !useLiteChrome,
+            depthShadow: useLiteChrome ? null : _cardDepthShadow,
+            child: shapedCard,
           ),
         );
       },

@@ -53,6 +53,36 @@
     animation: bounceShort 0.5s ease-in-out;
 }
 
+.count-increment-pop {
+    animation: countIncrementPop 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    font-size: 1.25rem;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes countIncrementPop {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, 8px) scale(0.6);
+    }
+
+    20% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1.15);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -28px) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .count-increment-pop {
+        animation: none;
+        opacity: 0;
+    }
+}
+
 /* Mobile home — flat tiles + long-shadow icon (ERP-style menu) */
 .menu-tile {
     position: relative;

@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
+import 'package:flutter/material.dart';
 
 /// Tier ประสิทธิภาพอุปกรณ์ — ใช้ลดการใช้ RAM/CPU บนเครื่องจำกัด
 ///
@@ -18,6 +18,19 @@ class DevicePerf {
   static bool get isConstrainedDevice => _constrained;
 
   static bool get isReady => _ready;
+
+  /// shortestSide >= 600 — อัปเดตจาก [updateScreenClass]
+  static bool isTablet = false;
+
+  /// shortestSide >= 700
+  static bool isLargeTablet = false;
+
+  /// อ่านขนาดจอหลัง [runApp] — เรียกจาก MaterialApp builder
+  static void updateScreenClass(BuildContext context) {
+    final side = MediaQuery.sizeOf(context).shortestSide;
+    isTablet = side >= 600;
+    isLargeTablet = side >= 700;
+  }
 
   static Future<void> init() async {
     if (_ready) return;

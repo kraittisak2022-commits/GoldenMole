@@ -2,15 +2,42 @@ import 'package:flutter/material.dart';
 
 import '../utils/app_haptics.dart';
 import '../utils/device_perf.dart';
+import '../utils/touch_profile.dart';
 
 /// ขนาดปุ่ม — ยิ่งใหญ่ยิ่งย่อน้อยตอนกด
 enum SoftPressSize {
-  large(0.98),
-  medium(0.96),
+  large(0.97),
+  medium(0.955),
   small(0.93);
 
   const SoftPressSize(this.pressedScale);
   final double pressedScale;
+
+  double resolveScale(BuildContext context) {
+    final profile = TouchProfile.of(context);
+    return switch (this) {
+      SoftPressSize.large => profile.softPressScaleLarge,
+      SoftPressSize.medium => profile.softPressScaleMedium,
+      SoftPressSize.small => profile.softPressScaleSmall,
+    };
+  }
+}
+
+/// เงา depth ตอนกด — idle ยกขึ้น กดแล้วเงาเลื่อนลง
+class SoftPressDepthShadow {
+  const SoftPressDepthShadow({
+    this.color = const Color(0x0A0F172A),
+    this.blurRadius = 8,
+    this.offsetY = 2,
+    this.pressedBlurRadius = 3,
+    this.pressedOffsetY = 1,
+  });
+
+  final Color color;
+  final double blurRadius;
+  final double offsetY;
+  final double pressedBlurRadius;
+  final double pressedOffsetY;
 }
 
 /// จังหวะกด/ปล่อย — เข้าเร็ว คลายช้า (เครื่องช้าใช้ curve ง่ายกว่า)
@@ -46,6 +73,7 @@ class SoftPressShell extends StatelessWidget {
     this.isDarkSurface = true,
     this.liftWhenIdle = false,
     this.idleLiftY = -2,
+    this.depthShadow,
   });
 
   final bool pressed;
@@ -56,16 +84,63 @@ class SoftPressShell extends StatelessWidget {
   final bool isDarkSurface;
   final bool liftWhenIdle;
   final double idleLiftY;
+  final SoftPressDepthShadow? depthShadow;
 
   @override
   Widget build(BuildContext context) {
-    final scale = pressed ? size.pressedScale : 1.0;
-    final liftY = liftWhenIdle && !pressed ? idleLiftY : 0.0;
+    final scale = pressed ? size.resolveScale(context) : 1.0;
+    final liftY = pressed ? 0.0 : (liftWhenIdle ? idleLiftY : 0.0);
     final duration = pressed
         ? SoftPressMotion.downDuration()
         : SoftPressMotion.upDuration();
     final curve =
         pressed ? SoftPressMotion.downCurve() : SoftPressMotion.upCurve();
+
+    Widget core = Stack(
+      fit: StackFit.passthrough,
+      children: [
+        child,
+        if (showHighlight && borderRadius > 0)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: pressed ? 1 : 0,
+                duration: SoftPressMotion.downDuration(),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: (isDarkSurface ? Colors.white : Colors.black)
+                        .withValues(
+                      alpha: SoftPressMotion.highlightAlpha(
+                        isDarkSurface: isDarkSurface,
+                      ),
+                    ),
+                    borderRadius: BorderRadius.circular(borderRadius),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (depthShadow != null && !DevicePerf.isConstrainedDevice) {
+      final s = depthShadow!;
+      core = AnimatedContainer(
+        duration: duration,
+        curve: curve,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: [
+            BoxShadow(
+              color: s.color,
+              blurRadius: pressed ? s.pressedBlurRadius : s.blurRadius,
+              offset: Offset(0, pressed ? s.pressedOffsetY : s.offsetY),
+            ),
+          ],
+        ),
+        child: core,
+      );
+    }
 
     return AnimatedScale(
       scale: scale,
@@ -75,32 +150,7 @@ class SoftPressShell extends StatelessWidget {
         offset: Offset(0, liftY / 40),
         duration: duration,
         curve: curve,
-        child: Stack(
-          fit: StackFit.passthrough,
-          children: [
-            child,
-            if (showHighlight && borderRadius > 0)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedOpacity(
-                    opacity: pressed ? 1 : 0,
-                    duration: SoftPressMotion.downDuration(),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: (isDarkSurface ? Colors.white : Colors.black)
-                            .withValues(
-                          alpha: SoftPressMotion.highlightAlpha(
-                            isDarkSurface: isDarkSurface,
-                          ),
-                        ),
-                        borderRadius: BorderRadius.circular(borderRadius),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        child: core,
       ),
     );
   }
@@ -120,6 +170,10 @@ class SoftPressButton extends StatefulWidget {
     this.useConfirmHaptic = false,
     this.showHighlight = true,
     this.isDarkSurface = false,
+    this.liftWhenIdle = false,
+    this.idleLiftY = -2,
+    this.depthShadow,
+    this.hitPadding,
   });
 
   final Widget child;
@@ -130,6 +184,10 @@ class SoftPressButton extends StatefulWidget {
   final bool useConfirmHaptic;
   final bool showHighlight;
   final bool isDarkSurface;
+  final bool liftWhenIdle;
+  final double idleLiftY;
+  final SoftPressDepthShadow? depthShadow;
+  final EdgeInsets? hitPadding;
 
   @override
   State<SoftPressButton> createState() => _SoftPressButtonState();
@@ -156,21 +214,28 @@ class _SoftPressButtonState extends State<SoftPressButton> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _onDown(),
-      onTapUp: (_) {
-        _onUp();
-        widget.onTap?.call();
-      },
-      onTapCancel: _onUp,
-      child: SoftPressShell(
-        pressed: _pressed,
-        size: widget.size,
-        borderRadius: widget.borderRadius,
-        showHighlight: widget.showHighlight,
-        isDarkSurface: widget.isDarkSurface,
-        child: widget.child,
+    final extra = widget.hitPadding ?? TouchProfile.of(context).extraHitPadding;
+    return Padding(
+      padding: extra,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _onDown(),
+        onTapUp: (_) {
+          _onUp();
+          widget.onTap?.call();
+        },
+        onTapCancel: _onUp,
+        child: SoftPressShell(
+          pressed: _pressed,
+          size: widget.size,
+          borderRadius: widget.borderRadius,
+          showHighlight: widget.showHighlight,
+          isDarkSurface: widget.isDarkSurface,
+          liftWhenIdle: widget.liftWhenIdle,
+          idleLiftY: widget.idleLiftY,
+          depthShadow: widget.depthShadow,
+          child: widget.child,
+        ),
       ),
     );
   }

@@ -195,6 +195,7 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
                             transactions={transactions}
                             employees={employees}
                             pulseToken={realtime.pulseToken}
+                            increments={realtime.increments}
                         />
                     </div>
                     {realtime.activities.length > 0 && (

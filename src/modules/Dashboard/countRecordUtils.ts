@@ -329,3 +329,67 @@ export function diffCountRecordActivities(
 
     return out;
 }
+
+export interface CountRecordIncrement {
+    id: string;
+    kind: 'trip' | 'sand';
+    delta: number;
+    unitId?: string;
+    vehicleId?: string;
+    at: number;
+}
+
+export function diffCountRecordIncrements(
+    dayKey: string,
+    prevTransactions: Transaction[],
+    nextTransactions: Transaction[],
+    employees: Employee[],
+): CountRecordIncrement[] {
+    const at = Date.now();
+    const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees);
+    const nextTrips = buildCountRecordTripUnits(dayKey, nextTransactions, employees);
+    const prevSand = buildCountRecordSandUnit(dayKey, prevTransactions);
+    const nextSand = buildCountRecordSandUnit(dayKey, nextTransactions);
+    const out: CountRecordIncrement[] = [];
+
+    const prevTripMap = new Map(prevTrips.map((u) => [u.id, u]));
+    for (const u of nextTrips) {
+        const old = prevTripMap.get(u.id);
+        if (!old) {
+            if (u.rounds > 0) {
+                out.push({
+                    id: `${u.id}-new-${at}`,
+                    at,
+                    kind: 'trip',
+                    delta: u.rounds,
+                    unitId: u.id,
+                    vehicleId: u.vehicleId,
+                });
+            }
+            continue;
+        }
+        if (u.rounds > old.rounds) {
+            out.push({
+                id: `${u.id}-${u.rounds}-${at}`,
+                at,
+                kind: 'trip',
+                delta: u.rounds - old.rounds,
+                unitId: u.id,
+                vehicleId: u.vehicleId,
+            });
+        }
+    }
+
+    if (nextSand && (!prevSand || nextSand.rounds > prevSand.rounds)) {
+        const delta = prevSand ? nextSand.rounds - prevSand.rounds : nextSand.rounds;
+        out.push({
+            id: `${nextSand.id}-${nextSand.rounds}-${at}`,
+            at,
+            kind: 'sand',
+            delta,
+            unitId: nextSand.id,
+        });
+    }
+
+    return out;
+}

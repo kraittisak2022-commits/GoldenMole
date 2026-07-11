@@ -22,6 +22,7 @@ import '../l10n/daily_status_translator.dart';
 import '../utils/app_haptics.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/device_perf.dart';
+import '../utils/touch_profile.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../utils/record_success_speaker.dart';
@@ -31,6 +32,7 @@ import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_menu_shell.dart';
 import '../widgets/count_record_tutorial.dart';
 import '../widgets/dashboard_loading_view.dart';
+import '../widgets/app_page_route.dart';
 import '../widgets/menu_panel_transition.dart';
 import '../widgets/record_module_card.dart';
 import '../widgets/soft_press_button.dart';
@@ -670,46 +672,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<T?> _openWithAnimation<T>(Widget page) {
-    final isQuickInput = page is QuickInputScreen;
+    final style = page is QuickInputScreen
+        ? AppTransitionStyle.modalUp
+        : AppTransitionStyle.drillDown;
     return Navigator.of(context).push<T>(
-      PageRouteBuilder<T>(
-        pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: isQuickInput
-            ? const Duration(milliseconds: 280)
-            : const Duration(milliseconds: 220),
-        reverseTransitionDuration: isQuickInput
-            ? const Duration(milliseconds: 200)
-            : const Duration(milliseconds: 160),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: isQuickInput ? Curves.easeOutCubic : Curves.easeOutQuart,
-            reverseCurve: Curves.easeInCubic,
-          );
-          final slide = Tween<Offset>(
-            begin: isQuickInput
-                ? const Offset(0, 0.028)
-                : const Offset(0.02, 0.012),
-            end: Offset.zero,
-          ).animate(curved);
-          final fade = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
-          // หน้า Quick Input ไม่ย่อ/ขยาย — ลดงาน GPU บนเครื่องรุ่นเล็ก
-          if (isQuickInput) {
-            return FadeTransition(
-              opacity: fade,
-              child: SlideTransition(position: slide, child: child),
-            );
-          }
-          final scale = Tween<double>(begin: 0.985, end: 1).animate(curved);
-          return FadeTransition(
-            opacity: fade,
-            child: SlideTransition(
-              position: slide,
-              child: ScaleTransition(scale: scale, child: child),
-            ),
-          );
-        },
-      ),
+      AppPageRoute<T>(page: page, style: style),
     );
   }
 
@@ -863,58 +830,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _refreshHomeSilently(tryNetwork: true);
   }
 
-  /// แถบนำทางล่างแบบ Material 3 — หน้าแรก / ปฏิทิน / ตั้งค่า / ออกจากระบบ
+  /// แถบนำทางล่างแบบ Material 3 + soft press
   Widget _buildBottomNav(SupabaseClient client) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE7ECF3))),
-      ),
-      child: NavigationBar(
-        height: 64,
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        indicatorColor: const Color(0xFFD5F2F5),
-        elevation: 0,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: 0,
-        onDestinationSelected: (index) {
-          AppHaptics.tap();
-          switch (index) {
-            case 0:
-              setState(() => _bodyPage = 0);
-            case 1:
-              _openCalendarScreen(client);
-            case 2:
-              _openAppSettingsScreen(client);
-            case 3:
-              _confirmLogout();
-          }
-        },
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(
-              Icons.home_rounded,
-              color: Color(0xFF0D98A5),
-            ),
-            label: l10n.navHome,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.calendar_month_outlined),
-            label: l10n.navCalendar,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            label: l10n.navSettings,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.logout_rounded),
-            label: l10n.navLogout,
-          ),
-        ],
-      ),
+    return _ProBottomNav(
+      l10n: l10n,
+      selectedIndex: _bodyPage == 0 ? 0 : -1,
+      onHome: () => setState(() => _bodyPage = 0),
+      onCalendar: () => _openCalendarScreen(client),
+      onSettings: () => _openAppSettingsScreen(client),
+      onLogout: _confirmLogout,
     );
   }
 
@@ -1354,30 +1279,43 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 ),
                               ),
                             ),
-                          IconButton(
-                            tooltip: 'สอนใช้งาน',
-                            onPressed: _openCountRecordTutorial,
-                            icon: const Icon(Icons.school_outlined),
-                            color: const Color(0xFF1565C0),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          TextButton(
-                            onPressed: backToMainMenu,
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF4A5A70),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              minimumSize: const Size(0, 36),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: const BorderSide(color: Color(0xFFD9E1EC)),
+                          SoftPressButton(
+                            onTap: _openCountRecordTutorial,
+                            size: SoftPressSize.small,
+                            borderRadius: 20,
+                            isDarkSurface: false,
+                            liftWhenIdle: true,
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(
+                                Icons.school_outlined,
+                                color: Color(0xFF1565C0),
+                                size: 22,
                               ),
                             ),
-                            child: Text(
-                              offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          SoftPressButton(
+                            onTap: backToMainMenu,
+                            size: SoftPressSize.small,
+                            borderRadius: 12,
+                            isDarkSurface: false,
+                            liftWhenIdle: true,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFD9E1EC)),
+                              ),
+                              child: Text(
+                                offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF4A5A70),
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -1408,7 +1346,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
               final visibleModules = _kDailyModules;
               final gridItemCount = visibleModules.length + 1;
-              const gap = 10.0;
+              final gap = TouchProfile.of(context).gridGap;
               const sideInset = 2.0;
               final mq = MediaQuery.sizeOf(context);
               final mqW = mq.width;
@@ -1732,6 +1670,14 @@ class _CountRecordMenuCard extends StatelessWidget {
   final bool expanded;
   final Widget? expandedChild;
 
+  static const _cardDepthShadow = SoftPressDepthShadow(
+    color: Color(0x0A000000),
+    blurRadius: 10,
+    offsetY: 3,
+    pressedBlurRadius: 4,
+    pressedOffsetY: 1,
+  );
+
   @override
   Widget build(BuildContext context) {
     final shell = DecoratedBox(
@@ -1742,13 +1688,15 @@ class _CountRecordMenuCard extends StatelessWidget {
           color: expanded ? iconColor : borderColor,
           width: expanded ? 2 : 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: expanded
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
@@ -1760,13 +1708,14 @@ class _CountRecordMenuCard extends StatelessWidget {
       return shell;
     }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: shell,
-      ),
+    return SoftPressButton(
+      onTap: onTap,
+      size: SoftPressSize.medium,
+      borderRadius: 22,
+      isDarkSurface: false,
+      liftWhenIdle: true,
+      depthShadow: _cardDepthShadow,
+      child: shell,
     );
   }
 
@@ -2038,17 +1987,13 @@ class _HomeHeaderCompact extends StatelessWidget {
                         ),
                       ),
                       SoftPressButton(
+                        onTap: () => onRefresh(),
                         size: SoftPressSize.small,
                         borderRadius: 11,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.all(6),
-                            minimumSize: Size.zero,
-                          ),
-                          onPressed: () => onRefresh(),
-                          icon: const Icon(
+                        liftWhenIdle: true,
+                        child: const Padding(
+                          padding: EdgeInsets.all(6),
+                          child: Icon(
                             Icons.refresh_rounded,
                             color: Color(0xFF546E7A),
                             size: 22,
@@ -2059,65 +2004,62 @@ class _HomeHeaderCompact extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   SoftPressButton(
+                    onTap: onPickDay,
                     size: SoftPressSize.medium,
                     borderRadius: 16,
                     isDarkSurface: false,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: onPickDay,
+                    liftWhenIdle: true,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [Color(0xFFE8F8FA), Color(0xFFF4FCFD)],
+                        ),
                         borderRadius: BorderRadius.circular(16),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [Color(0xFFE8F8FA), Color(0xFFF4FCFD)],
+                        border: Border.all(color: const Color(0xFFB8E4EA)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: _teal.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: _teal,
+                                  size: 20,
+                                ),
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFB8E4EA)),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: _teal.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Icon(
-                                    Icons.calendar_month_rounded,
-                                    color: _teal,
-                                    size: 20,
-                                  ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                selectedDateLabel,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  color: _tealDark,
+                                  height: 1.25,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  selectedDateLabel,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                    color: _tealDark,
-                                    height: 1.25,
-                                  ),
-                                ),
-                              ),
-                              const Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: _teal,
-                                size: 24,
-                              ),
-                            ],
-                          ),
+                            ),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: _teal,
+                              size: 24,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2397,6 +2339,134 @@ class _MetricTile extends StatelessWidget {
           value,
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// แถบนำทางล่าง — แต่ละแท็บใช้ soft press + indicator แบบ M3
+class _ProBottomNav extends StatelessWidget {
+  const _ProBottomNav({
+    required this.l10n,
+    required this.selectedIndex,
+    required this.onHome,
+    required this.onCalendar,
+    required this.onSettings,
+    required this.onLogout,
+  });
+
+  final AppLocalizations l10n;
+  final int selectedIndex;
+  final VoidCallback onHome;
+  final VoidCallback onCalendar;
+  final VoidCallback onSettings;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = TouchProfile.of(context);
+    final navHeight = profile.navBarHeight;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE7ECF3))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: navHeight,
+          child: Row(
+            children: [
+              _navItem(
+                context,
+                index: 0,
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: l10n.navHome,
+                onTap: onHome,
+              ),
+              _navItem(
+                context,
+                index: 1,
+                icon: Icons.calendar_month_outlined,
+                selectedIcon: Icons.calendar_month_rounded,
+                label: l10n.navCalendar,
+                onTap: onCalendar,
+              ),
+              _navItem(
+                context,
+                index: 2,
+                icon: Icons.settings_outlined,
+                selectedIcon: Icons.settings_rounded,
+                label: l10n.navSettings,
+                onTap: onSettings,
+              ),
+              _navItem(
+                context,
+                index: 3,
+                icon: Icons.logout_rounded,
+                selectedIcon: Icons.logout_rounded,
+                label: l10n.navLogout,
+                onTap: onLogout,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(
+    BuildContext context, {
+    required int index,
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final selected = selectedIndex == index;
+    const selectedColor = Color(0xFF0D98A5);
+    const idleColor = Color(0xFF64748B);
+
+    return Expanded(
+      child: SoftPressButton(
+        onTap: onTap,
+        size: SoftPressSize.small,
+        borderRadius: 16,
+        isDarkSurface: false,
+        showHighlight: false,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFD5F2F5) : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                selected ? selectedIcon : icon,
+                size: 22,
+                color: selected ? selectedColor : idleColor,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? selectedColor : idleColor,
+                ),
+              ),
+            ],
           ),
         ),
       ),

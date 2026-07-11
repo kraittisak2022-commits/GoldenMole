@@ -8,6 +8,14 @@ import {
     countRecordMenuStatusLabel,
     formatDashboardMetric,
 } from './countRecordUtils';
+import CountRecordAnalyticsPanel from './CountRecordAnalyticsPanel';
+import CountIncrementPop from './CountIncrementPop';
+import {
+    computeTripFleetWorkSpan,
+    computeWorkSpan,
+    formatWorkSpanLabel,
+} from './countRecordAnalytics';
+import type { CountRecordIncrement } from './countRecordUtils';
 
 interface CountRecordOverviewProps {
     dayKey: string;
@@ -16,22 +24,41 @@ interface CountRecordOverviewProps {
     compact?: boolean;
     showHeader?: boolean;
     pulseToken?: number;
+    increments?: CountRecordIncrement[];
 }
 
 const SAND_RECENT_LAPS = 5;
 
-function PeriodPill({ morning, afternoon }: { morning: number; afternoon: number }) {
+function PeriodPill({
+    morning,
+    afternoon,
+    variant = 'onLight',
+}: {
+    morning: number;
+    afternoon: number;
+    variant?: 'onDark' | 'onLight';
+}) {
     if (morning <= 0 && afternoon <= 0) return null;
+
+    const morningCls =
+        variant === 'onDark'
+            ? 'bg-amber-400/30 text-amber-50 ring-1 ring-amber-200/50 shadow-sm'
+            : 'bg-amber-100 text-amber-900 ring-1 ring-amber-200';
+    const afternoonCls =
+        variant === 'onDark'
+            ? 'bg-sky-400/30 text-sky-50 ring-1 ring-sky-200/50 shadow-sm'
+            : 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200';
+
     return (
         <div className="flex flex-wrap justify-center gap-1.5">
             {morning > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${morningCls}`}>
                     <Sun size={10} />
                     เช้า {formatDashboardMetric(morning)}
                 </span>
             )}
             {afternoon > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${afternoonCls}`}>
                     <Sunset size={10} />
                     บ่าย {formatDashboardMetric(afternoon)}
                 </span>
@@ -40,19 +67,37 @@ function PeriodPill({ morning, afternoon }: { morning: number; afternoon: number
     );
 }
 
+function WorkSpanBadge({ label, onDark }: { label: string; onDark?: boolean }) {
+    return (
+        <p
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                onDark ? 'bg-black/20 text-white/90 backdrop-blur-sm' : 'bg-slate-100 text-slate-700'
+            }`}
+        >
+            <Clock size={10} />
+            {label}
+        </p>
+    );
+}
+
 function TripVehicleCard({
     unit,
     index,
     compact,
     highlight,
+    dayKey,
+    incrementDelta,
 }: {
     unit: ReturnType<typeof buildCountRecordTripUnits>[number];
     index: number;
     compact?: boolean;
     highlight?: boolean;
+    dayKey: string;
+    incrementDelta?: number;
 }) {
     const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
     const lastLap = unit.lapTimes[unit.lapTimes.length - 1];
+    const workSpanLabel = formatWorkSpanLabel(computeWorkSpan(unit.lapTimes, dayKey));
 
     return (
         <article
@@ -80,12 +125,17 @@ function TripVehicleCard({
                 </div>
 
                 <div className="my-2 flex flex-1 flex-col items-center justify-center text-center">
-                    <p className={`font-black tabular-nums tracking-tight leading-none ${compact ? 'text-4xl' : 'text-5xl'}`}>
-                        {unit.rounds}
-                    </p>
+                    <div className="relative">
+                        <p className={`font-black tabular-nums tracking-tight leading-none ${compact ? 'text-4xl' : 'text-5xl'}`}>
+                            {unit.rounds}
+                        </p>
+                        {incrementDelta != null && incrementDelta > 0 && (
+                            <CountIncrementPop key={`${unit.id}-${unit.rounds}`} delta={incrementDelta} color="#fef08a" />
+                        )}
+                    </div>
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">เที่ยว</p>
                     <div className="mt-2">
-                        <PeriodPill morning={unit.morning} afternoon={unit.afternoon} />
+                        <PeriodPill morning={unit.morning} afternoon={unit.afternoon} variant="onDark" />
                     </div>
                 </div>
 
@@ -95,6 +145,12 @@ function TripVehicleCard({
                         <UserRound size={10} />
                         {unit.driverLabel}
                     </p>
+                    {workSpanLabel && (
+                        <p className="mt-1 flex items-center justify-center gap-1 truncate text-[10px] font-semibold text-white/75">
+                            <Clock size={9} />
+                            {workSpanLabel}
+                        </p>
+                    )}
                     {lastLap && (
                         <p className="mt-1 flex items-center justify-center gap-1 truncate text-[10px] text-white/65">
                             <Clock size={9} />
@@ -179,6 +235,7 @@ const CountRecordOverview = ({
     compact = false,
     showHeader = true,
     pulseToken = 0,
+    increments = [],
 }: CountRecordOverviewProps) => {
     const [highlight, setHighlight] = useState(false);
 
@@ -188,6 +245,20 @@ const CountRecordOverview = ({
         const timer = window.setTimeout(() => setHighlight(false), 700);
         return () => window.clearTimeout(timer);
     }, [pulseToken]);
+
+    const latestTripIncrements = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const inc of increments) {
+            if (inc.kind !== 'trip' || !inc.unitId) continue;
+            map.set(inc.unitId, inc.delta);
+        }
+        return map;
+    }, [increments]);
+
+    const latestSandIncrement = useMemo(() => {
+        const sandInc = increments.find((i) => i.kind === 'sand');
+        return sandInc?.delta ?? 0;
+    }, [increments]);
 
     const tripUnits = useMemo(
         () => buildCountRecordTripUnits(dayKey, transactions, employees),
@@ -205,6 +276,14 @@ const CountRecordOverview = ({
     const tripTotal = tripUnits.reduce((s, u) => s + u.rounds, 0);
     const sandRecentStart = sandUnit ? Math.max(0, sandUnit.lapTimes.length - SAND_RECENT_LAPS) : 0;
     const tripWithLaps = tripUnits.filter((u) => u.lapTimes.length > 0);
+    const tripFleetWorkSpan = useMemo(
+        () => formatWorkSpanLabel(computeTripFleetWorkSpan(tripUnits, dayKey)),
+        [tripUnits, dayKey],
+    );
+    const sandWorkSpan = useMemo(
+        () => (sandUnit ? formatWorkSpanLabel(computeWorkSpan(sandUnit.lapTimes, dayKey)) : null),
+        [sandUnit, dayKey],
+    );
 
     return (
         <div className={compact ? 'space-y-3' : 'space-y-5'}>
@@ -256,6 +335,12 @@ const CountRecordOverview = ({
                         />
                     ) : (
                         <div className="space-y-3">
+                            {tripFleetWorkSpan && (
+                                <div className="flex justify-center">
+                                    <WorkSpanBadge label={tripFleetWorkSpan} />
+                                </div>
+                            )}
+
                             <div
                                 className={
                                     tripUnits.length <= 2
@@ -270,6 +355,8 @@ const CountRecordOverview = ({
                                         index={i}
                                         compact={compact || tripUnits.length > 2}
                                         highlight={highlight}
+                                        dayKey={dayKey}
+                                        incrementDelta={latestTripIncrements.get(unit.id)}
                                     />
                                 ))}
                             </div>
@@ -301,6 +388,14 @@ const CountRecordOverview = ({
                                     <p className="mt-2 text-xs font-medium text-slate-400">ยังไม่มี timestamp</p>
                                 )}
                             </div>
+
+                            <CountRecordAnalyticsPanel
+                                mode="trip"
+                                dayKey={dayKey}
+                                transactions={transactions}
+                                employees={employees}
+                                accentColor="#2563eb"
+                            />
                         </div>
                     )}
                 </CountRecordPanelShell>
@@ -327,13 +422,27 @@ const CountRecordOverview = ({
                             >
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_45%)]" />
                                 <div className="relative">
-                                    <p className="text-6xl font-black tabular-nums tracking-tight leading-none">
-                                        {sandUnit.rounds}
-                                    </p>
+                                    <div className="relative">
+                                        <p className="text-6xl font-black tabular-nums tracking-tight leading-none">
+                                            {sandUnit.rounds}
+                                        </p>
+                                        {latestSandIncrement > 0 && (
+                                            <CountIncrementPop
+                                                key={`sand-${sandUnit.rounds}`}
+                                                delta={latestSandIncrement}
+                                                color="#fce7f3"
+                                            />
+                                        )}
+                                    </div>
                                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">รอบ</p>
                                     <div className="mt-3 flex justify-center">
-                                        <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} />
+                                        <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} variant="onDark" />
                                     </div>
+                                    {sandWorkSpan && (
+                                        <div className="mt-3 flex justify-center">
+                                            <WorkSpanBadge label={sandWorkSpan} onDark />
+                                        </div>
+                                    )}
                                     {sandUnit.lapTimes.length > 0 && (
                                         <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-black/15 px-2.5 py-1 text-[11px] font-mono text-white/85">
                                             <Clock size={10} />
@@ -364,6 +473,14 @@ const CountRecordOverview = ({
                                     </div>
                                 </div>
                             )}
+
+                            <CountRecordAnalyticsPanel
+                                mode="sand"
+                                dayKey={dayKey}
+                                transactions={transactions}
+                                employees={employees}
+                                accentColor="#db2777"
+                            />
                         </div>
                     )}
                 </CountRecordPanelShell>

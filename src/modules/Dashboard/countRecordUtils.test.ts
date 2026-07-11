@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
     countRecordLapPeriods,
+    diffCountRecordIncrements,
     isCountRecordSandTapRow,
     vehicleTripPeriodSplit,
 } from './countRecordUtils';
@@ -17,6 +18,22 @@ function trip(partial: Partial<Transaction> & { lapTimes?: string[] }): Transact
         description: 'รถดรัม',
         amount: 0,
         vehicleId: 'รถดรัมโอเว่น',
+        workAssignments: lapTimes ? { lapTimes } : undefined,
+        ...rest,
+    };
+}
+
+function sand(partial: Partial<Transaction> & { lapTimes?: string[]; drumsObtained?: number }): Transaction {
+    const { lapTimes, drumsObtained, ...rest } = partial;
+    return {
+        id: 's1',
+        date: '2026-06-26',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย',
+        amount: 0,
+        drumsObtained,
         workAssignments: lapTimes ? { lapTimes } : undefined,
         ...rest,
     };
@@ -89,5 +106,22 @@ describe('countRecordLapPeriods', () => {
         expect(p.morning).toBe(1);
         expect(p.afternoon).toBe(1);
         expect(p.unknown).toBe(1);
+    });
+});
+
+describe('diffCountRecordIncrements', () => {
+    it('detects trip and sand increments', () => {
+        const prev: Transaction[] = [
+            trip({ id: 'v1', perCarTrips: 2, lapTimes: ['26/06 08:00:00', '26/06 09:00:00'] }),
+            sand({ id: 's1', drumsObtained: 1, lapTimes: ['26/06 07:00:00'] }),
+        ];
+        const next: Transaction[] = [
+            trip({ id: 'v1', perCarTrips: 3, lapTimes: ['26/06 08:00:00', '26/06 09:00:00', '26/06 10:00:00'] }),
+            sand({ id: 's1', drumsObtained: 2, lapTimes: ['26/06 07:00:00', '26/06 08:00:00'] }),
+        ];
+        const inc = diffCountRecordIncrements('2026-06-26', prev, next, []);
+        expect(inc).toHaveLength(2);
+        expect(inc.find((i) => i.kind === 'trip')?.delta).toBe(1);
+        expect(inc.find((i) => i.kind === 'sand')?.delta).toBe(1);
     });
 });

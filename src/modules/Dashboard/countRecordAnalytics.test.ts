@@ -1,0 +1,213 @@
+import { describe, expect, it } from 'vitest';
+import type { Transaction } from '../../types';
+import {
+    buildDayComparison,
+    computeIntervalStats,
+    computeLapIntervals,
+    computePaceDeltaPercent,
+    computeTripFleetWorkSpan,
+    computeWorkSpan,
+    formatLapClock,
+    formatPaceDelta,
+    formatWorkSpanLabel,
+    mergeTripLapTimeline,
+    parseLapStamp,
+    timelineToLapStamps,
+} from './countRecordAnalytics';
+import { buildCountRecordTripUnits } from './countRecordUtils';
+
+function trip(partial: Partial<Transaction> & { lapTimes?: string[] }): Transaction {
+    const { lapTimes, ...rest } = partial;
+    return {
+        id: 't1',
+        date: '2026-06-26',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'รถดรัม',
+        amount: 0,
+        vehicleId: 'รถดรัมโอเว่น',
+        workAssignments: lapTimes ? { lapTimes } : undefined,
+        ...rest,
+    };
+}
+
+function sand(partial: Partial<Transaction> & { lapTimes?: string[]; drumsObtained?: number }): Transaction {
+    const { lapTimes, drumsObtained, ...rest } = partial;
+    return {
+        id: 's1',
+        date: '2026-06-26',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย',
+        amount: 0,
+        drumsObtained,
+        workAssignments: lapTimes ? { lapTimes } : undefined,
+        ...rest,
+    };
+}
+
+describe('parseLapStamp', () => {
+    it('parses dd/MM HH:mm:ss with year from dayKey', () => {
+        const ms = parseLapStamp('26/06 08:10:00', '2026-06-26');
+        expect(ms).not.toBeNull();
+        const d = new Date(ms! + 7 * 60 * 60 * 1000);
+        expect(d.getUTCHours()).toBe(8);
+        expect(d.getUTCMinutes()).toBe(10);
+    });
+
+    it('returns null for invalid stamp', () => {
+        expect(parseLapStamp('bad', '2026-06-26')).toBeNull();
+        expect(parseLapStamp('26/06', '2026-06-26')).toBeNull();
+    });
+});
+
+describe('computeLapIntervals', () => {
+    it('computes seconds between consecutive laps', () => {
+        const { intervalsSec, labels } = computeLapIntervals(
+            ['26/06 08:00:00', '26/06 08:07:00', '26/06 08:15:30'],
+            '2026-06-26',
+        );
+        expect(intervalsSec).toEqual([420, 510]);
+        expect(labels).toEqual(['รอบ 1→2', 'รอบ 2→3']);
+    });
+
+    it('returns empty for single lap', () => {
+        const { intervalsSec } = computeLapIntervals(['26/06 08:00:00'], '2026-06-26');
+        expect(intervalsSec).toEqual([]);
+    });
+});
+
+describe('computeIntervalStats', () => {
+    it('computes avg/median/min/max/last', () => {
+        const s = computeIntervalStats([300, 600, 900]);
+        expect(s.avg).toBe(600);
+        expect(s.median).toBe(600);
+        expect(s.min).toBe(300);
+        expect(s.max).toBe(900);
+        expect(s.last).toBe(900);
+    });
+});
+
+describe('paceDelta', () => {
+    it('negative means faster than yesterday', () => {
+        const pct = computePaceDeltaPercent(400, 500);
+        expect(pct).toBe(-20);
+        const { text, faster } = formatPaceDelta(pct);
+        expect(faster).toBe(true);
+        expect(text).toContain('เร็วกว่า');
+    });
+
+    it('positive means slower than yesterday', () => {
+        const pct = computePaceDeltaPercent(600, 500);
+        expect(pct).toBe(20);
+        const { faster } = formatPaceDelta(pct);
+        expect(faster).toBe(false);
+    });
+
+    it('handles missing yesterday data', () => {
+        const { text, faster } = formatPaceDelta(null);
+        expect(faster).toBeNull();
+        expect(text).toContain('ไม่มีข้อมูลเมื่อวาน');
+    });
+});
+
+describe('mergeTripLapTimeline', () => {
+    it('merges multiple vehicles sorted by time', () => {
+        const units = buildCountRecordTripUnits(
+            '2026-06-26',
+            [
+                trip({
+                    id: 'a',
+                    vehicleId: 'รถ A',
+                    lapTimes: ['26/06 10:00:00', '26/06 10:30:00'],
+                    perCarTrips: 2,
+                }),
+                trip({
+                    id: 'b',
+                    vehicleId: 'รถ B',
+                    lapTimes: ['26/06 09:00:00', '26/06 09:20:00'],
+                    perCarTrips: 2,
+                }),
+            ],
+            [],
+        );
+        const events = mergeTripLapTimeline(units, '2026-06-26');
+        expect(events.map((e) => e.vehicleId)).toEqual(['รถ B', 'รถ B', 'รถ A', 'รถ A']);
+        const stamps = timelineToLapStamps(events);
+        const intervals = computeLapIntervals(stamps, '2026-06-26');
+        expect(intervals.intervalsSec.length).toBe(3);
+    });
+});
+
+describe('buildDayComparison', () => {
+    it('compares today vs yesterday rounds and pace', () => {
+        const txs: Transaction[] = [
+            sand({
+                id: 's-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 08:00:00', '26/06 08:10:00', '26/06 08:25:00'],
+                drumsObtained: 3,
+            }),
+            sand({
+                id: 's-yesterday',
+                date: '2026-06-25',
+                lapTimes: ['25/06 08:00:00', '25/06 08:20:00'],
+                drumsObtained: 2,
+            }),
+            trip({
+                id: 'v-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 09:00:00', '26/06 09:05:00'],
+                perCarTrips: 2,
+            }),
+        ];
+        const cmp = buildDayComparison('2026-06-26', txs, []);
+        expect(cmp.sand.todayRounds).toBe(3);
+        expect(cmp.sand.yesterdayRounds).toBe(2);
+        expect(cmp.sand.roundsDeltaPct).toBe(50);
+        expect(cmp.sand.paceDeltaPct).not.toBeNull();
+        expect(cmp.trip.todayRounds).toBe(2);
+    });
+});
+
+describe('formatLapClock', () => {
+    it('extracts HH:mm from stamp', () => {
+        expect(formatLapClock('26/06 08:10:00')).toBe('08:10');
+        expect(formatLapClock('bad')).toBeNull();
+    });
+});
+
+describe('computeWorkSpan', () => {
+    it('returns first and last lap clocks', () => {
+        const span = computeWorkSpan(
+            ['26/06 08:12:00', '26/06 12:00:00', '26/06 16:45:30'],
+            '2026-06-26',
+        );
+        expect(span.startClock).toBe('08:12');
+        expect(span.endClock).toBe('16:45');
+        expect(formatWorkSpanLabel(span)).toBe('เริ่ม 08:12 · เลิก 16:45');
+    });
+
+    it('handles single lap', () => {
+        const span = computeWorkSpan(['26/06 09:00:00'], '2026-06-26');
+        expect(formatWorkSpanLabel(span)).toBe('เริ่ม 09:00');
+    });
+});
+
+describe('computeTripFleetWorkSpan', () => {
+    it('spans across all vehicles', () => {
+        const units = buildCountRecordTripUnits(
+            '2026-06-26',
+            [
+                trip({ id: 'a', vehicleId: 'รถ A', lapTimes: ['26/06 16:00:00'], perCarTrips: 1 }),
+                trip({ id: 'b', vehicleId: 'รถ B', lapTimes: ['26/06 08:00:00'], perCarTrips: 1 }),
+            ],
+            [],
+        );
+        const span = computeTripFleetWorkSpan(units, '2026-06-26');
+        expect(span.startClock).toBe('08:00');
+        expect(span.endClock).toBe('16:00');
+    });
+});
