@@ -254,7 +254,7 @@ function PeakHourCard({
     return (
         <div className="press-pop flex flex-col items-center justify-center py-2 text-center">
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{t('peakHourLabel')}</p>
-            <p className="mt-2 text-2xl font-black tabular-nums sm:text-3xl" style={{ color }}>
+            <p className="mt-2 text-base font-black tabular-nums sm:text-lg" style={{ color }}>
                 {t('peakHourRange', { start: peak.label, end: endLabel })}
             </p>
             <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">

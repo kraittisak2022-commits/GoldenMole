@@ -12,6 +12,8 @@ import {
 import CountRecordAnalyticsPanel from './CountRecordAnalyticsPanel';
 import CountIncrementPop from './CountIncrementPop';
 import {
+    addDaysToYmd,
+    computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
     computeWorkSpan,
     formatWorkSpanLabel,
@@ -34,6 +36,69 @@ interface CountRecordOverviewProps {
 
 const SAND_RECENT_LAPS = 5;
 const QUEUE_PER_TRIP = 3;
+const SAND_TARGET_ROUNDS = 800;
+const TRIP_TARGET_TRIPS = 266;
+
+function TargetProgressBar({
+    current,
+    target,
+    color,
+}: {
+    current: number;
+    target: number;
+    color: string;
+}) {
+    const { t } = useShareLocale();
+    const pct = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+    return (
+        <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between text-[10px] font-semibold">
+                <span className="text-slate-500 dark:text-slate-400">{t('targetLabel')}</span>
+                <span className="tabular-nums text-slate-700 dark:text-slate-200">
+                    {t('targetProgress', { current: formatDashboardMetric(current), target: formatDashboardMetric(target) })}
+                    {' · '}
+                    {Math.round(pct)}%
+                </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700">
+                <div
+                    className="chart-bar-grow h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: color }}
+                />
+            </div>
+        </div>
+    );
+}
+
+function EfficiencyVsYesterdayBadge({ deltaPct }: { deltaPct: number | null }) {
+    const { t } = useShareLocale();
+    if (deltaPct == null) {
+        return (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                {t('noYesterdayData')}
+            </span>
+        );
+    }
+    if (Math.round(Math.abs(deltaPct)) === 0) {
+        return (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                {t('paceSameYesterday')}
+            </span>
+        );
+    }
+    if (deltaPct > 0) {
+        return (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                ▲ {t('moreEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+            </span>
+        );
+    }
+    return (
+        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-400">
+            ▼ {t('lessEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+        </span>
+    );
+}
 
 function PeriodPill({
     morning,
@@ -310,6 +375,37 @@ const CountRecordOverview = ({
         () => (sandUnit ? formatWorkSpanLabel(computeWorkSpan(sandUnit.lapTimes, dayKey), locale) : null),
         [sandUnit, dayKey, locale],
     );
+    const sandWorkSummary = useMemo(
+        () => (sandUnit ? computeSandWorkDurationSummary(sandUnit.lapTimes, dayKey) : null),
+        [sandUnit, dayKey],
+    );
+    const yesterdayTripUnits = useMemo(
+        () => buildCountRecordTripUnits(addDaysToYmd(dayKey, -1), transactions, employees),
+        [dayKey, transactions, employees],
+    );
+
+    const sandSpeedPerHour = useMemo(() => {
+        if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;
+        return sandUnit.rounds / sandWorkSummary.totalActiveHours;
+    }, [sandUnit, sandWorkSummary]);
+
+    const sandSpeedPerMinute = useMemo(() => {
+        if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;
+        return sandUnit.rounds / (sandWorkSummary.totalActiveHours * 60);
+    }, [sandUnit, sandWorkSummary]);
+
+    const vehicleEfficiency = useMemo(() => {
+        const activeToday = tripUnits.filter((u) => u.rounds > 0);
+        const activeYest = yesterdayTripUnits.filter((u) => u.rounds > 0);
+        const countToday = activeToday.length > 0 ? activeToday.length : tripUnits.length;
+        const yTripTotal = yesterdayTripUnits.reduce((s, u) => s + u.rounds, 0);
+        const countYest = activeYest.length > 0 ? activeYest.length : yesterdayTripUnits.length;
+        const perVehToday = countToday > 0 ? tripTotal / countToday : 0;
+        const perVehYest = countYest > 0 && yTripTotal > 0 ? yTripTotal / countYest : null;
+        const deltaPct =
+            perVehYest != null && perVehYest > 0 ? ((perVehToday - perVehYest) / perVehYest) * 100 : null;
+        return { perVehToday, countToday, deltaPct };
+    }, [tripUnits, yesterdayTripUnits, tripTotal]);
 
     const isCompactLayout = compact || shareMode;
     const showOverviewHeader = showHeader && !shareMode;
@@ -373,16 +469,44 @@ const CountRecordOverview = ({
                                 <div className="flex flex-col items-center gap-2">
                                     {tripFleetWorkSpan && <WorkSpanBadge label={tripFleetWorkSpan} />}
                                     {tripTotal > 0 && (
-                                    <div className="press-pop flex w-full max-w-xs flex-col items-center rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-cyan-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-cyan-950/30">
-                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
-                                            {t('queueCount')}
-                                        </p>
-                                        <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
-                                            {formatDashboardMetric(tripTotal * QUEUE_PER_TRIP)}
-                                            <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('queueUnit')}</span>
-                                        </p>
-                                        <p className="mt-1 text-[10px] font-medium text-blue-700/80 dark:text-blue-300/70">{t('queuePerTripNote')}</p>
-                                    </div>
+                                        <div className="press-pop flex w-full max-w-xs flex-col rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-indigo-950/30">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                                                {t('tripTotalTitle')}
+                                            </p>
+                                            <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
+                                                {formatDashboardMetric(tripTotal)}
+                                                <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('tripUnit')}</span>
+                                            </p>
+                                            <TargetProgressBar current={tripTotal} target={TRIP_TARGET_TRIPS} color="#2563eb" />
+                                        </div>
+                                    )}
+                                    {tripTotal > 0 && (
+                                        <div className="press-pop flex w-full max-w-xs flex-col items-center rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-cyan-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-cyan-950/30">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                                                {t('queueCount')}
+                                            </p>
+                                            <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
+                                                {formatDashboardMetric(tripTotal * QUEUE_PER_TRIP)}
+                                                <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('queueUnit')}</span>
+                                            </p>
+                                            <p className="mt-1 text-[10px] font-medium text-blue-700/80 dark:text-blue-300/70">{t('queuePerTripNote')}</p>
+                                        </div>
+                                    )}
+                                    {tripTotal > 0 && tripUnits.length > 0 && (
+                                        <div className="press-pop flex w-full max-w-xs flex-col rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 to-slate-50 px-4 py-3 shadow-sm dark:border-indigo-500/25 dark:from-indigo-950/40 dark:to-slate-950/30">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
+                                                    {t('perVehicleTitle')}
+                                                </p>
+                                                <EfficiencyVsYesterdayBadge deltaPct={vehicleEfficiency.deltaPct} />
+                                            </div>
+                                            <p className="mt-2 text-center text-xl font-black tabular-nums text-indigo-900 dark:text-indigo-100">
+                                                {t('perVehicleAvg', { v: formatDashboardMetric(Math.round(vehicleEfficiency.perVehToday * 10) / 10) })}
+                                            </p>
+                                            <p className="mt-1 text-center text-[10px] font-medium text-indigo-700/80 dark:text-indigo-300/70">
+                                                {t('vehicleCountLabel', { n: vehicleEfficiency.countToday })}
+                                            </p>
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -538,6 +662,37 @@ const CountRecordOverview = ({
                                         </p>
                                     )}
                                 </div>
+                            </div>
+
+                            <div className="press-pop rounded-2xl border border-pink-200/80 bg-gradient-to-br from-pink-50 to-rose-50 p-4 shadow-sm dark:border-pink-500/25 dark:from-pink-950/40 dark:to-rose-950/30">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-pink-600 dark:text-pink-300">
+                                    {t('sandKpiTitle')}
+                                </p>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <div className="rounded-xl bg-white/80 px-3 py-2 text-center dark:bg-slate-900/60">
+                                        <p className="text-[9px] font-bold text-pink-600 dark:text-pink-300">
+                                            {t('perHourUnit', { unit: t('roundUnit') })}
+                                        </p>
+                                        <p className="mt-1 text-lg font-black tabular-nums text-pink-900 dark:text-pink-100">
+                                            {sandSpeedPerHour != null
+                                                ? t('speedPerHourShort', { v: formatDashboardMetric(Math.round(sandSpeedPerHour * 10) / 10) })
+                                                : '—'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl bg-white/80 px-3 py-2 text-center dark:bg-slate-900/60">
+                                        <p className="text-[9px] font-bold text-pink-600 dark:text-pink-300">{t('roundsPerMinute')}</p>
+                                        <p className="mt-1 text-lg font-black tabular-nums text-pink-900 dark:text-pink-100">
+                                            {sandSpeedPerMinute != null
+                                                ? t('speedPerMinuteShort', { v: formatDashboardMetric(Math.round(sandSpeedPerMinute * 100) / 100) })
+                                                : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <TargetProgressBar
+                                    current={sandUnit.rounds}
+                                    target={SAND_TARGET_ROUNDS}
+                                    color="#db2777"
+                                />
                             </div>
 
                             {sandUnit.lapTimes.length > 0 && (

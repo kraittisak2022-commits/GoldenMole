@@ -131,8 +131,8 @@ const DashboardV4 = ({
                 />
             )}
 
-            {/* Hero header */}
-            <div className={`relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white shadow-xl shadow-slate-900/15 ${
+            {/* Hero header — desktop/tablet only; live board bar has date controls on mobile */}
+            <div className={`hidden md:block relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white shadow-xl shadow-slate-900/15 ${
                 shareMode
                     ? 'px-4 py-4 landscape:max-md:px-3 landscape:max-md:py-3 sm:px-6 sm:py-6'
                     : 'px-5 py-5 sm:px-6 sm:py-6'
