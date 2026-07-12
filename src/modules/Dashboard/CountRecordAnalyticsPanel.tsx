@@ -7,14 +7,13 @@ import {
     buildCountRecordTripUnits,
 } from './countRecordUtils';
 import {
+    addDaysToYmd,
     buildDayComparison,
     buildIntervalSparkline,
     computeCumulativeSeries,
     computeHourlyActiveWork,
     computeHourlyBuckets,
-    computeHourlyEfficiency,
     computeHourlyHeatmap,
-    computeHourlySandSpeed,
     computeIntervalStats,
     computeLapIntervals,
     computeMinuteSandSpeed,
@@ -64,7 +63,7 @@ function ChartTip({
     const left = clamp(leftPct, 6, 94);
     return (
         <div
-            className={`pointer-events-none absolute z-20 -translate-x-1/2 rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-lg ring-1 ring-white/10 dark:bg-slate-800 ${className}`}
+            className={`chart-tip-pop pointer-events-none absolute z-20 -translate-x-1/2 rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-lg ring-1 ring-white/10 dark:bg-slate-800 ${className}`}
             style={{ left: `${left}%` }}
         >
             <p className="leading-tight text-white/70">{title}</p>
@@ -123,6 +122,7 @@ function InteractiveBarChart({
                                     height: `${(item.value / max) * barMaxPx}px`,
                                     backgroundColor: color,
                                     minHeight: 4,
+                                    animationDelay: `${Math.min(i * 35, 500)}ms`,
                                 }}
                             />
                             <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">
@@ -262,32 +262,207 @@ function PeakHourCard({
     );
 }
 
-function EfficiencyBarChart({
-    buckets,
+function labelToHourOfDay(label: string): number | null {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(label);
+    if (!m) return null;
+    return Number(m[1]) + Number(m[2]) / 60;
+}
+
+function hourOfDayToLabel(hour: number): string {
+    const h = Math.floor(hour);
+    const m = Math.round((hour - h) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function YesterdayComparisonChart({
+    today,
+    yesterday,
+    deltaPct,
     color,
-    unitLabel,
+    roundLabel,
 }: {
-    buckets: ReturnType<typeof computeHourlyEfficiency>;
+    today: { label: string; value: number }[];
+    yesterday: { label: string; value: number }[];
+    deltaPct: number | null;
     color: string;
-    unitLabel: string;
+    roundLabel: string;
 }) {
     const { t } = useShareLocale();
-    if (buckets.length === 0) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [activeFrac, setActiveFrac] = useState<number | null>(null);
+
+    const updateFrac = useCallback((clientX: number) => {
+        const el = containerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        setActiveFrac(clamp((clientX - rect.left) / rect.width, 0, 1));
+    }, []);
+
+    const onPointerMove = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateFrac(e.clientX),
+        [updateFrac],
+    );
+    const onPointerDown = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateFrac(e.clientX),
+        [updateFrac],
+    );
+
+    const todayPts = today
+        .map((p) => ({ h: labelToHourOfDay(p.label), v: p.value }))
+        .filter((p): p is { h: number; v: number } => p.h != null);
+    const yesterdayPts = yesterday
+        .map((p) => ({ h: labelToHourOfDay(p.label), v: p.value }))
+        .filter((p): p is { h: number; v: number } => p.h != null);
+
+    if (todayPts.length < 2) {
         return (
-            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                {t('noSpeedData')}
+            <p className="flex h-28 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                {t('needTwoRounds')}
             </p>
         );
     }
-    const items: BarChartItem[] = buckets.map((b) => ({
-        label: b.label,
-        value: b.roundsPerHour,
-        barTopLabel: String(b.roundsPerHour),
-        tooltipTitle: b.label,
-        tooltipValue: `${b.roundsPerHour} ${unitLabel}`,
-        subLabel: unitLabel,
-    }));
-    return <InteractiveBarChart items={items} color={color} />;
+
+    const allPts = [...todayPts, ...yesterdayPts];
+    const minH = Math.min(...allPts.map((p) => p.h));
+    const maxH = Math.max(...allPts.map((p) => p.h));
+    const spanH = Math.max(maxH - minH, 0.5);
+    const maxV = Math.max(...allPts.map((p) => p.v), 1);
+    const width = 100;
+    const height = 80;
+
+    const toCoords = (pts: { h: number; v: number }[]) =>
+        pts.map((p) => ({
+            x: ((p.h - minH) / spanH) * width,
+            y: height - (p.v / maxV) * height,
+        }));
+    const todayCoords = toCoords(todayPts);
+    const yesterdayCoords = toCoords(yesterdayPts);
+    const gradId = `vsy-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+    const valueAtHour = (pts: { h: number; v: number }[], hour: number): number => {
+        let val = 0;
+        for (const p of pts) {
+            if (p.h <= hour) val = p.v;
+            else break;
+        }
+        return val;
+    };
+
+    const activeHour = activeFrac != null ? minH + activeFrac * spanH : null;
+    const deltaBadge =
+        deltaPct == null ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                {t('noYesterdayData')}
+            </span>
+        ) : Math.round(Math.abs(deltaPct)) === 0 ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                {t('paceSameYesterday')}
+            </span>
+        ) : deltaPct > 0 ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                ▲ {t('moreThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+            </span>
+        ) : (
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-400">
+                ▼ {t('lessThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+            </span>
+        );
+
+    return (
+        <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-3 text-[9px] font-semibold">
+                    <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                        <span className="h-1.5 w-3 rounded-full" style={{ backgroundColor: color }} />
+                        {t('todayLabel')}
+                    </span>
+                    <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
+                        <span className="h-0 w-3 border-t-2 border-dashed border-slate-400 dark:border-slate-500" />
+                        {t('yesterdayLabel')}
+                    </span>
+                </div>
+                {deltaBadge}
+            </div>
+            <div
+                ref={containerRef}
+                className="relative h-28 touch-none"
+                onPointerMove={onPointerMove}
+                onPointerDown={onPointerDown}
+                onPointerLeave={() => setActiveFrac(null)}
+            >
+                <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+                            <stop offset="100%" stopColor={color} stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    {[0.25, 0.5, 0.75].map((pct) => (
+                        <line
+                            key={pct}
+                            x1={0}
+                            y1={height * (1 - pct)}
+                            x2={width}
+                            y2={height * (1 - pct)}
+                            stroke="currentColor"
+                            className="text-slate-200 dark:text-slate-700"
+                            strokeWidth="0.3"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ))}
+                    {yesterdayCoords.length >= 2 ? (
+                        <polyline
+                            points={yesterdayCoords.map((c) => `${c.x},${c.y}`).join(' ')}
+                            fill="none"
+                            stroke="currentColor"
+                            className="chart-area-fade text-slate-400 dark:text-slate-500"
+                            strokeWidth="1.2"
+                            strokeDasharray="3 2.5"
+                            strokeLinecap="round"
+                        />
+                    ) : null}
+                    <path
+                        className="chart-area-fade"
+                        d={`M${todayCoords[0]!.x},${height} ${todayCoords.map((c) => `L${c.x},${c.y}`).join(' ')} L${todayCoords[todayCoords.length - 1]!.x},${height} Z`}
+                        fill={`url(#${gradId})`}
+                    />
+                    <polyline
+                        points={todayCoords.map((c) => `${c.x},${c.y}`).join(' ')}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        className="chart-line-draw"
+                        pathLength={1}
+                    />
+                    {activeFrac != null ? (
+                        <line
+                            x1={activeFrac * width}
+                            y1={0}
+                            x2={activeFrac * width}
+                            y2={height}
+                            stroke="currentColor"
+                            className="text-slate-300 dark:text-slate-600"
+                            strokeWidth="0.5"
+                            strokeDasharray="2 2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    ) : null}
+                </svg>
+                {activeHour != null ? (
+                    <ChartTip
+                        title={hourOfDayToLabel(activeHour)}
+                        value={`${t('todayLabel')} ${valueAtHour(todayPts, activeHour)} · ${t('yesterdayLabel')} ${valueAtHour(yesterdayPts, activeHour)} ${roundLabel}`}
+                        leftPct={activeFrac! * 100}
+                    />
+                ) : null}
+            </div>
+            <div className="flex justify-between text-[9px] text-slate-400 dark:text-slate-500">
+                <span>{hourOfDayToLabel(minH)}</span>
+                <span>{hourOfDayToLabel(maxH)}</span>
+            </div>
+        </div>
+    );
 }
 
 function CumulativeLineChart({
@@ -357,10 +532,19 @@ function CumulativeLineChart({
                         </linearGradient>
                     </defs>
                     <path
+                        className="chart-area-fade"
                         d={`M0,${height} L${coords[0]!.x},${coords[0]!.y} ${coords.map((c) => `L${c.x},${c.y}`).join(' ')} L${width},${height} Z`}
                         fill={`url(#${gradId})`}
                     />
-                    <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                    <polyline
+                        points={linePoints}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        className="chart-line-draw"
+                        pathLength={1}
+                    />
                     {activeIdx != null && coords[activeIdx] ? (
                         <>
                             <line
@@ -639,9 +823,17 @@ function MinuteTimelineChart({
                             <stop offset="100%" stopColor={color} stopOpacity="0" />
                         </linearGradient>
                     </defs>
-                    {areaPath ? <path d={areaPath} fill={`url(#${gradId})`} /> : null}
+                    {areaPath ? <path className="chart-area-fade" d={areaPath} fill={`url(#${gradId})`} /> : null}
                     {linePath ? (
-                        <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                        <path
+                            d={linePath}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            className="chart-line-draw"
+                            pathLength={1}
+                        />
                     ) : null}
                     <circle
                         cx={coords[maxIdx]!.x}
@@ -843,10 +1035,6 @@ const CountRecordAnalyticsPanel = ({
         () => (mode === 'sand' ? computeHourlyActiveWork(lapTimes, dayKey) : []),
         [mode, lapTimes, dayKey],
     );
-    const hourlySandSpeed = useMemo(
-        () => (mode === 'sand' ? computeHourlySandSpeed(lapTimes, dayKey) : []),
-        [mode, lapTimes, dayKey],
-    );
     const minuteSandSpeed = useMemo(
         () => (mode === 'sand' ? computeMinuteSandSpeed(lapTimes, dayKey) : []),
         [mode, lapTimes, dayKey],
@@ -864,7 +1052,16 @@ const CountRecordAnalyticsPanel = ({
         [mode, tripUnits],
     );
     const peakHour = useMemo(() => computePeakHour(hourlyHeatmap), [hourlyHeatmap]);
-    const hourlyEfficiency = useMemo(() => computeHourlyEfficiency(lapTimes, dayKey), [lapTimes, dayKey]);
+    const yesterdayCumulative = useMemo(() => {
+        const yesterdayKey = addDaysToYmd(dayKey, -1);
+        if (mode === 'sand') {
+            const sand = buildCountRecordSandUnit(yesterdayKey, transactions);
+            return computeCumulativeSeries(sand?.lapTimes ?? [], yesterdayKey);
+        }
+        const units = buildCountRecordTripUnits(yesterdayKey, transactions, employees);
+        const timeline = mergeTripLapTimeline(units, yesterdayKey);
+        return computeCumulativeSeries(timelineToLapStamps(timeline), yesterdayKey);
+    }, [mode, dayKey, transactions, employees]);
     const tripWorkSummary = useMemo(
         () => (mode === 'trip' ? computeTripFleetWorkDurationSummary(tripUnits, dayKey) : null),
         [mode, tripUnits, dayKey],
@@ -903,7 +1100,7 @@ const CountRecordAnalyticsPanel = ({
             />
 
             {/* Bento grid */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="chart-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
                 <ChartBlock title={t('morningAfternoonSplit')} className="sm:col-span-2 lg:col-span-4">
                     <PeriodSplitBar split={periodSplit} roundLabel={roundLabel} />
                 </ChartBlock>
@@ -924,8 +1121,14 @@ const CountRecordAnalyticsPanel = ({
                     <HourlyBarChart buckets={hourly} color={color} roundLabel={roundLabel} />
                 </ChartBlock>
 
-                <ChartBlock title={t('speedPerHour', { unit: roundLabel })} className="lg:col-span-6">
-                    <EfficiencyBarChart buckets={hourlyEfficiency} color={color} unitLabel={t('perHourUnit', { unit: roundLabel })} />
+                <ChartBlock title={t('vsYesterdayCumulative')} className="lg:col-span-6">
+                    <YesterdayComparisonChart
+                        today={cumulative}
+                        yesterday={yesterdayCumulative}
+                        deltaPct={modeComparison.roundsDeltaPct}
+                        color={color}
+                        roundLabel={roundLabel}
+                    />
                 </ChartBlock>
 
                 {mode === 'trip' && (
@@ -938,14 +1141,6 @@ const CountRecordAnalyticsPanel = ({
                     <>
                         <ChartBlock title={t('sandWorkHourly')} className="lg:col-span-6">
                             <WorkHoursBarChart buckets={hourlyActiveWork} color={color} />
-                        </ChartBlock>
-                        <ChartBlock title={t('sandSpeedHourly')} className="lg:col-span-6">
-                            <HourlyBarChart
-                                buckets={hourlySandSpeed}
-                                color={color}
-                                valueKey="speed"
-                                unitLabel={t('perHourUnit', { unit: roundLabel })}
-                            />
                         </ChartBlock>
                         <ChartBlock title={t('sandSpeedMinute')} className="lg:col-span-12">
                             <MinuteTimelineChart buckets={minuteSandSpeed} color={color} />

@@ -139,8 +139,21 @@
 
     .chart-bar-grow,
     .gauge-sweep path,
-    .gauge-sweep circle {
+    .gauge-sweep circle,
+    .chart-line-draw,
+    .chart-area-fade,
+    .chart-tip-pop,
+    .chart-grid > * {
         animation: none !important;
+    }
+
+    .chart-line-draw {
+        stroke-dashoffset: 0 !important;
+    }
+
+    .chart-area-fade,
+    .chart-grid > * {
+        opacity: 1 !important;
     }
 
     .score-pop-in {
@@ -155,8 +168,73 @@
 }
 
 .chart-bar-grow {
-    animation: chartBarGrow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: chartBarGrow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     transform-origin: bottom center;
+}
+
+.chart-line-draw {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: chartLineDraw 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes chartLineDraw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.chart-area-fade {
+    opacity: 0;
+    animation: chartAreaFade 0.7s ease-out 0.45s forwards;
+}
+
+@keyframes chartAreaFade {
+    to {
+        opacity: 1;
+    }
+}
+
+.chart-grid > * {
+    opacity: 0;
+    animation: chartBlockIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.chart-grid > *:nth-child(1) { animation-delay: 0ms; }
+.chart-grid > *:nth-child(2) { animation-delay: 60ms; }
+.chart-grid > *:nth-child(3) { animation-delay: 120ms; }
+.chart-grid > *:nth-child(4) { animation-delay: 180ms; }
+.chart-grid > *:nth-child(5) { animation-delay: 240ms; }
+.chart-grid > *:nth-child(6) { animation-delay: 300ms; }
+.chart-grid > *:nth-child(7) { animation-delay: 360ms; }
+.chart-grid > *:nth-child(n+8) { animation-delay: 420ms; }
+
+@keyframes chartBlockIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.chart-tip-pop {
+    animation: chartTipPop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes chartTipPop {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px) scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
 }
 
 .gauge-sweep path,
