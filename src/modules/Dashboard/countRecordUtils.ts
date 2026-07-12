@@ -212,7 +212,11 @@ export function buildCountRecordSandUnit(dayKey: string, transactions: Transacti
     };
 }
 
-export function countRecordMenuStatusLabel(dayKey: string, transactions: Transaction[]): string | null {
+export function countRecordMenuStatusLabel(
+    dayKey: string,
+    transactions: Transaction[],
+    locale: 'th' | 'zh' = 'th',
+): string | null {
     const vehicles = new Set<string>();
     let tripTotal = 0;
     let sandRounds = 0;
@@ -236,12 +240,22 @@ export function countRecordMenuStatusLabel(dayKey: string, transactions: Transac
 
     const parts: string[] = [];
     if (tripTotal > 0 || vehicles.size > 0) {
-        parts.push(`${vehicles.size} คัน · ${formatDashboardMetric(tripTotal)} เที่ยว`);
+        if (locale === 'zh') {
+            parts.push(`${vehicles.size} 辆 · ${formatDashboardMetric(tripTotal)} 趟`);
+        } else {
+            parts.push(`${vehicles.size} คัน · ${formatDashboardMetric(tripTotal)} เที่ยว`);
+        }
     }
     if (sandRounds > 0) {
-        let sand = `ร่อน ${formatDashboardMetric(sandRounds)} รอบ`;
+        let sand =
+            locale === 'zh'
+                ? `洗沙 ${formatDashboardMetric(sandRounds)} 轮`
+                : `ร่อน ${formatDashboardMetric(sandRounds)} รอบ`;
         if (sandMorning > 0 || sandAfternoon > 0) {
-            sand += ` (เช้า ${sandMorning} · บ่าย ${sandAfternoon})`;
+            sand +=
+                locale === 'zh'
+                    ? ` (上午 ${sandMorning} · 下午 ${sandAfternoon})`
+                    : ` (เช้า ${sandMorning} · บ่าย ${sandAfternoon})`;
         }
         parts.push(sand);
     }
@@ -279,6 +293,7 @@ export function diffCountRecordActivities(
     prevTransactions: Transaction[],
     nextTransactions: Transaction[],
     employees: Employee[],
+    locale: 'th' | 'zh' = 'th',
 ): CountRecordActivity[] {
     const at = Date.now();
     const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees);
@@ -298,8 +313,12 @@ export function diffCountRecordActivities(
                     at,
                     kind: 'trip',
                     message: lap
-                        ? `${u.vehicleId} • เที่ยวที่ ${u.rounds} • ${lap}`
-                        : `${u.vehicleId} • ${u.rounds} เที่ยว`,
+                        ? locale === 'zh'
+                            ? `${u.vehicleId} • 第 ${u.rounds} 趟 • ${lap}`
+                            : `${u.vehicleId} • เที่ยวที่ ${u.rounds} • ${lap}`
+                        : locale === 'zh'
+                          ? `${u.vehicleId} • ${u.rounds} 趟`
+                          : `${u.vehicleId} • ${u.rounds} เที่ยว`,
                 });
             }
             continue;
@@ -311,8 +330,12 @@ export function diffCountRecordActivities(
                 at,
                 kind: 'trip',
                 message: lap
-                    ? `${u.vehicleId} • เที่ยวที่ ${u.rounds} • ${lap}`
-                    : `${u.vehicleId} • เพิ่มเป็น ${u.rounds} เที่ยว`,
+                    ? locale === 'zh'
+                        ? `${u.vehicleId} • 第 ${u.rounds} 趟 • ${lap}`
+                        : `${u.vehicleId} • เที่ยวที่ ${u.rounds} • ${lap}`
+                    : locale === 'zh'
+                      ? `${u.vehicleId} • 增至 ${u.rounds} 趟`
+                      : `${u.vehicleId} • เพิ่มเป็น ${u.rounds} เที่ยว`,
             });
         }
     }
@@ -323,7 +346,13 @@ export function diffCountRecordActivities(
             id: `${nextSand.id}-${nextSand.rounds}-${at}`,
             at,
             kind: 'sand',
-            message: lap ? `รอบที่ ${nextSand.rounds} • ${lap}` : `ร่อนทราย • ${nextSand.rounds} รอบ`,
+            message: lap
+                ? locale === 'zh'
+                    ? `第 ${nextSand.rounds} 轮 • ${lap}`
+                    : `รอบที่ ${nextSand.rounds} • ${lap}`
+                : locale === 'zh'
+                  ? `洗沙 • ${nextSand.rounds} 轮`
+                  : `ร่อนทราย • ${nextSand.rounds} รอบ`,
         });
     }
 

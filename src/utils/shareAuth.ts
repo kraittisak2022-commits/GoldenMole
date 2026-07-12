@@ -44,6 +44,11 @@ export function getSharePinLockRemainMs(token: string): number {
     return Math.max(0, state.lockUntil - Date.now());
 }
 
+/** Verify PIN without counting failed attempts (for auto-unlock while typing). */
+export async function verifySharePinOnly(storedHash: string | null, inputPin: string): Promise<boolean> {
+    return verifySharePin(storedHash, inputPin);
+}
+
 export async function attemptSharePinUnlock(
     token: string,
     storedHash: string | null,
@@ -94,6 +99,11 @@ export function isShareSessionUnlocked(token: string): boolean {
 
 export function setShareUnlockSession(token: string) {
     sessionStorage.setItem(SHARE_SESSION_KEY, JSON.stringify({ token, at: Date.now() }));
+}
+
+export function markSharePinUnlocked(token: string) {
+    writeFailState({ token, failedAttempts: 0 });
+    setShareUnlockSession(token);
 }
 
 export function clearShareUnlockSession() {

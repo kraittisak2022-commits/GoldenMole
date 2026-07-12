@@ -23,6 +23,7 @@ export interface UseCountRecordRealtimeOptions {
     onRefresh?: () => void | Promise<void>;
     pollIntervalMs?: number;
     maxActivities?: number;
+    displayLocale?: 'th' | 'zh';
 }
 
 export interface UseCountRecordRealtimeResult {
@@ -44,6 +45,7 @@ export function useCountRecordRealtime({
     onRefresh,
     pollIntervalMs = 12000,
     maxActivities = 12,
+    displayLocale = 'th',
 }: UseCountRecordRealtimeOptions): UseCountRecordRealtimeResult {
     const [pulseToken, setPulseToken] = useState(0);
     const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
@@ -79,12 +81,12 @@ export function useCountRecordRealtime({
         if (!dayKey) return;
         const prev = prevTransactionsRef.current;
         if (prev !== transactions) {
-            const items = diffCountRecordActivities(dayKey, prev, transactions, employees);
+            const items = diffCountRecordActivities(dayKey, prev, transactions, employees, displayLocale);
             const incItems = diffCountRecordIncrements(dayKey, prev, transactions, employees);
             if (items.length > 0 || incItems.length > 0) pushActivities(items, incItems, 'local');
         }
         prevTransactionsRef.current = transactions;
-    }, [dayKey, transactions, employees, pushActivities]);
+    }, [dayKey, transactions, employees, pushActivities, displayLocale]);
 
     useEffect(() => subscribeTransactionsRealtimeStatus(setChannelStatus), []);
 

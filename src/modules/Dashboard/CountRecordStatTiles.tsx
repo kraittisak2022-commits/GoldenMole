@@ -1,4 +1,5 @@
 import { TrendingDown, TrendingUp, Minus, Clock, BarChart2, Timer } from 'lucide-react';
+import { useShareLocale } from '../Share/shareI18n';
 import {
     formatActiveHours,
     formatAvgPaceSec,
@@ -43,7 +44,8 @@ function MiniSparkline({ values, color }: { values: number[]; color: string }) {
 }
 
 function PaceGauge({ pct, color }: { pct: number | null; color: string }) {
-    const { faster } = formatPaceDelta(pct);
+    const { locale } = useShareLocale();
+    const { faster } = formatPaceDelta(pct, locale);
     const abs = pct != null ? Math.min(Math.abs(Math.round(pct)), 100) : 0;
     const sweep = (abs / 100) * 180;
     const gaugeColor = faster === true ? '#34d399' : faster === false ? '#fbbf24' : '#94a3b8';
@@ -76,6 +78,7 @@ function PaceGauge({ pct, color }: { pct: number | null; color: string }) {
 }
 
 function CompareBars({ today, yesterday, color }: { today: number; yesterday: number; color: string }) {
+    const { t } = useShareLocale();
     const max = Math.max(today, yesterday, 1);
     const todayPct = (today / max) * 100;
     const yesterdayPct = (yesterday / max) * 100;
@@ -83,7 +86,7 @@ function CompareBars({ today, yesterday, color }: { today: number; yesterday: nu
         <div className="mt-2 space-y-2">
             <div className="space-y-1">
                 <div className="flex items-center justify-between text-[9px] font-semibold text-white/70">
-                    <span>วันนี้</span>
+                    <span>{t('todayLabel')}</span>
                     <span className="tabular-nums text-white">{formatDashboardMetric(today)}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-black/20">
@@ -95,7 +98,7 @@ function CompareBars({ today, yesterday, color }: { today: number; yesterday: nu
             </div>
             <div className="space-y-1">
                 <div className="flex items-center justify-between text-[9px] font-semibold text-white/50">
-                    <span>เมื่อวาน</span>
+                    <span>{t('yesterdayLabel')}</span>
                     <span className="tabular-nums">{formatDashboardMetric(yesterday)}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-black/20">
@@ -147,7 +150,8 @@ const CountRecordStatTiles = ({
     sandWorkSummary,
     tripWorkSummary,
 }: CountRecordStatTilesProps) => {
-    const paceUnit = formatAvgPaceUnit(stats.avg);
+    const { t, locale } = useShareLocale();
+    const paceUnit = formatAvgPaceUnit(stats.avg, locale);
     const roundsPct = comparison.roundsDeltaPct;
     const roundsSign = roundsPct != null && roundsPct > 0 ? '+' : '';
     const workSummary = mode === 'sand' ? sandWorkSummary : tripWorkSummary;
@@ -163,7 +167,7 @@ const CountRecordStatTiles = ({
                 <div className="relative">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                         <Timer size={11} />
-                        จังหวะเฉลี่ย
+                        {t('avgPaceLabel')}
                     </div>
                     <div className="mt-1 flex items-baseline gap-1">
                         <span className="text-2xl font-black tabular-nums leading-none sm:text-3xl">
@@ -176,7 +180,7 @@ const CountRecordStatTiles = ({
                     </div>
                     {stats.last != null && (
                         <p className="mt-1 text-[9px] font-medium text-white/50">
-                            ล่าสุด {Math.round(stats.last)} วิน.
+                            {t('lastPace', { sec: Math.round(stats.last) })}
                         </p>
                     )}
                 </div>
@@ -186,11 +190,11 @@ const CountRecordStatTiles = ({
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 p-3 text-white shadow-lg sm:p-3.5">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
                     <TrendingDown size={11} />
-                    Pace vs เมื่อวาน
+                    {t('paceVsYesterday')}
                 </div>
                 <PaceGauge pct={comparison.paceDeltaPct} color={accentColor} />
                 <p className="mt-0.5 text-center text-[9px] font-medium text-white/50">
-                    {formatPaceDelta(comparison.paceDeltaPct).text}
+                    {formatPaceDelta(comparison.paceDeltaPct, locale).text}
                 </p>
             </div>
 
@@ -199,7 +203,7 @@ const CountRecordStatTiles = ({
                 <div className="flex items-center justify-between gap-1">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
                         <BarChart2 size={11} />
-                        ยอดรวม
+                        {t('totalRounds')}
                     </div>
                     {roundsPct != null && (
                         <span
@@ -227,7 +231,7 @@ const CountRecordStatTiles = ({
                 >
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                         <Clock size={11} />
-                        {mode === 'sand' ? 'เวลาทำงาน' : 'เวลาทำงานรถ'}
+                        {mode === 'sand' ? t('workTime') : t('workTimeFleet')}
                     </div>
                     <div className="mt-1 flex items-center gap-3">
                         <WorkRing
@@ -237,10 +241,10 @@ const CountRecordStatTiles = ({
                         />
                         <div>
                             <p className="text-lg font-black tabular-nums leading-none">
-                                {formatActiveHours(workSummary.totalActiveHours)}
+                                {formatActiveHours(workSummary.totalActiveHours, locale)}
                             </p>
                             <p className="mt-1 text-[9px] font-medium text-white/50">
-                                เป้า {WORK_TARGET_HOURS} ชม.
+                                {t('targetHours', { hours: WORK_TARGET_HOURS })}
                             </p>
                             {workSummary.startClock && workSummary.endClock && (
                                 <p className="text-[9px] text-white/60">
@@ -254,19 +258,19 @@ const CountRecordStatTiles = ({
                 <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-950 p-3 text-white shadow-lg sm:p-3.5">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
                         <Clock size={11} />
-                        ช่วงจังหวะ
+                        {t('workSpan')}
                     </div>
                     <div className="mt-2 space-y-2">
                         {stats.min != null && (
                             <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
-                                <span className="text-[9px] font-semibold text-emerald-300">เร็วสุด</span>
-                                <span className="text-sm font-black tabular-nums">{Math.round(stats.min)} วิน.</span>
+                                <span className="text-[9px] font-semibold text-emerald-300">{t('fastest')}</span>
+                                <span className="text-sm font-black tabular-nums">{Math.round(stats.min)} {t('secUnit')}</span>
                             </div>
                         )}
                         {stats.max != null && (
                             <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
-                                <span className="text-[9px] font-semibold text-amber-300">ช้าสุด</span>
-                                <span className="text-sm font-black tabular-nums">{Math.round(stats.max)} วิน.</span>
+                                <span className="text-[9px] font-semibold text-amber-300">{t('slowest')}</span>
+                                <span className="text-sm font-black tabular-nums">{Math.round(stats.max)} {t('secUnit')}</span>
                             </div>
                         )}
                     </div>

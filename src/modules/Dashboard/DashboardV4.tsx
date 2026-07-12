@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Activity, Calendar, Droplets, Link2, Truck, Wallet, TrendingUp, CreditCard, Zap } from 'lucide-react';
 import ShareLinkManager from '../Share/ShareLinkManager';
+import { useShareLocale } from '../Share/shareI18n';
 import type { CountRecordSyncSource } from '../../hooks/useCountRecordRealtime';
 import { Transaction, Employee, AppSettings } from '../../types';
 import { getToday } from '../../utils';
@@ -30,27 +31,18 @@ interface DashboardV4Props {
     hideFinancial?: boolean;
 }
 
-const formatThaiDate = (d: string) =>
-    new Date(d + 'T12:00:00+07:00').toLocaleDateString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: '2-digit',
-    });
-
-const formatSyncTime = (ts: number) =>
-    new Date(ts).toLocaleTimeString('th-TH', {
+const formatSyncTime = (ts: number, locale: 'th' | 'zh' = 'th') =>
+    new Date(ts).toLocaleTimeString(locale === 'zh' ? 'zh-CN' : 'th-TH', {
         timeZone: 'Asia/Bangkok',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
     });
 
-const syncSourceLabel = (source: CountRecordSyncSource | null) => {
-    if (source === 'realtime') return 'Realtime';
-    if (source === 'poll') return 'Auto-sync';
-    if (source === 'local') return 'Updated';
+const syncSourceLabel = (source: CountRecordSyncSource | null, t: ReturnType<typeof useShareLocale>['t']) => {
+    if (source === 'realtime') return t('syncRealtime');
+    if (source === 'poll') return t('syncPoll');
+    if (source === 'local') return t('syncLocal');
     return '—';
 };
 
@@ -62,6 +54,7 @@ const DashboardV4 = ({
     shareMode = false,
     hideFinancial = true,
 }: DashboardV4Props) => {
+    const { t, locale, formatDate } = useShareLocale();
     const [selectedDate, setSelectedDate] = useState('');
     const [shareManagerOpen, setShareManagerOpen] = useState(false);
     const today = getToday();
@@ -69,8 +62,8 @@ const DashboardV4 = ({
     const isToday = focusDate === today;
 
     const focusCountRecordStatus = useMemo(
-        () => countRecordMenuStatusLabel(focusDate, transactions),
-        [focusDate, transactions],
+        () => countRecordMenuStatusLabel(focusDate, transactions, locale),
+        [focusDate, transactions, locale],
     );
 
     const tripTotal = useMemo(() => {
@@ -103,6 +96,7 @@ const DashboardV4 = ({
         employees,
         onRefresh: onRefreshTransactions,
         pollIntervalMs: 12000,
+        displayLocale: locale,
     });
 
     const mobilePresence = useMobilePresence();
@@ -126,18 +120,16 @@ const DashboardV4 = ({
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 text-indigo-200/90">
                             <Activity size={16} />
-                            <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Operations Monitor</span>
+                            <span className="text-[11px] font-bold uppercase tracking-[0.18em]">{t('operationsMonitor')}</span>
                         </div>
-                        <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-[1.65rem]">Real-time V.4</h2>
-                        <p className="mt-1 max-w-xl text-sm text-slate-300">
-                            ติดตามการนับเที่ยวรถและรอบร่อนทรายจากแอปมือถือแบบเรียลไทม์
-                        </p>
+                        <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-[1.65rem]">{t('realtimeV4')}</h2>
+                        <p className="mt-1 max-w-xl text-sm text-slate-300">{t('dashboardSubtitle')}</p>
                         <p className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm">
                             <Calendar size={13} />
-                            กำลังดู: {formatThaiDate(focusDate)}
+                            {t('viewing')}: {formatDate(focusDate)}
                             {isToday && (
                                 <span className="rounded-md bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">
-                                    วันนี้
+                                    {t('today')}
                                 </span>
                             )}
                         </p>
@@ -153,7 +145,7 @@ const DashboardV4 = ({
                                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white ring-1 ring-white/20 transition hover:bg-white/15 sm:self-end"
                             >
                                 <Link2 size={14} />
-                                แชร์ลิงก์
+                                {t('shareLink')}
                             </button>
                         )}
                         <MobilePresenceBadge
@@ -176,7 +168,7 @@ const DashboardV4 = ({
                     <div className="rounded-2xl border border-rose-100 bg-white p-3 shadow-sm dark:border-rose-500/20 dark:bg-slate-900 sm:p-4">
                         <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
                             <CreditCard size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">รายจ่าย</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">{t('expense')}</span>
                         </div>
                         <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-slate-100 sm:text-xl">
                             {financialSummary.totalExpense.toLocaleString('th-TH')}
@@ -185,7 +177,7 @@ const DashboardV4 = ({
                     <div className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm dark:border-emerald-500/20 dark:bg-slate-900 sm:p-4">
                         <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                             <Wallet size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">รายรับ</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">{t('income')}</span>
                         </div>
                         <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-slate-100 sm:text-xl">
                             {financialSummary.totalIncome.toLocaleString('th-TH')}
@@ -194,7 +186,7 @@ const DashboardV4 = ({
                     <div className="col-span-2 rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-500/20 dark:bg-slate-900 sm:col-span-1 sm:p-4">
                         <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                             <TrendingUp size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">กำไรสุทธิ</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">{t('netProfit')}</span>
                         </div>
                         <p className={`mt-1 text-lg font-black tabular-nums sm:text-xl ${financialSummary.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {financialSummary.net.toLocaleString('th-TH')}
@@ -212,7 +204,7 @@ const DashboardV4 = ({
                         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
                             <Calendar size={15} />
                         </span>
-                        เลือกวันที่
+                        {t('selectDate')}
                     </label>
                     <div className="flex flex-col gap-2 xs:flex-row w-full sm:w-auto">
                         <input
@@ -228,12 +220,12 @@ const DashboardV4 = ({
                                 onClick={() => setSelectedDate('')}
                                 className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
                             >
-                                กลับวันนี้
+                                {t('backToToday')}
                             </button>
                         )}
                     </div>
                     <p className="text-xs font-medium text-slate-400 dark:text-slate-500 sm:ml-auto">
-                        แสดงเฉพาะ {formatThaiDate(focusDate)}
+                        {t('showOnly')} {formatDate(focusDate)}
                     </p>
                 </div>
             </div>
@@ -256,29 +248,29 @@ const DashboardV4 = ({
                                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                                 </span>
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">
-                                    Live
+                                    {t('live')}
                                 </span>
                             </span>
-                            <span className="text-sm font-bold text-white">{formatThaiDate(focusDate)}</span>
+                            <span className="text-sm font-bold text-white">{formatDate(focusDate)}</span>
                             {boardPulse && <Zap size={14} className="text-amber-300 animate-pulse" />}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-2.5 py-1.5 text-xs font-bold text-blue-100 ring-1 ring-blue-400/25">
                                 <Truck size={13} className="text-blue-300" />
-                                {formatDashboardMetric(tripTotal)} เที่ยว
+                                {formatDashboardMetric(tripTotal)} {t('tripUnit')}
                             </span>
                             <span className="inline-flex items-center gap-1.5 rounded-xl bg-pink-500/15 px-2.5 py-1.5 text-xs font-bold text-pink-100 ring-1 ring-pink-400/25">
                                 <Droplets size={13} className="text-pink-300" />
-                                {formatDashboardMetric(sandRounds)} รอบ
+                                {formatDashboardMetric(sandRounds)} {t('roundUnit')}
                             </span>
                             {realtime.lastSyncAt != null && (
                                 <span className="inline-flex flex-col items-end rounded-xl bg-white/5 px-2.5 py-1.5 text-right ring-1 ring-white/10">
                                     <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                                        {syncSourceLabel(realtime.syncSource)}
+                                        {syncSourceLabel(realtime.syncSource, t)}
                                     </span>
                                     <span className="font-mono text-[11px] font-semibold tabular-nums text-slate-200">
-                                        {formatSyncTime(realtime.lastSyncAt)}
+                                        {formatSyncTime(realtime.lastSyncAt, locale)}
                                     </span>
                                 </span>
                             )}

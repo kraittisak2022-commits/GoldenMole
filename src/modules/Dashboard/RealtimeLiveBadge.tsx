@@ -1,6 +1,7 @@
 import { Radio, RefreshCw, Wifi, WifiOff, Zap } from 'lucide-react';
 import type { CountRecordSyncSource } from '../../hooks/useCountRecordRealtime';
 import type { RealtimeChannelStatus } from '../../services/transactionsRealtimeBus';
+import { useShareLocale } from '../Share/shareI18n';
 
 interface RealtimeLiveBadgeProps {
     isLive: boolean;
@@ -9,36 +10,25 @@ interface RealtimeLiveBadgeProps {
     syncSource: CountRecordSyncSource | null;
 }
 
-const formatSyncTime = (ts: number) =>
-    new Date(ts).toLocaleTimeString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
-
-const sourceLabel = (source: CountRecordSyncSource | null) => {
-    if (source === 'realtime') return 'Realtime';
-    if (source === 'poll') return 'Auto-sync';
-    if (source === 'local') return 'Updated';
-    return '—';
-};
-
 const RealtimeLiveBadge = ({
     isLive,
     channelStatus,
     lastSyncAt,
     syncSource,
 }: RealtimeLiveBadgeProps) => {
+    const { t, formatTime } = useShareLocale();
     const connected = channelStatus === 'connected';
     const errored = channelStatus === 'error';
 
-    const statusLabel = connected ? 'Live' : errored ? 'Polling' : 'Connecting';
-    const statusHint = connected
-        ? 'เชื่อมต่อ Supabase Realtime'
-        : errored
-          ? 'สำรองดึงข้อมูลทุก 12 วินาที'
-          : 'กำลังเชื่อมต่อช่องสัญญาณ…';
+    const statusLabel = connected ? t('statusLive') : errored ? t('statusPolling') : t('statusConnecting');
+    const statusHint = connected ? t('realtimeConnected') : errored ? t('pollFallback') : t('connectingChannel');
+
+    const sourceLabel = (source: CountRecordSyncSource | null) => {
+        if (source === 'realtime') return t('syncRealtime');
+        if (source === 'poll') return t('syncPoll');
+        if (source === 'local') return t('syncLocal');
+        return '—';
+    };
 
     return (
         <div className="inline-flex flex-col items-end gap-1.5 sm:items-end">
@@ -88,7 +78,7 @@ const RealtimeLiveBadge = ({
                             {sourceLabel(syncSource)}
                         </p>
                         <p className="text-xs font-mono font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-                            {formatSyncTime(lastSyncAt)}
+                            {formatTime(lastSyncAt)}
                         </p>
                     </div>
                 )}
@@ -98,7 +88,7 @@ const RealtimeLiveBadge = ({
                 <p className="flex items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 sm:hidden">
                     <RefreshCw size={10} />
                     <Wifi size={10} className="text-indigo-400" />
-                    {sourceLabel(syncSource)} · {formatSyncTime(lastSyncAt)}
+                    {sourceLabel(syncSource)} · {formatTime(lastSyncAt)}
                 </p>
             )}
         </div>

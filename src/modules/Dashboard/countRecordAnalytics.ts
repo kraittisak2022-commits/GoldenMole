@@ -248,12 +248,16 @@ export function computeTripFleetWorkSpan(units: CountRecordTripUnit[], dayKey: s
     return computeWorkSpan(timelineToLapStamps(timeline), dayKey);
 }
 
-export function formatWorkSpanLabel(span: WorkSpan): string | null {
+export type FormatLocale = 'th' | 'zh';
+
+export function formatWorkSpanLabel(span: WorkSpan, locale: FormatLocale = 'th'): string | null {
     if (!span.startClock) return null;
     if (!span.endClock || span.startClock === span.endClock) {
-        return `เริ่ม ${span.startClock}`;
+        return locale === 'zh' ? `开始 ${span.startClock}` : `เริ่ม ${span.startClock}`;
     }
-    return `เริ่ม ${span.startClock} · เลิก ${span.endClock}`;
+    return locale === 'zh'
+        ? `开始 ${span.startClock} · 结束 ${span.endClock}`
+        : `เริ่ม ${span.startClock} · เลิก ${span.endClock}`;
 }
 
 export interface SandWorkDurationSummary {
@@ -357,14 +361,14 @@ export function computeMinuteSandSpeed(lapTimes: string[], dayKey: string): Spee
         }));
 }
 
-export function formatActiveHours(hours: number): string {
-    if (!Number.isFinite(hours) || hours <= 0) return '0 ชม.';
+export function formatActiveHours(hours: number, locale: FormatLocale = 'th'): string {
+    if (!Number.isFinite(hours) || hours <= 0) return locale === 'zh' ? '0 小时' : '0 ชม.';
     if (hours < 1) {
         const mins = Math.round(hours * 60);
-        return `${mins} นาที`;
+        return locale === 'zh' ? `${mins} 分钟` : `${mins} นาที`;
     }
     const rounded = Math.round(hours * 10) / 10;
-    return `${rounded} ชม.`;
+    return locale === 'zh' ? `${rounded} 小时` : `${rounded} ชม.`;
 }
 
 /** Simple moving average; null until window is full */
@@ -418,28 +422,50 @@ export function formatAvgPaceSec(sec: number | null): string {
     return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}`;
 }
 
-export function formatAvgPaceUnit(sec: number | null): string {
+export function formatAvgPaceUnit(sec: number | null, locale: FormatLocale = 'th'): string {
     if (sec == null || !Number.isFinite(sec)) return '';
+    if (locale === 'zh') return sec < 60 ? '秒' : '分钟';
     return sec < 60 ? 'วิน.' : 'นาที';
 }
 
-export function formatDurationSec(sec: number | null): string {
+export function formatDurationSec(sec: number | null, locale: FormatLocale = 'th'): string {
     if (sec == null || !Number.isFinite(sec)) return '—';
-    if (sec < 60) return `${Math.round(sec)} วิน.`;
+    if (sec < 60) {
+        return locale === 'zh' ? `${Math.round(sec)} 秒` : `${Math.round(sec)} วิน.`;
+    }
     const m = Math.floor(sec / 60);
     const s = Math.round(sec % 60);
-    if (m < 60) return s > 0 ? `${m} นาที ${s} วิน.` : `${m} นาที`;
+    if (m < 60) {
+        if (locale === 'zh') return s > 0 ? `${m} 分钟 ${s} 秒` : `${m} 分钟`;
+        return s > 0 ? `${m} นาที ${s} วิน.` : `${m} นาที`;
+    }
     const h = Math.floor(m / 60);
     const rm = m % 60;
+    if (locale === 'zh') return rm > 0 ? `${h} 小时 ${rm} 分钟` : `${h} 小时`;
     return rm > 0 ? `${h} ชม. ${rm} นาที` : `${h} ชม.`;
 }
 
-export function formatPaceDelta(pct: number | null): { text: string; faster: boolean | null } {
-    if (pct == null || !Number.isFinite(pct)) return { text: 'ไม่มีข้อมูลเมื่อวาน', faster: null };
+export function formatPaceDelta(
+    pct: number | null,
+    locale: FormatLocale = 'th',
+): { text: string; faster: boolean | null } {
+    if (pct == null || !Number.isFinite(pct)) {
+        return { text: locale === 'zh' ? '无昨天数据' : 'ไม่มีข้อมูลเมื่อวาน', faster: null };
+    }
     const abs = Math.abs(Math.round(pct));
-    if (abs < 1) return { text: 'เท่าเมื่อวาน', faster: null };
-    if (pct < 0) return { text: `เร็วกว่าเมื่อวาน ${abs}%`, faster: true };
-    return { text: `ช้ากว่าเมื่อวาน ${abs}%`, faster: false };
+    if (abs < 1) {
+        return { text: locale === 'zh' ? '与昨天相同' : 'เท่าเมื่อวาน', faster: null };
+    }
+    if (pct < 0) {
+        return {
+            text: locale === 'zh' ? `比昨天快 ${abs}%` : `เร็วกว่าเมื่อวาน ${abs}%`,
+            faster: true,
+        };
+    }
+    return {
+        text: locale === 'zh' ? `比昨天慢 ${abs}%` : `ช้ากว่าเมื่อวาน ${abs}%`,
+        faster: false,
+    };
 }
 
 export function computePaceDeltaPercent(todayAvg: number | null, yesterdayAvg: number | null): number | null {

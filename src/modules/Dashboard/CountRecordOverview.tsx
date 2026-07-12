@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound } from 'lucide-react';
+import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
     VEHICLE_BUTTON_COLORS,
@@ -40,6 +41,7 @@ function PeriodPill({
     afternoon: number;
     variant?: 'onDark' | 'onLight';
 }) {
+    const { t } = useShareLocale();
     if (morning <= 0 && afternoon <= 0) return null;
 
     const morningCls =
@@ -56,13 +58,13 @@ function PeriodPill({
             {morning > 0 && (
                 <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${morningCls}`}>
                     <Sun size={10} />
-                    เช้า {formatDashboardMetric(morning)}
+                    {t('morning')} {formatDashboardMetric(morning)}
                 </span>
             )}
             {afternoon > 0 && (
                 <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${afternoonCls}`}>
                     <Sunset size={10} />
-                    บ่าย {formatDashboardMetric(afternoon)}
+                    {t('afternoon')} {formatDashboardMetric(afternoon)}
                 </span>
             )}
         </div>
@@ -97,9 +99,10 @@ function TripVehicleCard({
     dayKey: string;
     incrementDelta?: number;
 }) {
+    const { t, locale } = useShareLocale();
     const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
     const lastLap = unit.lapTimes[unit.lapTimes.length - 1];
-    const workSpanLabel = formatWorkSpanLabel(computeWorkSpan(unit.lapTimes, dayKey));
+    const workSpanLabel = formatWorkSpanLabel(computeWorkSpan(unit.lapTimes, dayKey), locale);
 
     return (
         <article
@@ -116,12 +119,12 @@ function TripVehicleCard({
             <div className={`relative flex h-full flex-col ${compact ? 'p-3' : 'p-3.5'}`}>
                 <div className="flex items-start justify-between gap-2">
                     <span className="rounded-lg bg-black/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/90 backdrop-blur-sm">
-                        คันที่ {index + 1}
+                        {t('vehicleNo', { n: index + 1 })}
                     </span>
                     {unit.broken && (
                         <span className="inline-flex items-center gap-1 rounded-lg bg-amber-300/95 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
                             <AlertTriangle size={10} />
-                            รถเสีย
+                            {t('brokenVehicle')}
                         </span>
                     )}
                 </div>
@@ -145,7 +148,7 @@ function TripVehicleCard({
                             />
                         )}
                     </div>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">เที่ยว</p>
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">{t('tripUnit')}</p>
                     <div className="mt-2">
                         <PeriodPill morning={unit.morning} afternoon={unit.afternoon} variant="onDark" />
                     </div>
@@ -176,6 +179,7 @@ function TripVehicleCard({
 }
 
 function SandLapChip({ roundNo, stamp, latest }: { roundNo: number; stamp: string; latest?: boolean }) {
+    const { t } = useShareLocale();
     return (
         <span
             className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold ${
@@ -184,7 +188,7 @@ function SandLapChip({ roundNo, stamp, latest }: { roundNo: number; stamp: strin
                     : 'border-pink-200/80 bg-white text-pink-900 dark:border-pink-400/25 dark:bg-slate-800 dark:text-pink-200'
             }`}
         >
-            <span className={latest ? 'text-pink-100' : 'text-pink-600 dark:text-pink-300'}>รอบ {roundNo}</span>
+            <span className={latest ? 'text-pink-100' : 'text-pink-600 dark:text-pink-300'}>{t('roundLabel')} {roundNo}</span>
             <span className={`font-mono tabular-nums ${latest ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`}>{stamp}</span>
         </span>
     );
@@ -250,6 +254,7 @@ const CountRecordOverview = ({
     increments = [],
     shareMode = false,
 }: CountRecordOverviewProps) => {
+    const { t, locale } = useShareLocale();
     const [highlight, setHighlight] = useState(false);
 
     useEffect(() => {
@@ -282,20 +287,20 @@ const CountRecordOverview = ({
         [dayKey, transactions],
     );
     const statusLabel = useMemo(
-        () => countRecordMenuStatusLabel(dayKey, transactions),
-        [dayKey, transactions],
+        () => countRecordMenuStatusLabel(dayKey, transactions, locale),
+        [dayKey, transactions, locale],
     );
 
     const tripTotal = tripUnits.reduce((s, u) => s + u.rounds, 0);
     const sandRecentStart = sandUnit ? Math.max(0, sandUnit.lapTimes.length - SAND_RECENT_LAPS) : 0;
     const tripWithLaps = tripUnits.filter((u) => u.lapTimes.length > 0);
     const tripFleetWorkSpan = useMemo(
-        () => formatWorkSpanLabel(computeTripFleetWorkSpan(tripUnits, dayKey)),
-        [tripUnits, dayKey],
+        () => formatWorkSpanLabel(computeTripFleetWorkSpan(tripUnits, dayKey), locale),
+        [tripUnits, dayKey, locale],
     );
     const sandWorkSpan = useMemo(
-        () => (sandUnit ? formatWorkSpanLabel(computeWorkSpan(sandUnit.lapTimes, dayKey)) : null),
-        [sandUnit, dayKey],
+        () => (sandUnit ? formatWorkSpanLabel(computeWorkSpan(sandUnit.lapTimes, dayKey), locale) : null),
+        [sandUnit, dayKey, locale],
     );
 
     const isCompactLayout = compact || shareMode;
@@ -316,13 +321,13 @@ const CountRecordOverview = ({
                         </span>
                         <div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                Count & Record
+                                {t('countRecord')}
                             </p>
-                            <h3 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">บันทึกและนับจำนวน</h3>
+                            <h3 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('countAndRecord')}</h3>
                             {statusLabel ? (
                                 <p className="mt-0.5 text-sm font-medium text-slate-500 dark:text-slate-400">{statusLabel}</p>
                             ) : (
-                                <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">รอข้อมูลจากแอปมือถือ</p>
+                                <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">{t('waitingMobile')}</p>
                             )}
                         </div>
                     </div>
@@ -330,11 +335,11 @@ const CountRecordOverview = ({
                     <div className="flex flex-wrap gap-2">
                         <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
                             <Truck size={14} className="text-blue-600 dark:text-blue-300" />
-                            {tripUnits.length} คัน · {formatDashboardMetric(tripTotal)} เที่ยว
+                            {t('tripSubtitle', { vehicles: tripUnits.length, total: formatDashboardMetric(tripTotal) })}
                         </span>
                         <span className="inline-flex items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-xs font-semibold text-pink-900 dark:border-pink-400/20 dark:bg-pink-500/10 dark:text-pink-200">
                             <Droplets size={14} className="text-pink-600 dark:text-pink-300" />
-                            {sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} รอบ` : '0 รอบ'}
+                            {sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} ${t('roundUnit')}` : `0 ${t('roundUnit')}`}
                         </span>
                     </div>
                 </div>
@@ -342,8 +347,8 @@ const CountRecordOverview = ({
 
             <div className={`grid gap-4 ${panelGridClass}`}>
                 <CountRecordPanelShell
-                    title="จำนวนเที่ยวรถ"
-                    subtitle={`${tripUnits.length} คัน · รวม ${formatDashboardMetric(tripTotal)} เที่ยว`}
+                    title={t('tripCountTitle')}
+                    subtitle={t('tripSubtitle', { vehicles: tripUnits.length, total: formatDashboardMetric(tripTotal) })}
                     icon={<Truck size={18} />}
                     accentClass="bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600"
                     highlight={highlight}
@@ -351,8 +356,8 @@ const CountRecordOverview = ({
                     {tripUnits.length === 0 ? (
                         <EmptyState
                             icon={Truck}
-                            title="ยังไม่มีเที่ยวที่บันทึก"
-                            subtitle="เมื่อกดนับเที่ยวในแอป ข้อมูลจะปรากฏที่นี่ทันที"
+                            title={t('noTripsTitle')}
+                            subtitle={t('noTripsSubtitle')}
                         />
                     ) : (
                         <div className="space-y-3">
@@ -384,7 +389,7 @@ const CountRecordOverview = ({
 
                             <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900">
                                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                    บันทึกล่าสุด
+                                    {t('latestLog')}
                                 </p>
                                 {tripWithLaps.length > 0 ? (
                                     <ul className="mt-2 space-y-2">
@@ -400,13 +405,13 @@ const CountRecordOverview = ({
                                                     </p>
                                                 </div>
                                                 <span className="shrink-0 rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-bold text-white">
-                                                    {u.rounds} เที่ยว
+                                                    {u.rounds} {t('tripUnit')}
                                                 </span>
                                             </li>
                                         ))}
                                     </ul>
                                 ) : (
-                                    <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">ยังไม่มี timestamp</p>
+                                    <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">{t('noTimestamp')}</p>
                                 )}
                             </div>
 
@@ -424,8 +429,12 @@ const CountRecordOverview = ({
                 </CountRecordPanelShell>
 
                 <CountRecordPanelShell
-                    title="การร่อนทราย"
-                    subtitle={sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} รอบวันนี้` : 'ยังไม่มีการนับรอบ'}
+                    title={t('sandTitle')}
+                    subtitle={
+                        sandUnit
+                            ? t('sandSubtitle', { rounds: formatDashboardMetric(sandUnit.rounds) })
+                            : t('sandSubtitleEmpty')
+                    }
                     icon={<Droplets size={18} />}
                     accentClass="bg-gradient-to-r from-pink-700 via-rose-600 to-fuchsia-600"
                     highlight={highlight}
@@ -433,8 +442,8 @@ const CountRecordOverview = ({
                     {!sandUnit || sandUnit.rounds <= 0 ? (
                         <EmptyState
                             icon={Droplets}
-                            title="ยังไม่มีรอบที่บันทึก"
-                            subtitle="กดนับรอบร่อนทรายในแอปเพื่อติดตามแบบเรียลไทม์"
+                            title={t('noSandTitle')}
+                            subtitle={t('noSandSubtitle')}
                         />
                     ) : (
                         <div className="space-y-3">
@@ -463,7 +472,7 @@ const CountRecordOverview = ({
                                             />
                                         )}
                                     </div>
-                                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">รอบ</p>
+                                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">{t('roundUnit')}</p>
                                     <div className="mt-3 flex justify-center">
                                         <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} variant="onDark" />
                                     </div>
@@ -484,7 +493,7 @@ const CountRecordOverview = ({
                             {sandUnit.lapTimes.length > 0 && (
                                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-700/60 dark:bg-slate-900">
                                     <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                        รอบล่าสุด
+                                        {t('recentLaps')}
                                     </p>
                                     <div className="mt-2 flex flex-wrap gap-1.5">
                                         {sandUnit.lapTimes.slice(sandRecentStart).map((stamp, i) => {

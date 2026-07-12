@@ -129,7 +129,8 @@
     .count-increment-pop,
     .count-decrement-pop {
         animation: none;
-        opacity: 0;
+        opacity: 1;
+        transform: translate(-50%, -10px);
     }
 
     .count-number-punch {
@@ -142,10 +143,14 @@
         animation: none !important;
     }
 
-    .score-pop-in,
+    .score-pop-in {
+        animation: none;
+    }
+
     .score-pop-float {
         animation: none;
-        opacity: 0;
+        opacity: 1;
+        transform: translateX(-50%) translateY(-48px);
     }
 }
 

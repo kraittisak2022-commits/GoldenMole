@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Smartphone, ChevronDown, Wifi, WifiOff } from 'lucide-react';
 import type { MobileDevice } from '../../hooks/useMobilePresence';
+import { useShareLocale } from '../Share/shareI18n';
 
 interface MobilePresenceBadgeProps {
     devices: MobileDevice[];
@@ -8,14 +9,8 @@ interface MobilePresenceBadgeProps {
     isTracking: boolean;
 }
 
-const formatOnlineTime = (ts: number) =>
-    new Date(ts).toLocaleTimeString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-
 const MobilePresenceBadge = ({ devices, isOnline, isTracking }: MobilePresenceBadgeProps) => {
+    const { t, formatTime } = useShareLocale();
     const [expanded, setExpanded] = useState(false);
 
     return (
@@ -48,7 +43,7 @@ const MobilePresenceBadge = ({ devices, isOnline, isTracking }: MobilePresenceBa
                     <div className="flex items-center gap-1.5">
                         <Smartphone size={12} className={isOnline ? 'text-emerald-300' : 'text-slate-400'} />
                         <span className={`text-xs font-bold ${isOnline ? 'text-emerald-200' : 'text-slate-300'}`}>
-                            {isOnline ? `มือถือออนไลน์ ${devices.length} เครื่อง` : 'มือถือออฟไลน์'}
+                            {isOnline ? t('mobileOnline', { count: devices.length }) : t('mobileOffline')}
                         </span>
                         {devices.length > 0 && (
                             <ChevronDown
@@ -60,9 +55,9 @@ const MobilePresenceBadge = ({ devices, isOnline, isTracking }: MobilePresenceBa
                     <p className="text-[11px] font-medium leading-tight text-white/50">
                         {isTracking
                             ? isOnline
-                                ? 'เชื่อมต่อแอปมือถือแบบ Real-time'
-                                : 'รอแอปมือถือเปิดอยู่'
-                            : 'กำลังเชื่อมต่อ…'}
+                                ? t('mobileRealtime')
+                                : t('mobileWaiting')
+                            : t('mobileConnecting')}
                     </p>
                 </div>
 
@@ -86,7 +81,7 @@ const MobilePresenceBadge = ({ devices, isOnline, isTracking }: MobilePresenceBa
                                 </p>
                             </div>
                             <span className="shrink-0 text-[10px] font-mono tabular-nums text-emerald-400">
-                                {formatOnlineTime(d.onlineSince)}
+                                {formatTime(d.onlineSince)}
                             </span>
                         </div>
                     ))}

@@ -1,5 +1,6 @@
 import { Activity, Droplets, Trash2, Truck } from 'lucide-react';
 import type { CountRecordActivity } from './countRecordUtils';
+import { useShareLocale } from '../Share/shareI18n';
 
 interface CountRecordActivityFeedProps {
     activities: CountRecordActivity[];
@@ -33,15 +34,9 @@ const kindMeta: Record<
     },
 };
 
-const formatActivityTime = (at: number) =>
-    new Date(at).toLocaleTimeString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
-
 const CountRecordActivityFeed = ({ activities, compact = false }: CountRecordActivityFeedProps) => {
+    const { t, formatTime } = useShareLocale();
+
     if (activities.length === 0) return null;
 
     return (
@@ -57,9 +52,9 @@ const CountRecordActivityFeed = ({ activities, compact = false }: CountRecordAct
                     </span>
                     <div>
                         <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-                            Activity stream
+                            {t('activityStream')}
                         </p>
-                        <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">อัปเดตล่าสุดจากมือถือ</p>
+                        <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{t('activityFromMobile')}</p>
                     </div>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
@@ -88,7 +83,7 @@ const CountRecordActivityFeed = ({ activities, compact = false }: CountRecordAct
                             <div className={`min-w-0 flex-1 rounded-xl border border-white/60 px-3 py-2 dark:border-slate-700/40 ${meta.bg}`}>
                                 <p className={`text-xs font-semibold leading-snug ${meta.text}`}>{item.message}</p>
                                 <p className="mt-1 text-[10px] font-mono tabular-nums text-slate-400 dark:text-slate-500">
-                                    {formatActivityTime(item.at)}
+                                    {formatTime(item.at)}
                                 </p>
                             </div>
                         </li>

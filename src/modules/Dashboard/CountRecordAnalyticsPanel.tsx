@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BarChart3, ChevronDown } from 'lucide-react';
+import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
     buildCountRecordSandUnit,
@@ -40,11 +41,12 @@ interface CountRecordAnalyticsPanelProps {
 }
 
 function PeriodSplitBar({ split, roundLabel }: { split: PeriodSplit; roundLabel: string }) {
+    const { t } = useShareLocale();
     const total = split.morning + split.afternoon;
     if (total <= 0) {
         return (
             <p className="flex h-20 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลเช้า/บ่าย
+                {t('noMorningAfternoon')}
             </p>
         );
     }
@@ -55,25 +57,25 @@ function PeriodSplitBar({ split, roundLabel }: { split: PeriodSplit; roundLabel:
                     className="flex items-center justify-center bg-gradient-to-r from-amber-400 to-amber-500 text-[10px] font-bold text-amber-950 transition-all"
                     style={{ width: `${split.morningPct}%`, minWidth: split.morning > 0 ? '2.5rem' : 0 }}
                 >
-                    {split.morning > 0 ? `เช้า ${split.morning}` : ''}
+                    {split.morning > 0 ? `${t('morning')} ${split.morning}` : ''}
                 </div>
                 <div
                     className="flex items-center justify-center bg-gradient-to-r from-indigo-500 to-violet-600 text-[10px] font-bold text-white transition-all"
                     style={{ width: `${split.afternoonPct}%`, minWidth: split.afternoon > 0 ? '2.5rem' : 0 }}
                 >
-                    {split.afternoon > 0 ? `บ่าย ${split.afternoon}` : ''}
+                    {split.afternoon > 0 ? `${t('afternoon')} ${split.afternoon}` : ''}
                 </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-amber-50 px-3 py-2 dark:bg-amber-500/10">
-                    <p className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">เช้า</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">{t('morning')}</p>
                     <p className="text-lg font-black tabular-nums text-amber-900 dark:text-amber-100">
                         {split.morning} <span className="text-xs font-semibold">{roundLabel}</span>
                     </p>
                     <p className="text-[10px] font-medium text-amber-700/80 dark:text-amber-300/80">{Math.round(split.morningPct)}%</p>
                 </div>
                 <div className="rounded-xl bg-indigo-50 px-3 py-2 dark:bg-indigo-500/10">
-                    <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">บ่าย</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">{t('afternoon')}</p>
                     <p className="text-lg font-black tabular-nums text-indigo-900 dark:text-indigo-100">
                         {split.afternoon} <span className="text-xs font-semibold">{roundLabel}</span>
                     </p>
@@ -85,10 +87,11 @@ function PeriodSplitBar({ split, roundLabel }: { split: PeriodSplit; roundLabel:
 }
 
 function VehicleComparisonChart({ rows, color }: { rows: VehicleComparisonRow[]; color: string }) {
+    const { t } = useShareLocale();
     if (rows.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลรถ
+                {t('noVehicleData')}
             </p>
         );
     }
@@ -99,22 +102,22 @@ function VehicleComparisonChart({ rows, color }: { rows: VehicleComparisonRow[];
                 <div key={row.vehicleId} className="space-y-1">
                     <div className="flex items-center justify-between gap-2 text-[10px]">
                         <span className="truncate font-bold text-slate-700 dark:text-slate-200">{row.vehicleId}</span>
-                        <span className="shrink-0 font-black tabular-nums text-slate-900 dark:text-slate-100">{row.rounds} เที่ยว</span>
+                        <span className="shrink-0 font-black tabular-nums text-slate-900 dark:text-slate-100">{row.rounds} {t('tripUnit')}</span>
                     </div>
                     <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                         <div
                             className="h-full bg-amber-400"
                             style={{ width: `${(row.morning / max) * 100}%` }}
-                            title={`เช้า ${row.morning}`}
+                            title={`${t('morning')} ${row.morning}`}
                         />
                         <div
                             className="h-full"
                             style={{ width: `${(row.afternoon / max) * 100}%`, backgroundColor: color }}
-                            title={`บ่าย ${row.afternoon}`}
+                            title={`${t('afternoon')} ${row.afternoon}`}
                         />
                     </div>
                     <p className="text-[9px] text-slate-400 dark:text-slate-500">
-                        เช้า {row.morning} · บ่าย {row.afternoon}
+                        {t('morning')} {row.morning} · {t('afternoon')} {row.afternoon}
                     </p>
                 </div>
             ))}
@@ -131,23 +134,24 @@ function PeakHourCard({
     roundLabel: string;
     color: string;
 }) {
+    const { t } = useShareLocale();
     if (!peak) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีช่วงพีค
+                {t('noPeakHour')}
             </p>
         );
     }
     return (
         <div className="flex flex-col items-center justify-center py-2 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">ช่วงคึกคักสุด</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{t('peakHourLabel')}</p>
             <p className="mt-2 text-3xl font-black tabular-nums" style={{ color }}>
                 {peak.label}
             </p>
             <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
                 {peak.count} {roundLabel}
             </p>
-            <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">ชั่วโมงที่มีการนับมากที่สุด</p>
+            <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">{t('peakHourHint')}</p>
         </div>
     );
 }
@@ -161,10 +165,11 @@ function EfficiencyBarChart({
     color: string;
     unitLabel: string;
 }) {
+    const { t } = useShareLocale();
     if (buckets.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลความเร็ว
+                {t('noSpeedData')}
             </p>
         );
     }
@@ -193,10 +198,11 @@ function CumulativeLineChart({
     points: { label: string; value: number }[];
     color: string;
 }) {
+    const { t } = useShareLocale();
     if (points.length < 2) {
         return (
             <p className="flex h-28 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ต้องมีอย่างน้อย 2 รอบ
+                {t('needTwoRounds')}
             </p>
         );
     }
@@ -233,11 +239,12 @@ function CumulativeLineChart({
 }
 
 function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number; label: string; intensity: number }[]; color: string }) {
+    const { t } = useShareLocale();
     const active = cells.filter((c) => c.count > 0);
     if (active.length === 0) {
         return (
             <p className="flex h-12 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลรายชั่วโมง
+                {t('noHourlyData')}
             </p>
         );
     }
@@ -247,7 +254,7 @@ function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number;
                 {cells.map((c) => (
                     <div
                         key={c.hour}
-                        title={`${c.label}: ${c.count} รอบ`}
+                        title={`${c.label}: ${c.count} ${t('roundUnit')}`}
                         className={`group relative aspect-square min-h-[10px] rounded-sm transition-transform hover:scale-110 ${
                             c.count === 0 ? 'bg-slate-200 dark:bg-slate-700' : ''
                         }`}
@@ -280,10 +287,11 @@ function HourlyBarChart({
     valueKey?: 'count' | 'speed';
     unitLabel?: string;
 }) {
+    const { t } = useShareLocale();
     if (buckets.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลรายชั่วโมง
+                {t('noHourlyData')}
             </p>
         );
     }
@@ -316,10 +324,11 @@ function WorkHoursBarChart({
     buckets: { label: string; activeHours: number }[];
     color: string;
 }) {
+    const { t, locale } = useShareLocale();
     if (buckets.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลเวลาทำงาน
+                {t('noWorkTimeData')}
             </p>
         );
     }
@@ -329,7 +338,7 @@ function WorkHoursBarChart({
             {buckets.map((b, i) => (
                 <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
                     <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                        {formatActiveHours(b.activeHours)}
+                        {formatActiveHours(b.activeHours, locale)}
                     </span>
                     <div
                         className="chart-bar-grow w-full rounded-t-md"
@@ -349,10 +358,11 @@ function MinuteTimelineChart({
     buckets: { label: string; speed: number }[];
     color: string;
 }) {
+    const { t } = useShareLocale();
     if (buckets.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ยังไม่มีข้อมูลรายนาที
+                {t('noSpeedData')}
             </p>
         );
     }
@@ -401,7 +411,7 @@ function MinuteTimelineChart({
                     </div>
                 ))}
             </div>
-            <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">รอบ/นาที · เลื่อนดูรายละเอียด</p>
+            <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">{t('minuteTimelineHint')}</p>
         </div>
     );
 }
@@ -442,6 +452,7 @@ function VehicleSummaryCard({
     color: string;
     defaultOpen?: boolean;
 }) {
+    const { t } = useShareLocale();
     const [open, setOpen] = useState(defaultOpen ?? false);
     const stats = useMemo(() => {
         const intervals = computeLapIntervals(lapTimes, dayKey);
@@ -462,7 +473,7 @@ function VehicleSummaryCard({
                 <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{vehicleId}</p>
                     <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                        {rounds} เที่ยว · เช้า {morning} · บ่าย {afternoon}
+                        {rounds} {t('tripUnit')} · {t('morning')} {morning} · {t('afternoon')} {afternoon}
                     </p>
                 </div>
                 <ChevronDown size={16} className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -471,13 +482,13 @@ function VehicleSummaryCard({
                 <div className="border-t border-slate-100 px-3 pb-3 pt-2 dark:border-slate-800">
                     <div className="grid grid-cols-2 gap-2">
                         <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">
-                            <p className="text-[9px] font-bold uppercase text-slate-400">จังหวะเฉลี่ย</p>
+                            <p className="text-[9px] font-bold uppercase text-slate-400">{t('avgPaceLabel')}</p>
                             <p className="text-sm font-black tabular-nums text-slate-800 dark:text-slate-100">
-                                {stats.avg != null ? `${Math.round(stats.avg)} วิน.` : '—'}
+                                {stats.avg != null ? `${Math.round(stats.avg)} ${t('secUnit')}` : '—'}
                             </p>
                         </div>
                         <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">
-                            <p className="text-[9px] font-bold uppercase text-slate-400">ล่าสุด</p>
+                            <p className="text-[9px] font-bold uppercase text-slate-400">{t('latestLabel')}</p>
                             <p className="truncate font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300">{lastLap}</p>
                         </div>
                     </div>
@@ -509,6 +520,7 @@ const CountRecordAnalyticsPanel = ({
     employees = [],
     accentColor,
 }: CountRecordAnalyticsPanelProps) => {
+    const { t, roundLabelTrip, roundLabelSand } = useShareLocale();
     const color = accentColor ?? (mode === 'sand' ? '#db2777' : '#2563eb');
 
     const comparison = useMemo(
@@ -573,7 +585,7 @@ const CountRecordAnalyticsPanel = ({
         [mode, lapTimes, dayKey],
     );
 
-    const roundLabel = mode === 'sand' ? 'รอบ' : 'เที่ยว';
+    const roundLabel = mode === 'sand' ? roundLabelSand() : roundLabelTrip();
     const hasAnyLaps = lapTimes.length > 0;
 
     if (!hasAnyLaps && modeComparison.todayRounds <= 0) return null;
@@ -582,7 +594,7 @@ const CountRecordAnalyticsPanel = ({
         <div className="mt-3 space-y-3 border-t border-slate-200/60 pt-3 dark:border-slate-700/50">
             <div className="flex items-center gap-2">
                 <BarChart3 size={14} className="text-slate-400 dark:text-slate-500" style={{ color }} />
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">วิเคราะห์จังหวะ</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{t('paceAnalytics')}</p>
             </div>
 
             <CountRecordStatTiles
@@ -598,57 +610,57 @@ const CountRecordAnalyticsPanel = ({
 
             {/* Bento grid */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
-                <ChartBlock title={`สัดส่วนเช้า / บ่าย`} className="sm:col-span-2 lg:col-span-4">
+                <ChartBlock title={t('morningAfternoonSplit')} className="sm:col-span-2 lg:col-span-4">
                     <PeriodSplitBar split={periodSplit} roundLabel={roundLabel} />
                 </ChartBlock>
 
-                <ChartBlock title="ช่วงพีค (รายชั่วโมง)" className="sm:col-span-1 lg:col-span-3">
+                <ChartBlock title={t('peakHour')} className="sm:col-span-1 lg:col-span-3">
                     <PeakHourCard peak={peakHour} roundLabel={roundLabel} color={color} />
                 </ChartBlock>
 
-                <ChartBlock title="Heatmap รายชั่วโมง" className="sm:col-span-1 lg:col-span-5">
+                <ChartBlock title={t('heatmapHourly')} className="sm:col-span-1 lg:col-span-5">
                     <HourlyHeatmap cells={hourlyHeatmap} color={color} />
                 </ChartBlock>
 
-                <ChartBlock title={`ยอดสะสม${roundLabel}ตามเวลา`} className="lg:col-span-6">
+                <ChartBlock title={t('cumulativeByTime', { unit: roundLabel })} className="lg:col-span-6">
                     <CumulativeLineChart points={cumulative} color={color} />
                 </ChartBlock>
 
-                <ChartBlock title={`จำนวน${roundLabel}ต่อชั่วโมง`} className="lg:col-span-6">
+                <ChartBlock title={t('countPerHour', { unit: roundLabel })} className="lg:col-span-6">
                     <HourlyBarChart buckets={hourly} color={color} />
                 </ChartBlock>
 
-                <ChartBlock title={`ความเร็ว${roundLabel}ต่อชั่วโมง`} className="lg:col-span-6">
-                    <EfficiencyBarChart buckets={hourlyEfficiency} color={color} unitLabel={`${roundLabel}/ชม.`} />
+                <ChartBlock title={t('speedPerHour', { unit: roundLabel })} className="lg:col-span-6">
+                    <EfficiencyBarChart buckets={hourlyEfficiency} color={color} unitLabel={t('perHourUnit', { unit: roundLabel })} />
                 </ChartBlock>
 
                 {mode === 'trip' && (
-                    <ChartBlock title="เปรียบเทียบคัน" className="lg:col-span-6">
+                    <ChartBlock title={t('vehicleComparison')} className="lg:col-span-6">
                         <VehicleComparisonChart rows={vehicleComparison} color={color} />
                     </ChartBlock>
                 )}
 
                 {mode === 'sand' && (
                     <>
-                        <ChartBlock title="เวลาทำงานรายชั่วโมง (ชม.)" className="lg:col-span-6">
+                        <ChartBlock title={t('sandWorkHourly')} className="lg:col-span-6">
                             <WorkHoursBarChart buckets={hourlyActiveWork} color={color} />
                         </ChartBlock>
-                        <ChartBlock title="ความเร็วร่อนต่อชั่วโมง (รอบ/ชม.)" className="lg:col-span-6">
+                        <ChartBlock title={t('sandSpeedHourly')} className="lg:col-span-6">
                             <HourlyBarChart
                                 buckets={hourlySandSpeed}
                                 color={color}
                                 valueKey="speed"
-                                unitLabel="รอบ/ชม."
+                                unitLabel={t('perHourUnit', { unit: roundLabel })}
                             />
                         </ChartBlock>
-                        <ChartBlock title="Timeline ความเร็วร่อนต่อนาที" className="lg:col-span-12">
+                        <ChartBlock title={t('sandSpeedMinute')} className="lg:col-span-12">
                             <MinuteTimelineChart buckets={minuteSandSpeed} color={color} />
                         </ChartBlock>
                     </>
                 )}
 
                 {mode === 'trip' && tripHourlyActiveWork.length > 0 && (
-                    <ChartBlock title="เวลาทำงานรถรวมรายชั่วโมง (ชม.)" className="lg:col-span-12">
+                    <ChartBlock title={t('fleetWorkHourly')} className="lg:col-span-12">
                         <WorkHoursBarChart buckets={tripHourlyActiveWork} color={color} />
                     </ChartBlock>
                 )}
@@ -656,7 +668,7 @@ const CountRecordAnalyticsPanel = ({
 
             {mode === 'trip' && tripUnits.filter((u) => u.lapTimes.length > 0).length > 0 && (
                 <div className="space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">สรุปรายคัน</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">{t('perVehicleSummary')}</p>
                     {tripUnits
                         .filter((u) => u.lapTimes.length > 0)
                         .map((u, i) => (
