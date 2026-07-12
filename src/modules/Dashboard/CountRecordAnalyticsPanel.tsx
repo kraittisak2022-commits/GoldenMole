@@ -11,17 +11,22 @@ import {
     computeCumulativeSeries,
     computeHourlyActiveWork,
     computeHourlyBuckets,
+    computeHourlyEfficiency,
     computeHourlyHeatmap,
     computeHourlySandSpeed,
     computeIntervalStats,
     computeLapIntervals,
     computeMinuteSandSpeed,
-    computeMovingAverage,
+    computePeakHour,
+    computeSandPeriodSplit,
     computeSandWorkDurationSummary,
-    formatActiveHours,
-    formatDurationSec,
+    computeTripFleetWorkDurationSummary,
+    computeTripPeriodSplit,
+    computeVehicleComparison,
     mergeTripLapTimeline,
     timelineToLapStamps,
+    type PeriodSplit,
+    type VehicleComparisonRow,
 } from './countRecordAnalytics';
 import CountRecordStatTiles from './CountRecordStatTiles';
 
@@ -33,85 +38,149 @@ interface CountRecordAnalyticsPanelProps {
     accentColor?: string;
 }
 
-function IntervalBarChart({
-    values,
-    labels,
-    color,
-    unit = 'วิน.',
-    movingAvgWindow = 5,
-}: {
-    values: number[];
-    labels: string[];
-    color: string;
-    unit?: string;
-    movingAvgWindow?: number;
-}) {
-    if (values.length === 0) {
+function PeriodSplitBar({ split, roundLabel }: { split: PeriodSplit; roundLabel: string }) {
+    const total = split.morning + split.afternoon;
+    if (total <= 0) {
         return (
-            <p className="py-6 text-center text-xs font-medium text-slate-400 dark:text-slate-500">
-                ต้องมีอย่างน้อย 2 รอบเพื่อวิเคราะห์ช่วงเวลา
+            <p className="flex h-20 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                ยังไม่มีข้อมูลเช้า/บ่าย
             </p>
         );
     }
-    const max = Math.max(...values, 1);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
-    const movingAvg = computeMovingAverage(values, movingAvgWindow);
-    const maPoints = movingAvg
-        .map((v, i) => (v != null ? { x: i, y: v } : null))
-        .filter((p): p is { x: number; y: number } => p != null);
-
-    const chartH = 120;
-    const chartW = 100;
-    const maLine =
-        maPoints.length >= 2
-            ? maPoints
-                  .map((p, i) => {
-                      const x = (p.x / (values.length - 1)) * chartW;
-                      const y = chartH - (p.y / max) * chartH;
-                      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
-                  })
-                  .join(' ')
-            : '';
-
     return (
-        <div className="relative">
-            {maLine && (
-                <svg
-                    viewBox={`0 0 ${chartW} ${chartH}`}
-                    className="pointer-events-none absolute inset-x-0 top-4 z-10 h-36 w-full px-1"
-                    preserveAspectRatio="none"
+        <div className="space-y-3">
+            <div className="flex h-10 overflow-hidden rounded-xl shadow-inner">
+                <div
+                    className="flex items-center justify-center bg-gradient-to-r from-amber-400 to-amber-500 text-[10px] font-bold text-amber-950 transition-all"
+                    style={{ width: `${split.morningPct}%`, minWidth: split.morning > 0 ? '2.5rem' : 0 }}
                 >
-                    <path d={maLine} fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="3 2" opacity="0.85" />
-                </svg>
-            )}
-            <div className="flex h-36 items-end justify-between gap-1.5 px-1 pt-4">
-                {values.map((val, i) => {
-                    const isMin = val === minVal && values.length > 1;
-                    const isMax = val === maxVal && values.length > 1;
-                    const barColor = isMin ? '#34d399' : isMax ? '#f87171' : color;
-                    return (
-                        <div key={i} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
-                            <span className="mb-1 text-[9px] font-bold tabular-nums text-slate-500 dark:text-slate-400 opacity-0 transition-opacity group-hover:opacity-100">
-                                {formatDurationSec(val)}
-                            </span>
-                            <div className="relative flex w-full flex-1 items-end overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
-                                <div
-                                    className="chart-bar-grow w-full rounded-t-md"
-                                    style={{ height: `${(val / max) * 100}%`, backgroundColor: barColor }}
-                                />
-                            </div>
-                            <span className="mt-1 w-full truncate text-center text-[9px] font-medium text-slate-400 dark:text-slate-500">
-                                {labels[i]}
-                            </span>
-                            <span className="text-[8px] tabular-nums text-slate-300 dark:text-slate-600">{unit}</span>
-                        </div>
-                    );
-                })}
+                    {split.morning > 0 ? `เช้า ${split.morning}` : ''}
+                </div>
+                <div
+                    className="flex items-center justify-center bg-gradient-to-r from-indigo-500 to-violet-600 text-[10px] font-bold text-white transition-all"
+                    style={{ width: `${split.afternoonPct}%`, minWidth: split.afternoon > 0 ? '2.5rem' : 0 }}
+                >
+                    {split.afternoon > 0 ? `บ่าย ${split.afternoon}` : ''}
+                </div>
             </div>
-            <p className="mt-1 text-center text-[9px] text-slate-400 dark:text-slate-500">
-                เส้นประ = ค่าเฉลี่ยเคลื่อนที่ {movingAvgWindow} รอบ · เขียว=เร็วสุด · แดง=ช้าสุด
+            <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-amber-50 px-3 py-2 dark:bg-amber-500/10">
+                    <p className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">เช้า</p>
+                    <p className="text-lg font-black tabular-nums text-amber-900 dark:text-amber-100">
+                        {split.morning} <span className="text-xs font-semibold">{roundLabel}</span>
+                    </p>
+                    <p className="text-[10px] font-medium text-amber-700/80 dark:text-amber-300/80">{Math.round(split.morningPct)}%</p>
+                </div>
+                <div className="rounded-xl bg-indigo-50 px-3 py-2 dark:bg-indigo-500/10">
+                    <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">บ่าย</p>
+                    <p className="text-lg font-black tabular-nums text-indigo-900 dark:text-indigo-100">
+                        {split.afternoon} <span className="text-xs font-semibold">{roundLabel}</span>
+                    </p>
+                    <p className="text-[10px] font-medium text-indigo-700/80 dark:text-indigo-300/80">{Math.round(split.afternoonPct)}%</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function VehicleComparisonChart({ rows, color }: { rows: VehicleComparisonRow[]; color: string }) {
+    if (rows.length === 0) {
+        return (
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                ยังไม่มีข้อมูลรถ
             </p>
+        );
+    }
+    const max = Math.max(...rows.map((r) => r.rounds), 1);
+    return (
+        <div className="space-y-2">
+            {rows.map((row) => (
+                <div key={row.vehicleId} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="truncate font-bold text-slate-700 dark:text-slate-200">{row.vehicleId}</span>
+                        <span className="shrink-0 font-black tabular-nums text-slate-900 dark:text-slate-100">{row.rounds} เที่ยว</span>
+                    </div>
+                    <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div
+                            className="h-full bg-amber-400"
+                            style={{ width: `${(row.morning / max) * 100}%` }}
+                            title={`เช้า ${row.morning}`}
+                        />
+                        <div
+                            className="h-full"
+                            style={{ width: `${(row.afternoon / max) * 100}%`, backgroundColor: color }}
+                            title={`บ่าย ${row.afternoon}`}
+                        />
+                    </div>
+                    <p className="text-[9px] text-slate-400 dark:text-slate-500">
+                        เช้า {row.morning} · บ่าย {row.afternoon}
+                    </p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function PeakHourCard({
+    peak,
+    roundLabel,
+    color,
+}: {
+    peak: ReturnType<typeof computePeakHour>;
+    roundLabel: string;
+    color: string;
+}) {
+    if (!peak) {
+        return (
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                ยังไม่มีช่วงพีค
+            </p>
+        );
+    }
+    return (
+        <div className="flex flex-col items-center justify-center py-2 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">ช่วงคึกคักสุด</p>
+            <p className="mt-2 text-3xl font-black tabular-nums" style={{ color }}>
+                {peak.label}
+            </p>
+            <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
+                {peak.count} {roundLabel}
+            </p>
+            <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">ชั่วโมงที่มีการนับมากที่สุด</p>
+        </div>
+    );
+}
+
+function EfficiencyBarChart({
+    buckets,
+    color,
+    unitLabel,
+}: {
+    buckets: ReturnType<typeof computeHourlyEfficiency>;
+    color: string;
+    unitLabel: string;
+}) {
+    if (buckets.length === 0) {
+        return (
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                ยังไม่มีข้อมูลความเร็ว
+            </p>
+        );
+    }
+    const max = Math.max(...buckets.map((b) => b.roundsPerHour), 1);
+    return (
+        <div className="flex h-24 items-end justify-between gap-0.5 px-0.5">
+            {buckets.map((b) => (
+                <div key={b.hour} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
+                    <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">{b.roundsPerHour}</span>
+                    <div
+                        className="chart-bar-grow w-full rounded-t-sm"
+                        style={{ height: `${(b.roundsPerHour / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
+                    />
+                    <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
+                    <span className="text-[7px] text-slate-300 dark:text-slate-600">{unitLabel}</span>
+                </div>
+            ))}
         </div>
     );
 }
@@ -353,24 +422,34 @@ function ChartBlock({
     );
 }
 
-function VehicleAccordion({
+function VehicleSummaryCard({
     vehicleId,
     lapTimes,
+    rounds,
+    morning,
+    afternoon,
     dayKey,
     color,
     defaultOpen,
 }: {
     vehicleId: string;
     lapTimes: string[];
+    rounds: number;
+    morning: number;
+    afternoon: number;
     dayKey: string;
     color: string;
     defaultOpen?: boolean;
 }) {
     const [open, setOpen] = useState(defaultOpen ?? false);
-    const intervals = useMemo(() => computeLapIntervals(lapTimes, dayKey), [lapTimes, dayKey]);
-    const stats = useMemo(() => computeIntervalStats(intervals.intervalsSec), [intervals]);
+    const stats = useMemo(() => {
+        const intervals = computeLapIntervals(lapTimes, dayKey);
+        return computeIntervalStats(intervals.intervalsSec);
+    }, [lapTimes, dayKey]);
 
     if (lapTimes.length === 0) return null;
+
+    const lastLap = lapTimes[lapTimes.length - 1];
 
     return (
         <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white dark:border-slate-700/60 dark:bg-slate-900">
@@ -382,15 +461,40 @@ function VehicleAccordion({
                 <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{vehicleId}</p>
                     <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                        {lapTimes.length} เที่ยว
-                        {stats.avg != null ? ` · เฉลี่ย ${formatDurationSec(stats.avg)}/เที่ยว` : ''}
+                        {rounds} เที่ยว · เช้า {morning} · บ่าย {afternoon}
                     </p>
                 </div>
                 <ChevronDown size={16} className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
                 <div className="border-t border-slate-100 px-3 pb-3 pt-2 dark:border-slate-800">
-                    <IntervalBarChart values={intervals.intervalsSec} labels={intervals.labels} color={color} />
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">
+                            <p className="text-[9px] font-bold uppercase text-slate-400">จังหวะเฉลี่ย</p>
+                            <p className="text-sm font-black tabular-nums text-slate-800 dark:text-slate-100">
+                                {stats.avg != null ? `${Math.round(stats.avg)} วิน.` : '—'}
+                            </p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">
+                            <p className="text-[9px] font-bold uppercase text-slate-400">ล่าสุด</p>
+                            <p className="truncate font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300">{lastLap}</p>
+                        </div>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="flex h-full">
+                            <div
+                                className="bg-amber-400"
+                                style={{ width: `${rounds > 0 ? (morning / rounds) * 100 : 0}%` }}
+                            />
+                            <div
+                                className="h-full"
+                                style={{
+                                    width: `${rounds > 0 ? (afternoon / rounds) * 100 : 0}%`,
+                                    backgroundColor: color,
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -445,6 +549,28 @@ const CountRecordAnalyticsPanel = ({
         () => (mode === 'sand' ? computeMinuteSandSpeed(lapTimes, dayKey) : []),
         [mode, lapTimes, dayKey],
     );
+    const sandUnit = useMemo(
+        () => (mode === 'sand' ? buildCountRecordSandUnit(dayKey, transactions) : null),
+        [mode, dayKey, transactions],
+    );
+    const periodSplit = useMemo(() => {
+        if (mode === 'trip') return computeTripPeriodSplit(tripUnits);
+        return computeSandPeriodSplit(sandUnit?.morning ?? 0, sandUnit?.afternoon ?? 0);
+    }, [mode, tripUnits, sandUnit]);
+    const vehicleComparison = useMemo(
+        () => (mode === 'trip' ? computeVehicleComparison(tripUnits) : []),
+        [mode, tripUnits],
+    );
+    const peakHour = useMemo(() => computePeakHour(hourlyHeatmap), [hourlyHeatmap]);
+    const hourlyEfficiency = useMemo(() => computeHourlyEfficiency(lapTimes, dayKey), [lapTimes, dayKey]);
+    const tripWorkSummary = useMemo(
+        () => (mode === 'trip' ? computeTripFleetWorkDurationSummary(tripUnits, dayKey) : null),
+        [mode, tripUnits, dayKey],
+    );
+    const tripHourlyActiveWork = useMemo(
+        () => (mode === 'trip' ? computeHourlyActiveWork(lapTimes, dayKey) : []),
+        [mode, lapTimes, dayKey],
+    );
 
     const roundLabel = mode === 'sand' ? 'รอบ' : 'เที่ยว';
     const hasAnyLaps = lapTimes.length > 0;
@@ -466,18 +592,20 @@ const CountRecordAnalyticsPanel = ({
                 accentColor={color}
                 mode={mode}
                 sandWorkSummary={sandWorkSummary}
+                tripWorkSummary={tripWorkSummary}
             />
 
             {/* Bento grid */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-                <ChartBlock
-                    title={`ช่วงเวลาระหว่าง${roundLabel} (หักพักเที่ยง)`}
-                    className="lg:col-span-7"
-                >
-                    <IntervalBarChart values={intervals.intervalsSec} labels={intervals.labels} color={color} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+                <ChartBlock title={`สัดส่วนเช้า / บ่าย`} className="sm:col-span-2 lg:col-span-4">
+                    <PeriodSplitBar split={periodSplit} roundLabel={roundLabel} />
                 </ChartBlock>
 
-                <ChartBlock title="Heatmap รายชั่วโมง" className="lg:col-span-5">
+                <ChartBlock title="ช่วงพีค (รายชั่วโมง)" className="sm:col-span-1 lg:col-span-3">
+                    <PeakHourCard peak={peakHour} roundLabel={roundLabel} color={color} />
+                </ChartBlock>
+
+                <ChartBlock title="Heatmap รายชั่วโมง" className="sm:col-span-1 lg:col-span-5">
                     <HourlyHeatmap cells={hourlyHeatmap} color={color} />
                 </ChartBlock>
 
@@ -488,6 +616,16 @@ const CountRecordAnalyticsPanel = ({
                 <ChartBlock title={`จำนวน${roundLabel}ต่อชั่วโมง`} className="lg:col-span-6">
                     <HourlyBarChart buckets={hourly} color={color} />
                 </ChartBlock>
+
+                <ChartBlock title={`ความเร็ว${roundLabel}ต่อชั่วโมง`} className="lg:col-span-6">
+                    <EfficiencyBarChart buckets={hourlyEfficiency} color={color} unitLabel={`${roundLabel}/ชม.`} />
+                </ChartBlock>
+
+                {mode === 'trip' && (
+                    <ChartBlock title="เปรียบเทียบคัน" className="lg:col-span-6">
+                        <VehicleComparisonChart rows={vehicleComparison} color={color} />
+                    </ChartBlock>
+                )}
 
                 {mode === 'sand' && (
                     <>
@@ -507,18 +645,27 @@ const CountRecordAnalyticsPanel = ({
                         </ChartBlock>
                     </>
                 )}
+
+                {mode === 'trip' && tripHourlyActiveWork.length > 0 && (
+                    <ChartBlock title="เวลาทำงานรถรวมรายชั่วโมง (ชม.)" className="lg:col-span-12">
+                        <WorkHoursBarChart buckets={tripHourlyActiveWork} color={color} />
+                    </ChartBlock>
+                )}
             </div>
 
             {mode === 'trip' && tripUnits.filter((u) => u.lapTimes.length > 0).length > 0 && (
                 <div className="space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">แยกต่อคัน</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">สรุปรายคัน</p>
                     {tripUnits
                         .filter((u) => u.lapTimes.length > 0)
                         .map((u, i) => (
-                            <VehicleAccordion
+                            <VehicleSummaryCard
                                 key={u.id}
                                 vehicleId={u.vehicleId}
                                 lapTimes={u.lapTimes}
+                                rounds={u.rounds}
+                                morning={u.morning}
+                                afternoon={u.afternoon}
                                 dayKey={dayKey}
                                 color={color}
                                 defaultOpen={i === 0}

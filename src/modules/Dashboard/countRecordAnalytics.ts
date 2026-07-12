@@ -493,6 +493,105 @@ function buildModeComparison(
     };
 }
 
+export function computeTripFleetWorkDurationSummary(
+    units: CountRecordTripUnit[],
+    dayKey: string,
+): SandWorkDurationSummary | null {
+    const span = computeTripFleetWorkSpan(units, dayKey);
+    if (!span.startStamp || !span.endStamp) return null;
+    const startMs = parseLapStamp(span.startStamp, dayKey);
+    const endMs = parseLapStamp(span.endStamp, dayKey);
+    if (startMs == null || endMs == null) return null;
+    const rawSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+    const activeSec = activeDurationSec(startMs, endMs);
+    const lunchDeductedSec = Math.max(0, rawSec - activeSec);
+    return {
+        totalActiveHours: activeSec / 3600,
+        lunchDeductedHours: lunchDeductedSec / 3600,
+        startClock: span.startClock,
+        endClock: span.endClock,
+    };
+}
+
+export interface PeriodSplit {
+    morning: number;
+    afternoon: number;
+    morningPct: number;
+    afternoonPct: number;
+}
+
+export function computeTripPeriodSplit(units: CountRecordTripUnit[]): PeriodSplit {
+    const morning = units.reduce((s, u) => s + u.morning, 0);
+    const afternoon = units.reduce((s, u) => s + u.afternoon, 0);
+    const total = morning + afternoon;
+    return {
+        morning,
+        afternoon,
+        morningPct: total > 0 ? (morning / total) * 100 : 0,
+        afternoonPct: total > 0 ? (afternoon / total) * 100 : 0,
+    };
+}
+
+export function computeSandPeriodSplit(morning: number, afternoon: number): PeriodSplit {
+    const total = morning + afternoon;
+    return {
+        morning,
+        afternoon,
+        morningPct: total > 0 ? (morning / total) * 100 : 0,
+        afternoonPct: total > 0 ? (afternoon / total) * 100 : 0,
+    };
+}
+
+export interface VehicleComparisonRow {
+    vehicleId: string;
+    rounds: number;
+    morning: number;
+    afternoon: number;
+}
+
+export function computeVehicleComparison(units: CountRecordTripUnit[]): VehicleComparisonRow[] {
+    return [...units]
+        .filter((u) => u.rounds > 0)
+        .sort((a, b) => b.rounds - a.rounds)
+        .map((u) => ({
+            vehicleId: u.vehicleId,
+            rounds: u.rounds,
+            morning: u.morning,
+            afternoon: u.afternoon,
+        }));
+}
+
+export interface PeakHourInfo {
+    hour: number;
+    count: number;
+    label: string;
+}
+
+export function computePeakHour(cells: HourlyHeatmapCell[]): PeakHourInfo | null {
+    const active = cells.filter((c) => c.count > 0);
+    if (active.length === 0) return null;
+    const best = active.reduce((a, b) => (b.count > a.count ? b : a));
+    return { hour: best.hour, count: best.count, label: best.label };
+}
+
+export interface HourlyEfficiencyBucket {
+    hour: number;
+    label: string;
+    count: number;
+    roundsPerHour: number;
+}
+
+/** ความเร็วเฉลี่ยต่อชั่วโมง (รอบหรือเที่ยว / ชม. ในช่วงนั้น) */
+export function computeHourlyEfficiency(lapTimes: string[], dayKey: string): HourlyEfficiencyBucket[] {
+    const buckets = computeHourlyBuckets(lapTimes, dayKey);
+    return buckets.map((b) => ({
+        hour: b.hour,
+        label: b.label,
+        count: b.count,
+        roundsPerHour: b.count,
+    }));
+}
+
 export function buildDayComparison(
     todayKey: string,
     transactions: Transaction[],

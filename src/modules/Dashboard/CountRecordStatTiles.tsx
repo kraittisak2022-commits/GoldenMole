@@ -18,6 +18,7 @@ interface CountRecordStatTilesProps {
     accentColor: string;
     mode: 'sand' | 'trip';
     sandWorkSummary?: SandWorkDurationSummary | null;
+    tripWorkSummary?: SandWorkDurationSummary | null;
 }
 
 const WORK_TARGET_HOURS = 8;
@@ -144,10 +145,12 @@ const CountRecordStatTiles = ({
     accentColor,
     mode,
     sandWorkSummary,
+    tripWorkSummary,
 }: CountRecordStatTilesProps) => {
     const paceUnit = formatAvgPaceUnit(stats.avg);
     const roundsPct = comparison.roundsDeltaPct;
     const roundsSign = roundsPct != null && roundsPct > 0 ? '+' : '';
+    const workSummary = mode === 'sand' ? sandWorkSummary : tripWorkSummary;
 
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
@@ -211,27 +214,38 @@ const CountRecordStatTiles = ({
                 <CompareBars today={comparison.todayRounds} yesterday={comparison.yesterdayRounds} color={accentColor} />
             </div>
 
-            {/* Work hours ring (sand) or min/max range (trip) */}
-            {mode === 'sand' && sandWorkSummary ? (
+            {/* Work hours ring (sand/trip) or min/max range fallback */}
+            {workSummary ? (
                 <div
                     className="relative overflow-hidden rounded-2xl p-3 text-white shadow-lg sm:p-3.5"
-                    style={{ background: `linear-gradient(145deg, #be185d 0%, #0f172a 100%)` }}
+                    style={{
+                        background:
+                            mode === 'sand'
+                                ? 'linear-gradient(145deg, #be185d 0%, #0f172a 100%)'
+                                : `linear-gradient(145deg, ${accentColor} 0%, #0f172a 100%)`,
+                    }}
                 >
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                         <Clock size={11} />
-                        เวลาทำงาน
+                        {mode === 'sand' ? 'เวลาทำงาน' : 'เวลาทำงานรถ'}
                     </div>
                     <div className="mt-1 flex items-center gap-3">
-                        <WorkRing hours={sandWorkSummary.totalActiveHours} targetHours={WORK_TARGET_HOURS} color="#f9a8d4" />
+                        <WorkRing
+                            hours={workSummary.totalActiveHours}
+                            targetHours={WORK_TARGET_HOURS}
+                            color={mode === 'sand' ? '#f9a8d4' : '#93c5fd'}
+                        />
                         <div>
                             <p className="text-lg font-black tabular-nums leading-none">
-                                {formatActiveHours(sandWorkSummary.totalActiveHours)}
+                                {formatActiveHours(workSummary.totalActiveHours)}
                             </p>
                             <p className="mt-1 text-[9px] font-medium text-white/50">
                                 เป้า {WORK_TARGET_HOURS} ชม.
                             </p>
-                            {sandWorkSummary.lunchDeductedHours > 0 && (
-                                <p className="text-[9px] text-pink-200/70">หักพักเที่ยง 12–13</p>
+                            {workSummary.startClock && workSummary.endClock && (
+                                <p className="text-[9px] text-white/60">
+                                    {workSummary.startClock} – {workSummary.endClock}
+                                </p>
                             )}
                         </div>
                     </div>
