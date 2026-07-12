@@ -146,15 +146,36 @@ const DashboardV4 = ({
                         </div>
                         <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-[1.65rem]">{t('realtimeV4')}</h2>
                         <p className="mt-1 max-w-xl text-sm text-slate-300">{t('dashboardSubtitle')}</p>
-                        <p className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm">
-                            <Calendar size={13} />
-                            {t('viewing')}: {formatDate(focusDate)}
-                            {isToday && (
-                                <span className="rounded-md bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">
-                                    {t('today')}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <label className="relative inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm transition hover:bg-white/15">
+                                <Calendar size={13} />
+                                <span>
+                                    {t('viewing')}: {formatDate(focusDate)}
                                 </span>
+                                {isToday && (
+                                    <span className="rounded-md bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">
+                                        {t('today')}
+                                    </span>
+                                )}
+                                <input
+                                    type="date"
+                                    value={selectedDate || today}
+                                    max={today}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="absolute inset-0 cursor-pointer opacity-0"
+                                    aria-label={t('selectDate')}
+                                />
+                            </label>
+                            {!isToday && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedDate('')}
+                                    className="rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm transition hover:bg-white/15"
+                                >
+                                    {t('backToToday')}
+                                </button>
                             )}
-                        </p>
+                        </div>
                         {focusCountRecordStatus && (
                             <p className="mt-2 text-sm font-medium text-indigo-200">{focusCountRecordStatus}</p>
                         )}
@@ -216,41 +237,6 @@ const DashboardV4 = ({
                     </div>
                 </div>
             )}
-
-            {/* Date selector */}
-            <div className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30 dark:border-slate-700/60 dark:bg-slate-900 dark:shadow-slate-950/40 ${
-                shareMode ? 'p-3 landscape:max-md:p-2.5 sm:p-4' : 'p-4'
-            }`}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
-                            <Calendar size={15} />
-                        </span>
-                        {t('selectDate')}
-                    </label>
-                    <div className="flex flex-col gap-2 xs:flex-row w-full sm:w-auto">
-                        <input
-                            type="date"
-                            value={selectedDate || today}
-                            max={today}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-800 dark:focus:ring-indigo-500/20"
-                        />
-                        {!isToday && (
-                            <button
-                                type="button"
-                                onClick={() => setSelectedDate('')}
-                                className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
-                            >
-                                {t('backToToday')}
-                            </button>
-                        )}
-                    </div>
-                    <p className="text-xs font-medium text-slate-400 dark:text-slate-500 sm:ml-auto">
-                        {t('showOnly')} {formatDate(focusDate)}
-                    </p>
-                </div>
-            </div>
 
             {/* Live board */}
             <div
