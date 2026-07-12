@@ -3,7 +3,13 @@
  * from this cache — after a deploy, old index-*.js would request removed AdminModule-*.js
  * and the app breaks with "Failed to fetch dynamically imported module".
  */
-const CACHE_NAME = 'cm-app-shell-v2';
+const CACHE_NAME = 'cm-app-shell-v3';
+
+self.addEventListener('message', (event) => {
+    if (event.data?.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
 
 self.addEventListener('install', (event) => {
     event.waitUntil(self.skipWaiting());

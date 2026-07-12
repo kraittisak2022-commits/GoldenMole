@@ -6,6 +6,10 @@ import DebugErrorBoundary from './components/DebugErrorBoundary'
 import { SessionDialogProvider } from './context/SessionDialogContext'
 import E2EHarness from './e2e/E2EHarness'
 import ShareDashboardPage from './modules/Share/ShareDashboardPage'
+import { setupChunkReloadRecovery } from './utils/chunkReload'
+import { setupServiceWorkerUpdates } from './utils/serviceWorkerUpdate'
+
+setupChunkReloadRecovery()
 
 const search = new URLSearchParams(window.location.search)
 const isE2EHarness = search.get('e2e') === 'harness'
@@ -14,9 +18,7 @@ const isShareView = !!shareToken
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
-            console.error('Service worker registration failed', err)
-        })
+        setupServiceWorkerUpdates()
     })
 }
 

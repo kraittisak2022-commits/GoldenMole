@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme, AdminDataAccess } from './types';
 import Toast from './components/ui/Toast';
@@ -22,9 +22,10 @@ import MobileFieldApp from './modules/Mobile/MobileFieldApp';
 import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
-const PayrollModule = lazy(() => import('./modules/Payroll/PayrollModule'));
-const RecordManager = lazy(() => import('./modules/DataList/RecordManager'));
-const AdminModule = lazy(() => import('./modules/Admin/AdminModule'));
+import { lazyWithRetry } from './utils/lazyWithRetry';
+const PayrollModule = lazyWithRetry(() => import('./modules/Payroll/PayrollModule'));
+const RecordManager = lazyWithRetry(() => import('./modules/DataList/RecordManager'));
+const AdminModule = lazyWithRetry(() => import('./modules/Admin/AdminModule'));
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 import { fuelTxToLiters } from './utils';

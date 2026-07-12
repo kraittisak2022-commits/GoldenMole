@@ -23,6 +23,28 @@
     style="display:none; padding:20px; background:#fee; color:red; border:2px solid red; margin:20px; white-space:pre-wrap; font-family:monospace; z-index:9999; position:relative;">
   </div>
   <script>
+    (function () {
+      var KEY = 'cm_chunk_reload_v1';
+      function isChunk(msg) {
+        return /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg);
+      }
+      function tryReload(reason) {
+        var msg = String(reason && reason.message ? reason.message : reason);
+        if (!isChunk(msg)) return false;
+        try {
+          if (sessionStorage.getItem(KEY)) return false;
+          sessionStorage.setItem(KEY, '1');
+        } catch (e) { return false; }
+        window.location.reload();
+        return true;
+      }
+      window.addEventListener('unhandledrejection', function (e) {
+        if (tryReload(e.reason)) e.preventDefault();
+      });
+      window.addEventListener('load', function () {
+        try { sessionStorage.removeItem(KEY); } catch (e) {}
+      });
+    })();
     window.onerror = function (msg, url, line, col, error) {
       var div = document.getElementById('global-error-display');
       div.style.display = 'block';

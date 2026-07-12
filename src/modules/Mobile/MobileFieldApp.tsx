@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react';
+import { Suspense, useState, useCallback, useEffect, useRef } from 'react';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 import {
     ChevronLeft,
     ChevronRight,
@@ -32,8 +33,8 @@ import MobileAndroidHome from './MobileAndroidHome';
 import MobileQuickInputSheet from './MobileQuickInputSheet';
 import type { DailyModuleDef } from './mobileDailyModules';
 
-const RecordManager = lazy(() => import('../DataList/RecordManager'));
-const AdminModule = lazy(() => import('../Admin/AdminModule'));
+const RecordManager = lazyWithRetry(() => import('../DataList/RecordManager'));
+const AdminModule = lazyWithRetry(() => import('../Admin/AdminModule'));
 
 const NAV_RAIL_PREF = 'cm_mobile_nav_rail_open_v1';
 
