@@ -25,6 +25,8 @@ interface CountRecordOverviewProps {
     showHeader?: boolean;
     pulseToken?: number;
     increments?: CountRecordIncrement[];
+    /** Public share view — portrait 1 col, mobile landscape 2 cols */
+    shareMode?: boolean;
 }
 
 const SAND_RECENT_LAPS = 5;
@@ -43,11 +45,11 @@ function PeriodPill({
     const morningCls =
         variant === 'onDark'
             ? 'bg-amber-400/30 text-amber-50 ring-1 ring-amber-200/50 shadow-sm'
-            : 'bg-amber-100 text-amber-900 ring-1 ring-amber-200';
+            : 'bg-amber-100 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/25';
     const afternoonCls =
         variant === 'onDark'
             ? 'bg-sky-400/30 text-sky-50 ring-1 ring-sky-200/50 shadow-sm'
-            : 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200';
+            : 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-200 dark:ring-indigo-400/25';
 
     return (
         <div className="flex flex-wrap justify-center gap-1.5">
@@ -71,7 +73,7 @@ function WorkSpanBadge({ label, onDark }: { label: string; onDark?: boolean }) {
     return (
         <p
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                onDark ? 'bg-black/20 text-white/90 backdrop-blur-sm' : 'bg-slate-100 text-slate-700'
+                onDark ? 'bg-black/20 text-white/90 backdrop-blur-sm' : 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
             }`}
         >
             <Clock size={10} />
@@ -179,23 +181,23 @@ function SandLapChip({ roundNo, stamp, latest }: { roundNo: number; stamp: strin
             className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold ${
                 latest
                     ? 'border-pink-300 bg-pink-600 text-white shadow-sm shadow-pink-500/25'
-                    : 'border-pink-200/80 bg-white text-pink-900'
+                    : 'border-pink-200/80 bg-white text-pink-900 dark:border-pink-400/25 dark:bg-slate-800 dark:text-pink-200'
             }`}
         >
-            <span className={latest ? 'text-pink-100' : 'text-pink-600'}>รอบ {roundNo}</span>
-            <span className={`font-mono tabular-nums ${latest ? 'text-white/90' : 'text-slate-500'}`}>{stamp}</span>
+            <span className={latest ? 'text-pink-100' : 'text-pink-600 dark:text-pink-300'}>รอบ {roundNo}</span>
+            <span className={`font-mono tabular-nums ${latest ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`}>{stamp}</span>
         </span>
     );
 }
 
 function EmptyState({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon: typeof Truck }) {
     return (
-        <div className="flex min-h-[168px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-8 text-center">
-            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-100">
+        <div className="flex min-h-[168px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-8 text-center dark:border-slate-700 dark:bg-slate-800/40">
+            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-slate-500 dark:ring-slate-700">
                 <Icon size={22} strokeWidth={1.75} />
             </span>
-            <p className="text-sm font-semibold text-slate-600">{title}</p>
-            <p className="mt-1 max-w-[220px] text-xs leading-relaxed text-slate-400">{subtitle}</p>
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{title}</p>
+            <p className="mt-1 max-w-[220px] text-xs leading-relaxed text-slate-400 dark:text-slate-500">{subtitle}</p>
         </div>
     );
 }
@@ -217,8 +219,8 @@ function CountRecordPanelShell({
 }) {
     return (
         <section
-            className={`flex min-h-[280px] flex-col overflow-hidden rounded-[20px] border bg-white shadow-sm transition-all duration-500 ${
-                highlight ? 'border-slate-300 shadow-md shadow-slate-200/60' : 'border-slate-200/80 shadow-slate-200/30'
+            className={`flex min-h-[280px] flex-col overflow-hidden rounded-[20px] border bg-white shadow-sm transition-all duration-500 dark:bg-slate-900 ${
+                highlight ? 'border-slate-300 shadow-md shadow-slate-200/60 dark:border-slate-600 dark:shadow-slate-950/50' : 'border-slate-200/80 shadow-slate-200/30 dark:border-slate-700/60 dark:shadow-slate-950/30'
             }`}
         >
             <header className={`relative overflow-hidden px-4 py-3.5 ${accentClass}`}>
@@ -233,7 +235,7 @@ function CountRecordPanelShell({
                     </div>
                 </div>
             </header>
-            <div className="flex-1 bg-gradient-to-b from-slate-50/30 to-white p-3">{children}</div>
+            <div className="flex-1 bg-gradient-to-b from-slate-50/30 to-white p-3 dark:from-slate-800/30 dark:to-slate-900">{children}</div>
         </section>
     );
 }
@@ -246,6 +248,7 @@ const CountRecordOverview = ({
     showHeader = true,
     pulseToken = 0,
     increments = [],
+    shareMode = false,
 }: CountRecordOverviewProps) => {
     const [highlight, setHighlight] = useState(false);
 
@@ -295,9 +298,17 @@ const CountRecordOverview = ({
         [sandUnit, dayKey],
     );
 
+    const isCompactLayout = compact || shareMode;
+    const showOverviewHeader = showHeader && !shareMode;
+    const panelGridClass = shareMode
+        ? 'grid-cols-1 max-md:landscape:grid-cols-2 xl:grid-cols-2'
+        : compact
+          ? 'grid-cols-1'
+          : 'grid-cols-1 xl:grid-cols-2';
+
     return (
-        <div className={compact ? 'space-y-3' : 'space-y-5'}>
-            {showHeader && (
+        <div className={isCompactLayout ? 'space-y-3' : 'space-y-5'}>
+            {showOverviewHeader && (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div className="flex items-start gap-3">
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-lg shadow-slate-900/20">
@@ -307,29 +318,29 @@ const CountRecordOverview = ({
                             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                 Count & Record
                             </p>
-                            <h3 className="text-lg font-bold tracking-tight text-slate-900">บันทึกและนับจำนวน</h3>
+                            <h3 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">บันทึกและนับจำนวน</h3>
                             {statusLabel ? (
-                                <p className="mt-0.5 text-sm font-medium text-slate-500">{statusLabel}</p>
+                                <p className="mt-0.5 text-sm font-medium text-slate-500 dark:text-slate-400">{statusLabel}</p>
                             ) : (
-                                <p className="mt-0.5 text-sm text-slate-400">รอข้อมูลจากแอปมือถือ</p>
+                                <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">รอข้อมูลจากแอปมือถือ</p>
                             )}
                         </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs font-semibold text-blue-900">
-                            <Truck size={14} className="text-blue-600" />
+                        <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
+                            <Truck size={14} className="text-blue-600 dark:text-blue-300" />
                             {tripUnits.length} คัน · {formatDashboardMetric(tripTotal)} เที่ยว
                         </span>
-                        <span className="inline-flex items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-xs font-semibold text-pink-900">
-                            <Droplets size={14} className="text-pink-600" />
+                        <span className="inline-flex items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-xs font-semibold text-pink-900 dark:border-pink-400/20 dark:bg-pink-500/10 dark:text-pink-200">
+                            <Droplets size={14} className="text-pink-600 dark:text-pink-300" />
                             {sandUnit ? `${formatDashboardMetric(sandUnit.rounds)} รอบ` : '0 รอบ'}
                         </span>
                     </div>
                 </div>
             )}
 
-            <div className={`grid gap-4 ${compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'}`}>
+            <div className={`grid gap-4 ${panelGridClass}`}>
                 <CountRecordPanelShell
                     title="จำนวนเที่ยวรถ"
                     subtitle={`${tripUnits.length} คัน · รวม ${formatDashboardMetric(tripTotal)} เที่ยว`}
@@ -363,7 +374,7 @@ const CountRecordOverview = ({
                                         key={unit.id}
                                         unit={unit}
                                         index={i}
-                                        compact={compact || tripUnits.length > 2}
+                                        compact={compact || (shareMode ? tripUnits.length > 3 : tripUnits.length > 2)}
                                         highlight={highlight}
                                         dayKey={dayKey}
                                         incrementDelta={latestTripIncrements.get(unit.id)}
@@ -371,8 +382,8 @@ const CountRecordOverview = ({
                                 ))}
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                                     บันทึกล่าสุด
                                 </p>
                                 {tripWithLaps.length > 0 ? (
@@ -380,11 +391,11 @@ const CountRecordOverview = ({
                                         {tripWithLaps.map((u) => (
                                             <li
                                                 key={u.id}
-                                                className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2"
+                                                className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60"
                                             >
                                                 <div className="min-w-0">
-                                                    <p className="truncate text-xs font-bold text-slate-800">{u.vehicleId}</p>
-                                                    <p className="truncate font-mono text-[10px] tabular-nums text-slate-500">
+                                                    <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">{u.vehicleId}</p>
+                                                    <p className="truncate font-mono text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
                                                         {u.lapTimes[u.lapTimes.length - 1]}
                                                     </p>
                                                 </div>
@@ -395,17 +406,19 @@ const CountRecordOverview = ({
                                         ))}
                                     </ul>
                                 ) : (
-                                    <p className="mt-2 text-xs font-medium text-slate-400">ยังไม่มี timestamp</p>
+                                    <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">ยังไม่มี timestamp</p>
                                 )}
                             </div>
 
-                            <CountRecordAnalyticsPanel
-                                mode="trip"
-                                dayKey={dayKey}
-                                transactions={transactions}
-                                employees={employees}
-                                accentColor="#2563eb"
-                            />
+                            <div className={shareMode ? 'max-md:landscape:hidden' : undefined}>
+                                <CountRecordAnalyticsPanel
+                                    mode="trip"
+                                    dayKey={dayKey}
+                                    transactions={transactions}
+                                    employees={employees}
+                                    accentColor="#2563eb"
+                                />
+                            </div>
                         </div>
                     )}
                 </CountRecordPanelShell>
@@ -469,8 +482,8 @@ const CountRecordOverview = ({
                             </div>
 
                             {sandUnit.lapTimes.length > 0 && (
-                                <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                <div className="rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-700/60 dark:bg-slate-900">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                                         รอบล่าสุด
                                     </p>
                                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -490,13 +503,15 @@ const CountRecordOverview = ({
                                 </div>
                             )}
 
-                            <CountRecordAnalyticsPanel
-                                mode="sand"
-                                dayKey={dayKey}
-                                transactions={transactions}
-                                employees={employees}
-                                accentColor="#db2777"
-                            />
+                            <div className={shareMode ? 'max-md:landscape:hidden' : undefined}>
+                                <CountRecordAnalyticsPanel
+                                    mode="sand"
+                                    dayKey={dayKey}
+                                    transactions={transactions}
+                                    employees={employees}
+                                    accentColor="#db2777"
+                                />
+                            </div>
                         </div>
                     )}
                 </CountRecordPanelShell>

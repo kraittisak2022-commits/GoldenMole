@@ -12,24 +12,24 @@ const kindMeta: Record<
 > = {
     trip: {
         icon: Truck,
-        dot: 'bg-blue-500 ring-blue-100',
+        dot: 'bg-blue-500 ring-blue-100 dark:ring-blue-500/30',
         line: 'from-blue-400/40',
-        bg: 'bg-blue-50/90',
-        text: 'text-blue-950',
+        bg: 'bg-blue-50/90 dark:bg-blue-500/10 dark:border-blue-400/20',
+        text: 'text-blue-950 dark:text-blue-100',
     },
     sand: {
         icon: Droplets,
-        dot: 'bg-pink-500 ring-pink-100',
+        dot: 'bg-pink-500 ring-pink-100 dark:ring-pink-500/30',
         line: 'from-pink-400/40',
-        bg: 'bg-pink-50/90',
-        text: 'text-pink-950',
+        bg: 'bg-pink-50/90 dark:bg-pink-500/10 dark:border-pink-400/20',
+        text: 'text-pink-950 dark:text-pink-100',
     },
     delete: {
         icon: Trash2,
-        dot: 'bg-rose-500 ring-rose-100',
+        dot: 'bg-rose-500 ring-rose-100 dark:ring-rose-500/30',
         line: 'from-rose-400/40',
-        bg: 'bg-rose-50/90',
-        text: 'text-rose-950',
+        bg: 'bg-rose-50/90 dark:bg-rose-500/10 dark:border-rose-400/20',
+        text: 'text-rose-950 dark:text-rose-100',
     },
 };
 
@@ -46,23 +46,23 @@ const CountRecordActivityFeed = ({ activities, compact = false }: CountRecordAct
 
     return (
         <div
-            className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 ${
-                compact ? '' : 'shadow-sm shadow-slate-200/40'
+            className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 dark:border-slate-700/60 dark:from-slate-900 dark:to-slate-950 ${
+                compact ? '' : 'shadow-sm shadow-slate-200/40 dark:shadow-slate-950/40'
             }`}
         >
-            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 bg-white/70">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 bg-white/70 dark:border-slate-800 dark:bg-slate-900/70">
                 <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
                         <Activity size={14} />
                     </span>
                     <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                             Activity stream
                         </p>
-                        <p className="text-[11px] font-medium text-slate-400">อัปเดตล่าสุดจากมือถือ</p>
+                        <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">อัปเดตล่าสุดจากมือถือ</p>
                     </div>
                 </div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                     {activities.length}
                 </span>
             </div>
@@ -85,9 +85,9 @@ const CountRecordActivityFeed = ({ activities, compact = false }: CountRecordAct
                             >
                                 <Icon size={11} className="text-white" strokeWidth={2.5} />
                             </span>
-                            <div className={`min-w-0 flex-1 rounded-xl border border-white/60 px-3 py-2 ${meta.bg}`}>
+                            <div className={`min-w-0 flex-1 rounded-xl border border-white/60 px-3 py-2 dark:border-slate-700/40 ${meta.bg}`}>
                                 <p className={`text-xs font-semibold leading-snug ${meta.text}`}>{item.message}</p>
-                                <p className="mt-1 text-[10px] font-mono tabular-nums text-slate-400">
+                                <p className="mt-1 text-[10px] font-mono tabular-nums text-slate-400 dark:text-slate-500">
                                     {formatActivityTime(item.at)}
                                 </p>
                             </div>

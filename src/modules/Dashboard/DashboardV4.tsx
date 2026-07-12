@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Activity, Calendar, Droplets, Truck, Zap } from 'lucide-react';
+import { Activity, Calendar, Droplets, Link2, Truck, Wallet, TrendingUp, CreditCard, Zap } from 'lucide-react';
+import ShareLinkManager from '../Share/ShareLinkManager';
 import type { CountRecordSyncSource } from '../../hooks/useCountRecordRealtime';
 import { Transaction, Employee, AppSettings } from '../../types';
 import { getToday } from '../../utils';
@@ -23,6 +24,10 @@ interface DashboardV4Props {
     employees?: Employee[];
     settings?: AppSettings;
     onRefreshTransactions?: () => void | Promise<void>;
+    /** Public share view — mobile-optimized, no admin controls */
+    shareMode?: boolean;
+    /** Hide income/expense/net profit summary cards */
+    hideFinancial?: boolean;
 }
 
 const formatThaiDate = (d: string) =>
@@ -49,8 +54,16 @@ const syncSourceLabel = (source: CountRecordSyncSource | null) => {
     return '—';
 };
 
-const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: DashboardV4Props) => {
+const DashboardV4 = ({
+    transactions,
+    dateFilter,
+    employees = [],
+    onRefreshTransactions,
+    shareMode = false,
+    hideFinancial = true,
+}: DashboardV4Props) => {
     const [selectedDate, setSelectedDate] = useState('');
+    const [shareManagerOpen, setShareManagerOpen] = useState(false);
     const today = getToday();
     const focusDate = selectedDate || today;
     const isToday = focusDate === today;
@@ -70,6 +83,20 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
         return sand?.rounds ?? 0;
     }, [focusDate, transactions]);
 
+    const financialSummary = useMemo(() => {
+        if (hideFinancial) return null;
+        const start = new Date(dateFilter.start);
+        const end = new Date(dateFilter.end);
+        end.setHours(23, 59, 59, 999);
+        const inRange = transactions.filter((t) => {
+            const tDate = new Date(t.date);
+            return tDate >= start && tDate <= end;
+        });
+        const totalExpense = inRange.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+        const totalIncome = inRange.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+        return { totalExpense, totalIncome, net: totalIncome - totalExpense };
+    }, [transactions, dateFilter, hideFinancial]);
+
     const realtime = useCountRecordRealtime({
         dayKey: focusDate,
         transactions,
@@ -82,9 +109,17 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
     const boardPulse = realtime.pulseToken > 0;
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className={`animate-fade-in ${shareMode ? 'space-y-4 portrait:space-y-4 landscape:max-md:space-y-3' : 'space-y-6'}`}>
+            {!shareMode && (
+                <ShareLinkManager open={shareManagerOpen} onClose={() => setShareManagerOpen(false)} />
+            )}
+
             {/* Hero header */}
-            <div className="relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-5 sm:px-6 sm:py-6 text-white shadow-xl shadow-slate-900/15">
+            <div className={`relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white shadow-xl shadow-slate-900/15 ${
+                shareMode
+                    ? 'px-4 py-4 landscape:max-md:px-3 landscape:max-md:py-3 sm:px-6 sm:py-6'
+                    : 'px-5 py-5 sm:px-6 sm:py-6'
+            }`}>
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.35),transparent_50%)]" />
                 <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
                 <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -111,6 +146,16 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
                         )}
                     </div>
                     <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                        {!shareMode && (
+                            <button
+                                type="button"
+                                onClick={() => setShareManagerOpen(true)}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white ring-1 ring-white/20 transition hover:bg-white/15 sm:self-end"
+                            >
+                                <Link2 size={14} />
+                                แชร์ลิงก์
+                            </button>
+                        )}
                         <MobilePresenceBadge
                             devices={mobilePresence.devices}
                             isOnline={mobilePresence.isOnline}
@@ -126,11 +171,45 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
                 </div>
             </div>
 
+            {financialSummary && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+                    <div className="rounded-2xl border border-rose-100 bg-white p-3 shadow-sm dark:border-rose-500/20 dark:bg-slate-900 sm:p-4">
+                        <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                            <CreditCard size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">รายจ่าย</span>
+                        </div>
+                        <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-slate-100 sm:text-xl">
+                            {financialSummary.totalExpense.toLocaleString('th-TH')}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm dark:border-emerald-500/20 dark:bg-slate-900 sm:p-4">
+                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                            <Wallet size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">รายรับ</span>
+                        </div>
+                        <p className="mt-1 text-lg font-black tabular-nums text-slate-900 dark:text-slate-100 sm:text-xl">
+                            {financialSummary.totalIncome.toLocaleString('th-TH')}
+                        </p>
+                    </div>
+                    <div className="col-span-2 rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-500/20 dark:bg-slate-900 sm:col-span-1 sm:p-4">
+                        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                            <TrendingUp size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-wide sm:text-xs">กำไรสุทธิ</span>
+                        </div>
+                        <p className={`mt-1 text-lg font-black tabular-nums sm:text-xl ${financialSummary.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {financialSummary.net.toLocaleString('th-TH')}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Date selector */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/30">
+            <div className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30 dark:border-slate-700/60 dark:bg-slate-900 dark:shadow-slate-950/40 ${
+                shareMode ? 'p-3 landscape:max-md:p-2.5 sm:p-4' : 'p-4'
+            }`}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
                             <Calendar size={15} />
                         </span>
                         เลือกวันที่
@@ -141,19 +220,19 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
                             value={selectedDate || today}
                             max={today}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-800 dark:focus:ring-indigo-500/20"
                         />
                         {!isToday && (
                             <button
                                 type="button"
                                 onClick={() => setSelectedDate('')}
-                                className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                                className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
                             >
                                 กลับวันนี้
                             </button>
                         )}
                     </div>
-                    <p className="text-xs font-medium text-slate-400 sm:ml-auto">
+                    <p className="text-xs font-medium text-slate-400 dark:text-slate-500 sm:ml-auto">
                         แสดงเฉพาะ {formatThaiDate(focusDate)}
                     </p>
                 </div>
@@ -161,10 +240,10 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
 
             {/* Live board */}
             <div
-                className={`relative overflow-hidden rounded-[24px] border bg-white shadow-sm transition-all duration-700 ${
+                className={`relative overflow-hidden rounded-[24px] border bg-white shadow-sm transition-all duration-700 dark:bg-slate-900 ${
                     boardPulse
-                        ? 'border-indigo-300/80 shadow-xl shadow-indigo-200/40 ring-2 ring-indigo-200/60'
-                        : 'border-slate-200/80 shadow-slate-200/40'
+                        ? 'border-indigo-300/80 shadow-xl shadow-indigo-200/40 ring-2 ring-indigo-200/60 dark:border-indigo-500/40 dark:shadow-indigo-950/40 dark:ring-indigo-500/30'
+                        : 'border-slate-200/80 shadow-slate-200/40 dark:border-slate-700/60 dark:shadow-slate-950/30'
                 }`}
             >
                 <div className="relative overflow-hidden border-b border-white/10 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-4 py-3.5 sm:px-5">
@@ -215,12 +294,13 @@ const DashboardV4 = ({ transactions, employees = [], onRefreshTransactions }: Da
                         employees={employees}
                         pulseToken={realtime.pulseToken}
                         increments={realtime.increments}
+                        shareMode={shareMode}
                     />
                 </div>
 
                 {realtime.activities.length > 0 && (
-                    <div className="border-t border-slate-100 bg-slate-50/40 p-4 sm:p-5">
-                        <CountRecordActivityFeed activities={realtime.activities} />
+                    <div className={`border-t border-slate-100 bg-slate-50/40 dark:border-slate-800 dark:bg-slate-950/40 ${shareMode ? 'p-3 landscape:max-md:p-2.5 sm:p-5' : 'p-4 sm:p-5'}`}>
+                        <CountRecordActivityFeed activities={realtime.activities} compact={shareMode} />
                     </div>
                 )}
             </div>

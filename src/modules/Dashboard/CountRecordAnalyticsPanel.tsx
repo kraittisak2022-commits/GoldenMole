@@ -48,7 +48,7 @@ function IntervalBarChart({
 }) {
     if (values.length === 0) {
         return (
-            <p className="py-6 text-center text-xs font-medium text-slate-400">
+            <p className="py-6 text-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ต้องมีอย่างน้อย 2 รอบเพื่อวิเคราะห์ช่วงเวลา
             </p>
         );
@@ -92,24 +92,24 @@ function IntervalBarChart({
                     const barColor = isMin ? '#34d399' : isMax ? '#f87171' : color;
                     return (
                         <div key={i} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
-                            <span className="mb-1 text-[9px] font-bold tabular-nums text-slate-500 opacity-0 transition-opacity group-hover:opacity-100">
+                            <span className="mb-1 text-[9px] font-bold tabular-nums text-slate-500 dark:text-slate-400 opacity-0 transition-opacity group-hover:opacity-100">
                                 {formatDurationSec(val)}
                             </span>
-                            <div className="relative flex w-full flex-1 items-end overflow-hidden rounded-md bg-slate-100">
+                            <div className="relative flex w-full flex-1 items-end overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
                                 <div
                                     className="chart-bar-grow w-full rounded-t-md"
                                     style={{ height: `${(val / max) * 100}%`, backgroundColor: barColor }}
                                 />
                             </div>
-                            <span className="mt-1 w-full truncate text-center text-[9px] font-medium text-slate-400">
+                            <span className="mt-1 w-full truncate text-center text-[9px] font-medium text-slate-400 dark:text-slate-500">
                                 {labels[i]}
                             </span>
-                            <span className="text-[8px] tabular-nums text-slate-300">{unit}</span>
+                            <span className="text-[8px] tabular-nums text-slate-300 dark:text-slate-600">{unit}</span>
                         </div>
                     );
                 })}
             </div>
-            <p className="mt-1 text-center text-[9px] text-slate-400">
+            <p className="mt-1 text-center text-[9px] text-slate-400 dark:text-slate-500">
                 เส้นประ = ค่าเฉลี่ยเคลื่อนที่ {movingAvgWindow} รอบ · เขียว=เร็วสุด · แดง=ช้าสุด
             </p>
         </div>
@@ -125,7 +125,7 @@ function CumulativeLineChart({
 }) {
     if (points.length < 2) {
         return (
-            <p className="flex h-28 items-center justify-center text-xs font-medium text-slate-400">
+            <p className="flex h-28 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ต้องมีอย่างน้อย 2 รอบ
             </p>
         );
@@ -154,7 +154,7 @@ function CumulativeLineChart({
                 />
                 <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <div className="mt-1 flex justify-between text-[9px] text-slate-400">
+            <div className="mt-1 flex justify-between text-[9px] text-slate-400 dark:text-slate-500">
                 <span>{points[0]?.label}</span>
                 <span>{points[points.length - 1]?.label}</span>
             </div>
@@ -166,7 +166,7 @@ function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number;
     const active = cells.filter((c) => c.count > 0);
     if (active.length === 0) {
         return (
-            <p className="flex h-12 items-center justify-center text-xs font-medium text-slate-400">
+            <p className="flex h-12 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ยังไม่มีข้อมูลรายชั่วโมง
             </p>
         );
@@ -178,15 +178,17 @@ function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number;
                     <div
                         key={c.hour}
                         title={`${c.label}: ${c.count} รอบ`}
-                        className="group relative aspect-square min-h-[10px] rounded-sm transition-transform hover:scale-110"
+                        className={`group relative aspect-square min-h-[10px] rounded-sm transition-transform hover:scale-110 ${
+                            c.count === 0 ? 'bg-slate-200 dark:bg-slate-700' : ''
+                        }`}
                         style={{
-                            backgroundColor: c.count > 0 ? color : '#e2e8f0',
+                            backgroundColor: c.count > 0 ? color : undefined,
                             opacity: c.count > 0 ? 0.25 + c.intensity * 0.75 : 0.35,
                         }}
                     />
                 ))}
             </div>
-            <div className="flex justify-between text-[8px] text-slate-400">
+            <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500">
                 <span>00:00</span>
                 <span>06:00</span>
                 <span>12:00</span>
@@ -210,7 +212,7 @@ function HourlyBarChart({
 }) {
     if (buckets.length === 0) {
         return (
-            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400">
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ยังไม่มีข้อมูลรายชั่วโมง
             </p>
         );
@@ -223,13 +225,13 @@ function HourlyBarChart({
                 const val = values[i]!;
                 return (
                     <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                        <span className="text-[8px] font-bold tabular-nums text-slate-500">{val}</span>
+                        <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">{val}</span>
                         <div
                             className="chart-bar-grow w-full rounded-t-sm"
                             style={{ height: `${(val / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
                         />
-                        <span className="w-full truncate text-center text-[7px] text-slate-400">{b.label}</span>
-                        {unitLabel && <span className="text-[7px] text-slate-300">{unitLabel}</span>}
+                        <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
+                        {unitLabel && <span className="text-[7px] text-slate-300 dark:text-slate-600">{unitLabel}</span>}
                     </div>
                 );
             })}
@@ -246,7 +248,7 @@ function WorkHoursBarChart({
 }) {
     if (buckets.length === 0) {
         return (
-            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400">
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ยังไม่มีข้อมูลเวลาทำงาน
             </p>
         );
@@ -256,14 +258,14 @@ function WorkHoursBarChart({
         <div className="flex h-28 items-end justify-between gap-1 px-0.5">
             {buckets.map((b, i) => (
                 <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                    <span className="text-[8px] font-bold tabular-nums text-slate-500">
+                    <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">
                         {formatActiveHours(b.activeHours)}
                     </span>
                     <div
                         className="chart-bar-grow w-full rounded-t-md"
                         style={{ height: `${(b.activeHours / max) * 80}px`, backgroundColor: color, minHeight: 4 }}
                     />
-                    <span className="w-full truncate text-center text-[7px] text-slate-400">{b.label}</span>
+                    <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
                 </div>
             ))}
         </div>
@@ -279,7 +281,7 @@ function MinuteTimelineChart({
 }) {
     if (buckets.length === 0) {
         return (
-            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400">
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
                 ยังไม่มีข้อมูลรายนาที
             </p>
         );
@@ -324,12 +326,12 @@ function MinuteTimelineChart({
                             style={{ height: `${(b.speed / max) * 48}px`, backgroundColor: color, minHeight: 2 }}
                         />
                         {i % 5 === 0 && (
-                            <span className="w-full truncate text-center text-[6px] text-slate-400">{b.label}</span>
+                            <span className="w-full truncate text-center text-[6px] text-slate-400 dark:text-slate-500">{b.label}</span>
                         )}
                     </div>
                 ))}
             </div>
-            <p className="text-center text-[9px] text-slate-400">รอบ/นาที · เลื่อนดูรายละเอียด</p>
+            <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">รอบ/นาที · เลื่อนดูรายละเอียด</p>
         </div>
     );
 }
@@ -344,8 +346,8 @@ function ChartBlock({
     className?: string;
 }) {
     return (
-        <div className={`rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm ${className}`}>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{title}</p>
+        <div className={`rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900 ${className}`}>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">{title}</p>
             {children}
         </div>
     );
@@ -371,23 +373,23 @@ function VehicleAccordion({
     if (lapTimes.length === 0) return null;
 
     return (
-        <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white">
+        <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white dark:border-slate-700/60 dark:bg-slate-900">
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-50"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
             >
                 <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-slate-800">{vehicleId}</p>
-                    <p className="text-[10px] font-medium text-slate-500">
+                    <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{vehicleId}</p>
+                    <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
                         {lapTimes.length} เที่ยว
                         {stats.avg != null ? ` · เฉลี่ย ${formatDurationSec(stats.avg)}/เที่ยว` : ''}
                     </p>
                 </div>
-                <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                <ChevronDown size={16} className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
-                <div className="border-t border-slate-100 px-3 pb-3 pt-2">
+                <div className="border-t border-slate-100 px-3 pb-3 pt-2 dark:border-slate-800">
                     <IntervalBarChart values={intervals.intervalsSec} labels={intervals.labels} color={color} />
                 </div>
             )}
@@ -450,10 +452,10 @@ const CountRecordAnalyticsPanel = ({
     if (!hasAnyLaps && modeComparison.todayRounds <= 0) return null;
 
     return (
-        <div className="mt-3 space-y-3 border-t border-slate-200/60 pt-3">
+        <div className="mt-3 space-y-3 border-t border-slate-200/60 pt-3 dark:border-slate-700/50">
             <div className="flex items-center gap-2">
-                <BarChart3 size={14} className="text-slate-400" style={{ color }} />
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">วิเคราะห์จังหวะ</p>
+                <BarChart3 size={14} className="text-slate-400 dark:text-slate-500" style={{ color }} />
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">วิเคราะห์จังหวะ</p>
             </div>
 
             <CountRecordStatTiles
@@ -509,7 +511,7 @@ const CountRecordAnalyticsPanel = ({
 
             {mode === 'trip' && tripUnits.filter((u) => u.lapTimes.length > 0).length > 0 && (
                 <div className="space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">แยกต่อคัน</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">แยกต่อคัน</p>
                     {tripUnits
                         .filter((u) => u.lapTimes.length > 0)
                         .map((u, i) => (
