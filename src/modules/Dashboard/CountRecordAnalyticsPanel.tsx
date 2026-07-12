@@ -23,6 +23,7 @@ import {
     computeTripFleetWorkDurationSummary,
     computeTripPeriodSplit,
     computeVehicleComparison,
+    formatActiveHours,
     mergeTripLapTimeline,
     timelineToLapStamps,
     type PeriodSplit,
