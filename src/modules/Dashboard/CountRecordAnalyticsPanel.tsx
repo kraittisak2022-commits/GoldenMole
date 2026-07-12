@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { BarChart3, ChevronDown } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
@@ -38,6 +38,112 @@ interface CountRecordAnalyticsPanelProps {
     transactions: Transaction[];
     employees?: Employee[];
     accentColor?: string;
+}
+
+function clamp(n: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, n));
+}
+
+function pointerIndexFromX(clientX: number, rect: DOMRect, count: number) {
+    if (count <= 1) return 0;
+    const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
+    return Math.round(ratio * (count - 1));
+}
+
+function ChartTip({
+    title,
+    value,
+    leftPct,
+    className = 'bottom-full mb-2',
+}: {
+    title: string;
+    value: string;
+    leftPct: number;
+    className?: string;
+}) {
+    const left = clamp(leftPct, 6, 94);
+    return (
+        <div
+            className={`pointer-events-none absolute z-20 -translate-x-1/2 rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-lg ring-1 ring-white/10 dark:bg-slate-800 ${className}`}
+            style={{ left: `${left}%` }}
+        >
+            <p className="leading-tight text-white/70">{title}</p>
+            <p className="tabular-nums leading-tight">{value}</p>
+        </div>
+    );
+}
+
+type BarChartItem = {
+    label: string;
+    value: number;
+    barTopLabel: string;
+    tooltipTitle: string;
+    tooltipValue: string;
+    subLabel?: string;
+};
+
+function InteractiveBarChart({
+    items,
+    color,
+    barMaxPx = 72,
+    containerClass = 'h-24',
+}: {
+    items: BarChartItem[];
+    color: string;
+    barMaxPx?: number;
+    containerClass?: string;
+}) {
+    const [activeIdx, setActiveIdx] = useState<number | null>(null);
+    const max = Math.max(...items.map((i) => i.value), 1);
+
+    return (
+        <div className="relative pb-1">
+            <div
+                className={`flex ${containerClass} items-end justify-between gap-0.5 px-0.5`}
+                onPointerLeave={() => setActiveIdx(null)}
+            >
+                {items.map((item, i) => {
+                    const isActive = activeIdx === i;
+                    const dimmed = activeIdx != null && !isActive;
+                    return (
+                        <button
+                            key={`${item.label}-${i}`}
+                            type="button"
+                            className={`flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5 rounded-t-sm outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-fuchsia-400/50 ${dimmed ? 'opacity-45' : 'opacity-100'}`}
+                            onPointerEnter={() => setActiveIdx(i)}
+                            onClick={() => setActiveIdx((cur) => (cur === i ? null : i))}
+                            aria-pressed={isActive}
+                        >
+                            <span className="hidden text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400 sm:block">
+                                {item.barTopLabel}
+                            </span>
+                            <div
+                                className={`chart-bar-grow w-full rounded-t-sm transition-shadow ${isActive ? 'ring-2 ring-white/60 dark:ring-white/30' : ''}`}
+                                style={{
+                                    height: `${(item.value / max) * barMaxPx}px`,
+                                    backgroundColor: color,
+                                    minHeight: 4,
+                                }}
+                            />
+                            <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">
+                                {item.label}
+                            </span>
+                            {item.subLabel ? (
+                                <span className="text-[7px] text-slate-300 dark:text-slate-600">{item.subLabel}</span>
+                            ) : null}
+                        </button>
+                    );
+                })}
+            </div>
+            {activeIdx != null && items[activeIdx] ? (
+                <ChartTip
+                    title={items[activeIdx].tooltipTitle}
+                    value={items[activeIdx].tooltipValue}
+                    leftPct={((activeIdx + 0.5) / items.length) * 100}
+                />
+            ) : null}
+        </div>
+    );
 }
 
 function PeriodSplitBar({ split, roundLabel }: { split: PeriodSplit; roundLabel: string }) {
@@ -173,32 +279,48 @@ function EfficiencyBarChart({
             </p>
         );
     }
-    const max = Math.max(...buckets.map((b) => b.roundsPerHour), 1);
-    return (
-        <div className="flex h-24 items-end justify-between gap-0.5 px-0.5">
-            {buckets.map((b) => (
-                <div key={b.hour} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                    <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">{b.roundsPerHour}</span>
-                    <div
-                        className="chart-bar-grow w-full rounded-t-sm"
-                        style={{ height: `${(b.roundsPerHour / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
-                    />
-                    <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
-                    <span className="text-[7px] text-slate-300 dark:text-slate-600">{unitLabel}</span>
-                </div>
-            ))}
-        </div>
-    );
+    const items: BarChartItem[] = buckets.map((b) => ({
+        label: b.label,
+        value: b.roundsPerHour,
+        barTopLabel: String(b.roundsPerHour),
+        tooltipTitle: b.label,
+        tooltipValue: `${b.roundsPerHour} ${unitLabel}`,
+        subLabel: unitLabel,
+    }));
+    return <InteractiveBarChart items={items} color={color} />;
 }
 
 function CumulativeLineChart({
     points,
     color,
+    roundLabel,
 }: {
     points: { label: string; value: number }[];
     color: string;
+    roundLabel: string;
 }) {
     const { t } = useShareLocale();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [activeIdx, setActiveIdx] = useState<number | null>(null);
+
+    const updateIdx = useCallback(
+        (clientX: number) => {
+            const el = containerRef.current;
+            if (!el || points.length < 2) return;
+            setActiveIdx(pointerIndexFromX(clientX, el.getBoundingClientRect(), points.length));
+        },
+        [points.length],
+    );
+
+    const onPointerMove = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateIdx(e.clientX),
+        [updateIdx],
+    );
+    const onPointerDown = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateIdx(e.clientX),
+        [updateIdx],
+    );
+
     if (points.length < 2) {
         return (
             <p className="flex h-28 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
@@ -215,22 +337,64 @@ function CumulativeLineChart({
     }));
     const linePoints = coords.map((c) => `${c.x},${c.y}`).join(' ');
     const gradId = `cum-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const active = activeIdx != null ? points[activeIdx] : null;
+    const tipLeft = activeIdx != null ? (activeIdx / (points.length - 1)) * 100 : 50;
+
     return (
-        <div className="relative h-28">
-            <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-                        <stop offset="100%" stopColor={color} stopOpacity="0" />
-                    </linearGradient>
-                </defs>
-                <path
-                    d={`M0,${height} L${coords[0]!.x},${coords[0]!.y} ${coords.map((c) => `L${c.x},${c.y}`).join(' ')} L${width},${height} Z`}
-                    fill={`url(#${gradId})`}
-                />
-                <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <div className="mt-1 flex justify-between text-[9px] text-slate-400 dark:text-slate-500">
+        <div className="space-y-1">
+            <div
+                ref={containerRef}
+                className="relative h-28 touch-none"
+                onPointerMove={onPointerMove}
+                onPointerDown={onPointerDown}
+                onPointerLeave={() => setActiveIdx(null)}
+            >
+                <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+                            <stop offset="100%" stopColor={color} stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    <path
+                        d={`M0,${height} L${coords[0]!.x},${coords[0]!.y} ${coords.map((c) => `L${c.x},${c.y}`).join(' ')} L${width},${height} Z`}
+                        fill={`url(#${gradId})`}
+                    />
+                    <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                    {activeIdx != null && coords[activeIdx] ? (
+                        <>
+                            <line
+                                x1={coords[activeIdx].x}
+                                y1={0}
+                                x2={coords[activeIdx].x}
+                                y2={height}
+                                stroke="currentColor"
+                                className="text-slate-300 dark:text-slate-600"
+                                strokeWidth="0.5"
+                                strokeDasharray="2 2"
+                                vectorEffect="non-scaling-stroke"
+                            />
+                            <circle
+                                cx={coords[activeIdx].x}
+                                cy={coords[activeIdx].y}
+                                r="1.8"
+                                fill={color}
+                                stroke="white"
+                                strokeWidth="0.4"
+                                vectorEffect="non-scaling-stroke"
+                            />
+                        </>
+                    ) : null}
+                </svg>
+                {active ? (
+                    <ChartTip
+                        title={active.label}
+                        value={t('chartCumulativeShort', { value: active.value, unit: roundLabel })}
+                        leftPct={tipLeft}
+                    />
+                ) : null}
+            </div>
+            <div className="flex justify-between text-[9px] text-slate-400 dark:text-slate-500">
                 <span>{points[0]?.label}</span>
                 <span>{points[points.length - 1]?.label}</span>
             </div>
@@ -241,11 +405,14 @@ function CumulativeLineChart({
 function HourlyHeatmap({
     cells,
     color,
+    roundLabel,
 }: {
     cells: { hour: number; count: number; label: string; intensity: number; isLunch?: boolean }[];
     color: string;
+    roundLabel: string;
 }) {
     const { t } = useShareLocale();
+    const [activeIdx, setActiveIdx] = useState<number | null>(null);
     const active = cells.filter((c) => c.count > 0);
     if (active.length === 0) {
         return (
@@ -254,37 +421,50 @@ function HourlyHeatmap({
             </p>
         );
     }
+    const selected = activeIdx != null ? cells[activeIdx] : null;
     return (
         <div className="space-y-2">
-            <div className="grid grid-cols-12 gap-0.5 sm:grid-cols-24">
-                {cells.map((c) => (
-                    <div
-                        key={c.hour}
-                        title={
-                            c.isLunch
-                                ? `${c.label}: ${t('lunchBreak')}`
-                                : `${c.label}: ${c.count} ${t('roundUnit')}`
-                        }
-                        className={`group relative aspect-square min-h-[10px] rounded-sm transition-transform hover:scale-110 ${
-                            c.isLunch
-                                ? 'bg-slate-200 dark:bg-slate-700'
-                                : c.count === 0
-                                  ? 'bg-slate-200 dark:bg-slate-700'
-                                  : ''
-                        }`}
-                        style={
-                            c.isLunch
-                                ? {
-                                      backgroundImage:
-                                          'repeating-linear-gradient(-45deg, rgba(148,163,184,0.35) 0, rgba(148,163,184,0.35) 2px, transparent 2px, transparent 5px)',
-                                  }
-                                : {
-                                      backgroundColor: c.count > 0 ? color : undefined,
-                                      opacity: c.count > 0 ? 0.25 + c.intensity * 0.75 : 0.35,
-                                  }
-                        }
-                    />
-                ))}
+            <div
+                className="grid grid-cols-12 gap-0.5 sm:grid-cols-24"
+                onPointerLeave={() => setActiveIdx(null)}
+            >
+                {cells.map((c, i) => {
+                    const isActive = activeIdx === i;
+                    return (
+                        <button
+                            key={c.hour}
+                            type="button"
+                            title={
+                                c.isLunch
+                                    ? `${c.label}: ${t('lunchBreak')}`
+                                    : `${c.label}: ${c.count} ${t('roundUnit')}`
+                            }
+                            className={`relative aspect-square min-h-[10px] rounded-sm outline-none transition-transform focus-visible:ring-2 focus-visible:ring-fuchsia-400/50 ${
+                                isActive ? 'z-10 scale-110 ring-2 ring-fuchsia-400 ring-offset-1 dark:ring-offset-slate-900' : 'hover:scale-110'
+                            } ${
+                                c.isLunch
+                                    ? 'bg-slate-200 dark:bg-slate-700'
+                                    : c.count === 0
+                                      ? 'bg-slate-200 dark:bg-slate-700'
+                                      : ''
+                            }`}
+                            style={
+                                c.isLunch
+                                    ? {
+                                          backgroundImage:
+                                              'repeating-linear-gradient(-45deg, rgba(148,163,184,0.35) 0, rgba(148,163,184,0.35) 2px, transparent 2px, transparent 5px)',
+                                      }
+                                    : {
+                                          backgroundColor: c.count > 0 ? color : undefined,
+                                          opacity: c.count > 0 ? 0.25 + c.intensity * 0.75 : 0.35,
+                                      }
+                            }
+                            onPointerEnter={() => setActiveIdx(i)}
+                            onClick={() => setActiveIdx((cur) => (cur === i ? null : i))}
+                            aria-pressed={isActive}
+                        />
+                    );
+                })}
             </div>
             <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500">
                 <span>00:00</span>
@@ -293,6 +473,15 @@ function HourlyHeatmap({
                 <span>18:00</span>
                 <span>23:00</span>
             </div>
+            {selected ? (
+                <p className="rounded-lg bg-slate-100 px-3 py-2 text-center text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {selected.isLunch
+                        ? `${selected.label} — ${t('lunchBreak')}`
+                        : `${selected.label} — ${selected.count} ${roundLabel}`}
+                </p>
+            ) : (
+                <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">{t('chartTouchHint')}</p>
+            )}
         </div>
     );
 }
@@ -302,11 +491,13 @@ function HourlyBarChart({
     color,
     valueKey = 'count',
     unitLabel,
+    roundLabel,
 }: {
     buckets: { label: string; count: number; speed?: number }[];
     color: string;
     valueKey?: 'count' | 'speed';
     unitLabel?: string;
+    roundLabel?: string;
 }) {
     const { t } = useShareLocale();
     if (buckets.length === 0) {
@@ -317,25 +508,19 @@ function HourlyBarChart({
         );
     }
     const values = buckets.map((b) => (valueKey === 'speed' ? (b.speed ?? b.count) : b.count));
-    const max = Math.max(...values, 1);
-    return (
-        <div className="flex h-24 items-end justify-between gap-0.5 px-0.5">
-            {buckets.map((b, i) => {
-                const val = values[i]!;
-                return (
-                    <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                        <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">{val}</span>
-                        <div
-                            className="chart-bar-grow w-full rounded-t-sm"
-                            style={{ height: `${(val / max) * 72}px`, backgroundColor: color, minHeight: 4 }}
-                        />
-                        <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
-                        {unitLabel && <span className="text-[7px] text-slate-300 dark:text-slate-600">{unitLabel}</span>}
-                    </div>
-                );
-            })}
-        </div>
-    );
+    const suffix = unitLabel ?? roundLabel ?? '';
+    const items: BarChartItem[] = buckets.map((b, i) => {
+        const val = values[i]!;
+        return {
+            label: b.label,
+            value: val,
+            barTopLabel: String(val),
+            tooltipTitle: b.label,
+            tooltipValue: suffix ? `${val} ${suffix}` : String(val),
+            subLabel: unitLabel,
+        };
+    });
+    return <InteractiveBarChart items={items} color={color} />;
 }
 
 function WorkHoursBarChart({
@@ -353,23 +538,17 @@ function WorkHoursBarChart({
             </p>
         );
     }
-    const max = Math.max(...buckets.map((b) => b.activeHours), 0.1);
-    return (
-        <div className="flex h-28 items-end justify-between gap-1 px-0.5">
-            {buckets.map((b, i) => (
-                <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-                    <span className="text-[8px] font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                        {formatActiveHours(b.activeHours, locale)}
-                    </span>
-                    <div
-                        className="chart-bar-grow w-full rounded-t-md"
-                        style={{ height: `${(b.activeHours / max) * 80}px`, backgroundColor: color, minHeight: 4 }}
-                    />
-                    <span className="w-full truncate text-center text-[7px] text-slate-400 dark:text-slate-500">{b.label}</span>
-                </div>
-            ))}
-        </div>
-    );
+    const items: BarChartItem[] = buckets.map((b) => {
+        const formatted = formatActiveHours(b.activeHours, locale);
+        return {
+            label: b.label,
+            value: b.activeHours,
+            barTopLabel: formatted,
+            tooltipTitle: b.label,
+            tooltipValue: formatted,
+        };
+    });
+    return <InteractiveBarChart items={items} color={color} barMaxPx={80} containerClass="h-28" />;
 }
 
 function MinuteTimelineChart({
@@ -380,6 +559,27 @@ function MinuteTimelineChart({
     color: string;
 }) {
     const { t } = useShareLocale();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [activeIdx, setActiveIdx] = useState<number | null>(null);
+
+    const updateIdx = useCallback(
+        (clientX: number) => {
+            const el = containerRef.current;
+            if (!el || buckets.length === 0) return;
+            setActiveIdx(pointerIndexFromX(clientX, el.getBoundingClientRect(), buckets.length));
+        },
+        [buckets.length],
+    );
+
+    const onPointerMove = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateIdx(e.clientX),
+        [updateIdx],
+    );
+    const onPointerDown = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => updateIdx(e.clientX),
+        [updateIdx],
+    );
+
     if (buckets.length === 0) {
         return (
             <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
@@ -387,52 +587,120 @@ function MinuteTimelineChart({
             </p>
         );
     }
+    const width = 100;
+    const height = 40;
     const max = Math.max(...buckets.map((b) => b.speed), 1);
-    const w = Math.max(buckets.length * 8, 200);
-    const h = 56;
+    const maxIdx = buckets.reduce((best, b, i) => (b.speed > buckets[best]!.speed ? i : best), 0);
     const coords = buckets.map((b, i) => ({
-        x: (i / Math.max(buckets.length - 1, 1)) * w,
-        y: h - (b.speed / max) * h,
+        x: (i / Math.max(buckets.length - 1, 1)) * width,
+        y: height - (b.speed / max) * height,
     }));
     const areaPath =
         coords.length >= 2
-            ? `M0,${h} ${coords.map((c) => `L${c.x},${c.y}`).join(' ')} L${w},${h} Z`
+            ? `M0,${height} ${coords.map((c) => `L${c.x},${c.y}`).join(' ')} L${width},${height} Z`
             : '';
     const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x},${c.y}`).join(' ');
     const gradId = `min-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const timeLabelIndices = [
+        0,
+        Math.floor(buckets.length / 3),
+        Math.floor((buckets.length * 2) / 3),
+        buckets.length - 1,
+    ].filter((v, i, arr) => arr.indexOf(v) === i);
+    const active = activeIdx != null ? buckets[activeIdx] : null;
+    const tipLeft = activeIdx != null ? (activeIdx / Math.max(buckets.length - 1, 1)) * 100 : 50;
 
     return (
         <div className="space-y-2">
-            <div className="overflow-x-auto pb-1">
-                <div style={{ minWidth: w }} className="relative h-16">
-                    <svg viewBox={`0 0 ${w} ${h}`} className="h-full w-full" preserveAspectRatio="none">
-                        <defs>
-                            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-                                <stop offset="100%" stopColor={color} stopOpacity="0" />
-                            </linearGradient>
-                        </defs>
-                        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
-                        {linePath && (
-                            <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-                        )}
-                    </svg>
-                </div>
-            </div>
-            <div className="flex h-14 items-end gap-px overflow-x-auto px-0.5">
-                {buckets.map((b, i) => (
-                    <div key={i} className="flex w-5 shrink-0 flex-col items-center justify-end gap-0.5">
-                        <div
-                            className="chart-bar-grow w-full rounded-t-sm"
-                            style={{ height: `${(b.speed / max) * 48}px`, backgroundColor: color, minHeight: 2 }}
+            <div
+                ref={containerRef}
+                className="relative h-32 touch-none"
+                onPointerMove={onPointerMove}
+                onPointerDown={onPointerDown}
+                onPointerLeave={() => setActiveIdx(null)}
+            >
+                <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
+                    {[0.25, 0.5, 0.75].map((pct) => (
+                        <line
+                            key={pct}
+                            x1={0}
+                            y1={height * (1 - pct)}
+                            x2={width}
+                            y2={height * (1 - pct)}
+                            stroke="currentColor"
+                            className="text-slate-200 dark:text-slate-700"
+                            strokeWidth="0.3"
+                            vectorEffect="non-scaling-stroke"
                         />
-                        {i % 5 === 0 && (
-                            <span className="w-full truncate text-center text-[6px] text-slate-400 dark:text-slate-500">{b.label}</span>
-                        )}
-                    </div>
+                    ))}
+                    <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+                            <stop offset="100%" stopColor={color} stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    {areaPath ? <path d={areaPath} fill={`url(#${gradId})`} /> : null}
+                    {linePath ? (
+                        <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                    ) : null}
+                    <circle
+                        cx={coords[maxIdx]!.x}
+                        cy={coords[maxIdx]!.y}
+                        r="1.5"
+                        fill={color}
+                        stroke="white"
+                        strokeWidth="0.35"
+                        vectorEffect="non-scaling-stroke"
+                    />
+                    {activeIdx != null && coords[activeIdx] ? (
+                        <>
+                            <line
+                                x1={coords[activeIdx].x}
+                                y1={0}
+                                x2={coords[activeIdx].x}
+                                y2={height}
+                                stroke="currentColor"
+                                className="text-slate-300 dark:text-slate-600"
+                                strokeWidth="0.5"
+                                strokeDasharray="2 2"
+                                vectorEffect="non-scaling-stroke"
+                            />
+                            <circle
+                                cx={coords[activeIdx].x}
+                                cy={coords[activeIdx].y}
+                                r="1.8"
+                                fill={color}
+                                stroke="white"
+                                strokeWidth="0.4"
+                                vectorEffect="non-scaling-stroke"
+                            />
+                        </>
+                    ) : null}
+                </svg>
+                <div
+                    className="pointer-events-none absolute whitespace-nowrap text-[8px] font-bold text-slate-600 dark:text-slate-300"
+                    style={{
+                        left: `${(coords[maxIdx]!.x / width) * 100}%`,
+                        top: `${(coords[maxIdx]!.y / height) * 100}%`,
+                        transform: 'translate(-50%, -130%)',
+                    }}
+                >
+                    {t('chartMaxSpeed', { value: buckets[maxIdx]!.speed })}
+                </div>
+                {active ? (
+                    <ChartTip
+                        title={active.label}
+                        value={`${active.speed} ${t('roundsPerMinute')}`}
+                        leftPct={tipLeft}
+                    />
+                ) : null}
+            </div>
+            <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500">
+                {timeLabelIndices.map((idx) => (
+                    <span key={idx}>{buckets[idx]?.label}</span>
                 ))}
             </div>
-            <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">{t('minuteTimelineHint')}</p>
+            <p className="text-center text-[9px] text-slate-400 dark:text-slate-500">{t('chartTouchHint')}</p>
         </div>
     );
 }
@@ -645,15 +913,15 @@ const CountRecordAnalyticsPanel = ({
                 </ChartBlock>
 
                 <ChartBlock title={t('heatmapHourly')} className="sm:col-span-1 lg:col-span-5">
-                    <HourlyHeatmap cells={hourlyHeatmap} color={color} />
+                    <HourlyHeatmap cells={hourlyHeatmap} color={color} roundLabel={roundLabel} />
                 </ChartBlock>
 
                 <ChartBlock title={t('cumulativeByTime', { unit: roundLabel })} className="lg:col-span-6">
-                    <CumulativeLineChart points={cumulative} color={color} />
+                    <CumulativeLineChart points={cumulative} color={color} roundLabel={roundLabel} />
                 </ChartBlock>
 
                 <ChartBlock title={t('countPerHour', { unit: roundLabel })} className="lg:col-span-6">
-                    <HourlyBarChart buckets={hourly} color={color} />
+                    <HourlyBarChart buckets={hourly} color={color} roundLabel={roundLabel} />
                 </ChartBlock>
 
                 <ChartBlock title={t('speedPerHour', { unit: roundLabel })} className="lg:col-span-6">

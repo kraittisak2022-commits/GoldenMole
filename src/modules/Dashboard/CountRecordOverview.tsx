@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound } from 'lucide-react';
+import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
@@ -28,6 +28,8 @@ interface CountRecordOverviewProps {
     increments?: CountRecordIncrement[];
     /** Public share view — portrait 1 col, mobile landscape 2 cols */
     shareMode?: boolean;
+    /** SuperAdmin — open round manager filtered by kind */
+    onManageRounds?: (kind: 'trip' | 'sand') => void;
 }
 
 const SAND_RECENT_LAPS = 5;
@@ -253,6 +255,7 @@ const CountRecordOverview = ({
     pulseToken = 0,
     increments = [],
     shareMode = false,
+    onManageRounds,
 }: CountRecordOverviewProps) => {
     const { t, locale } = useShareLocale();
     const [highlight, setHighlight] = useState(false);
@@ -388,9 +391,25 @@ const CountRecordOverview = ({
                             </div>
 
                             <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                    {t('latestLog')}
-                                </p>
+                                {onManageRounds ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onManageRounds('trip')}
+                                        className="group flex w-full items-center justify-between gap-2 text-left transition hover:opacity-90"
+                                    >
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 group-hover:text-blue-600 dark:text-slate-500 dark:group-hover:text-blue-400">
+                                            {t('latestLog')}
+                                        </p>
+                                        <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 ring-1 ring-blue-200/80 transition group-hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-800/60 dark:group-hover:bg-blue-900/50">
+                                            <Pencil size={10} />
+                                            จัดการ
+                                        </span>
+                                    </button>
+                                ) : (
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                        {t('latestLog')}
+                                    </p>
+                                )}
                                 {tripWithLaps.length > 0 ? (
                                     <ul className="mt-2 space-y-2">
                                         {tripWithLaps.map((u) => (
@@ -492,9 +511,25 @@ const CountRecordOverview = ({
 
                             {sandUnit.lapTimes.length > 0 && (
                                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-700/60 dark:bg-slate-900">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                        {t('recentLaps')}
-                                    </p>
+                                    {onManageRounds ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onManageRounds('sand')}
+                                            className="group flex w-full items-center justify-between gap-2 text-left transition hover:opacity-90"
+                                        >
+                                            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 group-hover:text-pink-600 dark:text-slate-500 dark:group-hover:text-pink-400">
+                                                {t('recentLaps')}
+                                            </p>
+                                            <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-pink-50 px-2 py-1 text-[10px] font-bold text-pink-700 ring-1 ring-pink-200/80 transition group-hover:bg-pink-100 dark:bg-pink-950/50 dark:text-pink-300 dark:ring-pink-800/60 dark:group-hover:bg-pink-900/50">
+                                                <Pencil size={10} />
+                                                จัดการ
+                                            </span>
+                                        </button>
+                                    ) : (
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                            {t('recentLaps')}
+                                        </p>
+                                    )}
                                     <div className="mt-2 flex flex-wrap gap-1.5">
                                         {sandUnit.lapTimes.slice(sandRecentStart).map((stamp, i) => {
                                             const roundNo = sandRecentStart + i + 1;

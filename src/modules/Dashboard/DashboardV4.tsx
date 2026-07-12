@@ -64,7 +64,7 @@ const DashboardV4 = ({
     const { t, locale, formatDate } = useShareLocale();
     const [selectedDate, setSelectedDate] = useState('');
     const [shareManagerOpen, setShareManagerOpen] = useState(false);
-    const [roundManagerOpen, setRoundManagerOpen] = useState(false);
+    const [roundManagerKind, setRoundManagerKind] = useState<'all' | 'trip' | 'sand' | null>(null);
     const today = getToday();
     const focusDate = selectedDate || today;
     const isToday = focusDate === today;
@@ -120,13 +120,14 @@ const DashboardV4 = ({
 
             {showRoundManager && (
                 <CountRecordRoundManager
-                    open={roundManagerOpen}
-                    onClose={() => setRoundManagerOpen(false)}
+                    open={roundManagerKind !== null}
+                    onClose={() => setRoundManagerKind(null)}
                     dayKey={focusDate}
                     transactions={transactions}
                     employees={employees}
                     onSaveTransaction={onSaveTransaction!}
                     onDeleteTransaction={onDeleteTransaction!}
+                    filterKind={roundManagerKind === 'trip' || roundManagerKind === 'sand' ? roundManagerKind : undefined}
                 />
             )}
 
@@ -267,7 +268,7 @@ const DashboardV4 = ({
                             {showRoundManager && (
                                 <button
                                     type="button"
-                                    onClick={() => setRoundManagerOpen(true)}
+                                    onClick={() => setRoundManagerKind('all')}
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/15 px-2.5 py-1.5 text-xs font-bold text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-500/25"
                                 >
                                     <Settings2 size={13} className="text-amber-300" />
@@ -305,6 +306,7 @@ const DashboardV4 = ({
                         pulseToken={realtime.pulseToken}
                         increments={realtime.increments}
                         shareMode={shareMode}
+                        onManageRounds={showRoundManager ? (kind) => setRoundManagerKind(kind) : undefined}
                     />
                 </div>
 

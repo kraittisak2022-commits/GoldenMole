@@ -17,6 +17,8 @@ interface CountRecordRoundManagerProps {
     employees?: Employee[];
     onSaveTransaction: (t: Transaction) => void | Promise<boolean>;
     onDeleteTransaction: (id: string) => void | Promise<void>;
+    /** When set, show only trip or sand rows */
+    filterKind?: 'trip' | 'sand';
 }
 
 type RowKind = 'trip' | 'sand';
@@ -128,6 +130,7 @@ const CountRecordRoundManager = ({
     employees = [],
     onSaveTransaction,
     onDeleteTransaction,
+    filterKind,
 }: CountRecordRoundManagerProps) => {
     const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -165,16 +168,27 @@ const CountRecordRoundManager = ({
         return [...tripRows, ...sandRows];
     }, [dayKey, transactions, employees]);
 
+    const visibleRows = useMemo(
+        () => (filterKind ? rows.filter((r) => r.kind === filterKind) : rows),
+        [rows, filterKind],
+    );
+
+    const modalTitle = useMemo(() => {
+        if (filterKind === 'trip') return 'จัดการรอบ — จำนวนเที่ยวรถ';
+        if (filterKind === 'sand') return 'จัดการรอบ — การร่อนทราย';
+        return 'จัดการรอบ';
+    }, [filterKind]);
+
     useEffect(() => {
         if (!open) return;
         const next: Record<string, RowDraft> = {};
-        for (const row of rows) {
+        for (const row of visibleRows) {
             next[row.id] = buildDraftFromTx(row.tx, row.kind);
         }
         setDrafts(next);
         setMessage(null);
         setBusyId(null);
-    }, [open, rows]);
+    }, [open, visibleRows]);
 
     useEffect(() => {
         if (!open) return;
@@ -285,7 +299,7 @@ const CountRecordRoundManager = ({
                     <div className="min-w-0">
                         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-300">SuperAdmin</p>
                         <h2 id="count-round-manager-title" className="text-lg font-bold text-white">
-                            จัดการรอบ
+                            {modalTitle}
                         </h2>
                         <p className="mt-0.5 text-xs text-slate-300">วันที่ {dayKey} · แก้ไข/ลบในฐานข้อมูลจริง</p>
                     </div>
@@ -306,7 +320,7 @@ const CountRecordRoundManager = ({
                 )}
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-                    {rows.length === 0 ? (
+                    {visibleRows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-800/40">
                             <AlertTriangle size={28} className="text-slate-400 dark:text-slate-500" />
                             <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -315,7 +329,7 @@ const CountRecordRoundManager = ({
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {rows.map((row) => {
+                            {visibleRows.map((row) => {
                                 const draft = drafts[row.id] ?? buildDraftFromTx(row.tx, row.kind);
                                 const hasLaps = draft.laps.length > 0;
                                 const Icon = row.kind === 'trip' ? Truck : Droplets;
