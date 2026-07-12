@@ -1,0 +1,19 @@
+/* Login */
+"login.title" = "Goldenmole Dashboard";
+"login.subtitle" = "เข้าสู่ระบบเพื่อดูภาพรวม";
+"login.username" = "ชื่อผู้ใช้";
+"login.password" = "รหัสผ่าน";
+"login.button" = "เข้าสู่ระบบ";
+"login.error" = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
+"logout" = "ออกจากระบบ";
+
+/* Dashboard */
+"dashboard.select_view" = "เลือกหน้าแดชบอร์ด";
+"dashboard.date_range" = "ช่วงวันที่";
+"dashboard.last_7_days" = "7 วันล่าสุด";
+"dashboard.last_14_days" = "14 วันล่าสุด";
+"dashboard.last_30_days" = "30 วันล่าสุด";
+"dashboard.custom_range" = "กำหนดเอง";
+"dashboard.refresh" = "รีเฟรช";
+"dashboard.loading" = "กำลังโหลดข้อมูล…";
+"dashboard.error" = "โหลดข้อมูลไม่สำเร็จ";

@@ -1,0 +1,44 @@
+name: iOS Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'ios-swiftui/**'
+      - '.github/workflows/ios-release.yml'
+
+jobs:
+  build-and-upload:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ios-swiftui
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Write Secrets.xcconfig
+        run: |
+          cat > Config/Secrets.xcconfig <<EOF
+          SUPABASE_URL = ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY = ${{ secrets.SUPABASE_ANON_KEY }}
+          EOF
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Install fastlane
+        run: brew install fastlane
+
+      - name: Build and upload to TestFlight
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}
+        run: fastlane beta
