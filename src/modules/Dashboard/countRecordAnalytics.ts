@@ -367,6 +367,62 @@ export function formatActiveHours(hours: number): string {
     return `${rounded} ชม.`;
 }
 
+/** Simple moving average; null until window is full */
+export function computeMovingAverage(values: number[], window = 5): (number | null)[] {
+    if (window <= 0 || values.length === 0) return [];
+    return values.map((_, i) => {
+        if (i < window - 1) return null;
+        const slice = values.slice(i - window + 1, i + 1);
+        const sum = slice.reduce((s, v) => s + v, 0);
+        return sum / window;
+    });
+}
+
+/** Last N interval seconds for sparkline (most recent) */
+export function buildIntervalSparkline(intervalsSec: number[], limit = 10): number[] {
+    if (intervalsSec.length === 0) return [];
+    return intervalsSec.slice(-limit);
+}
+
+export interface HourlyHeatmapCell {
+    hour: number;
+    count: number;
+    label: string;
+    intensity: number;
+}
+
+/** All 24 hours with intensity 0–1 for heatmap strip */
+export function computeHourlyHeatmap(lapTimes: string[], dayKey: string): HourlyHeatmapCell[] {
+    const counts = new Array<number>(24).fill(0);
+    for (const lap of lapTimes) {
+        const ms = parseLapStamp(lap, dayKey);
+        if (ms == null) continue;
+        const d = new Date(ms + TZ_OFFSET_MS);
+        const h = d.getUTCHours();
+        if (h >= 0 && h < 24) counts[h]! += 1;
+    }
+    const max = Math.max(...counts, 1);
+    return counts.map((count, hour) => ({
+        hour,
+        count,
+        label: `${String(hour).padStart(2, '0')}:00`,
+        intensity: count / max,
+    }));
+}
+
+export function formatAvgPaceSec(sec: number | null): string {
+    if (sec == null || !Number.isFinite(sec)) return '—';
+    if (sec < 60) return `${Math.round(sec)}`;
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}`;
+}
+
+export function formatAvgPaceUnit(sec: number | null): string {
+    if (sec == null || !Number.isFinite(sec)) return '';
+    return sec < 60 ? 'วิน.' : 'นาที';
+}
+
 export function formatDurationSec(sec: number | null): string {
     if (sec == null || !Number.isFinite(sec)) return '—';
     if (sec < 60) return `${Math.round(sec)} วิน.`;

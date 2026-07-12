@@ -135,6 +135,45 @@
     .count-number-punch {
         animation: none;
     }
+
+    .chart-bar-grow,
+    .gauge-sweep path,
+    .gauge-sweep circle {
+        animation: none !important;
+    }
+}
+
+.chart-bar-grow {
+    animation: chartBarGrow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: bottom center;
+}
+
+.gauge-sweep path,
+.gauge-sweep circle {
+    animation: gaugeSweep 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes chartBarGrow {
+    0% {
+        transform: scaleY(0);
+        opacity: 0.4;
+    }
+
+    100% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@keyframes gaugeSweep {
+    0% {
+        stroke-dashoffset: 132;
+        opacity: 0.3;
+    }
+
+    100% {
+        opacity: 1;
+    }
 }
 
 /* Mobile home — flat tiles + long-shadow icon (ERP-style menu) */

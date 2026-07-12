@@ -3,11 +3,14 @@ import type { Transaction } from '../../types';
 import {
     activeDurationSec,
     buildDayComparison,
+    buildIntervalSparkline,
     computeHourlyActiveWork,
+    computeHourlyHeatmap,
     computeHourlySandSpeed,
     computeIntervalStats,
     computeLapIntervals,
     computeMinuteSandSpeed,
+    computeMovingAverage,
     computePaceDeltaPercent,
     computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
@@ -113,6 +116,31 @@ describe('computeSandWorkDurationSummary', () => {
         expect(summary!.totalActiveHours).toBe(8);
         expect(summary!.lunchDeductedHours).toBe(1);
         expect(formatActiveHours(summary!.totalActiveHours)).toBe('8 ชม.');
+    });
+});
+
+describe('moving average and sparkline', () => {
+    it('computes moving average with null prefix', () => {
+        const ma = computeMovingAverage([100, 200, 300, 400, 500], 3);
+        expect(ma).toEqual([null, null, 200, 300, 400]);
+    });
+
+    it('builds sparkline from last N intervals', () => {
+        const spark = buildIntervalSparkline([10, 20, 30, 40, 50, 60, 70], 4);
+        expect(spark).toEqual([40, 50, 60, 70]);
+    });
+});
+
+describe('hourly heatmap', () => {
+    it('returns 24 cells with intensity', () => {
+        const cells = computeHourlyHeatmap(
+            ['26/06 08:10:00', '26/06 08:40:00', '26/06 14:00:00'],
+            '2026-06-26',
+        );
+        expect(cells).toHaveLength(24);
+        expect(cells.find((c) => c.hour === 8)?.count).toBe(2);
+        expect(cells.find((c) => c.hour === 14)?.count).toBe(1);
+        expect(cells.find((c) => c.hour === 8)?.intensity).toBe(1);
     });
 });
 

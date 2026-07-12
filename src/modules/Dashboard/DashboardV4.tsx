@@ -18,9 +18,11 @@ import Card from '../../components/ui/Card';
 import { Transaction, Employee, AppSettings } from '../../types';
 import { getToday, normalizeDate } from '../../utils';
 import { useCountRecordRealtime } from '../../hooks/useCountRecordRealtime';
+import { useMobilePresence } from '../../hooks/useMobilePresence';
 import CountRecordOverview from './CountRecordOverview';
 import CountRecordActivityFeed from './CountRecordActivityFeed';
 import RealtimeLiveBadge from './RealtimeLiveBadge';
+import MobilePresenceBadge from './MobilePresenceBadge';
 import { countRecordMenuStatusLabel } from './countRecordUtils';
 
 interface DashboardV4Props {
@@ -108,6 +110,8 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
         pollIntervalMs: 12000,
     });
 
+    const mobilePresence = useMobilePresence();
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Hero header */}
@@ -134,12 +138,19 @@ const DashboardV4 = ({ transactions, dateFilter, employees = [], settings, onRef
                             <p className="mt-2 text-sm font-medium text-indigo-200">{focusCountRecordStatus}</p>
                         )}
                     </div>
-                    <RealtimeLiveBadge
-                        isLive={realtime.isLive}
-                        channelStatus={realtime.channelStatus}
-                        lastSyncAt={realtime.lastSyncAt}
-                        syncSource={realtime.syncSource}
-                    />
+                    <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                        <MobilePresenceBadge
+                            devices={mobilePresence.devices}
+                            isOnline={mobilePresence.isOnline}
+                            isTracking={mobilePresence.isTracking}
+                        />
+                        <RealtimeLiveBadge
+                            isLive={realtime.isLive}
+                            channelStatus={realtime.channelStatus}
+                            lastSyncAt={realtime.lastSyncAt}
+                            syncSource={realtime.syncSource}
+                        />
+                    </div>
                 </div>
             </div>
 

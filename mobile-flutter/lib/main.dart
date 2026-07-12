@@ -15,6 +15,7 @@ import 'services/auth_service.dart';
 import 'services/count_record_offline_sync.dart';
 import 'services/dashboard_service.dart';
 import 'services/locale_service.dart';
+import 'services/mobile_presence_service.dart';
 import 'services/session_service.dart';
 import 'widgets/app_locale_scope.dart';
 import 'widgets/app_sync_banner.dart';
@@ -397,15 +398,26 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || _currentAdmin == null) {
-      return;
+    if (_currentAdmin == null) return;
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        CountRecordOfflineSync.instance.onAppResumed();
+        unawaited(MobilePresenceService.instance.resume());
+        ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client).catchError(
+          (Object e, StackTrace st) {
+            debugPrint('ensureSupabaseSession on resume: $e\n$st');
+          },
+        );
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        unawaited(MobilePresenceService.instance.pause());
+        break;
+      case AppLifecycleState.inactive:
+        break;
     }
-    CountRecordOfflineSync.instance.onAppResumed();
-    ensureSupabaseSessionForEdgeFunctions(Supabase.instance.client).catchError(
-      (Object e, StackTrace st) {
-        debugPrint('ensureSupabaseSession on resume: $e\n$st');
-      },
-    );
   }
 
   Future<void> _restoreSession() async {
@@ -423,6 +435,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
             debugPrint('ensureSupabaseSessionForEdgeFunctions: $e\n$st');
           }),
         );
+        unawaited(MobilePresenceService.instance.start(admin.username));
       }
       if (!mounted) return;
       setState(() {
@@ -517,6 +530,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
                   }
                   if (!mounted) return;
                   setState(() => _currentAdmin = admin);
+                  unawaited(MobilePresenceService.instance.start(admin.username));
                 },
               )
             : DashboardScreen(
@@ -524,6 +538,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
                 currentAdmin: _currentAdmin!,
                 dashboardService: DashboardService(client),
                 onLogout: () async {
+                  await MobilePresenceService.instance.stop();
                   try {
                     await Supabase.instance.client.auth.signOut();
                   } catch (e, st) {
