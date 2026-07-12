@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil, Trophy, Medal } from 'lucide-react';
+import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil, Trophy, Medal, Boxes, Gauge, Target } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
@@ -97,6 +97,100 @@ function EfficiencyVsYesterdayBadge({ deltaPct }: { deltaPct: number | null }) {
         <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-400">
             ▼ {t('lessEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
         </span>
+    );
+}
+
+function TripSummaryHero({
+    tripTotal,
+    tripFleetWorkSpan,
+    vehicleEfficiency,
+    showEfficiency,
+}: {
+    tripTotal: number;
+    tripFleetWorkSpan: string | null;
+    vehicleEfficiency: { perVehToday: number; countToday: number; deltaPct: number | null };
+    showEfficiency: boolean;
+}) {
+    const { t } = useShareLocale();
+    const targetPct = TRIP_TARGET_TRIPS > 0 ? Math.min((tripTotal / TRIP_TARGET_TRIPS) * 100, 100) : 0;
+    const atOrOverTarget = tripTotal >= TRIP_TARGET_TRIPS;
+
+    return (
+        <div className="press-pop relative w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-700 px-4 py-4 shadow-lg shadow-blue-900/20">
+            <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_50%)]" />
+
+            <div className="relative">
+                <div className="flex items-start justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">{t('tripTotalTitle')}</p>
+                    {tripFleetWorkSpan ? <WorkSpanBadge label={tripFleetWorkSpan} onDark /> : null}
+                </div>
+
+                <p className="mt-2 text-5xl font-black tabular-nums leading-none text-white">
+                    {formatDashboardMetric(tripTotal)}
+                    <span className="ml-2 text-lg font-bold text-white/80">{t('tripUnit')}</span>
+                </p>
+
+                <div className="mt-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-white/80">
+                        <span className="inline-flex items-center gap-1">
+                            <Target size={10} />
+                            {t('targetLabel')}
+                        </span>
+                        <span className="tabular-nums">
+                            {t('targetProgress', {
+                                current: formatDashboardMetric(tripTotal),
+                                target: formatDashboardMetric(TRIP_TARGET_TRIPS),
+                            })}
+                            {' · '}
+                            {Math.round(targetPct)}%
+                        </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/20">
+                        <div
+                            className={`chart-bar-grow h-full rounded-full ${atOrOverTarget ? 'bg-emerald-300' : 'bg-white'}`}
+                            style={{ width: `${targetPct}%` }}
+                        />
+                    </div>
+                </div>
+
+                <div
+                    className={`mt-4 border-t border-white/15 pt-4 ${showEfficiency ? 'grid grid-cols-2 divide-x divide-white/15' : ''}`}
+                >
+                    <div className={showEfficiency ? 'pr-3' : ''}>
+                        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-white/60">
+                            <Boxes size={11} />
+                            {t('queueCount')}
+                        </div>
+                        <p className="mt-1 text-2xl font-black tabular-nums text-white">
+                            {formatDashboardMetric(tripTotal * QUEUE_PER_TRIP)}
+                            <span className="ml-1 text-sm font-bold text-white/75">{t('queueUnit')}</span>
+                        </p>
+                        <p className="mt-0.5 text-[9px] font-medium text-white/55">{t('queuePerTripNote')}</p>
+                    </div>
+
+                    {showEfficiency ? (
+                        <div className="pl-3">
+                            <div className="flex flex-wrap items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-white/60">
+                                    <Gauge size={11} />
+                                    {t('perVehicleTitle')}
+                                </div>
+                                <EfficiencyVsYesterdayBadge deltaPct={vehicleEfficiency.deltaPct} />
+                            </div>
+                            <p className="mt-1 text-lg font-black tabular-nums leading-tight text-white">
+                                {t('perVehicleAvg', {
+                                    v: formatDashboardMetric(Math.round(vehicleEfficiency.perVehToday * 10) / 10),
+                                })}
+                            </p>
+                            <p className="mt-0.5 text-[9px] font-medium text-white/55">
+                                {t('vehicleCountLabel', { n: vehicleEfficiency.countToday })}
+                            </p>
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -465,50 +559,13 @@ const CountRecordOverview = ({
                         />
                     ) : (
                         <div className="space-y-3">
-                            {(tripFleetWorkSpan || tripTotal > 0) && (
-                                <div className="flex flex-col items-center gap-2">
-                                    {tripFleetWorkSpan && <WorkSpanBadge label={tripFleetWorkSpan} />}
-                                    {tripTotal > 0 && (
-                                        <div className="press-pop flex w-full max-w-xs flex-col rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-indigo-950/30">
-                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
-                                                {t('tripTotalTitle')}
-                                            </p>
-                                            <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
-                                                {formatDashboardMetric(tripTotal)}
-                                                <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('tripUnit')}</span>
-                                            </p>
-                                            <TargetProgressBar current={tripTotal} target={TRIP_TARGET_TRIPS} color="#2563eb" />
-                                        </div>
-                                    )}
-                                    {tripTotal > 0 && (
-                                        <div className="press-pop flex w-full max-w-xs flex-col items-center rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-cyan-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-cyan-950/30">
-                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
-                                                {t('queueCount')}
-                                            </p>
-                                            <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
-                                                {formatDashboardMetric(tripTotal * QUEUE_PER_TRIP)}
-                                                <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('queueUnit')}</span>
-                                            </p>
-                                            <p className="mt-1 text-[10px] font-medium text-blue-700/80 dark:text-blue-300/70">{t('queuePerTripNote')}</p>
-                                        </div>
-                                    )}
-                                    {tripTotal > 0 && tripUnits.length > 0 && (
-                                        <div className="press-pop flex w-full max-w-xs flex-col rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 to-slate-50 px-4 py-3 shadow-sm dark:border-indigo-500/25 dark:from-indigo-950/40 dark:to-slate-950/30">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
-                                                    {t('perVehicleTitle')}
-                                                </p>
-                                                <EfficiencyVsYesterdayBadge deltaPct={vehicleEfficiency.deltaPct} />
-                                            </div>
-                                            <p className="mt-2 text-center text-xl font-black tabular-nums text-indigo-900 dark:text-indigo-100">
-                                                {t('perVehicleAvg', { v: formatDashboardMetric(Math.round(vehicleEfficiency.perVehToday * 10) / 10) })}
-                                            </p>
-                                            <p className="mt-1 text-center text-[10px] font-medium text-indigo-700/80 dark:text-indigo-300/70">
-                                                {t('vehicleCountLabel', { n: vehicleEfficiency.countToday })}
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
+                            {tripTotal > 0 && (
+                                <TripSummaryHero
+                                    tripTotal={tripTotal}
+                                    tripFleetWorkSpan={tripFleetWorkSpan}
+                                    vehicleEfficiency={vehicleEfficiency}
+                                    showEfficiency={tripUnits.length > 0}
+                                />
                             )}
 
                             <div
