@@ -1429,7 +1429,7 @@ function App() {
             return <div className="p-8 text-center text-slate-500 dark:text-slate-400">ไม่มีสิทธิ์เข้าถึงเมนูนี้</div>;
         }
         switch (activeMenu) {
-            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} onRefreshTransactions={refreshTransactionsFromServer} />;
+            case 'Dashboard': return <Dashboard transactions={visibleTransactions} settings={settings} employees={employees} onSaveTransaction={handleSave} onDeleteTransaction={handleDeleteTransaction} setSettings={handleSetSettings} isMobile={isMobile} onRefreshTransactions={refreshTransactionsFromServer} canManageCountRounds={currentAdmin?.role === 'SuperAdmin'} />;
             case 'Employees': return <EmployeeManager employees={employees} setEmployees={handleSetEmployees} transactions={visibleTransactions} setTransactions={handleSetTransactions} settings={settings} setSettings={handleSetSettings} />;
             case 'Labor': return <LaborModule employees={employees} settings={settings} onSaveTransaction={handleSave} onDeleteTransaction={canDeleteTransactions ? handleDeleteTransaction : undefined} transactions={visibleTransactions} setTransactions={handleSetTransactions} ensureEmployeeWage={ensureEmployeeWage} />;
             case 'Vehicle': return <VehicleEntry settings={settings} employees={employees} transactions={visibleTransactions} onSave={handleSave} onDelete={canDeleteTransactions ? handleDeleteTransaction : undefined} ensureEmployeeWage={ensureEmployeeWage} />;

@@ -52,6 +52,7 @@ const Dashboard = ({
     setSettings,
     isMobile = false,
     onRefreshTransactions,
+    canManageCountRounds = false,
 }: {
     transactions: Transaction[];
     settings: AppSettings;
@@ -61,6 +62,7 @@ const Dashboard = ({
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     isMobile?: boolean;
     onRefreshTransactions?: () => void | Promise<void>;
+    canManageCountRounds?: boolean;
 }) => {
     const viewportNarrow = useViewportNarrow(1024);
     const wizardMobileShell = isMobile || viewportNarrow;
@@ -138,7 +140,18 @@ const Dashboard = ({
             {subTab === 'Overview' ? <DashboardOverview transactions={transactions} dateFilter={dateFilter} /> :
                 subTab === 'Analytics' ? <AnalyticsView transactions={transactions} settings={settings} dateFilter={dateFilter} /> :
                     subTab === 'Calendar' ? <CalendarView transactions={transactions} employees={employees} onSaveTransaction={onSaveTransaction} onDeleteTransaction={onDeleteTransaction} /> :
-                        subTab === 'V4' ? <DashboardV4 transactions={transactions} dateFilter={dateFilter} employees={employees} settings={settings} onRefreshTransactions={onRefreshTransactions} /> :
+                        subTab === 'V4' ? (
+                            <DashboardV4
+                                transactions={transactions}
+                                dateFilter={dateFilter}
+                                employees={employees}
+                                settings={settings}
+                                onRefreshTransactions={onRefreshTransactions}
+                                canManageCountRounds={canManageCountRounds}
+                                onSaveTransaction={onSaveTransaction}
+                                onDeleteTransaction={onDeleteTransaction}
+                            />
+                        ) :
                             subTab === 'V5' ? <DashboardV5 transactions={transactions} dateFilter={dateFilter} /> :
                             subTab === 'Wizard' ? (
                                 <DailyStepRecorder

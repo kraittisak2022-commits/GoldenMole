@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Activity, Calendar, Droplets, Link2, Truck, Wallet, TrendingUp, CreditCard, Zap } from 'lucide-react';
+import { Activity, Calendar, Droplets, Link2, Truck, Wallet, TrendingUp, CreditCard, Zap, Settings2 } from 'lucide-react';
 import ShareLinkManager from '../Share/ShareLinkManager';
 import { useShareLocale } from '../Share/shareI18n';
 import type { CountRecordSyncSource } from '../../hooks/useCountRecordRealtime';
@@ -12,6 +12,7 @@ import CountRecordActivityFeed from './CountRecordActivityFeed';
 import RealtimeLiveBadge from './RealtimeLiveBadge';
 import MobilePresenceBadge from './MobilePresenceBadge';
 import LiveIncrementOverlay from './LiveIncrementOverlay';
+import CountRecordRoundManager from './CountRecordRoundManager';
 import {
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
@@ -29,6 +30,9 @@ interface DashboardV4Props {
     shareMode?: boolean;
     /** Hide income/expense/net profit summary cards */
     hideFinancial?: boolean;
+    canManageCountRounds?: boolean;
+    onSaveTransaction?: (t: Transaction) => void | Promise<boolean>;
+    onDeleteTransaction?: (id: string) => void | Promise<void>;
 }
 
 const formatSyncTime = (ts: number, locale: 'th' | 'zh' = 'th') =>
@@ -53,10 +57,14 @@ const DashboardV4 = ({
     onRefreshTransactions,
     shareMode = false,
     hideFinancial = true,
+    canManageCountRounds = false,
+    onSaveTransaction,
+    onDeleteTransaction,
 }: DashboardV4Props) => {
     const { t, locale, formatDate } = useShareLocale();
     const [selectedDate, setSelectedDate] = useState('');
     const [shareManagerOpen, setShareManagerOpen] = useState(false);
+    const [roundManagerOpen, setRoundManagerOpen] = useState(false);
     const today = getToday();
     const focusDate = selectedDate || today;
     const isToday = focusDate === today;
@@ -101,11 +109,25 @@ const DashboardV4 = ({
 
     const mobilePresence = useMobilePresence();
     const boardPulse = realtime.pulseToken > 0;
+    const showRoundManager =
+        canManageCountRounds && !shareMode && !!onSaveTransaction && !!onDeleteTransaction;
 
     return (
         <div className={`animate-fade-in ${shareMode ? 'space-y-4 portrait:space-y-4 landscape:max-md:space-y-3' : 'space-y-6'}`}>
             {!shareMode && (
                 <ShareLinkManager open={shareManagerOpen} onClose={() => setShareManagerOpen(false)} />
+            )}
+
+            {showRoundManager && (
+                <CountRecordRoundManager
+                    open={roundManagerOpen}
+                    onClose={() => setRoundManagerOpen(false)}
+                    dayKey={focusDate}
+                    transactions={transactions}
+                    employees={employees}
+                    onSaveTransaction={onSaveTransaction!}
+                    onDeleteTransaction={onDeleteTransaction!}
+                />
             )}
 
             {/* Hero header */}
@@ -256,6 +278,16 @@ const DashboardV4 = ({
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
+                            {showRoundManager && (
+                                <button
+                                    type="button"
+                                    onClick={() => setRoundManagerOpen(true)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/15 px-2.5 py-1.5 text-xs font-bold text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-500/25"
+                                >
+                                    <Settings2 size={13} className="text-amber-300" />
+                                    จัดการรอบ
+                                </button>
+                            )}
                             <span className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-2.5 py-1.5 text-xs font-bold text-blue-100 ring-1 ring-blue-400/25">
                                 <Truck size={13} className="text-blue-300" />
                                 {formatDashboardMetric(tripTotal)} {t('tripUnit')}
