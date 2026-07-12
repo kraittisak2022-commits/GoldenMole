@@ -109,7 +109,7 @@ function buildTripTransaction(tx: Transaction, laps: string[], count: number): T
         perCarTrips: r,
         tripMorning: periods.morning + periods.unknown,
         tripAfternoon: periods.afternoon,
-        workAssignments: laps.length > 0 ? { lapTimes: laps } : undefined,
+        workAssignments: (laps.length > 0 ? { lapTimes: laps } : null) as Transaction['workAssignments'],
     };
 }
 
@@ -118,7 +118,7 @@ function buildSandTransaction(tx: Transaction, laps: string[], count: number): T
         ...tx,
         description: `ร่อนทราย: ${count} รอบ`,
         drumsObtained: count,
-        workAssignments: laps.length > 0 ? { lapTimes: laps } : undefined,
+        workAssignments: (laps.length > 0 ? { lapTimes: laps } : null) as Transaction['workAssignments'],
     };
 }
 

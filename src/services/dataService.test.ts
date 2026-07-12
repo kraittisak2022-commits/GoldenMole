@@ -23,4 +23,41 @@ describe('prepareTransactionForDb', () => {
         expect(row.work_assignments).toEqual({ wash1: ['e1'] });
         expect(row.labor_status).toBe('Work');
     });
+
+    it('preserves lapTimes camelCase inside work_assignments (count-record mobile)', () => {
+        const t = {
+            id: 'sand-1',
+            date: '2026-07-12',
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'sand',
+            description: 'ร่อนทราย: 3 รอบ',
+            amount: 0,
+            drumsObtained: 3,
+            workAssignments: { lapTimes: ['12/07 08:35:54', '12/07 10:12:18', '12/07 10:12:34'] },
+        } as Transaction;
+
+        const row = prepareTransactionForDb(t);
+        expect(row.work_assignments).toEqual({
+            lapTimes: ['12/07 08:35:54', '12/07 10:12:18', '12/07 10:12:34'],
+        });
+        expect(row.work_assignments).not.toHaveProperty('lap_times');
+    });
+
+    it('allows null work_assignments to clear lap column on save', () => {
+        const t = {
+            id: 'sand-2',
+            date: '2026-07-12',
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'sand',
+            description: 'ร่อนทราย: 0 รอบ',
+            amount: 0,
+            drumsObtained: 0,
+            workAssignments: null,
+        } as unknown as Transaction;
+
+        const row = prepareTransactionForDb(t);
+        expect(row.work_assignments).toBeNull();
+    });
 });

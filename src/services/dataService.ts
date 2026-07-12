@@ -101,6 +101,8 @@ export const prepareTransactionForDb = (t: Transaction): Record<string, unknown>
         if (value === undefined) continue;
         out[key] = value;
     }
+    // Preserve work_assignments JSON verbatim — mobile count app uses camelCase keys (lapTimes).
+    if (t.workAssignments !== undefined) out.work_assignments = t.workAssignments;
     return out;
 };
 
