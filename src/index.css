@@ -141,6 +141,12 @@
     .gauge-sweep circle {
         animation: none !important;
     }
+
+    .score-pop-in,
+    .score-pop-float {
+        animation: none;
+        opacity: 0;
+    }
 }
 
 .chart-bar-grow {
@@ -173,6 +179,48 @@
 
     100% {
         opacity: 1;
+    }
+}
+
+.score-pop-in {
+    animation: scorePopIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.score-pop-float {
+    animation: scorePopFloat 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scorePopIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.35);
+    }
+
+    55% {
+        opacity: 1;
+        transform: scale(1.28);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes scorePopFloat {
+    0% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+
+    70% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-48px) scale(1.05);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-72px) scale(0.88);
     }
 }
 
