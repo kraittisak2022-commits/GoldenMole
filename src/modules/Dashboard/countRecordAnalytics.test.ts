@@ -4,7 +4,10 @@ import {
     activeDurationSec,
     buildDayComparison,
     buildIntervalSparkline,
+    computeCumulativeSeries,
     computeHourlyActiveWork,
+    computeHourlyBuckets,
+    computeHourlyEfficiency,
     computeHourlyHeatmap,
     computeHourlySandSpeed,
     computeIntervalStats,
@@ -12,6 +15,7 @@ import {
     computeMinuteSandSpeed,
     computeMovingAverage,
     computePaceDeltaPercent,
+    computePeakHour,
     computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
     computeWorkSpan,
@@ -19,6 +23,7 @@ import {
     formatLapClock,
     formatPaceDelta,
     formatWorkSpanLabel,
+    isLunchHour,
     lunchOverlapMs,
     mergeTripLapTimeline,
     parseLapStamp,
@@ -141,6 +146,57 @@ describe('hourly heatmap', () => {
         expect(cells.find((c) => c.hour === 8)?.count).toBe(2);
         expect(cells.find((c) => c.hour === 14)?.count).toBe(1);
         expect(cells.find((c) => c.hour === 8)?.intensity).toBe(1);
+    });
+
+    it('excludes lunch hour laps from heatmap counts', () => {
+        const cells = computeHourlyHeatmap(
+            ['26/06 08:10:00', '26/06 12:30:00', '26/06 14:00:00'],
+            '2026-06-26',
+        );
+        const lunch = cells.find((c) => c.hour === 12);
+        expect(lunch?.isLunch).toBe(true);
+        expect(lunch?.count).toBe(0);
+        expect(cells.find((c) => c.hour === 8)?.count).toBe(1);
+        expect(cells.find((c) => c.hour === 14)?.count).toBe(1);
+    });
+});
+
+describe('lunch exclusion from hourly analytics', () => {
+    const lapsWithLunch = ['26/06 08:10:00', '26/06 12:30:00', '26/06 14:00:00'];
+    const dayKey = '2026-06-26';
+
+    it('isLunchHour matches 12:00–12:59 only', () => {
+        expect(isLunchHour(11)).toBe(false);
+        expect(isLunchHour(12)).toBe(true);
+        expect(isLunchHour(13)).toBe(false);
+    });
+
+    it('excludes lunch laps from hourly buckets and efficiency', () => {
+        const buckets = computeHourlyBuckets(lapsWithLunch, dayKey);
+        expect(buckets.some((b) => b.hour === 12)).toBe(false);
+        expect(buckets.find((b) => b.hour === 8)?.count).toBe(1);
+        expect(buckets.find((b) => b.hour === 14)?.count).toBe(1);
+
+        const efficiency = computeHourlyEfficiency(lapsWithLunch, dayKey);
+        expect(efficiency.some((b) => b.hour === 12)).toBe(false);
+    });
+
+    it('excludes lunch minutes from minute sand speed', () => {
+        const speed = computeMinuteSandSpeed(lapsWithLunch, dayKey);
+        expect(speed.find((b) => b.label === '12:30')).toBeUndefined();
+        expect(speed.find((b) => b.label === '08:10')?.speed).toBe(1);
+    });
+
+    it('does not pick lunch hour as peak', () => {
+        const onlyLunch = ['26/06 12:15:00', '26/06 12:45:00'];
+        const cells = computeHourlyHeatmap(onlyLunch, dayKey);
+        expect(computePeakHour(cells)).toBeNull();
+    });
+
+    it('still includes lunch laps in cumulative series totals', () => {
+        const cumulative = computeCumulativeSeries(lapsWithLunch, dayKey);
+        expect(cumulative).toHaveLength(3);
+        expect(cumulative[cumulative.length - 1]?.value).toBe(3);
     });
 });
 

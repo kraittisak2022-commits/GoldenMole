@@ -9,14 +9,21 @@ import {
 const TZ_OFFSET_MS = 7 * 60 * 60 * 1000;
 const MS_PER_MIN = 60 * 1000;
 
+export const LUNCH_START_HOUR = 12;
+export const LUNCH_END_HOUR = 13;
+
+export function isLunchHour(hour: number): boolean {
+    return hour >= LUNCH_START_HOUR && hour < LUNCH_END_HOUR;
+}
+
 /** Lunch window on same calendar day as startMs (Bangkok) */
 export function lunchWindowMs(dayKey: string, refMs: number): { startMs: number; endMs: number } {
     const d = new Date(refMs + TZ_OFFSET_MS);
     const yy = d.getUTCFullYear();
     const mm = d.getUTCMonth();
     const dd = d.getUTCDate();
-    const startMs = Date.UTC(yy, mm, dd, 12, 0, 0) - TZ_OFFSET_MS;
-    const endMs = Date.UTC(yy, mm, dd, 13, 0, 0) - TZ_OFFSET_MS;
+    const startMs = Date.UTC(yy, mm, dd, LUNCH_START_HOUR, 0, 0) - TZ_OFFSET_MS;
+    const endMs = Date.UTC(yy, mm, dd, LUNCH_END_HOUR, 0, 0) - TZ_OFFSET_MS;
     void dayKey;
     return { startMs, endMs };
 }
@@ -139,7 +146,7 @@ export function computeHourlyBuckets(lapTimes: string[], dayKey: string): Hourly
         if (ms == null) continue;
         const d = new Date(ms + TZ_OFFSET_MS);
         const h = d.getUTCHours();
-        if (h >= 0 && h < 24) counts[h]! += 1;
+        if (h >= 0 && h < 24 && !isLunchHour(h)) counts[h]! += 1;
     }
     return counts
         .map((count, hour) => ({
@@ -347,6 +354,7 @@ export function computeMinuteSandSpeed(lapTimes: string[], dayKey: string): Spee
         const ms = parseLapStamp(lap, dayKey);
         if (ms == null) continue;
         const d = new Date(ms + TZ_OFFSET_MS);
+        if (isLunchHour(d.getUTCHours())) continue;
         const hh = String(d.getUTCHours()).padStart(2, '0');
         const mm = String(d.getUTCMinutes()).padStart(2, '0');
         const key = `${hh}:${mm}`;
@@ -393,6 +401,7 @@ export interface HourlyHeatmapCell {
     count: number;
     label: string;
     intensity: number;
+    isLunch: boolean;
 }
 
 /** All 24 hours with intensity 0–1 for heatmap strip */
@@ -403,14 +412,15 @@ export function computeHourlyHeatmap(lapTimes: string[], dayKey: string): Hourly
         if (ms == null) continue;
         const d = new Date(ms + TZ_OFFSET_MS);
         const h = d.getUTCHours();
-        if (h >= 0 && h < 24) counts[h]! += 1;
+        if (h >= 0 && h < 24 && !isLunchHour(h)) counts[h]! += 1;
     }
-    const max = Math.max(...counts, 1);
+    const max = Math.max(...counts.filter((_, hour) => !isLunchHour(hour)), 1);
     return counts.map((count, hour) => ({
         hour,
-        count,
+        count: isLunchHour(hour) ? 0 : count,
         label: `${String(hour).padStart(2, '0')}:00`,
-        intensity: count / max,
+        intensity: isLunchHour(hour) ? 0 : count / max,
+        isLunch: isLunchHour(hour),
     }));
 }
 
@@ -594,7 +604,7 @@ export interface PeakHourInfo {
 }
 
 export function computePeakHour(cells: HourlyHeatmapCell[]): PeakHourInfo | null {
-    const active = cells.filter((c) => c.count > 0);
+    const active = cells.filter((c) => c.count > 0 && !c.isLunch);
     if (active.length === 0) return null;
     const best = active.reduce((a, b) => (b.count > a.count ? b : a));
     return { hour: best.hour, count: best.count, label: best.label };

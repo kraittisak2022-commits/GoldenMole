@@ -238,7 +238,13 @@ function CumulativeLineChart({
     );
 }
 
-function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number; label: string; intensity: number }[]; color: string }) {
+function HourlyHeatmap({
+    cells,
+    color,
+}: {
+    cells: { hour: number; count: number; label: string; intensity: number; isLunch?: boolean }[];
+    color: string;
+}) {
     const { t } = useShareLocale();
     const active = cells.filter((c) => c.count > 0);
     if (active.length === 0) {
@@ -254,14 +260,29 @@ function HourlyHeatmap({ cells, color }: { cells: { hour: number; count: number;
                 {cells.map((c) => (
                     <div
                         key={c.hour}
-                        title={`${c.label}: ${c.count} ${t('roundUnit')}`}
+                        title={
+                            c.isLunch
+                                ? `${c.label}: ${t('lunchBreak')}`
+                                : `${c.label}: ${c.count} ${t('roundUnit')}`
+                        }
                         className={`group relative aspect-square min-h-[10px] rounded-sm transition-transform hover:scale-110 ${
-                            c.count === 0 ? 'bg-slate-200 dark:bg-slate-700' : ''
+                            c.isLunch
+                                ? 'bg-slate-200 dark:bg-slate-700'
+                                : c.count === 0
+                                  ? 'bg-slate-200 dark:bg-slate-700'
+                                  : ''
                         }`}
-                        style={{
-                            backgroundColor: c.count > 0 ? color : undefined,
-                            opacity: c.count > 0 ? 0.25 + c.intensity * 0.75 : 0.35,
-                        }}
+                        style={
+                            c.isLunch
+                                ? {
+                                      backgroundImage:
+                                          'repeating-linear-gradient(-45deg, rgba(148,163,184,0.35) 0, rgba(148,163,184,0.35) 2px, transparent 2px, transparent 5px)',
+                                  }
+                                : {
+                                      backgroundColor: c.count > 0 ? color : undefined,
+                                      opacity: c.count > 0 ? 0.25 + c.intensity * 0.75 : 0.35,
+                                  }
+                        }
                     />
                 ))}
             </div>
@@ -592,9 +613,14 @@ const CountRecordAnalyticsPanel = ({
 
     return (
         <div className="mt-3 space-y-3 border-t border-slate-200/60 pt-3 dark:border-slate-700/50">
-            <div className="flex items-center gap-2">
-                <BarChart3 size={14} className="text-slate-400 dark:text-slate-500" style={{ color }} />
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{t('paceAnalytics')}</p>
+            <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                    <BarChart3 size={14} className="text-slate-400 dark:text-slate-500" style={{ color }} />
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                        {t('paceAnalytics')}
+                    </p>
+                </div>
+                <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{t('lunchBreakNote')}</p>
             </div>
 
             <CountRecordStatTiles
