@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil } from 'lucide-react';
+import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil, Trophy, Medal } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
@@ -33,6 +33,7 @@ interface CountRecordOverviewProps {
 }
 
 const SAND_RECENT_LAPS = 5;
+const QUEUE_PER_TRIP = 3;
 
 function PeriodPill({
     morning,
@@ -297,6 +298,10 @@ const CountRecordOverview = ({
     const tripTotal = tripUnits.reduce((s, u) => s + u.rounds, 0);
     const sandRecentStart = sandUnit ? Math.max(0, sandUnit.lapTimes.length - SAND_RECENT_LAPS) : 0;
     const tripWithLaps = tripUnits.filter((u) => u.lapTimes.length > 0);
+    const tripLeaderboard = useMemo(
+        () => [...tripWithLaps].sort((a, b) => b.rounds - a.rounds),
+        [tripWithLaps],
+    );
     const tripFleetWorkSpan = useMemo(
         () => formatWorkSpanLabel(computeTripFleetWorkSpan(tripUnits, dayKey), locale),
         [tripUnits, dayKey, locale],
@@ -364,9 +369,21 @@ const CountRecordOverview = ({
                         />
                     ) : (
                         <div className="space-y-3">
-                            {tripFleetWorkSpan && (
-                                <div className="flex justify-center">
-                                    <WorkSpanBadge label={tripFleetWorkSpan} />
+                            {(tripFleetWorkSpan || tripTotal > 0) && (
+                                <div className="flex flex-col items-center gap-2">
+                                    {tripFleetWorkSpan && <WorkSpanBadge label={tripFleetWorkSpan} />}
+                                    {tripTotal > 0 && (
+                                    <div className="press-pop flex w-full max-w-xs flex-col items-center rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50 to-cyan-50 px-4 py-3 text-center shadow-sm dark:border-blue-500/25 dark:from-blue-950/40 dark:to-cyan-950/30">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                                            {t('queueCount')}
+                                        </p>
+                                        <p className="mt-1 text-3xl font-black tabular-nums text-blue-900 dark:text-blue-100">
+                                            {formatDashboardMetric(tripTotal * QUEUE_PER_TRIP)}
+                                            <span className="ml-1 text-sm font-bold text-blue-600 dark:text-blue-300">{t('queueUnit')}</span>
+                                        </p>
+                                        <p className="mt-1 text-[10px] font-medium text-blue-700/80 dark:text-blue-300/70">{t('queuePerTripNote')}</p>
+                                    </div>
+                                    )}
                                 </div>
                             )}
 
@@ -410,18 +427,32 @@ const CountRecordOverview = ({
                                         {t('latestLog')}
                                     </p>
                                 )}
-                                {tripWithLaps.length > 0 ? (
+                                {tripLeaderboard.length > 0 ? (
                                     <ul className="mt-2 space-y-2">
-                                        {tripWithLaps.map((u) => (
+                                        {tripLeaderboard.map((u, rank) => (
                                             <li
                                                 key={u.id}
-                                                className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60"
+                                                className={`flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 ${
+                                                    rank === 0
+                                                        ? 'bg-amber-50 ring-2 ring-amber-300/80 dark:bg-amber-500/10 dark:ring-amber-400/40'
+                                                        : 'bg-slate-50 dark:bg-slate-800/60'
+                                                }`}
                                             >
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">{u.vehicleId}</p>
-                                                    <p className="truncate font-mono text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
-                                                        {u.lapTimes[u.lapTimes.length - 1]}
-                                                    </p>
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    {rank === 0 ? (
+                                                        <Trophy size={14} className="shrink-0 text-amber-500" />
+                                                    ) : rank <= 2 ? (
+                                                        <Medal
+                                                            size={14}
+                                                            className={`shrink-0 ${rank === 1 ? 'text-slate-400' : 'text-amber-700'}`}
+                                                        />
+                                                    ) : null}
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">{u.vehicleId}</p>
+                                                        <p className="truncate font-mono text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+                                                            {u.lapTimes[u.lapTimes.length - 1]}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 <span className="shrink-0 rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-bold text-white">
                                                     {u.rounds} {t('tripUnit')}

@@ -140,7 +140,7 @@ const DashboardV4 = ({
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.35),transparent_50%)]" />
                 <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-indigo-500/20 blur-3xl" />
                 <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
+                    <div className="hidden min-w-0 sm:block">
                         <div className="flex items-center gap-2 text-indigo-200/90">
                             <Activity size={16} />
                             <span className="text-[11px] font-bold uppercase tracking-[0.18em]">{t('operationsMonitor')}</span>
@@ -260,7 +260,32 @@ const DashboardV4 = ({
                                     {t('live')}
                                 </span>
                             </span>
-                            <span className="text-sm font-bold text-white">{formatDate(focusDate)}</span>
+                            <label className="relative inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm transition hover:bg-white/15">
+                                <Calendar size={12} />
+                                <span>{formatDate(focusDate)}</span>
+                                {isToday && (
+                                    <span className="rounded-md bg-emerald-500/25 px-1.5 py-0.5 text-[9px] font-bold text-emerald-200">
+                                        {t('today')}
+                                    </span>
+                                )}
+                                <input
+                                    type="date"
+                                    value={selectedDate || today}
+                                    max={today}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="absolute inset-0 cursor-pointer opacity-0"
+                                    aria-label={t('selectDate')}
+                                />
+                            </label>
+                            {!isToday && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedDate('')}
+                                    className="rounded-xl border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm transition hover:bg-white/15"
+                                >
+                                    {t('backToToday')}
+                                </button>
+                            )}
                             {boardPulse && <Zap size={14} className="text-amber-300 animate-pulse" />}
                         </div>
 

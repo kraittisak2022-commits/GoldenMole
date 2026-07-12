@@ -30,6 +30,7 @@ import {
     type VehicleComparisonRow,
 } from './countRecordAnalytics';
 import CountRecordStatTiles from './CountRecordStatTiles';
+import CountRecordPaceDetailModal from './CountRecordPaceDetailModal';
 
 interface CountRecordAnalyticsPanelProps {
     mode: 'sand' | 'trip';
@@ -248,11 +249,13 @@ function PeakHourCard({
             </p>
         );
     }
+    const endHour = (peak.hour + 1) % 24;
+    const endLabel = `${String(endHour).padStart(2, '0')}:00`;
     return (
-        <div className="flex flex-col items-center justify-center py-2 text-center">
+        <div className="press-pop flex flex-col items-center justify-center py-2 text-center">
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{t('peakHourLabel')}</p>
-            <p className="mt-2 text-3xl font-black tabular-nums" style={{ color }}>
-                {peak.label}
+            <p className="mt-2 text-2xl font-black tabular-nums sm:text-3xl" style={{ color }}>
+                {t('peakHourRange', { start: peak.label, end: endLabel })}
             </p>
             <p className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
                 {peak.count} {roundLabel}
@@ -1002,6 +1005,7 @@ const CountRecordAnalyticsPanel = ({
     accentColor,
 }: CountRecordAnalyticsPanelProps) => {
     const { t, roundLabelTrip, roundLabelSand } = useShareLocale();
+    const [detailOpen, setDetailOpen] = useState(false);
     const color = accentColor ?? (mode === 'sand' ? '#db2777' : '#2563eb');
 
     const comparison = useMemo(
@@ -1097,6 +1101,20 @@ const CountRecordAnalyticsPanel = ({
                 mode={mode}
                 sandWorkSummary={sandWorkSummary}
                 tripWorkSummary={tripWorkSummary}
+                onOpenDetail={() => setDetailOpen(true)}
+            />
+
+            <CountRecordPaceDetailModal
+                open={detailOpen}
+                onClose={() => setDetailOpen(false)}
+                mode={mode}
+                stats={stats}
+                comparison={modeComparison}
+                roundLabel={roundLabel}
+                accentColor={color}
+                workSummary={mode === 'sand' ? sandWorkSummary : tripWorkSummary}
+                tripUnits={tripUnits}
+                dayKey={dayKey}
             />
 
             {/* Bento grid */}

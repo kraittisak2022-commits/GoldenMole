@@ -20,6 +20,7 @@ interface CountRecordStatTilesProps {
     mode: 'sand' | 'trip';
     sandWorkSummary?: SandWorkDurationSummary | null;
     tripWorkSummary?: SandWorkDurationSummary | null;
+    onOpenDetail?: () => void;
 }
 
 const WORK_TARGET_HOURS = 8;
@@ -149,6 +150,7 @@ const CountRecordStatTiles = ({
     mode,
     sandWorkSummary,
     tripWorkSummary,
+    onOpenDetail,
 }: CountRecordStatTilesProps) => {
     const { t, locale } = useShareLocale();
     const paceUnit = formatAvgPaceUnit(stats.avg, locale);
@@ -156,126 +158,136 @@ const CountRecordStatTiles = ({
     const roundsSign = roundsPct != null && roundsPct > 0 ? '+' : '';
     const workSummary = mode === 'sand' ? sandWorkSummary : tripWorkSummary;
 
+    const tileBtn =
+        'press-pop relative w-full overflow-hidden rounded-2xl p-3 text-left text-white shadow-lg transition-transform active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:p-3.5';
+
     return (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-            {/* Avg pace + sparkline */}
-            <div
-                className="relative overflow-hidden rounded-2xl p-3 text-white shadow-lg sm:p-3.5"
-                style={{ background: `linear-gradient(145deg, ${accentColor} 0%, #0f172a 100%)` }}
-            >
-                <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
-                <div className="relative">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
-                        <Timer size={11} />
-                        {t('avgPaceLabel')}
-                    </div>
-                    <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-2xl font-black tabular-nums leading-none sm:text-3xl">
-                            {formatAvgPaceSec(stats.avg)}
-                        </span>
-                        {paceUnit && <span className="text-xs font-semibold text-white/70">{paceUnit}/{roundLabel}</span>}
-                    </div>
-                    <div className="mt-2">
-                        <MiniSparkline values={sparkline} color="#fef08a" />
-                    </div>
-                    {stats.last != null && (
-                        <p className="mt-1 text-[9px] font-medium text-white/50">
-                            {t('lastPace', { sec: Math.round(stats.last) })}
-                        </p>
-                    )}
-                </div>
-            </div>
-
-            {/* Pace vs yesterday gauge */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 p-3 text-white shadow-lg sm:p-3.5">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
-                    <TrendingDown size={11} />
-                    {t('paceVsYesterday')}
-                </div>
-                <PaceGauge pct={comparison.paceDeltaPct} color={accentColor} />
-                <p className="mt-0.5 text-center text-[9px] font-medium text-white/50">
-                    {formatPaceDelta(comparison.paceDeltaPct, locale).text}
-                </p>
-            </div>
-
-            {/* Today vs yesterday bars */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900 to-slate-950 p-3 text-white shadow-lg sm:p-3.5">
-                <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
-                        <BarChart2 size={11} />
-                        {t('totalRounds')}
-                    </div>
-                    {roundsPct != null && (
-                        <span
-                            className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${
-                                roundsPct > 0 ? 'bg-emerald-500/20 text-emerald-300' : roundsPct < 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-white/10 text-white/60'
-                            }`}
-                        >
-                            {roundsSign}{Math.round(roundsPct)}%
-                        </span>
-                    )}
-                </div>
-                <CompareBars today={comparison.todayRounds} yesterday={comparison.yesterdayRounds} color={accentColor} />
-            </div>
-
-            {/* Work hours ring (sand/trip) or min/max range fallback */}
-            {workSummary ? (
-                <div
-                    className="relative overflow-hidden rounded-2xl p-3 text-white shadow-lg sm:p-3.5"
-                    style={{
-                        background:
-                            mode === 'sand'
-                                ? 'linear-gradient(145deg, #be185d 0%, #0f172a 100%)'
-                                : `linear-gradient(145deg, ${accentColor} 0%, #0f172a 100%)`,
-                    }}
+        <div className="space-y-2">
+            <p className="text-center text-[9px] font-medium text-slate-400 dark:text-slate-500 sm:text-left">{t('tapForDetail')}</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+                {/* Avg pace + sparkline */}
+                <button
+                    type="button"
+                    onClick={onOpenDetail}
+                    className={tileBtn}
+                    style={{ background: `linear-gradient(145deg, ${accentColor} 0%, #0f172a 100%)` }}
                 >
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
-                        <Clock size={11} />
-                        {mode === 'sand' ? t('workTime') : t('workTimeFleet')}
-                    </div>
-                    <div className="mt-1 flex items-center gap-3">
-                        <WorkRing
-                            hours={workSummary.totalActiveHours}
-                            targetHours={WORK_TARGET_HOURS}
-                            color={mode === 'sand' ? '#f9a8d4' : '#93c5fd'}
-                        />
-                        <div>
-                            <p className="text-lg font-black tabular-nums leading-none">
-                                {formatActiveHours(workSummary.totalActiveHours, locale)}
-                            </p>
+                    <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
+                    <div className="relative">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                            <Timer size={11} />
+                            {t('avgPaceLabel')}
+                        </div>
+                        <div className="mt-1 flex items-baseline gap-1">
+                            <span className="text-2xl font-black tabular-nums leading-none sm:text-3xl">
+                                {formatAvgPaceSec(stats.avg)}
+                            </span>
+                            {paceUnit && <span className="text-xs font-semibold text-white/70">{paceUnit}/{roundLabel}</span>}
+                        </div>
+                        <div className="mt-2">
+                            <MiniSparkline values={sparkline} color="#fef08a" />
+                        </div>
+                        {stats.last != null && (
                             <p className="mt-1 text-[9px] font-medium text-white/50">
-                                {t('targetHours', { hours: WORK_TARGET_HOURS })}
+                                {t('lastPace', { sec: Math.round(stats.last) })}
                             </p>
-                            {workSummary.startClock && workSummary.endClock && (
-                                <p className="text-[9px] text-white/60">
-                                    {workSummary.startClock} – {workSummary.endClock}
+                        )}
+                    </div>
+                </button>
+
+                {/* Pace vs yesterday gauge */}
+                <button type="button" onClick={onOpenDetail} className={`${tileBtn} bg-gradient-to-br from-slate-800 to-slate-950`}>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
+                        <TrendingDown size={11} />
+                        {t('paceVsYesterday')}
+                    </div>
+                    <PaceGauge pct={comparison.paceDeltaPct} color={accentColor} />
+                    <p className="mt-0.5 text-center text-[9px] font-medium text-white/50">
+                        {formatPaceDelta(comparison.paceDeltaPct, locale).text}
+                    </p>
+                </button>
+
+                {/* Today vs yesterday bars */}
+                <button type="button" onClick={onOpenDetail} className={`${tileBtn} bg-gradient-to-br from-indigo-900 to-slate-950`}>
+                    <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
+                            <BarChart2 size={11} />
+                            {t('totalRounds')}
+                        </div>
+                        {roundsPct != null && (
+                            <span
+                                className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${
+                                    roundsPct > 0 ? 'bg-emerald-500/20 text-emerald-300' : roundsPct < 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-white/10 text-white/60'
+                                }`}
+                            >
+                                {roundsSign}{Math.round(roundsPct)}%
+                            </span>
+                        )}
+                    </div>
+                    <CompareBars today={comparison.todayRounds} yesterday={comparison.yesterdayRounds} color={accentColor} />
+                </button>
+
+                {/* Work hours ring (sand/trip) or min/max range fallback */}
+                {workSummary ? (
+                    <button
+                        type="button"
+                        onClick={onOpenDetail}
+                        className={tileBtn}
+                        style={{
+                            background:
+                                mode === 'sand'
+                                    ? 'linear-gradient(145deg, #be185d 0%, #0f172a 100%)'
+                                    : `linear-gradient(145deg, ${accentColor} 0%, #0f172a 100%)`,
+                        }}
+                    >
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                            <Clock size={11} />
+                            {mode === 'sand' ? t('workTime') : t('workTimeFleet')}
+                        </div>
+                        <div className="mt-1 flex items-center gap-3">
+                            <WorkRing
+                                hours={workSummary.totalActiveHours}
+                                targetHours={WORK_TARGET_HOURS}
+                                color={mode === 'sand' ? '#f9a8d4' : '#93c5fd'}
+                            />
+                            <div>
+                                <p className="text-lg font-black tabular-nums leading-none">
+                                    {formatActiveHours(workSummary.totalActiveHours, locale)}
                                 </p>
+                                <p className="mt-1 text-[9px] font-medium text-white/50">
+                                    {t('targetHours', { hours: WORK_TARGET_HOURS })}
+                                </p>
+                                {workSummary.startClock && workSummary.endClock && (
+                                    <p className="text-[9px] text-white/60">
+                                        {workSummary.startClock} – {workSummary.endClock}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </button>
+                ) : (
+                    <button type="button" onClick={onOpenDetail} className={`${tileBtn} bg-gradient-to-br from-slate-700 to-slate-950`}>
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
+                            <Clock size={11} />
+                            {t('workSpan')}
+                        </div>
+                        <div className="mt-2 space-y-2">
+                            {stats.min != null && (
+                                <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
+                                    <span className="text-[9px] font-semibold text-emerald-300">{t('fastest')}</span>
+                                    <span className="text-sm font-black tabular-nums">{Math.round(stats.min)} {t('secUnit')}</span>
+                                </div>
+                            )}
+                            {stats.max != null && (
+                                <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
+                                    <span className="text-[9px] font-semibold text-amber-300">{t('slowest')}</span>
+                                    <span className="text-sm font-black tabular-nums">{Math.round(stats.max)} {t('secUnit')}</span>
+                                </div>
                             )}
                         </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-950 p-3 text-white shadow-lg sm:p-3.5">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
-                        <Clock size={11} />
-                        {t('workSpan')}
-                    </div>
-                    <div className="mt-2 space-y-2">
-                        {stats.min != null && (
-                            <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
-                                <span className="text-[9px] font-semibold text-emerald-300">{t('fastest')}</span>
-                                <span className="text-sm font-black tabular-nums">{Math.round(stats.min)} {t('secUnit')}</span>
-                            </div>
-                        )}
-                        {stats.max != null && (
-                            <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
-                                <span className="text-[9px] font-semibold text-amber-300">{t('slowest')}</span>
-                                <span className="text-sm font-black tabular-nums">{Math.round(stats.max)} {t('secUnit')}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };
