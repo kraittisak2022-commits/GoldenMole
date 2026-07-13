@@ -81,7 +81,15 @@ integrations:
 ### 1. ลบ Distribution cert เก่าบน Apple
 [Apple → Certificates](https://developer.apple.com/account/resources/certificates/list) → ลบ **Apple Distribution** ทั้งหมด
 
-### 2. สร้าง private key (Git Bash)
+### 2. สร้าง private key
+
+**วิธีเร็ว (PowerShell):**
+```powershell
+.\scripts\setup-ios-signing.ps1
+```
+สคริปต์จะสร้าง key แล้วแสดงบนจอพร้อมขั้นตอน (หรืออัปโหลดให้เลยถ้าตั้ง `CODEMAGIC_API_TOKEN` + `CODEMAGIC_APP_ID`)
+
+**หรือทำเอง (Git Bash):**
 ```bash
 openssl genrsa 2048
 ```
@@ -97,7 +105,10 @@ group `goldenmole_dashboard` → **`CERTIFICATE_PRIVATE_KEY`** (Secure)
 ```
 อย่าใส่เครื่องหมาย `"` หน้า-หลัง
 
-ตรวจว่า group `goldenmole_dashboard` ถูกเลือกใน workflow ของแอป (Application settings → Environment variables)
+**จุดที่คนพลาดบ่อย:**
+- ใส่ตรงช่อง **Variable group** ต้องพิมพ์/เลือก `goldenmole_dashboard` (ถ้าปล่อยว่าง ตัวแปรจะไม่อยู่ใน group และ build มองไม่เห็น)
+- ใส่ที่หน้า **แอป → Environment variables** (แท็บของแอปที่ build) ไม่ใช่แค่ Team settings
+- กดปุ่ม **Add** แล้วต้องเห็นตัวแปรโผล่ในรายการใต้ group `goldenmole_dashboard`
 
 ### 4. Start new build
 yaml เรียก `fetch-signing-files --create` สร้าง **Distribution certificate + App Store profile** อัตโนมัติ — **ไม่ต้อง** สร้างใน Apple/Codemagic UI ด้วยมือ
