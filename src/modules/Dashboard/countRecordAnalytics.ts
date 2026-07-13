@@ -438,6 +438,12 @@ export function formatAvgPaceUnit(sec: number | null, locale: FormatLocale = 'th
     return sec < 60 ? 'วิน.' : 'นาที';
 }
 
+export function formatPaceValue(sec: number | null, locale: FormatLocale = 'th'): string {
+    if (sec == null || !Number.isFinite(sec)) return '—';
+    const u = formatAvgPaceUnit(sec, locale);
+    return u ? `${formatAvgPaceSec(sec)} ${u}` : formatAvgPaceSec(sec);
+}
+
 export function formatDurationSec(sec: number | null, locale: FormatLocale = 'th'): string {
     if (sec == null || !Number.isFinite(sec)) return '—';
     if (sec < 60) {

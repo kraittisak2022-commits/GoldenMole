@@ -24,6 +24,7 @@ import {
     computeTripPeriodSplit,
     computeVehicleComparison,
     formatActiveHours,
+    formatPaceValue,
     mergeTripLapTimeline,
     timelineToLapStamps,
     type PeriodSplit,
@@ -936,7 +937,7 @@ function VehicleSummaryCard({
     color: string;
     defaultOpen?: boolean;
 }) {
-    const { t } = useShareLocale();
+    const { t, locale } = useShareLocale();
     const [open, setOpen] = useState(defaultOpen ?? false);
     const stats = useMemo(() => {
         const intervals = computeLapIntervals(lapTimes, dayKey);
@@ -968,7 +969,7 @@ function VehicleSummaryCard({
                         <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">
                             <p className="text-[9px] font-bold uppercase text-slate-400">{t('avgPaceLabel')}</p>
                             <p className="text-sm font-black tabular-nums text-slate-800 dark:text-slate-100">
-                                {stats.avg != null ? `${Math.round(stats.avg)} ${t('secUnit')}` : '—'}
+                                {stats.avg != null ? formatPaceValue(stats.avg, locale) : '—'}
                             </p>
                         </div>
                         <div className="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60">

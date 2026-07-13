@@ -5,6 +5,7 @@ import {
     formatAvgPaceSec,
     formatAvgPaceUnit,
     formatPaceDelta,
+    formatPaceValue,
     type DayModeComparison,
     type IntervalStats,
     type SandWorkDurationSummary,
@@ -189,7 +190,7 @@ const CountRecordStatTiles = ({
                         </div>
                         {stats.last != null && (
                             <p className="mt-1 text-[9px] font-medium text-white/50">
-                                {t('lastPace', { sec: Math.round(stats.last) })}
+                                {t('latestLabel')} {formatPaceValue(stats.last, locale)}
                             </p>
                         )}
                     </div>
@@ -275,13 +276,13 @@ const CountRecordStatTiles = ({
                             {stats.min != null && (
                                 <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
                                     <span className="text-[9px] font-semibold text-emerald-300">{t('fastest')}</span>
-                                    <span className="text-sm font-black tabular-nums">{Math.round(stats.min)} {t('secUnit')}</span>
+                                    <span className="text-sm font-black tabular-nums">{formatPaceValue(stats.min, locale)}</span>
                                 </div>
                             )}
                             {stats.max != null && (
                                 <div className="flex items-center justify-between rounded-lg bg-white/5 px-2 py-1.5">
                                     <span className="text-[9px] font-semibold text-amber-300">{t('slowest')}</span>
-                                    <span className="text-sm font-black tabular-nums">{Math.round(stats.max)} {t('secUnit')}</span>
+                                    <span className="text-sm font-black tabular-nums">{formatPaceValue(stats.max, locale)}</span>
                                 </div>
                             )}
                         </div>

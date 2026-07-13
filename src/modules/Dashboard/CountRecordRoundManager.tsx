@@ -8,6 +8,7 @@ import {
     driverDisplayName,
     getLapTimes,
 } from './countRecordUtils';
+import { getEmployeePositionTokens } from './dailyStepRecorderUtils';
 
 interface CountRecordRoundManagerProps {
     open: boolean;
@@ -34,6 +35,8 @@ interface ManagedRow {
 interface RowDraft {
     laps: string[];
     countOnly: number;
+    vehicleId: string;
+    driverId: string;
 }
 
 function lapTimePart(stamp: string): string {
@@ -94,17 +97,28 @@ function sandCountFromTx(t: Transaction): number {
 
 function buildDraftFromTx(tx: Transaction, kind: RowKind): RowDraft {
     const laps = getLapTimes(tx);
-    if (laps.length > 0) return { laps: [...laps], countOnly: laps.length };
+    const vehicleId = String(tx.vehicleId ?? '').trim();
+    const driverId = String(tx.driverId ?? '').trim();
+    if (laps.length > 0) return { laps: [...laps], countOnly: laps.length, vehicleId, driverId };
     const countOnly = kind === 'trip' ? tripCountFromTx(tx) : sandCountFromTx(tx);
-    return { laps: [], countOnly };
+    return { laps: [], countOnly, vehicleId, driverId };
 }
 
-function buildTripTransaction(tx: Transaction, laps: string[], count: number): Transaction {
+function buildTripTransaction(
+    tx: Transaction,
+    laps: string[],
+    count: number,
+    vehicleId: string,
+    driverId: string,
+): Transaction {
     const periods = countRecordLapPeriods({ ...tx, workAssignments: { lapTimes: laps } });
     const r = count;
+    const vid = vehicleId.trim();
     return {
         ...tx,
-        description: `${String(tx.vehicleId ?? '').trim()}: ${r} เที่ยว`,
+        vehicleId: vid,
+        driverId: driverId.trim() || undefined,
+        description: `${vid}: ${r} เที่ยว`,
         tripCount: r,
         perCarTrips: r,
         tripMorning: periods.morning + periods.unknown,
@@ -173,6 +187,11 @@ const CountRecordRoundManager = ({
         [rows, filterKind],
     );
 
+    const driverEmployees = useMemo(
+        () => employees.filter((e) => getEmployeePositionTokens(e).includes('คนขับรถ')),
+        [employees],
+    );
+
     const modalTitle = useMemo(() => {
         if (filterKind === 'trip') return 'จัดการรอบ — จำนวนเที่ยวรถ';
         if (filterKind === 'sand') return 'จัดการรอบ — การร่อนทราย';
@@ -210,7 +229,7 @@ const CountRecordRoundManager = ({
     const handleDeleteLap = (rowId: string, lapIndex: number) => {
         updateDraft(rowId, (d) => {
             const laps = d.laps.filter((_, i) => i !== lapIndex);
-            return { laps, countOnly: laps.length > 0 ? laps.length : Math.max(0, d.countOnly - 1) };
+            return { ...d, laps, countOnly: laps.length > 0 ? laps.length : Math.max(0, d.countOnly - 1) };
         });
     };
 
@@ -221,12 +240,20 @@ const CountRecordRoundManager = ({
             if (!stamp) return d;
             laps[lapIndex] = stampWithTime(stamp, hhmmss.length === 5 ? `${hhmmss}:00` : hhmmss);
             const sorted = sortLaps(laps);
-            return { laps: sorted, countOnly: sorted.length };
+            return { ...d, laps: sorted, countOnly: sorted.length };
         });
     };
 
     const handleCountOnlyChange = (rowId: string, value: number) => {
         updateDraft(rowId, (d) => ({ ...d, countOnly: Math.max(0, Math.round(value)) }));
+    };
+
+    const handleVehicleIdChange = (rowId: string, value: string) => {
+        updateDraft(rowId, (d) => ({ ...d, vehicleId: value }));
+    };
+
+    const handleDriverIdChange = (rowId: string, value: string) => {
+        updateDraft(rowId, (d) => ({ ...d, driverId: value }));
     };
 
     const handleSaveRow = async (row: ManagedRow) => {
@@ -235,6 +262,11 @@ const CountRecordRoundManager = ({
 
         const laps = draft.laps;
         const count = laps.length > 0 ? laps.length : draft.countOnly;
+
+        if (row.kind === 'trip' && !draft.vehicleId.trim()) {
+            window.alert('กรุณาระบุชื่อรถ');
+            return;
+        }
 
         if (count <= 0 && laps.length === 0) {
             const ok = window.confirm(
@@ -253,13 +285,14 @@ const CountRecordRoundManager = ({
 
         const updated =
             row.kind === 'trip'
-                ? buildTripTransaction(row.tx, laps, count)
+                ? buildTripTransaction(row.tx, laps, count, draft.vehicleId, draft.driverId)
                 : buildSandTransaction(row.tx, laps, count);
 
         setBusyId(row.id);
         try {
             await onSaveTransaction(updated);
-            setMessage(`บันทึก ${row.title} แล้ว (${count} ${row.kind === 'trip' ? 'เที่ยว' : 'รอบ'})`);
+            const savedTitle = row.kind === 'trip' ? draft.vehicleId.trim() : row.title;
+            setMessage(`บันทึก ${savedTitle} แล้ว (${count} ${row.kind === 'trip' ? 'เที่ยว' : 'รอบ'})`);
         } finally {
             setBusyId(null);
         }
@@ -388,6 +421,45 @@ const CountRecordRoundManager = ({
                                                 </button>
                                             </div>
                                         </div>
+
+                                        {row.kind === 'trip' && (
+                                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                                <label className="block">
+                                                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                                        ชื่อรถ
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        value={draft.vehicleId}
+                                                        onChange={(e) => handleVehicleIdChange(row.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                                                    />
+                                                </label>
+                                                <label className="block">
+                                                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                                        คนขับ
+                                                    </span>
+                                                    <select
+                                                        value={draft.driverId}
+                                                        onChange={(e) => handleDriverIdChange(row.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                                                    >
+                                                        <option value="">-- ยังไม่ระบุ --</option>
+                                                        {driverEmployees.map((e) => (
+                                                            <option key={e.id} value={e.id}>
+                                                                {driverDisplayName(e.id, employees)}
+                                                            </option>
+                                                        ))}
+                                                        {draft.driverId &&
+                                                            !driverEmployees.some((e) => e.id === draft.driverId) && (
+                                                                <option value={draft.driverId}>
+                                                                    {driverDisplayName(draft.driverId, employees)}
+                                                                </option>
+                                                            )}
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        )}
 
                                         {hasLaps ? (
                                             <ul className="mt-4 space-y-2">

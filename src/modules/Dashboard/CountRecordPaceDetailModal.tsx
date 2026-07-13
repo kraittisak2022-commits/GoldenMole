@@ -8,6 +8,7 @@ import {
     formatAvgPaceSec,
     formatAvgPaceUnit,
     formatPaceDelta,
+    formatPaceValue,
     type DayModeComparison,
     type IntervalStats,
     type SandWorkDurationSummary,
@@ -125,7 +126,7 @@ const CountRecordPaceDetailModal = ({
                                 <div className="rounded-xl bg-emerald-50 px-2 py-2 text-center dark:bg-emerald-500/10">
                                     <p className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300">{t('fastest')}</p>
                                     <p className="text-sm font-black tabular-nums text-emerald-900 dark:text-emerald-100">
-                                        {Math.round(stats.min)} {t('secUnit')}
+                                        {formatPaceValue(stats.min, locale)}
                                     </p>
                                 </div>
                             )}
@@ -133,7 +134,7 @@ const CountRecordPaceDetailModal = ({
                                 <div className="rounded-xl bg-amber-50 px-2 py-2 text-center dark:bg-amber-500/10">
                                     <p className="text-[9px] font-bold text-amber-700 dark:text-amber-300">{t('slowest')}</p>
                                     <p className="text-sm font-black tabular-nums text-amber-900 dark:text-amber-100">
-                                        {Math.round(stats.max)} {t('secUnit')}
+                                        {formatPaceValue(stats.max, locale)}
                                     </p>
                                 </div>
                             )}
@@ -141,7 +142,7 @@ const CountRecordPaceDetailModal = ({
                                 <div className="rounded-xl bg-slate-100 px-2 py-2 text-center dark:bg-slate-700/50">
                                     <p className="text-[9px] font-bold text-slate-600 dark:text-slate-300">{t('latestLabel')}</p>
                                     <p className="text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">
-                                        {Math.round(stats.last)} {t('secUnit')}
+                                        {formatPaceValue(stats.last, locale)}
                                     </p>
                                 </div>
                             )}
@@ -157,8 +158,8 @@ const CountRecordPaceDetailModal = ({
                         <p className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{paceDelta.text}</p>
                         {comparison.todayAvgSec != null && comparison.yesterdayAvgSec != null && (
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {t('todayLabel')}: {Math.round(comparison.todayAvgSec)} {t('secUnit')} · {t('yesterdayLabel')}:{' '}
-                                {Math.round(comparison.yesterdayAvgSec)} {t('secUnit')}
+                                {t('todayLabel')}: {formatPaceValue(comparison.todayAvgSec, locale)} · {t('yesterdayLabel')}:{' '}
+                                {formatPaceValue(comparison.yesterdayAvgSec, locale)}
                             </p>
                         )}
                     </section>
@@ -239,7 +240,7 @@ const CountRecordPaceDetailModal = ({
                                             {row.vehicleId}
                                         </span>
                                         <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
-                                            {row.avg != null ? `${Math.round(row.avg)} ${t('secUnit')}` : '—'} · {row.rounds}{' '}
+                                            {row.avg != null ? formatPaceValue(row.avg, locale) : '—'} · {row.rounds}{' '}
                                             {roundLabel}
                                         </span>
                                     </li>
