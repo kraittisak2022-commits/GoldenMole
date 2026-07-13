@@ -14,7 +14,7 @@ struct DashboardShell: View {
             .navigationTitle(appState.settings.appName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(role: .destructive) {
                             auth.logout()
@@ -25,7 +25,7 @@ struct DashboardShell: View {
                         Image(systemName: "person.circle")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await appState.refresh() }
                     } label: {
