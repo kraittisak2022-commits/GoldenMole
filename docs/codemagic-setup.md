@@ -72,38 +72,34 @@ integrations:
 |----------|--------|-----|
 | `SUPABASE_URL` | ใช่ | `https://cocvespahjymyrvmqzcs.supabase.co` |
 | `SUPABASE_ANON_KEY` | ใช่ | ดูใน `codemagic.secrets.yaml` (ไฟล์ local ไม่ commit) |
-| `CERTIFICATE_PRIVATE_KEY` | ใช่ | ดูขั้นที่ 3.5 — **ต้องมี** ก่อน build iOS |
 
-> Codemagic ใช้ `CERTIFICATE_PRIVATE_KEY` จาก env อัตโนมัติตอน `fetch-signing-files --create` (ตาม [ตัวอย่างทางการ](https://github.com/codemagic-ci-cd/codemagic-sample-projects/blob/main/codemagic.yaml))
+> **ไม่ต้อง**ใส่ `CERTIFICATE_PRIVATE_KEY` ถ้าสร้าง cert + profile ใน Codemagic UI แล้ว (ดูขั้นที่ 3.5)
 
 ---
 
-## ขั้นที่ 3.5 — Code signing (ทำก่อน build แรก)
+## ขั้นที่ 3.5 — Code signing ใน Codemagic UI (แนะนำ)
 
-### ทำตามลำดับนี้
+### 1. สร้าง Distribution certificate
+**Code signing identities** → **iOS certificates** → **Generate certificate**
 
-1. **ลบ Distribution cert เก่า** ที่ไม่มี private key ใน Codemagic  
-   [Apple Developer → Certificates](https://developer.apple.com/account/resources/certificates/list)  
-   ลบทั้งหมดที่เป็น **Apple Distribution** / **iOS Distribution** (ตอนนี้มี 2 ใบ → ทำให้เกิด error 409)
+| ช่อง | ค่า |
+|------|-----|
+| Reference name | `goldenmole_dist` |
+| Certificate type | **Apple Distribution** |
+| API key | `codemagic` |
 
-2. **สร้าง private key คงที่** (รันบนเครื่อง Windows หรือ Mac):
-   ```powershell
-   openssl genrsa 2048
-   ```
-   Copy ผลลัพธ์ทั้งก้อน รวมบรรทัด `-----BEGIN RSA PRIVATE KEY-----` … `-----END RSA PRIVATE KEY-----`
+### 2. ดึง App Store provisioning profile
+**iOS provisioning profiles** → **Fetch profiles** → ติ๊ก **Goldenmole Dashboard** (`com.goldenmole.dashboard`) → **Download selected** → Reference name: `goldenmole_appstore`
 
-3. **Codemagic** → env group `goldenmole_dashboard` → เพิ่ม:
-   - Name: `CERTIFICATE_PRIVATE_KEY`
-   - Secure: เปิด
-   - Value: วาง private key จากข้อ 2
+### 3. ตรวจก่อน build
+- Certificate มีเครื่องหมายถูกสีเขียวที่ profile
+- Profile ยังไม่หมดอายุ
 
-4. **Start new build** จาก `main` — ครั้งแรกจะสร้าง Distribution certificate + App Store profile ให้อัตโนมัติ
+yaml ใช้ `ios_signing` ดึง cert + profile จาก Codemagic อัตโนมัติ — **ไม่ต้อง** `CERTIFICATE_PRIVATE_KEY`
 
-5. **อย่าลบ** `CERTIFICATE_PRIVATE_KEY` หลัง build สำเร็จ — ใช้ cert เดิมใน build ถัดไป
+### ทางเลือก: ใช้ openssl + env (ไม่แนะนำถ้าทำ UI แล้ว)
 
-### ถ้าไม่มี openssl บน Windows
-
-ติดตั้ง [Git for Windows](https://git-scm.com/) แล้วใช้ **Git Bash** รัน `openssl genrsa 2048`
+ลบ Distribution cert เก่าบน Apple → `openssl genrsa 2048` → ใส่ `CERTIFICATE_PRIVATE_KEY` ใน env group แล้วใช้ yaml แบบ `fetch-signing-files --create`
 
 ---
 
@@ -140,10 +136,9 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 | Error | แก้ |
 |-------|-----|
 | Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
-| `CERTIFICATE_PRIVATE_KEY is missing` | ทำขั้นที่ 3.5 — สร้าง key + ใส่ใน env group |
-| 409 Distribution certificate | ลบ Distribution cert เก่าใน Apple Developer แล้ว build ใหม่ |
-| No profiles for bundle id | ใส่ `CERTIFICATE_PRIVATE_KEY` แล้ว build — `--create` จะสร้าง profile ให้ |
-| Cannot save certificate without private key | ใส่ `CERTIFICATE_PRIVATE_KEY` ใน group `goldenmole_dashboard` |
+| `CERTIFICATE_PRIVATE_KEY is missing` | ใช้ yaml ล่าสุด (`ios_signing`) + cert/profile ใน Code signing identities |
+| No profiles for bundle id | Fetch App Store profile สำหรับ `com.goldenmole.dashboard` ใน Codemagic UI |
+| 409 Distribution certificate | ลบ Distribution cert เก่าใน Apple Developer |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
 
 ---

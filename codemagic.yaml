@@ -5,8 +5,8 @@
 # Prerequisites:
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
 # 2. Team integrations → Developer Portal → API key named "codemagic"
-# 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY, CERTIFICATE_PRIVATE_KEY
-# 4. Revoke unused Apple Distribution certs before first build (Apple limit: 3)
+# 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY
+# 4. Code signing identities: Apple Distribution cert + App Store profile for com.goldenmole.dashboard
 
 workflows:
   goldenmole-dashboard-ios:
@@ -16,6 +16,9 @@ workflows:
     integrations:
       app_store_connect: codemagic
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.goldenmole.dashboard
       groups:
         - goldenmole_dashboard
       vars:
@@ -34,23 +37,6 @@ workflows:
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
-      - name: Set up keychain for code signing
-        script: keychain initialize
-      - name: Fetch signing files from Apple Developer Portal
-        script: |
-          set -e
-          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
-            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_dashboard."
-            echo "1. Revoke unused Distribution certs: https://developer.apple.com/account/resources/certificates/list"
-            echo "2. Run: openssl genrsa 2048"
-            echo "3. Codemagic → goldenmole_dashboard → add CERTIFICATE_PRIVATE_KEY (secure) = full openssl output"
-            exit 1
-          fi
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-      - name: Add certificates to keychain
-        script: keychain add-certificates
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Increment build number
