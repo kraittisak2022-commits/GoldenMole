@@ -1,14 +1,12 @@
 # Goldenmole Dashboard — Codemagic iOS workflow
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/
+# Setup guide: docs/codemagic-setup.md
 #
-# One-time setup in Codemagic UI:
-# 1. Connect this repository (GitHub: GoldenMole)
-# 2. Team/App variables → group "goldenmole_dashboard":
-#    - SUPABASE_URL
-#    - SUPABASE_ANON_KEY
-# 3. Integrations → App Store Connect API key (name it e.g. "codemagic")
-# 4. Replace APP_STORE_APPLE_ID below with your App Store Connect app ID
-# 5. Click "Check configuration file" after pushing this file
+# One-time Codemagic UI (or run scripts/sync-codemagic-env.ps1 with API token):
+# 1. Connect repo https://github.com/kraittisak2022-commits/GoldenMole
+# 2. Team variables → group "goldenmole_dashboard" (SUPABASE_URL, SUPABASE_ANON_KEY)
+# 3. Integrations → App Store Connect API key named "codemagic"
+# 4. Check configuration file → Start build
 
 workflows:
   goldenmole-dashboard-ios:
@@ -27,7 +25,7 @@ workflows:
         BUNDLE_ID: "com.goldenmole.dashboard"
         XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
         XCODE_SCHEME: "GoldenmoleDashboard"
-        APP_STORE_APPLE_ID: 0000000000 # <-- App Store Connect → App → General → Apple ID
+        APP_STORE_APPLE_ID: 6700211727
       xcode: latest
     scripts:
       - name: Install XcodeGen and generate Xcode project
@@ -44,7 +42,7 @@ workflows:
       - name: Increment build number
         script: |
           cd "$CM_BUILD_DIR/ios-swiftui"
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
           agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
       - name: Build ipa for distribution
         script: |
@@ -59,12 +57,10 @@ workflows:
     publishing:
       email:
         recipients:
-          - user@example.com # <-- replace with your email
+          - kraittisak2022@gmail.com
         notify:
           success: true
           failure: true
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Internal testers

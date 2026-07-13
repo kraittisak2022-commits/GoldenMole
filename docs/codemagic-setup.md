@@ -1,0 +1,105 @@
+# Codemagic setup — Goldenmole Dashboard iOS
+
+คู่มือตั้งค่า build iOS บน Codemagic จาก Windows (ไม่ต้องมี Mac)
+
+## สิ่งที่ตั้งค่าใน repo แล้ว
+
+| รายการ | ค่า |
+|--------|-----|
+| Bundle ID | `com.goldenmole.dashboard` |
+| App Store Apple ID | `6700211727` |
+| Workflow | `goldenmole-dashboard-ios` |
+| Integration name | `codemagic` |
+| Env group | `goldenmole_dashboard` |
+| Build notify email | `kraittisak2022@gmail.com` |
+
+---
+
+## ขั้นที่ 1 — เชื่อม GitHub กับ Codemagic
+
+1. เปิด [codemagic.io](https://codemagic.io/) → login
+2. **Applications** → **Add application**
+3. เลือก **GitHub** → repo `kraittisak2022-commits/GoldenMole`
+4. เลือก **codemagic.yaml** เป็น config file
+5. **Check for configuration file** ควรเห็น workflow `Goldenmole Dashboard iOS`
+
+---
+
+## ขั้นที่ 2 — App Store Connect API key
+
+### สร้างที่ Apple (ถ้ายังไม่มี)
+
+1. [App Store Connect](https://appstoreconnect.apple.com/) → **Users and Access** → **Integrations**
+2. **App Store Connect API** → **+** Generate
+3. Name: `Codemagic` · Access: **App Manager**
+4. ดาวน์โหลด `.p8` (ครั้งเดียว) · จด **Issuer ID** และ **Key ID**
+
+### ใส่ใน Codemagic
+
+1. Codemagic → **Teams** → **Team settings** → **Integrations**
+2. **Developer Portal** / **App Store Connect** → **Connect**
+3. ตั้งชื่อ integration: **`codemagic`** (ต้องตรงกับ `codemagic.yaml`)
+4. ใส่ Issuer ID, Key ID, อัปโหลดไฟล์ `.p8`
+5. **Save**
+
+Codemagic จะสร้าง Distribution certificate + provisioning profile อัตโนมัติ — **ไม่ต้องสร้าง CSR เอง**
+
+---
+
+## ขั้นที่ 3 — ตัวแปร Supabase
+
+### วิธี A: วางใน Codemagic UI (ง่ายสุด)
+
+**Team settings** → **Environment variables** → สร้าง group **`goldenmole_dashboard`**:
+
+| Variable | Secure | ค่า |
+|----------|--------|-----|
+| `SUPABASE_URL` | ใช่ | `https://cocvespahjymyrvmqzcs.supabase.co` |
+| `SUPABASE_ANON_KEY` | ใช่ | ดูใน `codemagic.secrets.yaml` (ไฟล์ local ไม่ commit) |
+
+หรือ copy จาก `codemagic.secrets.yaml` ในเครื่องคุณ
+
+### วิธี B: Sync ด้วย API
+
+```powershell
+$env:CODEMAGIC_API_TOKEN = "your-codemagic-api-token"
+$env:CODEMAGIC_TEAM_ID = "your-team-id"
+.\scripts\sync-codemagic-env.ps1
+```
+
+API token: Codemagic → **User settings** → **Integrations** → **Codemagic API**
+
+---
+
+## ขั้นที่ 4 — รัน build
+
+1. Push branch ที่มี `codemagic.yaml` อัปเดตแล้ว
+2. Codemagic → แอป → **Start new build** → workflow **Goldenmole Dashboard iOS**
+3. รอ build + อัปโหลด TestFlight (~15–30 นาที)
+
+---
+
+## หลัง build สำเร็จ
+
+1. App Store Connect → **TestFlight** → รอ processing
+2. เพิ่ม internal tester (อีเมล Apple ID)
+3. ติดตั้งแอปผ่าน TestFlight บน iPhone
+
+---
+
+## Troubleshooting
+
+| Error | แก้ |
+|-------|-----|
+| Integration `codemagic` not found | ตั้งชื่อ integration ใน Codemagic ให้ตรง `codemagic` |
+| No profiles for bundle id | สร้าง App ID `com.goldenmole.dashboard` ใน Apple Developer |
+| SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
+| get-latest-app-store-build-number | build แรกใช้ build number 1 อัตโนมัติ (มี fallback ใน yaml) |
+
+---
+
+## ไฟล์ที่เกี่ยวข้อง
+
+- `codemagic.yaml` — workflow หลัก
+- `codemagic.secrets.yaml` — ค่า Supabase local (gitignored)
+- `scripts/sync-codemagic-env.ps1` — อัปโหลด env ไป Codemagic
