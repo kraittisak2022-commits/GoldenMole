@@ -1,0 +1,25 @@
+---
+description: React + TypeScript + Vite conventions for this app
+alwaysApply: false
+globs: "**/*.{ts,tsx}"
+---
+
+# Stack
+
+- React 18, TypeScript (strict), Vite, Supabase (`src/lib/supabase.ts`, `src/services/dataService.ts`)
+- Tests: Vitest (`*.test.ts`, `*.test.tsx`), E2E: Playwright (`e2e/`)
+- Icons: `lucide-react`
+
+# Layout
+
+- Feature modules: `src/modules/<Name>/`
+- Shared UI: `src/components/ui/` — extend these before adding one-off styles
+- Hooks: `src/hooks/`, types: `src/types/`, utils: `src/utils/`
+- Lazy routes: use `lazyWithRetry` from `src/utils/lazyWithRetry.ts`
+
+# Code style
+
+- Match existing patterns in the file you edit (default exports, inline Tailwind `className` strings, Thai copy via `t()` / `src/utils/i18n.ts` where the module already uses i18n)
+- Prefer focused changes; do not relax ESLint rules or widen `any` usage to silence errors
+- Data access goes through existing services; avoid duplicating Supabase queries in components
+- New behavior: add or update Vitest tests when the area already has test files
