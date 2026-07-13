@@ -40,18 +40,31 @@ workflows:
         script: keychain initialize
       - name: Create and fetch signing files automatically
         script: |
-          set -e
+          set -euo pipefail
           if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
             echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_dashboard."
             echo "One-time setup:"
-            echo "  1. Revoke all Distribution certs: https://developer.apple.com/account/resources/certificates/list"
+            echo "  1. Revoke ALL Distribution certs: https://developer.apple.com/account/resources/certificates/list"
             echo "  2. Git Bash: openssl genrsa 2048"
             echo "  3. Codemagic → goldenmole_dashboard → add CERTIFICATE_PRIVATE_KEY (secure)"
+            echo "     Paste full PEM including -----BEGIN RSA PRIVATE KEY----- lines. No quotes."
             exit 1
           fi
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+          CERT_KEY_PATH="$HOME/cert_key.pem"
+          printf '%s\n' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+          if ! openssl rsa -in "$CERT_KEY_PATH" -check -noout 2>/dev/null; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is invalid. Regenerate with: openssl genrsa 2048"
+            exit 1
+          fi
+          if ! app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=@file:"$CERT_KEY_PATH"; then
+            echo ""
+            echo "If you see error 409: revoke ALL Apple Distribution certs, then rebuild."
+            echo "https://developer.apple.com/account/resources/certificates/list"
+            exit 1
+          fi
       - name: Add certificates to keychain
         script: keychain add-certificates
       - name: Set up code signing settings on Xcode project

@@ -87,7 +87,17 @@ openssl genrsa 2048
 ```
 
 ### 3. ใส่ใน Codemagic
-group `goldenmole_dashboard` → **`CERTIFICATE_PRIVATE_KEY`** (Secure) = ผลลัพธ์ทั้งก้อน
+group `goldenmole_dashboard` → **`CERTIFICATE_PRIVATE_KEY`** (Secure)
+
+วางแบบนี้ (ต้องมีบรรทัด BEGIN/END):
+```
+-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----
+```
+อย่าใส่เครื่องหมาย `"` หน้า-หลัง
+
+ตรวจว่า group `goldenmole_dashboard` ถูกเลือกใน workflow ของแอป (Application settings → Environment variables)
 
 ### 4. Start new build
 yaml เรียก `fetch-signing-files --create` สร้าง **Distribution certificate + App Store profile** อัตโนมัติ — **ไม่ต้อง** สร้างใน Apple/Codemagic UI ด้วยมือ
