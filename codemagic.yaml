@@ -9,6 +9,10 @@
 # 4. Revoke all Apple Distribution certs (Apple limit: 3) before first auto-signing build
 #
 # Each build: fetch-signing-files --create auto-creates Distribution cert + App Store profile.
+#
+# App Preview (browser simulator): run workflow "Goldenmole Dashboard iOS (Simulator Preview)"
+# Docs: https://docs.codemagic.io/yaml-distributing/app-preview/
+# Requires App Preview enabled in Codemagic team settings. Click Quick Launch on the .app artifact.
 
 workflows:
   goldenmole-dashboard-ios:
@@ -102,3 +106,41 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+
+  goldenmole-dashboard-ios-preview:
+    name: Goldenmole Dashboard iOS (Simulator Preview)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - goldenmole_dashboard
+      vars:
+        XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
+        XCODE_SCHEME: "GoldenmoleDashboard"
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen and generate Xcode project
+        script: |
+          brew install xcodegen
+          cd "$CM_BUILD_DIR/ios-swiftui"
+          cat > Config/Secrets.xcconfig <<EOF
+          SUPABASE_URL = $SUPABASE_URL
+          SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
+          EOF
+          xcodegen generate
+      - name: Build for iOS Simulator
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/ios-swiftui"
+          xcodebuild build \
+            -project GoldenmoleDashboard.xcodeproj \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+          echo "Simulator .app artifacts:"
+          find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 8 -path '*/Build/Products/Debug-iphonesimulator/*.app' 2>/dev/null || true
+    artifacts:
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/Products/Debug-iphonesimulator/*.app
+      - /tmp/xcodebuild_logs/*.log
