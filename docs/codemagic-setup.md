@@ -140,10 +140,10 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 | Error | แก้ |
 |-------|-----|
 | Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
-| `CERTIFICATE_PRIVATE_KEY is missing` | ใช้ yaml ล่าสุด (`ios_signing`) + cert/profile ใน Code signing identities |
-| No matching certificate for profile | อัปโหลด `.p12` หลัง Generate cert; ตรวจชื่อ reference ตรง yaml |
-| No profiles for bundle id | Fetch App Store profile สำหรับ `com.goldenmole.dashboard` ใน Codemagic UI |
-| 409 Distribution certificate | ลบ Distribution cert เก่าใน Apple Developer |
+| `CERTIFICATE_PRIVATE_KEY is missing` | เพิ่มใน group `goldenmole_dashboard` + ผูก group กับ workflow |
+| `CERTIFICATE_PRIVATE_KEY is invalid` | `openssl genrsa 2048` ใหม่ วาง PEM ทั้งก้อน ไม่มี quotes |
+| Cannot save certificate without private key | ใส่ `CERTIFICATE_PRIVATE_KEY` ให้ถูกต้อง (ดูขั้น 3.5) |
+| 409 Distribution certificate | ลบ Distribution cert **ทั้งหมด** บน Apple แล้ว build ใหม่ |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
 
 ---
