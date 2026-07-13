@@ -2,13 +2,13 @@
 # Docs: https://docs.codemagic.io/yaml-code-signing/signing-ios/
 # Setup guide: docs/codemagic-setup.md
 #
-# Prerequisites:
+# One-time setup:
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
 # 2. Team integrations → Developer Portal → API key named "codemagic"
-# 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY
-# 4. Code signing identities (reference names must match codemagic.yaml exactly):
-# 4. Code signing identities: Apple Distribution cert + App Store profile for com.goldenmole.dashboard
-#    (auto-matched by distribution_type + bundle_identifier below)
+# 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY, CERTIFICATE_PRIVATE_KEY
+# 4. Revoke all Apple Distribution certs (Apple limit: 3) before first auto-signing build
+#
+# Each build: fetch-signing-files --create auto-creates Distribution cert + App Store profile.
 
 workflows:
   goldenmole-dashboard-ios:
@@ -18,9 +18,6 @@ workflows:
     integrations:
       app_store_connect: codemagic
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.goldenmole.dashboard
       groups:
         - goldenmole_dashboard
       vars:
@@ -39,6 +36,24 @@ workflows:
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
+      - name: Set up keychain for code signing
+        script: keychain initialize
+      - name: Create and fetch signing files automatically
+        script: |
+          set -e
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_dashboard."
+            echo "One-time setup:"
+            echo "  1. Revoke all Distribution certs: https://developer.apple.com/account/resources/certificates/list"
+            echo "  2. Git Bash: openssl genrsa 2048"
+            echo "  3. Codemagic → goldenmole_dashboard → add CERTIFICATE_PRIVATE_KEY (secure)"
+            exit 1
+          fi
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Add certificates to keychain
+        script: keychain add-certificates
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Increment build number
