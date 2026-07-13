@@ -3,7 +3,7 @@
 # to the goldenmole_dashboard variable group via Codemagic REST API.
 #
 # Usage:
-#   $env:CODEMAGIC_API_TOKEN = "your-token"   # Codemagic → User settings → Integrations → Codemagic API
+#   $env:CODEMAGIC_API_TOKEN = "your-token"   # Codemagic > User settings > Integrations > Codemagic API
 #   $env:CODEMAGIC_APP_ID   = "app-id"        # from app URL: https://codemagic.io/app/<APP_ID>
 #   .\scripts\setup-ios-signing.ps1
 #
@@ -13,13 +13,16 @@ $ErrorActionPreference = "Stop"
 $group = "goldenmole_dashboard"
 
 # Locate openssl (PATH or Git for Windows default)
-$openssl = Get-Command openssl -ErrorAction SilentlyContinue
-if (-not $openssl) {
-    $gitOpenssl = "C:\Program Files\Git\usr\bin\openssl.exe"
-    if (Test-Path $gitOpenssl) { $openssl = $gitOpenssl }
-    else { Write-Error "openssl not found. Install Git for Windows: https://git-scm.com/" }
+$opensslCmd = Get-Command openssl -ErrorAction SilentlyContinue
+if ($opensslCmd) {
+    $openssl = $opensslCmd.Source
 } else {
-    $openssl = $openssl.Source
+    $gitOpenssl = "C:\Program Files\Git\usr\bin\openssl.exe"
+    if (Test-Path $gitOpenssl) {
+        $openssl = $gitOpenssl
+    } else {
+        Write-Error "openssl not found. Install Git for Windows: https://git-scm.com/"
+    }
 }
 
 Write-Host "Generating RSA 2048 private key..."
@@ -36,12 +39,12 @@ $appId = $env:CODEMAGIC_APP_ID
 
 if (-not $token -or -not $appId) {
     Write-Host ""
-    Write-Host "CODEMAGIC_API_TOKEN / CODEMAGIC_APP_ID not set — manual step required." -ForegroundColor Yellow
+    Write-Host "CODEMAGIC_API_TOKEN / CODEMAGIC_APP_ID not set - manual step required." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "1. Copy the key below (already saved to $keyPath):"
+    Write-Host "1. Copy the key below (also saved to $keyPath):"
     Write-Host ""
     Write-Host $pem
-    Write-Host "2. Codemagic -> app -> Environment variables tab:"
+    Write-Host "2. Codemagic > app > Environment variables tab:"
     Write-Host "   - Variable name : CERTIFICATE_PRIVATE_KEY"
     Write-Host "   - Value         : paste the key above (all lines)"
     Write-Host "   - Group         : $group"
@@ -64,5 +67,5 @@ Invoke-RestMethod -Method Post `
     -Body $body | Out-Null
 
 Write-Host "Done. Key saved locally at $keyPath (keep it as backup)."
-Write-Host "Verify: Codemagic -> app -> Environment variables -> group $group"
+Write-Host "Verify: Codemagic > app > Environment variables > group $group"
 Write-Host "Then: revoke ALL Apple Distribution certs and Start new build from main."
