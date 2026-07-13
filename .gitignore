@@ -53,3 +53,8 @@ mobile-flutter/.env
 # TestSprite local run artifacts (may contain API keys)
 testsprite_tests/tmp/
 mobile-flutter/testsprite_tests/tmp/
+
+# agent-skills eval output
+evals/results/
+.claude/.simplify-ignore-cache/
+.claude/sdd-cache/

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, Truck, Droplets, Trash2, Save, AlertTriangle } from 'lucide-react';
-import type { Employee, Transaction } from '../../types';
+import type { AppSettings, Employee, Transaction } from '../../types';
 import {
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
@@ -8,7 +8,8 @@ import {
     driverDisplayName,
     getLapTimes,
 } from './countRecordUtils';
-import { getEmployeePositionTokens } from './dailyStepRecorderUtils';
+import { getEmployeePositionTokens, vehicleTripDrumCarOptions } from './dailyStepRecorderUtils';
+import { driverOptionLabel, getVehicleDefaultDriverId } from '../../utils/vehicleDefaultDriverUtils';
 
 interface CountRecordRoundManagerProps {
     open: boolean;
@@ -16,6 +17,7 @@ interface CountRecordRoundManagerProps {
     dayKey: string;
     transactions: Transaction[];
     employees?: Employee[];
+    settings?: AppSettings;
     onSaveTransaction: (t: Transaction) => void | Promise<boolean>;
     onDeleteTransaction: (id: string) => void | Promise<void>;
     /** When set, show only trip or sand rows */
@@ -142,6 +144,7 @@ const CountRecordRoundManager = ({
     dayKey,
     transactions,
     employees = [],
+    settings,
     onSaveTransaction,
     onDeleteTransaction,
     filterKind,
@@ -248,8 +251,13 @@ const CountRecordRoundManager = ({
         updateDraft(rowId, (d) => ({ ...d, countOnly: Math.max(0, Math.round(value)) }));
     };
 
-    const handleVehicleIdChange = (rowId: string, value: string) => {
-        updateDraft(rowId, (d) => ({ ...d, vehicleId: value }));
+    const handleVehicleChange = (rowId: string, nextVehicle: string) => {
+        const defaultDriverId = settings ? getVehicleDefaultDriverId(nextVehicle, settings) : null;
+        updateDraft(rowId, (d) => ({
+            ...d,
+            vehicleId: nextVehicle,
+            driverId: defaultDriverId || d.driverId,
+        }));
     };
 
     const handleDriverIdChange = (rowId: string, value: string) => {
@@ -428,12 +436,21 @@ const CountRecordRoundManager = ({
                                                     <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                                                         ชื่อรถ
                                                     </span>
-                                                    <input
-                                                        type="text"
+                                                    <select
                                                         value={draft.vehicleId}
-                                                        onChange={(e) => handleVehicleIdChange(row.id, e.target.value)}
+                                                        onChange={(e) => handleVehicleChange(row.id, e.target.value)}
                                                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-                                                    />
+                                                    >
+                                                        <option value="">-- เลือกรถ --</option>
+                                                        {vehicleTripDrumCarOptions(
+                                                            settings?.cars ?? [],
+                                                            draft.vehicleId,
+                                                        ).map((car) => (
+                                                            <option key={car} value={car}>
+                                                                {car}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </label>
                                                 <label className="block">
                                                     <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
@@ -447,7 +464,12 @@ const CountRecordRoundManager = ({
                                                         <option value="">-- ยังไม่ระบุ --</option>
                                                         {driverEmployees.map((e) => (
                                                             <option key={e.id} value={e.id}>
-                                                                {driverDisplayName(e.id, employees)}
+                                                                {driverOptionLabel(
+                                                                    e,
+                                                                    settings
+                                                                        ? getVehicleDefaultDriverId(draft.vehicleId, settings)
+                                                                        : null,
+                                                                )}
                                                             </option>
                                                         ))}
                                                         {draft.driverId &&

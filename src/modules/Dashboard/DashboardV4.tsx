@@ -54,6 +54,7 @@ const DashboardV4 = ({
     transactions,
     dateFilter,
     employees = [],
+    settings,
     onRefreshTransactions,
     shareMode = false,
     hideFinancial = true,
@@ -125,6 +126,7 @@ const DashboardV4 = ({
                     dayKey={focusDate}
                     transactions={transactions}
                     employees={employees}
+                    settings={settings}
                     onSaveTransaction={onSaveTransaction!}
                     onDeleteTransaction={onDeleteTransaction!}
                     filterKind={roundManagerKind === 'trip' || roundManagerKind === 'sand' ? roundManagerKind : undefined}
