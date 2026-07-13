@@ -31,7 +31,6 @@ targets:
     sources:
       - path: Sources
         type: group
-    resources:
       - path: Resources
         excludes:
           - Info.plist

@@ -6,6 +6,15 @@ param(
 
 Add-Type -AssemblyName System.Drawing
 
+function New-RgbBitmap {
+    param(
+        [int]$Width,
+        [int]$Height
+    )
+
+    return New-Object System.Drawing.Bitmap $Width, $Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+}
+
 function New-SquareMasterImage {
     param([string]$Path)
 
@@ -15,7 +24,7 @@ function New-SquareMasterImage {
         $x = [int](($source.Width - $size) / 2)
         $y = [int](($source.Height - $size) / 2)
 
-        $cropped = New-Object System.Drawing.Bitmap $size, $size
+        $cropped = New-RgbBitmap -Width $size -Height $size
         $cropGraphics = [System.Drawing.Graphics]::FromImage($cropped)
         try {
             $cropGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -27,7 +36,7 @@ function New-SquareMasterImage {
             $cropGraphics.Dispose()
         }
 
-        $bitmap = New-Object System.Drawing.Bitmap 1024, 1024
+        $bitmap = New-RgbBitmap -Width 1024 -Height 1024
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
             $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -55,12 +64,13 @@ function Save-Icon {
         [string]$FileName
     )
 
-    $bitmap = New-Object System.Drawing.Bitmap $PixelSize, $PixelSize
+    $bitmap = New-RgbBitmap -Width $PixelSize -Height $PixelSize
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
         $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $graphics.Clear([System.Drawing.Color]::FromArgb(255, 26, 26, 26))
         $graphics.DrawImage($Master, 0, 0, $PixelSize, $PixelSize)
     }
     finally {
