@@ -1,0 +1,13 @@
+---
+description: Use project subagents from .cursor/agents for specialized delegation
+alwaysApply: true
+---
+
+For domain-specific or multi-step work, delegate to a matching subagent in `.cursor/agents/`:
+
+1. Pick the subagent whose `description` best matches the task (e.g. `flutter-expert`, `swiftui-expert`, `github-actions-expert`).
+2. Invoke via the Task tool with that subagent name, or mention it explicitly in chat.
+3. Prefer subagents for isolated research, parallel workstreams, or deep domain expertise.
+4. Prefer `.cursor/skills/` for single-purpose repeatable workflows.
+
+Project personas (`code-reviewer`, `security-auditor`, `test-engineer`) also live in `.cursor/agents/`.
