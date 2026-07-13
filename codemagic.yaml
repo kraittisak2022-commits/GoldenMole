@@ -71,9 +71,16 @@ workflows:
         script: xcode-project use-profiles
       - name: Increment build number
         script: |
+          set -euo pipefail
           cd "$CM_BUILD_DIR/ios-swiftui"
           LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
-          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
+          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          if [ -n "${CM_BUILD_NUMBER:-}" ] && [ "$CM_BUILD_NUMBER" -gt "$NEW_BUILD_NUMBER" ]; then
+            NEW_BUILD_NUMBER=$CM_BUILD_NUMBER
+          fi
+          echo "App Store latest build: $LATEST_BUILD_NUMBER → setting CFBundleVersion to $NEW_BUILD_NUMBER"
+          agvtool new-version -all "$NEW_BUILD_NUMBER"
+          agvtool what-version -all
       - name: Build ipa for distribution
         script: |
           xcode-project build-ipa \
