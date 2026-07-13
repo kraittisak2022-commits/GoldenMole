@@ -507,8 +507,11 @@ class CountRecordOfflineSync {
     }
   }
 
-  Future<void> cacheVehicleDefaultDrivers(Map<String, String> map) async {
-    if (map.isEmpty) return;
+  Future<void> cacheVehicleDefaultDrivers(
+    Map<String, String> map, {
+    bool allowEmpty = false,
+  }) async {
+    if (map.isEmpty && !allowEmpty) return;
     final p = await _prefs();
     await p.setString(_kVehicleDefaultDrivers, jsonEncode(map));
   }
@@ -632,12 +635,15 @@ class CountRecordOfflineSync {
 
         final appDefaults = row['app_defaults'];
         if (appDefaults is Map) {
-          final parsed = parseVehicleDefaultDrivers(
-            appDefaults['vehicleDefaultDrivers'],
-          );
-          if (parsed.isNotEmpty) {
-            vehicleDefaultDrivers = parsed;
-            await cacheVehicleDefaultDrivers(vehicleDefaultDrivers);
+          final rawDefaults = appDefaults['vehicleDefaultDrivers'];
+          if (rawDefaults != null) {
+            final parsed = parseVehicleDefaultDrivers(rawDefaults);
+            // mirror จากเว็บเมื่อมีค่าอย่างน้อย 1 คัน — รองรับเปลี่ยน/ลบต่อคัน
+            // ถ้าเว็บว่างทั้งก้อน คงแคชเดิม (ไม่ล้างทั้งหมด)
+            if (parsed.isNotEmpty) {
+              vehicleDefaultDrivers = parsed;
+              await cacheVehicleDefaultDrivers(vehicleDefaultDrivers);
+            }
           }
         }
       }

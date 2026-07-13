@@ -31,42 +31,48 @@ AppTransaction _trip({
     );
 
 void main() {
-  test('maps known vehicles to default driver nicknames', () {
-    expect(
-      defaultDriverNicknameForVehicle('รถดรัมโอเว่น'),
-      'พี่นุ',
-    );
-    expect(
-      defaultDriverNicknameForVehicle('รถดรัมลุงศักดิ์'),
-      'เดี่ยว',
-    );
-    expect(
-      defaultDriverNicknameForVehicle('รถสิบล้อนายกพนม'),
-      'พี่สัน',
-    );
-    expect(
-      defaultDriverNicknameForVehicle('รถดรัมนายกพนม'),
-      'ใหญ่',
-    );
-  });
-
-  test('settings vehicleDefaultDrivers takes priority over hardcoded nickname', () {
+  test('settings vehicleDefaultDrivers takes priority over trip history', () {
     final drivers = [
       _driver('d9', 'พี่นุ'),
       _driver('d2', 'เดี่ยว'),
+    ];
+    final history = [
+      _trip(id: '1', vehicleId: 'รถดรัมโอเว่น', driverId: 'd9'),
+      _trip(id: '2', vehicleId: 'รถดรัมโอเว่น', driverId: 'd9'),
     ];
     expect(
       resolveCountRecordDefaultDriverId(
         vehicleId: 'รถดรัมโอเว่น',
         drivers: drivers,
-        tripHistory: const [],
+        tripHistory: history,
         vehicleDefaultDrivers: const {'รถดรัมโอเว่น': 'd2'},
       ),
       'd2',
     );
   });
 
-  test('resolves default driver id from nickname', () {
+  test('falls back to trip history when web has no entry', () {
+    final drivers = [
+      _driver('d1', 'พี่นุ'),
+      _driver('d2', 'เดี่ยว'),
+    ];
+    final history = [
+      _trip(id: '1', vehicleId: 'รถดรัมโอเว่น', driverId: 'd1'),
+      _trip(id: '2', vehicleId: 'รถดรัมโอเว่น', driverId: 'd1'),
+      _trip(id: '3', vehicleId: 'รถดรัมโอเว่น', driverId: 'd2'),
+    ];
+    expect(
+      resolveCountRecordDefaultDriverId(
+        vehicleId: 'รถดรัมโอเว่น',
+        drivers: drivers,
+        tripHistory: history,
+        vehicleDefaultDrivers: const {},
+      ),
+      'd1',
+    );
+  });
+
+  test('returns null when no web entry and no trip history', () {
     final drivers = [
       _driver('d1', 'พี่นุ'),
       _driver('d2', 'เดี่ยว'),
@@ -76,12 +82,13 @@ void main() {
         vehicleId: 'รถดรัมโอเว่น',
         drivers: drivers,
         tripHistory: const [],
+        vehicleDefaultDrivers: const {},
       ),
-      'd1',
+      isNull,
     );
   });
 
-  test('sorts vehicles by trip history frequency then default priority', () {
+  test('sorts vehicles by trip history frequency then web list order', () {
     final history = [
       _trip(id: '1', vehicleId: 'รถดรัมพี่โก', driverId: 'x'),
       _trip(id: '2', vehicleId: 'รถดรัมพี่โก', driverId: 'x'),
@@ -97,9 +104,26 @@ void main() {
     );
     expect(sorted.first, 'รถดรัมพี่โก');
     expect(sorted[1], 'รถดรัมโอเว่น');
+    expect(sorted.last, 'รถดรัมลุงศักดิ์');
   });
 
-  test('orders default driver first in driver list', () {
+  test('tie-break uses web cars order when trip counts equal', () {
+    final sorted = sortCountRecordVehicles(
+      cars: const [
+        'รถดรัมลุงศักดิ์',
+        'รถดรัมโอเว่น',
+        'รถดรัมพี่โก',
+      ],
+      tripHistory: const [],
+    );
+    expect(sorted, const [
+      'รถดรัมลุงศักดิ์',
+      'รถดรัมโอเว่น',
+      'รถดรัมพี่โก',
+    ]);
+  });
+
+  test('orders default driver first in driver list from web settings', () {
     final drivers = [
       _driver('d1', 'พี่นุ'),
       _driver('d2', 'เดี่ยว'),
@@ -108,6 +132,7 @@ void main() {
       vehicleId: 'รถดรัมลุงศักดิ์',
       drivers: drivers,
       tripHistory: const [],
+      vehicleDefaultDrivers: const {'รถดรัมลุงศักดิ์': 'd2'},
     );
     expect(ordered.first.id, 'd2');
   });
