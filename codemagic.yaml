@@ -22,7 +22,7 @@ workflows:
         BUNDLE_ID: "com.goldenmole.dashboard"
         XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
         XCODE_SCHEME: "GoldenmoleDashboard"
-        APP_STORE_APPLE_ID: 6700211727
+        APP_STORE_APPLE_ID: 6790311737
       xcode: latest
     scripts:
       - name: Install XcodeGen and generate Xcode project

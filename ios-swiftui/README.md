@@ -67,7 +67,7 @@ You cannot run Xcode on Windows. Workflow:
 
 1. Enroll in [Apple Developer Program](https://developer.apple.com/programs/).
 2. Register bundle ID: `com.goldenmole.dashboard` in Certificates, Identifiers & Profiles.
-3. Create app record in [App Store Connect](https://appstoreconnect.apple.com/) — name **Goldenmole Dashboard** (Apple ID: `6700211727`).
+3. Create app record in [App Store Connect](https://appstoreconnect.apple.com/) — name **Goldenmole Dashboard** (Apple ID: `6790311737`).
 4. Create App Store Connect API key (Users and Access → Keys) with App Manager role.
 5. Follow [docs/codemagic-setup.md](../docs/codemagic-setup.md) for Codemagic (API key + env vars + build).
 6. In App Store Connect, add:

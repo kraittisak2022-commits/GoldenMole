@@ -7,7 +7,7 @@
 | รายการ | ค่า |
 |--------|-----|
 | Bundle ID | `com.goldenmole.dashboard` |
-| App Store Apple ID | `6700211727` |
+| App Store Apple ID | `6790311737` |
 | Workflow | `goldenmole-dashboard-ios` |
 | Integration name | `codemagic` |
 | Env group | `goldenmole_dashboard` |
