@@ -73,14 +73,15 @@ workflows:
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR/ios-swiftui"
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
           NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
-          if [ -n "${CM_BUILD_NUMBER:-}" ] && [ "$CM_BUILD_NUMBER" -gt "$NEW_BUILD_NUMBER" ]; then
-            NEW_BUILD_NUMBER=$CM_BUILD_NUMBER
+          if [ "${BUILD_NUMBER:-0}" -gt "$NEW_BUILD_NUMBER" ]; then
+            NEW_BUILD_NUMBER=$BUILD_NUMBER
           fi
-          echo "App Store latest build: $LATEST_BUILD_NUMBER → setting CFBundleVersion to $NEW_BUILD_NUMBER"
+          echo "Latest uploaded build: $LATEST_BUILD_NUMBER -> setting CFBundleVersion to $NEW_BUILD_NUMBER"
           agvtool new-version -all "$NEW_BUILD_NUMBER"
-          agvtool what-version -all
+          agvtool what-version -terse
       - name: Build ipa for distribution
         script: |
           xcode-project build-ipa \
