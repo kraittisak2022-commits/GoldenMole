@@ -72,37 +72,28 @@ integrations:
 |----------|--------|-----|
 | `SUPABASE_URL` | ใช่ | `https://cocvespahjymyrvmqzcs.supabase.co` |
 | `SUPABASE_ANON_KEY` | ใช่ | ดูใน `codemagic.secrets.yaml` (ไฟล์ local ไม่ commit) |
-
-> **ไม่ต้อง**ใส่ `CERTIFICATE_PRIVATE_KEY` ถ้าสร้าง cert + profile ใน Codemagic UI แล้ว (ดูขั้นที่ 3.5)
+| `CERTIFICATE_PRIVATE_KEY` | ใช่ | ดูขั้นที่ 3.5 — ครั้งเดียว แล้ว build สร้าง cert+profile อัตโนมัติ |
 
 ---
 
-## ขั้นที่ 3.5 — Code signing ใน Codemagic UI (แนะนำ)
+## ขั้นที่ 3.5 — ตั้งค่าครั้งเดียว (สร้าง cert+profile อัตโนมัติ)
 
-### 1. สร้าง Distribution certificate
-**Code signing identities** → **iOS certificates** → **Generate certificate**
+### 1. ลบ Distribution cert เก่าบน Apple
+[Apple → Certificates](https://developer.apple.com/account/resources/certificates/list) → ลบ **Apple Distribution** ทั้งหมด
 
-| ช่อง | ค่า |
-|------|-----|
-| Reference name | `goldenmole_appstore` |
-| Certificate type | **Apple Distribution** (ต้องเป็น **production** ในรายการ) |
-| API key | `codemagic` |
+### 2. สร้าง private key (Git Bash)
+```bash
+openssl genrsa 2048
+```
 
-**สำคัญ:** Reference name ต้องตรงกับที่เห็นใน Codemagic — ตอนนี้ใช้ `goldenmole_appstore` (cert แบบ production) + `goldenmole_appstore` (profile)
+### 3. ใส่ใน Codemagic
+group `goldenmole_dashboard` → **`CERTIFICATE_PRIVATE_KEY`** (Secure) = ผลลัพธ์ทั้งก้อน
 
-### 2. ดึง App Store provisioning profile
-**iOS provisioning profiles** → **Fetch profiles** → ติ๊ก **Goldenmole Dashboard** (`com.goldenmole.dashboard`) → **Download selected** → Reference name: `goldenmole_appstore`
+### 4. Start new build
+yaml เรียก `fetch-signing-files --create` สร้าง **Distribution certificate + App Store profile** อัตโนมัติ — **ไม่ต้อง** สร้างใน Apple/Codemagic UI ด้วยมือ
 
-### 3. ตรวจก่อน build
-- ใน **Available provisioning profiles** คอลัมน์ **Certificate** ต้องมี **เครื่องหมายถูกสีเขียว**
-- Reference name ต้องตรง yaml: cert + profile = `goldenmole_appstore` (ชื่อเดียวกันได้ คนละแท็บ)
-- Profile ยังไม่หมดอายุ
-
-ถ้า Certificate ไม่มีเครื่องหมายถูก → ใช้ cert แบบ **production** ชื่อ `goldenmole_appstore` ไม่ใช่ `goldenmole_dist` (development)
-
-### ทางเลือก: ใช้ openssl + env (ไม่แนะนำถ้าทำ UI แล้ว)
-
-ลบ Distribution cert เก่าบน Apple → `openssl genrsa 2048` → ใส่ `CERTIFICATE_PRIVATE_KEY` ใน env group แล้วใช้ yaml แบบ `fetch-signing-files --create`
+### 5. หลัง build สำเร็จ
+**อย่าลบ** `CERTIFICATE_PRIVATE_KEY`
 
 ---
 
