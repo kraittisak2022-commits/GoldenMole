@@ -110,9 +110,10 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 | Error | แก้ |
 |-------|-----|
 | Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
-| No profiles for bundle id | สร้าง App ID `com.goldenmole.dashboard` ใน Apple Developer |
+| No profiles for bundle id | yaml ใช้ `fetch-signing-files --create` + `--certificate-key` สร้างให้อัตโนมัติ; ตรวจ App ID มีแล้ว |
+| Cannot save certificate without private key | แก้แล้วใน yaml — ส่ง `--certificate-key` ให้ `fetch-signing-files` |
+| 409 already have Distribution certificate | ลบ cert เก่าใน [Apple Certificates](https://developer.apple.com/account/resources/certificates/list) |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
-| get-latest-app-store-build-number | build แรกใช้ build number 1 อัตโนมัติ (มี fallback ใน yaml) |
 
 ---
 

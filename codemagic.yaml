@@ -1,12 +1,12 @@
 # Goldenmole Dashboard — Codemagic iOS workflow
-# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/
+# Docs: https://docs.codemagic.io/yaml-code-signing/signing-ios/
 # Setup guide: docs/codemagic-setup.md
 #
-# One-time Codemagic UI (or run scripts/sync-codemagic-env.ps1 with API token):
-# 1. Connect repo https://github.com/kraittisak2022-commits/GoldenMole
-# 2. Team variables → group "goldenmole_dashboard" (SUPABASE_URL, SUPABASE_ANON_KEY)
-# 3. Team integrations → Developer Portal → Add key named exactly "codemagic"
-# 4. Check configuration file → Start build
+# Prerequisites:
+# 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
+# 2. Team integrations → Developer Portal → API key named "codemagic"
+# 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY
+# 4. Optional (after first build): CERTIFICATE_PRIVATE_KEY in same group for stable re-signing
 
 workflows:
   goldenmole-dashboard-ios:
@@ -14,13 +14,10 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: codemagic # exact name from Team settings → Developer Portal → Manage keys
+      app_store_connect: codemagic
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.goldenmole.dashboard
       groups:
-        - goldenmole_dashboard # <-- SUPABASE_URL, SUPABASE_ANON_KEY
+        - goldenmole_dashboard
       vars:
         BUNDLE_ID: "com.goldenmole.dashboard"
         XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
@@ -37,7 +34,23 @@ workflows:
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
-      - name: Set up provisioning profiles settings on Xcode project
+      - name: Set up keychain for code signing
+        script: keychain initialize
+      - name: Fetch signing files from Apple Developer Portal
+        script: |
+          CERT_KEY_PATH="$HOME/cert_key.pem"
+          if [ -n "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            printf '%s\n' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+          else
+            openssl genrsa -out "$CERT_KEY_PATH" 2048
+          fi
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key=@file:"$CERT_KEY_PATH"
+      - name: Add certificates to keychain
+        script: keychain add-certificates
+      - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Increment build number
         script: |
