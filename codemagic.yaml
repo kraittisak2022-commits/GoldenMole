@@ -6,7 +6,9 @@
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
 # 2. Team integrations → Developer Portal → API key named "codemagic"
 # 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY
-# 4. Code signing identities: Apple Distribution cert + App Store profile for com.goldenmole.dashboard
+# 4. Code signing identities (reference names must match codemagic.yaml exactly):
+#    - certificate: goldenmole_dist (.p12 uploaded after Generate)
+#    - profile: goldenmole_appstore (App Store, com.goldenmole.dashboard)
 
 workflows:
   goldenmole-dashboard-ios:
@@ -17,8 +19,10 @@ workflows:
       app_store_connect: codemagic
     environment:
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.goldenmole.dashboard
+        provisioning_profiles:
+          - goldenmole_appstore
+        certificates:
+          - goldenmole_dist
       groups:
         - goldenmole_dashboard
       vars:

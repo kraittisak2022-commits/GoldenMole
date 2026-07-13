@@ -88,14 +88,17 @@ integrations:
 | Certificate type | **Apple Distribution** |
 | API key | `codemagic` |
 
+**สำคัญ:** หลัง Generate แล้ว Codemagic ให้ดาวน์โหลด `.p12` — ต้อง **Upload** ไฟล์นั้นกลับเข้าแท็บ **iOS certificates** ด้วย Reference name `goldenmole_dist` (ถ้าไม่อัปโหลด จะ error *No matching certificate*)
+
 ### 2. ดึง App Store provisioning profile
 **iOS provisioning profiles** → **Fetch profiles** → ติ๊ก **Goldenmole Dashboard** (`com.goldenmole.dashboard`) → **Download selected** → Reference name: `goldenmole_appstore`
 
 ### 3. ตรวจก่อน build
-- Certificate มีเครื่องหมายถูกสีเขียวที่ profile
+- ใน **Available provisioning profiles** คอลัมน์ **Certificate** ต้องมี **เครื่องหมายถูกสีเขียว**
+- Reference name ต้องตรง yaml: `goldenmole_dist` + `goldenmole_appstore`
 - Profile ยังไม่หมดอายุ
 
-yaml ใช้ `ios_signing` ดึง cert + profile จาก Codemagic อัตโนมัติ — **ไม่ต้อง** `CERTIFICATE_PRIVATE_KEY`
+ถ้า Certificate ไม่มีเครื่องหมายถูก → อัปโหลด `.p12` ของ `goldenmole_dist` ใหม่ แล้ว **Fetch profile** ซ้ำ
 
 ### ทางเลือก: ใช้ openssl + env (ไม่แนะนำถ้าทำ UI แล้ว)
 
@@ -137,6 +140,7 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 |-------|-----|
 | Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
 | `CERTIFICATE_PRIVATE_KEY is missing` | ใช้ yaml ล่าสุด (`ios_signing`) + cert/profile ใน Code signing identities |
+| No matching certificate for profile | อัปโหลด `.p12` หลัง Generate cert; ตรวจชื่อ reference ตรง yaml |
 | No profiles for bundle id | Fetch App Store profile สำหรับ `com.goldenmole.dashboard` ใน Codemagic UI |
 | 409 Distribution certificate | ลบ Distribution cert เก่าใน Apple Developer |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
