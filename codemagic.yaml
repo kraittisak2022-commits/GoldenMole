@@ -1,0 +1,70 @@
+# Goldenmole Dashboard — Codemagic iOS workflow
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/
+#
+# One-time setup in Codemagic UI:
+# 1. Connect this repository (GitHub: GoldenMole)
+# 2. Team/App variables → group "goldenmole_dashboard":
+#    - SUPABASE_URL
+#    - SUPABASE_ANON_KEY
+# 3. Integrations → App Store Connect API key (name it e.g. "codemagic")
+# 4. Replace APP_STORE_APPLE_ID below with your App Store Connect app ID
+# 5. Click "Check configuration file" after pushing this file
+
+workflows:
+  goldenmole-dashboard-ios:
+    name: Goldenmole Dashboard iOS
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic # <-- match your App Store Connect integration name in Codemagic UI
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.goldenmole.dashboard
+      groups:
+        - goldenmole_dashboard # <-- SUPABASE_URL, SUPABASE_ANON_KEY
+      vars:
+        BUNDLE_ID: "com.goldenmole.dashboard"
+        XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
+        XCODE_SCHEME: "GoldenmoleDashboard"
+        APP_STORE_APPLE_ID: 0000000000 # <-- App Store Connect → App → General → Apple ID
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen and generate Xcode project
+        script: |
+          brew install xcodegen
+          cd "$CM_BUILD_DIR/ios-swiftui"
+          cat > Config/Secrets.xcconfig <<EOF
+          SUPABASE_URL = $SUPABASE_URL
+          SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
+          EOF
+          xcodegen generate
+      - name: Set up provisioning profiles settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Increment build number
+        script: |
+          cd "$CM_BUILD_DIR/ios-swiftui"
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
+          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
+      - name: Build ipa for distribution
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - user@example.com # <-- replace with your email
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal testers
