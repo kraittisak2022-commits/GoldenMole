@@ -84,21 +84,21 @@ integrations:
 
 | ช่อง | ค่า |
 |------|-----|
-| Reference name | `goldenmole_dist` |
+| Reference name | `goldenmole_distribution` |
 | Certificate type | **Apple Distribution** |
 | API key | `codemagic` |
 
-**สำคัญ:** หลัง Generate แล้ว Codemagic ให้ดาวน์โหลด `.p12` — ต้อง **Upload** ไฟล์นั้นกลับเข้าแท็บ **iOS certificates** ด้วย Reference name `goldenmole_dist` (ถ้าไม่อัปโหลด จะ error *No matching certificate*)
+**สำคัญ:** หลัง Generate แล้ว Codemagic ให้ดาวน์โหลด `.p12` — ต้อง **Upload** กลับด้วย Reference name `goldenmole_distribution` (type ต้องเป็น **production**)
 
 ### 2. ดึง App Store provisioning profile
 **iOS provisioning profiles** → **Fetch profiles** → ติ๊ก **Goldenmole Dashboard** (`com.goldenmole.dashboard`) → **Download selected** → Reference name: `goldenmole_appstore`
 
 ### 3. ตรวจก่อน build
 - ใน **Available provisioning profiles** คอลัมน์ **Certificate** ต้องมี **เครื่องหมายถูกสีเขียว**
-- Reference name ต้องตรง yaml: `goldenmole_dist` + `goldenmole_appstore`
+- Reference name ต้องตรง yaml: `goldenmole_distribution` + `goldenmole_appstore`
 - Profile ยังไม่หมดอายุ
 
-ถ้า Certificate ไม่มีเครื่องหมายถูก → อัปโหลด `.p12` ของ `goldenmole_dist` ใหม่ แล้ว **Fetch profile** ซ้ำ
+ถ้า Certificate ไม่มีเครื่องหมายถูก → ใช้ cert แบบ **production** (`goldenmole_distribution`) ไม่ใช่ development (`goldenmole_dist`)
 
 ### ทางเลือก: ใช้ openssl + env (ไม่แนะนำถ้าทำ UI แล้ว)
 
