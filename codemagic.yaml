@@ -6,7 +6,8 @@
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
 # 2. Team integrations → Developer Portal → API key named "codemagic"
 # 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY
-# 4. Optional (after first build): CERTIFICATE_PRIVATE_KEY in same group for stable re-signing
+# 4. First-time signing only: add CERTIFICATE_PRIVATE_KEY (openssl genrsa 2048) after revoking
+#    unused Distribution certs in Apple Developer; omit for normal builds (uses existing files)
 
 workflows:
   goldenmole-dashboard-ios:
@@ -16,6 +17,9 @@ workflows:
     integrations:
       app_store_connect: codemagic
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.goldenmole.dashboard
       groups:
         - goldenmole_dashboard
       vars:
@@ -38,16 +42,17 @@ workflows:
         script: keychain initialize
       - name: Fetch signing files from Apple Developer Portal
         script: |
-          CERT_KEY_PATH="$HOME/cert_key.pem"
           if [ -n "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            CERT_KEY_PATH="$HOME/cert_key.pem"
             printf '%s\n' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+            app-store-connect fetch-signing-files "$BUNDLE_ID" \
+              --type IOS_APP_STORE \
+              --create \
+              --certificate-key=@file:"$CERT_KEY_PATH"
           else
-            openssl genrsa -out "$CERT_KEY_PATH" 2048
+            app-store-connect fetch-signing-files "$BUNDLE_ID" \
+              --type IOS_APP_STORE
           fi
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create \
-            --certificate-key=@file:"$CERT_KEY_PATH"
       - name: Add certificates to keychain
         script: keychain add-certificates
       - name: Set up code signing settings on Xcode project

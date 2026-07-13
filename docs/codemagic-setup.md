@@ -7,7 +7,7 @@
 | รายการ | ค่า |
 |--------|-----|
 | Bundle ID | `com.goldenmole.dashboard` |
-| App Store Apple ID | `6700211727` |
+| App Store Apple ID | `6790311737` |
 | Workflow | `goldenmole-dashboard-ios` |
 | Integration name | `codemagic` |
 | Env group | `goldenmole_dashboard` |
@@ -64,6 +64,37 @@ integrations:
 
 ---
 
+## ขั้นที่ 3.5 — Code signing (แก้ error 409 / no profiles)
+
+### กรณี build ปกติ (แนะนำ)
+
+1. [Apple Developer → Certificates](https://developer.apple.com/account/resources/certificates/list) — มี **Apple Distribution** อยู่แล้ว (ไม่ต้องสร้างซ้ำ)
+2. Codemagic → **Teams** → **Code signing identities**
+   - **iOS certificates**: กด **Generate certificate** หรือ **Fetch from Developer Portal** (ถ้ายังไม่มีใน Codemagic)
+   - **iOS provisioning profiles**: **Fetch** profile แบบ **App Store** สำหรับ `com.goldenmole.dashboard`
+3. **อย่า**ใส่ `CERTIFICATE_PRIVATE_KEY` ใน env group — yaml จะดึง cert/profile ที่มีอยู่แล้ว
+
+### กรณี error 409 (Distribution certificate limit)
+
+Apple จำกัด Distribution certificate ไว้ 3 ใบ — log แบบนี้แปลว่า script พยายามสร้าง cert ใหม่ทั้งที่มีอยู่แล้ว:
+
+```
+POST .../certificates returned 409: You already have a current Distribution certificate
+```
+
+**แก้ครั้งเดียว:**
+
+1. Apple Developer → **Certificates** → ลบ Distribution cert ที่ไม่ใช้ (หรือลบทั้งหมดถ้าจะเริ่มใหม่)
+2. สร้าง private key คงที่ (รันบนเครื่องคุณ):
+   ```powershell
+   openssl genrsa 2048
+   ```
+3. Codemagic → env group `goldenmole_dashboard` → เพิ่ม **`CERTIFICATE_PRIVATE_KEY`** (Secure) = ผลลัพธ์ทั้งก้อนจากคำสั่งด้านบน
+4. **Start new build** — yaml จะใช้ `--create` เฉพาะเมื่อมี `CERTIFICATE_PRIVATE_KEY` เท่านั้น
+5. หลัง build สำเร็จ **เก็บ** `CERTIFICATE_PRIVATE_KEY` ไว้ — อย่าลบ (ใช้ cert เดิมซ้ำ)
+
+---
+
 ## ขั้นที่ 3 — ตัวแปร Supabase
 
 ### วิธี A: วางใน Codemagic UI (ง่ายสุด)
@@ -110,7 +141,8 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 | Error | แก้ |
 |-------|-----|
 | Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
-| No profiles for bundle id | สร้าง App ID `com.goldenmole.dashboard` ใน Apple Developer |
+| No profiles for bundle id | Codemagic → Code signing identities → Fetch App Store profile สำหรับ bundle id |
+| 409 Distribution certificate | ลบ cert เก่าใน Apple Developer; ตั้ง `CERTIFICATE_PRIVATE_KEY` แล้ว build ใหม่ (ดูขั้น 3.5) |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
 | get-latest-app-store-build-number | build แรกใช้ build number 1 อัตโนมัติ (มี fallback ใน yaml) |
 
