@@ -31,6 +31,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_menu_shell.dart';
 import '../widgets/count_record_tutorial.dart';
+import '../widgets/count_record_work_mode_picker.dart';
 import '../widgets/dashboard_loading_view.dart';
 import '../widgets/app_page_route.dart';
 import '../widgets/menu_panel_transition.dart';
@@ -941,6 +942,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
   bool _countRecordTutorialScheduled = false;
+  CountRecordWorkMode? _workMode;
   static const _kPanelShadowColor = Color(0x12000000);
 
   void _onEntranceStatus(AnimationStatus status) {
@@ -1005,6 +1007,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     if (oldWidget.countAndRecordMenuOpen != widget.countAndRecordMenuOpen) {
       _syncErrorTrackerStep();
       if (widget.countAndRecordMenuOpen) {
+        setState(() => _workMode = null);
         _scheduleCountRecordTutorialIfNeeded();
       }
     }
@@ -1124,13 +1127,19 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           child: LayoutBuilder(
             key: ValueKey(
               '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
-              'menu_${widget.countAndRecordMenuOpen}',
+              'menu_${widget.countAndRecordMenuOpen}_'
+              'work_${_workMode?.name ?? 'pick'}',
             ),
             builder: (context, constraints) {
               if (widget.countAndRecordMenuOpen) {
-                void backToMainMenu() {
-                  widget.onCountAndRecordMenuOpenChanged(false);
-                  unawaited(widget.onCountRecordDataChanged());
+                final modeSelected = _workMode != null;
+                void onBack() {
+                  if (modeSelected) {
+                    setState(() => _workMode = null);
+                  } else {
+                    widget.onCountAndRecordMenuOpenChanged(false);
+                    unawaited(widget.onCountRecordDataChanged());
+                  }
                 }
 
                 final dayKeyStr = widget.dateKey(widget.selectedDay);
@@ -1174,24 +1183,75 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   );
                 }
 
-                final tripCell = counterCell(
-                  modeKey: 'trip',
-                  title: 'จำนวนเที่ยวรถ',
-                  icon: Icons.fire_truck_outlined,
-                  iconColor: const Color(0xFF1565C0),
-                  backgroundColor: const Color(0xFFE3F2FD),
-                  borderColor: const Color(0xFF90CAF9),
-                  counterMode: CounterMode.trip,
-                );
-                final sandCell = counterCell(
-                  modeKey: 'sand',
-                  title: 'การร่อนทราย',
-                  icon: Icons.water_drop_outlined,
-                  iconColor: const Color(0xFFAD1457),
-                  backgroundColor: const Color(0xFFFCE4EC),
-                  borderColor: const Color(0xFFF48FB1),
-                  counterMode: CounterMode.sand,
-                );
+                Widget buildCounterBody() {
+                  if (_workMode == null) {
+                    return CountRecordWorkModePicker(
+                      onSelect: (mode) => setState(() => _workMode = mode),
+                    );
+                  }
+
+                  final mode = _workMode!;
+                  if (mode == CountRecordWorkMode.trip) {
+                    return counterCell(
+                      modeKey: 'trip',
+                      title: 'จำนวนเที่ยวรถ',
+                      icon: Icons.fire_truck_outlined,
+                      iconColor: const Color(0xFF1565C0),
+                      backgroundColor: const Color(0xFFE3F2FD),
+                      borderColor: const Color(0xFF90CAF9),
+                      counterMode: CounterMode.trip,
+                    );
+                  }
+                  if (mode == CountRecordWorkMode.sand) {
+                    return counterCell(
+                      modeKey: 'sand',
+                      title: 'การร่อนทราย',
+                      icon: Icons.water_drop_outlined,
+                      iconColor: const Color(0xFFAD1457),
+                      backgroundColor: const Color(0xFFFCE4EC),
+                      borderColor: const Color(0xFFF48FB1),
+                      counterMode: CounterMode.sand,
+                    );
+                  }
+
+                  final tripCell = counterCell(
+                    modeKey: 'trip',
+                    title: 'จำนวนเที่ยวรถ',
+                    icon: Icons.fire_truck_outlined,
+                    iconColor: const Color(0xFF1565C0),
+                    backgroundColor: const Color(0xFFE3F2FD),
+                    borderColor: const Color(0xFF90CAF9),
+                    counterMode: CounterMode.trip,
+                  );
+                  final sandCell = counterCell(
+                    modeKey: 'sand',
+                    title: 'การร่อนทราย',
+                    icon: Icons.water_drop_outlined,
+                    iconColor: const Color(0xFFAD1457),
+                    backgroundColor: const Color(0xFFFCE4EC),
+                    borderColor: const Color(0xFFF48FB1),
+                    counterMode: CounterMode.sand,
+                  );
+                  return portrait
+                      ? Column(
+                          children: [
+                            Expanded(child: tripCell),
+                            const SizedBox(height: 10),
+                            Expanded(child: sandCell),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(child: tripCell),
+                            const SizedBox(width: 10),
+                            Expanded(child: sandCell),
+                          ],
+                        );
+                }
+
+                final backLabel = modeSelected
+                    ? 'เลือกงานใหม่'
+                    : (offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก');
 
                 return CountRecordMenuShell(
                   child: Padding(
@@ -1295,7 +1355,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           SoftPressButton(
-                            onTap: backToMainMenu,
+                            onTap: onBack,
                             size: SoftPressSize.small,
                             borderRadius: 12,
                             isDarkSurface: false,
@@ -1310,7 +1370,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 border: Border.all(color: const Color(0xFFD9E1EC)),
                               ),
                               child: Text(
-                                offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก',
+                                backLabel,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF4A5A70),
@@ -1322,21 +1382,25 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
                       const SizedBox(height: 10),
                       Expanded(
-                        child: portrait
-                            ? Column(
-                                children: [
-                                  Expanded(child: tripCell),
-                                  const SizedBox(height: 10),
-                                  Expanded(child: sandCell),
-                                ],
-                              )
-                            : Row(
-                                children: [
-                                  Expanded(child: tripCell),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: sandCell),
-                                ],
-                              ),
+                        child: AnimatedSwitcher(
+                          duration: MenuPanelTransition.duration(
+                            lite: useLiteAnimations,
+                          ),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: MenuPanelTransition.build,
+                          layoutBuilder: (current, previous) => Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              ...previous,
+                              ?current,
+                            ],
+                          ),
+                          child: KeyedSubtree(
+                            key: ValueKey(_workMode?.name ?? 'pick'),
+                            child: buildCounterBody(),
+                          ),
+                        ),
                       ),
                     ],
                   ),
