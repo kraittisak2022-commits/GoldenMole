@@ -93,7 +93,21 @@ struct DashboardShell: View {
             ProgressView("กำลังโหลดข้อมูล…")
             Spacer()
         } else if let error = appState.errorMessage, appState.transactions.isEmpty {
-            ContentUnavailableView("โหลดไม่สำเร็จ", systemImage: "wifi.exclamationmark", description: Text(error))
+            VStack(spacing: 12) {
+                Spacer()
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                Text("โหลดไม่สำเร็จ")
+                    .font(.title2.weight(.semibold))
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
         } else {
             ScrollView {
                 VStack(spacing: 16) {
