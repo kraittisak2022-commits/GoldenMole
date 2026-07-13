@@ -1,13 +1,12 @@
 # Goldenmole Dashboard — Codemagic iOS workflow
-# Docs: https://docs.codemagic.io/yaml-code-signing/signing-ios/
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/
+# Setup guide: docs/codemagic-setup.md
 #
-# Prerequisites (Apple Developer + Codemagic):
-# 1. Register bundle ID `com.goldenmole.dashboard` in Apple Developer → Identifiers
-#    (or let fetch-signing-files --create register it if API key has Admin access)
-# 2. Create app in App Store Connect and set APP_STORE_APPLE_ID below
-# 3. Team integrations → Developer Portal → App Store Connect API key
-# 4. Match `integrations.app_store_connect` name to your integration in Codemagic UI
-# 5. Environment group `goldenmole_dashboard`: SUPABASE_URL, SUPABASE_ANON_KEY
+# One-time Codemagic UI (or run scripts/sync-codemagic-env.ps1 with API token):
+# 1. Connect repo https://github.com/kraittisak2022-commits/GoldenMole
+# 2. Team variables → group "goldenmole_dashboard" (SUPABASE_URL, SUPABASE_ANON_KEY)
+# 3. Team integrations → Developer Portal → Add key named exactly "codemagic"
+# 4. Check configuration file → Start build
 
 workflows:
   goldenmole-dashboard-ios:
@@ -15,15 +14,18 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: codemagic # <-- match integration name in Codemagic UI
+      app_store_connect: codemagic # exact name from Team settings → Developer Portal → Manage keys
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.goldenmole.dashboard
       groups:
-        - goldenmole_dashboard
+        - goldenmole_dashboard # <-- SUPABASE_URL, SUPABASE_ANON_KEY
       vars:
         BUNDLE_ID: "com.goldenmole.dashboard"
         XCODE_PROJECT: "ios-swiftui/GoldenmoleDashboard.xcodeproj"
         XCODE_SCHEME: "GoldenmoleDashboard"
-        APP_STORE_APPLE_ID: 0000000000 # <-- App Store Connect → App → General → Apple ID
+        APP_STORE_APPLE_ID: 6700211727
       xcode: latest
     scripts:
       - name: Install XcodeGen and generate Xcode project
@@ -35,25 +37,13 @@ workflows:
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
-      - name: Set up keychain for code signing
-        script: keychain initialize
-      - name: Fetch signing files from Apple Developer Portal
-        script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-      - name: Add certificates to keychain
-        script: keychain add-certificates
-      - name: Set up code signing settings on Xcode project
+      - name: Set up provisioning profiles settings on Xcode project
         script: xcode-project use-profiles
       - name: Increment build number
         script: |
           cd "$CM_BUILD_DIR/ios-swiftui"
-          if [ "$APP_STORE_APPLE_ID" = "0000000000" ]; then
-            echo "Warning: APP_STORE_APPLE_ID not set — using Codemagic build number"
-            agvtool new-version -all "$BUILD_NUMBER"
-          else
-            LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
-            agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
-          fi
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
       - name: Build ipa for distribution
         script: |
           xcode-project build-ipa \
@@ -67,12 +57,10 @@ workflows:
     publishing:
       email:
         recipients:
-          - user@example.com
+          - kraittisak2022@gmail.com
         notify:
           success: true
           failure: true
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Internal testers
