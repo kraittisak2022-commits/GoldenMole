@@ -25,7 +25,14 @@
 
 ---
 
-## ขั้นที่ 2 — App Store Connect API key
+## ขั้นที่ 2 — App Store Connect API key (แก้ error "integration codemagic does not exist")
+
+ชื่อใน `codemagic.yaml` ต้อง **ตรงกันทุกตัวอักษร** กับชื่อที่ตั้งใน Codemagic UI:
+
+```yaml
+integrations:
+  app_store_connect: codemagic   # ← ชื่อนี้ต้องมีใน Codemagic
+```
 
 ### สร้างที่ Apple (ถ้ายังไม่มี)
 
@@ -34,15 +41,26 @@
 3. Name: `Codemagic` · Access: **App Manager**
 4. ดาวน์โหลด `.p8` (ครั้งเดียว) · จด **Issuer ID** และ **Key ID**
 
-### ใส่ใน Codemagic
+### ใส่ใน Codemagic (ขั้นที่ขาด — ทำก่อน build)
 
-1. Codemagic → **Teams** → **Team settings** → **Integrations**
-2. **Developer Portal** / **App Store Connect** → **Connect**
-3. ตั้งชื่อ integration: **`codemagic`** (ต้องตรงกับ `codemagic.yaml`)
-4. ใส่ Issuer ID, Key ID, อัปโหลดไฟล์ `.p8`
-5. **Save**
+1. เปิด [codemagic.io](https://codemagic.io/) → **Teams** (มุมซ้ายล่าง)
+2. **Team settings** (ไอคอนฟันเฟืองทีม)
+3. **Team integrations** → **Developer Portal** → **Manage keys**
+4. กด **Add key**
+5. กรอก:
+   - **App Store Connect API key name**: พิมพ์ **`codemagic`** ตรงๆ (ไม่มีช่องว่าง ตัวพิมพ์เล็ก)
+   - **Issuer ID**: จาก App Store Connect → Users and Access → Integrations
+   - **Key ID**: จากตาราง API keys
+   - **ไฟล์ .p8**: อัปโหลด `AuthKey_XXXXXX.p8`
+6. กด **Save**
+7. กลับไปแอป → **Start new build** อีกครั้ง
 
-Codemagic จะสร้าง Distribution certificate + provisioning profile อัตโนมัติ — **ไม่ต้องสร้าง CSR เอง**
+> ถ้าตั้งชื่ออื่น (เช่น `GoldenMole`) ต้องแก้ `codemagic.yaml` บรรทัด `app_store_connect:` ให้ตรงชื่อนั้น
+
+### ตรวจว่าสร้างสำเร็จ
+
+- Team settings → Developer Portal → ต้องเห็น key ชื่อ `codemagic` ในรายการ
+- ถ้ายัง error อยู่ → reload หน้า Codemagic แล้ว build ใหม่
 
 ---
 
@@ -91,7 +109,7 @@ API token: Codemagic → **User settings** → **Integrations** → **Codemagic 
 
 | Error | แก้ |
 |-------|-----|
-| Integration `codemagic` not found | ตั้งชื่อ integration ใน Codemagic ให้ตรง `codemagic` |
+| Integration `codemagic` not found | Add key ใน Team settings → Developer Portal; ชื่อต้องตรง yaml |
 | No profiles for bundle id | สร้าง App ID `com.goldenmole.dashboard` ใน Apple Developer |
 | SUPABASE_URL fatalError | ตรวจ group `goldenmole_dashboard` ใน Codemagic |
 | get-latest-app-store-build-number | build แรกใช้ build number 1 อัตโนมัติ (มี fallback ใน yaml) |
