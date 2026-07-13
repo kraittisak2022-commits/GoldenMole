@@ -63,3 +63,6 @@ mobile-flutter/testsprite_tests/tmp/
 evals/results/
 .claude/.simplify-ignore-cache/
 .claude/sdd-cache/
+
+# VoltAgent subagents vendor clone (agents are copied to .cursor/agents)
+awesome-claude-code-subagents/
