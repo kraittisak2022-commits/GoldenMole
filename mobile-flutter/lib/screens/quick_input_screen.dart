@@ -1075,7 +1075,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
       }
       if (cachedRows != null && cachedRows.isNotEmpty) {
-        if (!isCurrentLoad()) return;
+        if (!mounted || !isCurrentLoad()) return;
         _clearHydrationSlots();
         await applyRows(cachedRows, clearForm: true);
       }
@@ -1084,7 +1084,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final skipNetwork =
         _isOfflineCapableCategory && !widget.serverOnlineHint;
     if (skipNetwork) {
-      if (!isCurrentLoad()) return;
+      if (!mounted || !isCurrentLoad()) return;
       if (_moduleDayTransactions.isEmpty) {
         var rows = await LocalDataCache.readTransactionsForDayAny(ymd) ??
             const <AppTransaction>[];
@@ -1101,7 +1101,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return;
     }
 
-    if (!isCurrentLoad()) return;
+    if (!mounted || !isCurrentLoad()) return;
     if (_moduleDayTransactions.isEmpty) {
       setState(() {
         _moduleDayLoading = true;
@@ -1112,9 +1112,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _clearModuleFormFields();
       }
     } else {
+      if (!mounted || !isCurrentLoad()) return;
       setState(() => _moduleDayLoading = true);
     }
-    if (!isCurrentLoad()) return;
+    if (!mounted || !isCurrentLoad()) return;
 
     try {
       final forceServer = forceRefresh ||
@@ -1128,10 +1129,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ymd,
               forceRefresh: forceServer,
             );
-      if (!isCurrentLoad()) return;
+      if (!mounted || !isCurrentLoad()) return;
       final mergedRows = _isOfflineCapableCategory
           ? await CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows)
           : rows;
+      if (!mounted || !isCurrentLoad()) return;
       _clearHydrationSlots();
       await applyRows(
         mergedRows,
