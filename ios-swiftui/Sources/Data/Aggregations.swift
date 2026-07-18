@@ -208,57 +208,18 @@ enum DashboardAggregations {
         return good ? .up : .down
     }
 
-    // MARK: - Count record (V4)
+    // MARK: - Count record (V4) — see CountRecordLogic
 
     static func isCountRecordVehicleRow(_ t: Transaction) -> Bool {
-        guard t.category == "DailyLog", t.subCategory?.lowercased() == "vehicletrip" else { return false }
-        return !(t.description).contains("ทรายที่ล้างที่บ้าน")
+        CountRecordLogic.isCountRecordVehicleRow(t)
     }
 
     static func isCountRecordSandTapRow(_ t: Transaction) -> Bool {
-        guard t.category == "DailyLog", t.subCategory?.lowercased() == "sand" else { return false }
-        let desc = t.description
-        if desc.contains("เครื่องร่อน") || desc.contains("จำนวนถัง") || desc.contains("ทรายที่ล้างที่บ้าน") { return false }
-        return desc.contains("ร่อนทราย")
+        CountRecordLogic.isCountRecordSandTapRow(t)
     }
 
     static func driverDisplayName(_ driverId: String, employees: [Employee]) -> String {
-        let id = driverId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty else { return "ยังไม่ระบุ" }
-        if let emp = employees.first(where: { $0.id == id }) { return emp.displayName }
-        return id
-    }
-
-    static func countRecordRows(for date: String, transactions: [Transaction], employees: [Employee]) -> (vehicles: [CountRecordVehicleRow], sand: [CountRecordSandRow], tripTotal: Int, sandTotal: Int) {
-        let dayTx = transactions.filter { String($0.date.prefix(10)) == date }
-        let vehicleRows = dayTx.filter(isCountRecordVehicleRow).map { t -> CountRecordVehicleRow in
-            let morning = Int(t.tripMorning ?? 0)
-            let afternoon = Int(t.tripAfternoon ?? 0)
-            let total = Int(t.perCarTrips ?? t.tripCount ?? 0)
-            let m = morning != 0 || afternoon != 0 ? morning : total
-            let a = morning != 0 || afternoon != 0 ? afternoon : 0
-            return CountRecordVehicleRow(
-                id: t.id,
-                vehicleName: t.description,
-                driverName: driverDisplayName(t.driverId ?? "", employees: employees),
-                morningTrips: m,
-                afternoonTrips: a,
-                totalTrips: max(total, m + a),
-                isBroken: (t.workDetails ?? "").contains("รถเสีย")
-            )
-        }
-        let sandRows = dayTx.filter(isCountRecordSandTapRow).map { t -> CountRecordSandRow in
-            CountRecordSandRow(
-                id: t.id,
-                drums: Int(t.drumsObtained ?? 0),
-                morningDrums: Int(t.sandMorning ?? 0),
-                afternoonDrums: Int(t.sandAfternoon ?? 0),
-                lapCount: (t.workAssignments?["lapTimes"] ?? []).count
-            )
-        }
-        let tripTotal = vehicleRows.reduce(0) { $0 + $1.totalTrips }
-        let sandTotal = sandRows.reduce(0) { $0 + $1.drums }
-        return (vehicleRows, sandRows, tripTotal, sandTotal)
+        CountRecordLogic.driverDisplayName(driverId, employees: employees)
     }
 
     // MARK: - Thai holidays (simplified fixed dates)

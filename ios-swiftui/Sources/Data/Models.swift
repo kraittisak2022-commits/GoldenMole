@@ -450,20 +450,40 @@ enum ScoreTrend: Sendable {
     case up, down, flat, neutral
 }
 
-struct CountRecordVehicleRow: Identifiable, Sendable {
+struct CountRecordTripUnit: Identifiable, Sendable {
     let id: String
-    let vehicleName: String
-    let driverName: String
-    let morningTrips: Int
-    let afternoonTrips: Int
-    let totalTrips: Int
-    let isBroken: Bool
+    let vehicleId: String
+    let driverId: String
+    let driverLabel: String
+    let rounds: Int
+    let morning: Int
+    let afternoon: Int
+    /// Laps from 17:00 onward (subset of afternoon)
+    let ot: Int
+    let lapTimes: [String]
+    let broken: Bool
 }
 
-struct CountRecordSandRow: Identifiable, Sendable {
+struct CountRecordSandUnit: Identifiable, Sendable {
     let id: String
-    let drums: Int
-    let morningDrums: Int
-    let afternoonDrums: Int
-    let lapCount: Int
+    let rounds: Int
+    let morning: Int
+    let afternoon: Int
+    let ot: Int
+    let lapTimes: [String]
+}
+
+struct CountRecordWorkSpan: Sendable {
+    let startStamp: String?
+    let endStamp: String?
+    let startClock: String?
+    let endClock: String?
+}
+
+struct VehicleEfficiency: Sendable {
+    let perVehToday: Double
+    let countToday: Int
+    let deltaPct: Double?
+    let priorLabel: String
+    let isCalendarYesterday: Bool
 }
