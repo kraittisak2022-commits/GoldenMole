@@ -106,6 +106,9 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+        # Auto-expire the previous build stuck in beta review so the new
+        # submission never fails with 422 "Another build is in review".
+        expire_build_submitted_for_review: true
 
   goldenmole-dashboard-ios-preview:
     name: Goldenmole Dashboard iOS (Simulator Preview)
