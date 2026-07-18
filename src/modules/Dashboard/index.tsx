@@ -31,6 +31,33 @@ const DASHBOARD_DETAIL_TABS = [
     { id: 'Income', label: 'รายรับ' },
 ] as const;
 
+const DASHBOARD_SUBTAB_STORAGE_KEY = 'cm_dashboard_subtab_v1';
+const DASHBOARD_SUBTAB_IDS = new Set<string>([
+    ...DASHBOARD_MAIN_TABS.map((t) => t.id),
+    ...DASHBOARD_ADVANCED_MAIN_TABS.map((t) => t.id),
+    ...DASHBOARD_DETAIL_TABS.map((t) => t.id),
+]);
+
+const readSavedDashboardSubTab = (): string => {
+    if (typeof window === 'undefined') return 'Overview';
+    try {
+        const raw = window.localStorage.getItem(DASHBOARD_SUBTAB_STORAGE_KEY);
+        if (raw && DASHBOARD_SUBTAB_IDS.has(raw)) return raw;
+    } catch {
+        /* ignore */
+    }
+    return 'Overview';
+};
+
+const saveDashboardSubTab = (subTab: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(DASHBOARD_SUBTAB_STORAGE_KEY, subTab);
+    } catch {
+        /* ignore */
+    }
+};
+
 function useViewportNarrow(breakpointPx = 1024) {
     const [narrow, setNarrow] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < breakpointPx : false));
     useEffect(() => {
@@ -57,8 +84,8 @@ const Dashboard = ({
     transactions: Transaction[];
     settings: AppSettings;
     employees: Employee[];
-    onSaveTransaction: (t: Transaction) => void;
-    onDeleteTransaction: (id: string) => void;
+    onSaveTransaction: (t: Transaction) => void | Promise<boolean | 'synced' | 'queued'>;
+    onDeleteTransaction: (id: string) => void | Promise<boolean | void>;
     setSettings?: (updater: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
     isMobile?: boolean;
     onRefreshTransactions?: () => void | Promise<void>;
@@ -66,9 +93,17 @@ const Dashboard = ({
 }) => {
     const viewportNarrow = useViewportNarrow(1024);
     const wizardMobileShell = isMobile || viewportNarrow;
-    const [subTab, setSubTab] = useState('Overview');
+    const [subTab, setSubTab] = useState(() => readSavedDashboardSubTab());
     const [filterType, setFilterType] = useState<'7' | '14' | '30' | 'custom'>('7');
     const [customRange, setCustomRange] = useState({ start: '', end: '' });
+
+    useEffect(() => {
+        if (!DASHBOARD_SUBTAB_IDS.has(subTab)) {
+            setSubTab('Overview');
+            return;
+        }
+        saveDashboardSubTab(subTab);
+    }, [subTab]);
 
     const dateFilter = useMemo(() => {
         const today = new Date();

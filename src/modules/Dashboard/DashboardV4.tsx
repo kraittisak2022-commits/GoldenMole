@@ -31,8 +31,8 @@ interface DashboardV4Props {
     /** Hide income/expense/net profit summary cards */
     hideFinancial?: boolean;
     canManageCountRounds?: boolean;
-    onSaveTransaction?: (t: Transaction) => void | Promise<boolean>;
-    onDeleteTransaction?: (id: string) => void | Promise<void>;
+    onSaveTransaction?: (t: Transaction) => void | Promise<boolean | 'synced' | 'queued'>;
+    onDeleteTransaction?: (id: string) => void | Promise<boolean | void>;
 }
 
 const formatSyncTime = (ts: number, locale: 'th' | 'zh' = 'th') =>

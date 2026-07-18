@@ -38,6 +38,9 @@ describe('prepareTransactionForDb', () => {
         } as Transaction;
 
         const row = prepareTransactionForDb(t);
+        expect(row.drums_obtained).toBe(3);
+        expect(row.sub_category).toBe('sand');
+        expect(row.description).toBe('ร่อนทราย: 3 รอบ');
         expect(row.work_assignments).toEqual({
             lapTimes: ['12/07 08:35:54', '12/07 10:12:18', '12/07 10:12:34'],
         });

@@ -147,6 +147,17 @@ export const dropOfflineQueueItem = (queueId: string) => {
     notify();
 };
 
+/** Drop every queued upsert for a transaction id (e.g. after a successful hard delete). */
+export const dropOfflineQueueItemsByTxId = (txId: string) => {
+    const id = String(txId || '').trim();
+    if (!id) return;
+    const next = queue.filter(item => item.tx.id !== id);
+    if (next.length === queue.length) return;
+    queue = next;
+    persistQueue();
+    notify();
+};
+
 export const retryOfflineQueueItemNow = (queueId: string) => {
     queue = queue.map(item => item.id === queueId ? {
         ...item,

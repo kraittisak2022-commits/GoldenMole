@@ -8,6 +8,7 @@ vi.mock('./dataService', () => ({
 import * as db from './dataService';
 import {
     dropOfflineQueueItem,
+    dropOfflineQueueItemsByTxId,
     enqueueTransaction,
     getOfflineQueue,
     initOfflineSync,
@@ -77,5 +78,31 @@ describe('offlineSync', () => {
         retryOfflineQueueItemNow(item.id);
         const next = getOfflineQueue().find(x => x.id === item.id);
         expect(next?.nextRetryAt).toBeUndefined();
+    });
+
+    it('drops queued upserts by transaction id so deletes are not resurrected', () => {
+        enqueueTransaction({
+            id: 'sand-tx',
+            date: '2026-07-18',
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'Sand',
+            description: 'ร่อนทราย: 10 รอบ',
+            amount: 0,
+            drumsObtained: 10,
+        });
+        enqueueTransaction({
+            id: 'other-tx',
+            date: '2026-07-18',
+            type: 'Expense',
+            category: 'Fuel',
+            description: 'keep me',
+            amount: 50,
+        });
+        expect(getOfflineQueue().length).toBe(2);
+        dropOfflineQueueItemsByTxId('sand-tx');
+        const remaining = getOfflineQueue();
+        expect(remaining.length).toBe(1);
+        expect(remaining[0]?.tx.id).toBe('other-tx');
     });
 });

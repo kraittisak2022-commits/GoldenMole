@@ -34,6 +34,7 @@ import { readSavedLocale, saveLocale, t, type AppLocale } from './utils/i18n';
 import { usePwaInstall } from './hooks/usePwaInstall';
 import {
     dropOfflineQueueItem,
+    dropOfflineQueueItemsByTxId,
     enqueueTransaction,
     getOfflineQueue,
     getOfflineSyncSnapshot,
@@ -212,6 +213,29 @@ const MENU_ITEMS = [
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];
 
+const ACTIVE_MENU_STORAGE_KEY = 'cm_active_menu_v1';
+const MENU_ITEM_IDS = new Set(MENU_ITEMS.map(m => m.id));
+
+const readSavedActiveMenu = (): string => {
+    if (typeof window === 'undefined') return 'Dashboard';
+    try {
+        const raw = window.localStorage.getItem(ACTIVE_MENU_STORAGE_KEY);
+        if (raw && MENU_ITEM_IDS.has(raw)) return raw;
+    } catch {
+        /* ignore */
+    }
+    return 'Dashboard';
+};
+
+const saveActiveMenu = (menuId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(ACTIVE_MENU_STORAGE_KEY, menuId);
+    } catch {
+        /* ignore */
+    }
+};
+
 const DEFAULT_VISIBLE_TX_CATEGORIES = [
     'Labor', 'Vehicle', 'Fuel', 'Maintenance', 'Land', 'Utilities', 'Income', 'Payroll', 'PayrollUnlock', 'DailyLog',
 ];
@@ -303,12 +327,14 @@ function App() {
     const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
 
     // --- App State ---
-    const [activeMenu, setActiveMenu] = useState('Dashboard');
+    const [activeMenu, setActiveMenu] = useState(() => readSavedActiveMenu());
 
     useEffect(() => {
         if (!MENU_ITEMS.some(m => m.id === activeMenu)) {
             setActiveMenu('Dashboard');
+            return;
         }
+        saveActiveMenu(activeMenu);
     }, [activeMenu]);
     const [dailyWizardJumpDate, setDailyWizardJumpDate] = useState<string | undefined>(undefined);
     const [dailyWizardJumpStep, setDailyWizardJumpStep] = useState<number | undefined>(undefined);
@@ -359,6 +385,15 @@ function App() {
         if (!allowed || allowed.length === 0) return true;
         return allowed.includes(menuId);
     }, [currentAdmin, currentAdminAccess?.visibleMenus]);
+
+    // After auth restore, drop a persisted menu the admin can no longer view.
+    useEffect(() => {
+        if (!isLoggedIn || !currentAdmin) return;
+        if (!canViewMenu(activeMenu)) {
+            setActiveMenu('Dashboard');
+        }
+    }, [isLoggedIn, currentAdmin, activeMenu, canViewMenu]);
+
     const canViewTransactions = currentAdmin?.role === 'SuperAdmin'
         ? true
         : (currentAdminAccess?.transactionPermissions?.view ?? true);
@@ -1143,7 +1178,8 @@ function App() {
         }
     }, []);
 
-    const handleSave = async (t: Transaction): Promise<boolean> => {
+    /** 'synced' = saved to Supabase; 'queued' = kept in local offline queue; false = rejected */
+    const handleSave = async (t: Transaction): Promise<'synced' | 'queued' | false> => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
@@ -1187,14 +1223,13 @@ function App() {
             }
             return [...p, txToSave];
         });
-        let ok = false;
         if (!navigator.onLine) {
             enqueueTransaction(txToSave);
             setToast('บันทึกในเครื่องแล้ว (ออฟไลน์) จะซิงก์อัตโนมัติเมื่อออนไลน์');
             setTimeout(() => setToast(null), 3500);
-            return true;
+            return 'queued';
         }
-        ok = await db.saveTransaction(txToSave);
+        const ok = await db.saveTransaction(txToSave);
         if (ok) {
             recentWebSaveTxAt.current.set(txToSave.id, Date.now());
         }
@@ -1202,21 +1237,21 @@ function App() {
             enqueueTransaction(txToSave);
             setToast('ซิงก์ไม่สำเร็จ บันทึกไว้ในเครื่องแล้ว จะลองซิงก์อีกครั้งอัตโนมัติ');
             setTimeout(() => setToast(null), 3500);
-            return true;
+            return 'queued';
         }
         if (offlineSync.queueSize > 0) {
             void syncOfflineQueue();
         }
 
-        if (ok && txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
+        if (txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
             void notifyAdvanceLineSaved(txToSave, employees);
         }
-        if (ok && (txToSave.category || '').trim() === 'Leave') {
+        if ((txToSave.category || '').trim() === 'Leave') {
             void notifyLeaveLineSaved(txToSave, employees);
         }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)
-        if (ok && currentAdmin) {
+        if (currentAdmin) {
             const summary = {
                 id: txToSave.id,
                 date: normalizeDate(txToSave.date),
@@ -1230,9 +1265,9 @@ function App() {
             addLog(wasUpdate ? 'update_transaction' : 'create_transaction', `${verb}: ${txToSave.category}/${txToSave.subCategory || '-'} วันที่ ${normalizeDate(txToSave.date)} จำนวนเงิน ${txToSave.amount || 0} รายละเอียด: ${txToSave.description || '-'} | snapshot=${JSON.stringify(summary)}`);
         }
 
-        setToast(ok ? 'ซิงก์แล้ว' : 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+        setToast('ซิงก์แล้ว');
         setTimeout(() => setToast(null), 3000);
-        return true;
+        return 'synced';
     };
 
     // --- Wrapped setters that persist to Supabase ---
@@ -1289,19 +1324,19 @@ function App() {
         });
     }, []);
 
-    const handleDeleteTransaction = useCallback(async (id: string) => {
+    const handleDeleteTransaction = useCallback(async (id: string): Promise<boolean> => {
         if (!canMutateTransactionsInCurrentMenu()) {
             setToast('สิทธิ์นี้คีย์ข้อมูลได้เฉพาะ Daily Wizard (เมนูหลักหรือแท็บบันทึกงานใน Dashboard)');
             setTimeout(() => setToast(null), 3500);
-            return;
+            return false;
         }
         if (!canDeleteTransactions) {
             setToast('ไม่มีสิทธิ์ลบรายการ (Delete)');
             setTimeout(() => setToast(null), 3000);
-            return;
+            return false;
         }
         const target = transactions.find(t => t.id === id);
-        if (!target) return;
+        if (!target) return false;
         if (target.category !== 'Payroll') {
             const lockRef = nonHiddenTransactions.find(x =>
                 x.category === 'Payroll' &&
@@ -1311,15 +1346,18 @@ function App() {
             if (lockRef && !getPeriodLockState(nonHiddenTransactions, lockRef.payrollPeriod!)) {
                 setToast(`งวด ${formatDateBE(lockRef.payrollPeriod!.start)} - ${formatDateBE(lockRef.payrollPeriod!.end)} ถูกจ่ายแล้ว จึงไม่อนุญาตให้ลบรายการย้อนหลัง`);
                 setTimeout(() => setToast(null), 4500);
-                return;
+                return false;
             }
         }
         const ok = await db.deleteTransaction(id);
         if (!ok) {
             setToast('ลบจากฐานข้อมูลไม่สำเร็จ — ลองใหม่อีกครั้ง');
             setTimeout(() => setToast(null), 4000);
-            return;
+            return false;
         }
+        // Prevent offline-queue upsert from resurrecting a hard-deleted row.
+        dropOfflineQueueItemsByTxId(id);
+        setOfflineQueueItems(getOfflineQueue());
         setTransactions(prev => prev.filter(t => t.id !== id));
         const hidden = settings.appDefaults?.hiddenTransactionIds || [];
         if (hidden.includes(id)) {
@@ -1349,6 +1387,7 @@ function App() {
         }
         setToast('ลบรายการแล้ว');
         setTimeout(() => setToast(null), 3000);
+        return true;
     }, [addLog, canDeleteTransactions, canMutateTransactionsInCurrentMenu, currentAdmin, nonHiddenTransactions, settings.appDefaults?.hiddenTransactionIds, transactions]);
 
     const handlePermanentDeleteTransaction = handleDeleteTransaction;
@@ -1379,7 +1418,27 @@ function App() {
 
     const refreshTransactionsFromServer = useCallback(async () => {
         const latest = await db.fetchTransactions();
-        setTransactions(normalizeTransactionsCreatedAt(latest));
+        const normalized = normalizeTransactionsCreatedAt(latest);
+        const queued = getOfflineQueue();
+        if (queued.length === 0) {
+            setTransactions(normalized);
+            return;
+        }
+        // Keep unsynced local edits visible across the 12s V.4 poll until they sync.
+        const overlayById = new Map(queued.map(item => [item.tx.id, item.tx]));
+        const seen = new Set<string>();
+        const merged = normalized.map(tx => {
+            const local = overlayById.get(tx.id);
+            if (local) {
+                seen.add(tx.id);
+                return local;
+            }
+            return tx;
+        });
+        for (const [id, tx] of overlayById) {
+            if (!seen.has(id)) merged.unshift(tx);
+        }
+        setTransactions(normalizeTransactionsCreatedAt(merged));
     }, []);
 
     const handleSetProjects = useCallback((updater: LandProject[] | ((prev: LandProject[]) => LandProject[])) => {

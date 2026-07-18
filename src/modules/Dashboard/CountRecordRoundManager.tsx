@@ -19,8 +19,8 @@ interface CountRecordRoundManagerProps {
     transactions: Transaction[];
     employees?: Employee[];
     settings?: AppSettings;
-    onSaveTransaction: (t: Transaction) => void | Promise<boolean>;
-    onDeleteTransaction: (id: string) => void | Promise<void>;
+    onSaveTransaction: (t: Transaction) => void | Promise<boolean | 'synced' | 'queued'>;
+    onDeleteTransaction: (id: string) => void | Promise<boolean | void>;
     /** When set, show only trip or sand rows */
     filterKind?: 'trip' | 'sand';
 }
@@ -277,10 +277,14 @@ const CountRecordRoundManager = ({
         const targets = listCountRecordSandTapRows(dayKey, transactions).filter(
             (t) => keepId == null || t.id !== keepId,
         );
+        let deleted = 0;
+        let failed = 0;
         for (const sibling of targets) {
-            await onDeleteTransaction(sibling.id);
+            const result = await onDeleteTransaction(sibling.id);
+            if (result === false) failed += 1;
+            else deleted += 1;
         }
-        return targets.length;
+        return { deleted, failed, total: targets.length };
     };
 
     const handleSaveRow = async (row: ManagedRow) => {
@@ -303,11 +307,22 @@ const CountRecordRoundManager = ({
             setBusyId(row.id);
             try {
                 if (row.kind === 'sand') {
-                    await deleteSandSiblingRows(null);
+                    const { deleted, failed, total } = await deleteSandSiblingRows(null);
+                    if (total === 0) {
+                        setMessage(`ไม่พบรายการ ${row.title} ให้ลบ`);
+                    } else if (failed > 0) {
+                        setMessage(`ลบ ${row.title} ไม่ครบ — สำเร็จ ${deleted}/${total}`);
+                    } else {
+                        setMessage(`ลบรายการ ${row.title} แล้ว`);
+                    }
                 } else {
-                    await onDeleteTransaction(row.id);
+                    const result = await onDeleteTransaction(row.id);
+                    setMessage(
+                        result === false
+                            ? `ลบรายการ ${row.title} ไม่สำเร็จ`
+                            : `ลบรายการ ${row.title} แล้ว`,
+                    );
                 }
-                setMessage(`ลบรายการ ${row.title} แล้ว`);
             } finally {
                 setBusyId(null);
             }
@@ -321,16 +336,30 @@ const CountRecordRoundManager = ({
 
         setBusyId(row.id);
         try {
-            await onSaveTransaction(updated);
+            const saveResult = await onSaveTransaction(updated);
+            if (saveResult === false) {
+                setMessage(`บันทึก ${row.title} ไม่สำเร็จ`);
+                return;
+            }
+            const queued = saveResult === 'queued';
             if (row.kind === 'sand') {
-                const removed = await deleteSandSiblingRows(row.id);
-                setMessage(
-                    removed > 0
-                        ? `บันทึก ${row.title} แล้ว (${count} รอบ) · ล้างแถวซ้ำ ${removed} รายการ`
-                        : `บันทึก ${row.title} แล้ว (${count} รอบ)`,
-                );
+                const { deleted: removed, failed } = await deleteSandSiblingRows(row.id);
+                const base = queued
+                    ? `บันทึก ${row.title} ในเครื่องแล้ว (${count} รอบ) รอซิงก์`
+                    : `บันทึก ${row.title} แล้ว (${count} รอบ)`;
+                if (failed > 0) {
+                    setMessage(`${base} · ล้างแถวซ้ำไม่ครบ (เหลือ ${failed})`);
+                } else if (removed > 0) {
+                    setMessage(`${base} · ล้างแถวซ้ำ ${removed} รายการ`);
+                } else {
+                    setMessage(base);
+                }
             } else {
-                setMessage(`บันทึก ${draft.vehicleId.trim()} แล้ว (${count} เที่ยว)`);
+                setMessage(
+                    queued
+                        ? `บันทึก ${draft.vehicleId.trim()} ในเครื่องแล้ว (${count} เที่ยว) รอซิงก์`
+                        : `บันทึก ${draft.vehicleId.trim()} แล้ว (${count} เที่ยว)`,
+                );
             }
         } finally {
             setBusyId(null);
@@ -345,11 +374,22 @@ const CountRecordRoundManager = ({
         setBusyId(row.id);
         try {
             if (row.kind === 'sand') {
-                await deleteSandSiblingRows(null);
+                const { deleted, failed, total } = await deleteSandSiblingRows(null);
+                if (total === 0) {
+                    setMessage(`ไม่พบรายการ ${row.title} ให้ลบ`);
+                } else if (failed > 0) {
+                    setMessage(`ลบ ${row.title} ไม่ครบ — สำเร็จ ${deleted}/${total}`);
+                } else {
+                    setMessage(`ลบรายการ ${row.title} จากฐานข้อมูลแล้ว`);
+                }
             } else {
-                await onDeleteTransaction(row.id);
+                const result = await onDeleteTransaction(row.id);
+                setMessage(
+                    result === false
+                        ? `ลบรายการ ${row.title} ไม่สำเร็จ`
+                        : `ลบรายการ ${row.title} จากฐานข้อมูลแล้ว`,
+                );
             }
-            setMessage(`ลบรายการ ${row.title} จากฐานข้อมูลแล้ว`);
         } finally {
             setBusyId(null);
         }
