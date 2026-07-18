@@ -1137,12 +1137,16 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
             builder: (context, constraints) {
               if (widget.countAndRecordMenuOpen) {
                 final modeSelected = _workMode != null;
+                void onBackToHome() {
+                  widget.onCountAndRecordMenuOpenChanged(false);
+                  unawaited(widget.onCountRecordDataChanged());
+                }
+
                 void onBack() {
                   if (modeSelected) {
                     setState(() => _workMode = null);
                   } else {
-                    widget.onCountAndRecordMenuOpenChanged(false);
-                    unawaited(widget.onCountRecordDataChanged());
+                    onBackToHome();
                   }
                 }
 
@@ -1379,6 +1383,42 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF4A5A70),
                                 ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SoftPressButton(
+                            onTap: onBackToHome,
+                            size: SoftPressSize.small,
+                            borderRadius: 12,
+                            isDarkSurface: false,
+                            liftWhenIdle: true,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFD9E1EC)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.home_outlined,
+                                    size: 18,
+                                    color: Color(0xFF4A5A70),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'หน้าแรก',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF4A5A70),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
