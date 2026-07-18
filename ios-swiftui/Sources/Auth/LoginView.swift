@@ -600,7 +600,7 @@ struct LoginView: View {
                 }
             }
             // If credentials were purged, offer the form.
-            if case AuthError.savedProfileMissing = error as? AuthError {
+            if let authError = error as? AuthError, case .savedProfileMissing = authError {
                 username = profile.username
                 password = ""
                 rememberProfile = true
