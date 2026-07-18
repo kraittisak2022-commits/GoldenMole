@@ -33,10 +33,20 @@ workflows:
     scripts:
       - name: Install XcodeGen and generate Xcode project
         script: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY are empty."
+            echo "Add them to env group goldenmole_dashboard in the SAME account/team that owns this app."
+            echo "(Env groups do not move with the app when it is transferred to a team.)"
+            exit 1
+          fi
           brew install xcodegen
           cd "$CM_BUILD_DIR/ios-swiftui"
+          # xcconfig treats // as a comment, so https://... would be cut to
+          # "https:". Escape it as https:/$()/ which Xcode resolves back.
+          XCCONFIG_SUPABASE_URL=$(printf '%s' "$SUPABASE_URL" | sed 's|//|/$()/|')
           cat > Config/Secrets.xcconfig <<EOF
-          SUPABASE_URL = $SUPABASE_URL
+          SUPABASE_URL = $XCCONFIG_SUPABASE_URL
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
@@ -124,10 +134,17 @@ workflows:
     scripts:
       - name: Install XcodeGen and generate Xcode project
         script: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY are empty."
+            echo "Add them to env group goldenmole_dashboard in the SAME account/team that owns this app."
+            exit 1
+          fi
           brew install xcodegen
           cd "$CM_BUILD_DIR/ios-swiftui"
+          XCCONFIG_SUPABASE_URL=$(printf '%s' "$SUPABASE_URL" | sed 's|//|/$()/|')
           cat > Config/Secrets.xcconfig <<EOF
-          SUPABASE_URL = $SUPABASE_URL
+          SUPABASE_URL = $XCCONFIG_SUPABASE_URL
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
           EOF
           xcodegen generate
