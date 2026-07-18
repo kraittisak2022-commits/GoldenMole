@@ -135,15 +135,18 @@ workflows:
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR/ios-swiftui"
+          # -derivedDataPath pins the output location so the artifact glob
+          # below always matches and Codemagic shows the Quick Launch button.
           xcodebuild build \
             -project GoldenmoleDashboard.xcodeproj \
             -scheme "$XCODE_SCHEME" \
             -sdk iphonesimulator \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/simulator-build" \
             CODE_SIGNING_ALLOWED=NO
           echo "Simulator .app artifacts:"
-          find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 8 -path '*/Build/Products/Debug-iphonesimulator/*.app' 2>/dev/null || true
+          ls -d "$CM_BUILD_DIR"/simulator-build/Build/Products/Debug-iphonesimulator/*.app
     artifacts:
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/Products/Debug-iphonesimulator/*.app
+      - simulator-build/Build/Products/Debug-iphonesimulator/*.app
       - /tmp/xcodebuild_logs/*.log
