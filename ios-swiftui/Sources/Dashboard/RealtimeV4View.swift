@@ -560,7 +560,7 @@ struct RealtimeV4View: View {
 
     private func sandKPI(_ sand: CountRecordSandUnit) -> some View {
         let hours = CountRecordLogic.activeDurationHours(lapTimes: sand.lapTimes, dayKey: focusDateStr)
-        let perHour = hours.flatMap { $0 > 0 ? sand.rounds / $0 : nil }
+        let perHour = hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil }
         let perMin = hours.flatMap { $0 > 0 ? Double(sand.rounds) / ($0 * 60) : nil }
         let pct = CountRecordLogic.sandTarget > 0
             ? min(Double(sand.rounds) / Double(CountRecordLogic.sandTarget) * 100, 100)

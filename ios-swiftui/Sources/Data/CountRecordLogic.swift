@@ -55,7 +55,7 @@ enum CountRecordLogic {
     }
 
     static func getLapTimes(_ t: Transaction) -> [String] {
-        (t.workAssignments?["lapTimes"] ?? []).map(String.init)
+        t.workAssignments?["lapTimes"] ?? []
     }
 
     static func isWorkDetailsBroken(_ details: String?) -> Bool {
