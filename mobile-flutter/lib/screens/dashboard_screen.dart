@@ -832,15 +832,19 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   /// แถบนำทางล่างแบบ Material 3 + soft press
+  /// ตอนเปิดแผง «บันทึกและนับจำนวน» จะพับซ่อน — ปัดขึ้นเพื่อแสดง / idle 30 วิ พับอีกครั้ง
   Widget _buildBottomNav(SupabaseClient client) {
     final l10n = AppLocalizations.of(context);
-    return _ProBottomNav(
-      l10n: l10n,
-      selectedIndex: _bodyPage == 0 ? 0 : -1,
-      onHome: () => setState(() => _bodyPage = 0),
-      onCalendar: () => _openCalendarScreen(client),
-      onSettings: () => _openAppSettingsScreen(client),
-      onLogout: _confirmLogout,
+    return _AutoHideBottomNav(
+      collapsible: _countAndRecordMenuOpen,
+      child: _ProBottomNav(
+        l10n: l10n,
+        selectedIndex: _bodyPage == 0 ? 0 : -1,
+        onHome: () => setState(() => _bodyPage = 0),
+        onCalendar: () => _openCalendarScreen(client),
+        onSettings: () => _openAppSettingsScreen(client),
+        onLogout: _confirmLogout,
+      ),
     );
   }
 
@@ -2406,6 +2410,166 @@ class _MetricTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// แถบนำทางล่างที่พับซ่อนได้เมื่ออยู่ในแผงบันทึกและนับจำนวน
+///
+/// - [collapsible] = true → พับเหลือแถวจับ ปัดขึ้นเพื่อเด้งกลับมา + idle 30 วิ พับอีก
+/// - [collapsible] = false → แสดงเต็มตลอด
+class _AutoHideBottomNav extends StatefulWidget {
+  const _AutoHideBottomNav({
+    required this.collapsible,
+    required this.child,
+  });
+
+  final bool collapsible;
+  final Widget child;
+
+  @override
+  State<_AutoHideBottomNav> createState() => _AutoHideBottomNavState();
+}
+
+class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
+    with SingleTickerProviderStateMixin {
+  static const _idleHide = Duration(seconds: 30);
+  static const _handleHeight = 22.0;
+
+  late final AnimationController _controller;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+      reverseDuration: const Duration(milliseconds: 280),
+      value: widget.collapsible ? 0.0 : 1.0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _AutoHideBottomNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.collapsible == widget.collapsible) return;
+    if (widget.collapsible) {
+      _collapse();
+    } else {
+      _reveal(permanent: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _collapse() {
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    _controller.animateTo(0.0, curve: Curves.easeInCubic);
+  }
+
+  void _reveal({bool permanent = false}) {
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    _controller.animateTo(1.0, curve: Curves.easeOutBack);
+    if (!permanent && widget.collapsible) {
+      _armIdleTimer();
+    }
+  }
+
+  void _armIdleTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_idleHide, () {
+      if (!mounted || !widget.collapsible) return;
+      _collapse();
+    });
+  }
+
+  void _onUserActivity() {
+    if (!widget.collapsible) return;
+    if (_controller.value < 0.98) {
+      _reveal();
+    } else {
+      _armIdleTimer();
+    }
+  }
+
+  void _onHandleDragEnd(DragEndDetails details) {
+    final v = details.primaryVelocity ?? 0;
+    if (v < -80) {
+      _reveal();
+    } else if (v > 80 && _controller.value > 0.5) {
+      _collapse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value.clamp(0.0, 1.0);
+        final collapsed = widget.collapsible && t < 0.02;
+        final showHandle = widget.collapsible && t < 0.98;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showHandle)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _reveal,
+                onVerticalDragEnd: _onHandleDragEnd,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      top: BorderSide(color: Color(0xFFE7ECF3)),
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: collapsed
+                        ? _handleHeight + bottomInset
+                        : _handleHeight,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCBD5E1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: t,
+                child: Listener(
+                  onPointerDown: (_) => _onUserActivity(),
+                  child: widget.child,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

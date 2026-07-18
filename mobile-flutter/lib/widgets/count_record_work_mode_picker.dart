@@ -71,8 +71,8 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
-    final titleSize = isTablet ? 28.0 : 25.0;
-    final subtitleSize = isTablet ? 16.0 : 14.5;
+    final titleSize = isTablet ? 34.0 : 30.0;
+    final subtitleSize = isTablet ? 18.0 : 16.5;
     final gap = isTablet ? 14.0 : 12.0;
 
     return Column(
@@ -85,16 +85,14 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFE0F7FA), Color(0xFFE8F4FD)],
-                  ),
+                  color: const Color(0xFFE0F7FA),
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: const Color(0xFFB8E4EA)),
                 ),
                 child: const Text(
                   'เลือกโหมดงานวันนี้',
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.3,
                     color: Color(0xFF0D98A5),
@@ -137,7 +135,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               icon: Icons.fire_truck_rounded,
               accent: const Color(0xFF1565C0),
               accentLight: const Color(0xFF42A5F5),
-              gradientColors: const [Color(0xFFE3F2FD), Color(0xFFF5FAFF)],
+              backgroundColor: const Color(0xFFE3F2FD),
               borderColor: const Color(0xFF90CAF9),
               onTap: () => widget.onSelect(CountRecordWorkMode.trip),
             ),
@@ -153,7 +151,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               icon: Icons.water_drop_rounded,
               accent: const Color(0xFFAD1457),
               accentLight: const Color(0xFFEC407A),
-              gradientColors: const [Color(0xFFFCE4EC), Color(0xFFFFF5F8)],
+              backgroundColor: const Color(0xFFFCE4EC),
               borderColor: const Color(0xFFF48FB1),
               onTap: () => widget.onSelect(CountRecordWorkMode.sand),
             ),
@@ -169,7 +167,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               icon: Icons.layers_rounded,
               accent: const Color(0xFF00695C),
               accentLight: const Color(0xFF26A69A),
-              gradientColors: const [Color(0xFFE0F2F1), Color(0xFFF4FBFA)],
+              backgroundColor: const Color(0xFFE0F2F1),
               borderColor: const Color(0xFF80CBC4),
               dualAccent: const [
                 Color(0xFF1565C0),
@@ -191,7 +189,7 @@ class _WorkModeOption extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.accentLight,
-    required this.gradientColors,
+    required this.backgroundColor,
     required this.borderColor,
     required this.onTap,
     this.dualAccent,
@@ -202,7 +200,7 @@ class _WorkModeOption extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final Color accentLight;
-  final List<Color> gradientColors;
+  final Color backgroundColor;
   final Color borderColor;
   final List<Color>? dualAccent;
   final VoidCallback onTap;
@@ -212,8 +210,8 @@ class _WorkModeOption extends StatelessWidget {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconSize = isTablet ? 44.0 : 40.0;
     final iconBox = isTablet ? 76.0 : 68.0;
-    final titleSize = isTablet ? 22.0 : 20.0;
-    final subtitleSize = isTablet ? 15.0 : 14.0;
+    final titleSize = isTablet ? 27.0 : 24.0;
+    final subtitleSize = isTablet ? 17.5 : 16.0;
 
     Widget iconBadge() {
       if (dualAccent != null && dualAccent!.length >= 2) {
@@ -271,11 +269,7 @@ class _WorkModeOption extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradientColors,
-          ),
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: borderColor.withValues(alpha: 0.85)),
         ),
@@ -368,19 +362,12 @@ class _IconOrb extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accentLight.withValues(alpha: 0.35),
-            accent.withValues(alpha: 0.12),
-          ],
-        ),
+        color: accentLight.withValues(alpha: 0.28),
         boxShadow: [
           BoxShadow(
-            color: accent.withValues(alpha: 0.22),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: accent.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
         border: Border.all(
