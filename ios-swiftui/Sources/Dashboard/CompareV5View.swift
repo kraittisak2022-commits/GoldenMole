@@ -15,13 +15,8 @@ struct CompareV5View: View {
     private var curFin: FinancialSummary { DashboardAggregations.aggregateFinancial(curTx) }
     private var prevFin: FinancialSummary { DashboardAggregations.aggregateFinancial(prevTx) }
 
-    private var sandCur: (washed: Double, transported: Double) {
-        sandTotals(curTx)
-    }
-
-    private var sandPrev: (washed: Double, transported: Double) {
-        sandTotals(prevTx)
-    }
+    private var sandCur: (washed: Double, transported: Double) { sandTotals(curTx) }
+    private var sandPrev: (washed: Double, transported: Double) { sandTotals(prevTx) }
 
     private var composite: CompositeScoreResult {
         DashboardAggregations.computeCompositeScore(
@@ -41,23 +36,49 @@ struct CompareV5View: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("ภาพรวม (V.5)")
-                    .font(.title2.bold())
+        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            HStack(alignment: .top) {
+                SectionHeader(
+                    title: "ภาพรวม (V.5)",
+                    systemImage: "speedometer",
+                    subtitle: "เทียบช่วงก่อนหน้า"
+                )
                 Spacer()
-                Button("Export CSV") { exportCSV() }
-                    .font(.caption)
+                Button {
+                    exportCSV()
+                } label: {
+                    Label("ส่งออก CSV", systemImage: "square.and.arrow.up")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.brand)
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                StatCardView(title: "กำไรสุทธิ", value: DashboardAggregations.formatCurrency(curFin.profit), subtitle: deltaText(curFin.profit, prevFin.profit), accent: curFin.profit >= 0 ? .green : .red, systemImage: "chart.line.uptrend.xyaxis")
-                StatCardView(title: "อัตรากำไร", value: marginText(curFin), subtitle: nil, accent: .blue, systemImage: "percent")
-                StatCardView(title: "คะแนนรวม", value: "\(composite.score)/100", subtitle: "composite score", accent: Color(hex: "#8b5cf6"), systemImage: "star.fill")
-                StatCardView(title: "รายรับ", value: DashboardAggregations.formatCurrency(curFin.income), subtitle: deltaText(curFin.income, prevFin.income), accent: .green, systemImage: "banknote")
+                KPITile(
+                    title: "กำไรสุทธิ",
+                    value: DashboardAggregations.formatCurrency(curFin.profit),
+                    subtitle: deltaText(curFin.profit, prevFin.profit),
+                    accent: curFin.profit >= 0 ? AppTheme.income : AppTheme.expense,
+                    systemImage: "chart.line.uptrend.xyaxis"
+                )
+                KPITile(
+                    title: "อัตรากำไร",
+                    value: marginText(curFin),
+                    accent: AppTheme.info,
+                    systemImage: "percent"
+                )
+                scoreTile
+                KPITile(
+                    title: "รายรับ",
+                    value: DashboardAggregations.formatCurrency(curFin.income),
+                    subtitle: deltaText(curFin.income, prevFin.income),
+                    accent: AppTheme.income,
+                    systemImage: "banknote"
+                )
             }
 
-            GroupBox("เทียบช่วงก่อน") {
+            SectionCard("เทียบช่วงก่อน", systemImage: "arrow.left.arrow.right") {
                 comparisonRow("รายรับ", curFin.income, prevFin.income)
                 comparisonRow("รายจ่าย", curFin.expense, prevFin.expense)
                 comparisonRow("กำไร", curFin.profit, prevFin.profit)
@@ -65,7 +86,7 @@ struct CompareV5View: View {
                 comparisonRow("ขนทราย (คิว)", sandCur.transported, sandPrev.transported)
             }
 
-            GroupBox("รายละเอียดคะแนน") {
+            SectionCard("รายละเอียดคะแนน", systemImage: "star.fill") {
                 ForEach(composite.breakdown) { item in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -80,13 +101,54 @@ struct CompareV5View: View {
                 }
             }
 
-            GroupBox("Break-even scatter") {
+            SectionCard("จุดคุ้มทุนรายวัน", systemImage: "chart.dots.scatter", subtitle: "รายรับ vs รายจ่าย") {
                 BreakEvenScatterView(points: dailyPoints.map { ($0.income, $0.expense, $0.label) })
             }
         }
         .sheet(isPresented: $showShare) {
             ShareSheet(items: [csvText])
         }
+    }
+
+    private var scoreTile: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.purple)
+                    .frame(width: 28, height: 28)
+                    .background(AppTheme.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text("คะแนนรวม")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(Color(.tertiarySystemFill), lineWidth: 6)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(composite.score) / 100)
+                        .stroke(AppTheme.purple, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(composite.score)")
+                        .font(.headline.bold())
+                }
+                .frame(width: 52, height: 52)
+                Text("/ 100")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Capsule()
+                .fill(AppTheme.purple)
+                .frame(height: 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
     }
 
     private func comparisonRow(_ title: String, _ cur: Double, _ prev: Double) -> some View {
@@ -96,9 +158,10 @@ struct CompareV5View: View {
             Text(DashboardAggregations.formatNumber(cur))
             Text(deltaText(cur, prev))
                 .font(.caption)
-                .foregroundStyle(cur >= prev ? .green : .red)
+                .foregroundStyle(cur >= prev ? AppTheme.income : AppTheme.expense)
         }
         .font(.subheadline)
+        .padding(.vertical, 3)
     }
 
     private func marginText(_ fin: FinancialSummary) -> String {

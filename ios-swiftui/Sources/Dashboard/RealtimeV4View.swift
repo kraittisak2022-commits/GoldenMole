@@ -160,6 +160,30 @@ struct RealtimeV4View: View {
 
     // MARK: - Live board
 
+    private var tripAnalytics: CountRecordAnalytics.ModeAnalytics {
+        CountRecordAnalytics.buildTripAnalytics(
+            dayKey: focusDateStr,
+            transactions: transactions,
+            employees: employees
+        )
+    }
+
+    private var sandAnalytics: CountRecordAnalytics.ModeAnalytics {
+        CountRecordAnalytics.buildSandAnalytics(
+            dayKey: focusDateStr,
+            transactions: transactions,
+            employees: employees
+        )
+    }
+
+    private var activityEvents: [CountRecordAnalytics.ActivityEvent] {
+        CountRecordAnalytics.buildActivityFeed(
+            dayKey: focusDateStr,
+            transactions: transactions,
+            employees: employees
+        )
+    }
+
     private var liveBoard: some View {
         VStack(spacing: 0) {
             liveBoardHeader
@@ -169,6 +193,20 @@ struct RealtimeV4View: View {
             }
             .padding(16)
             .background(Color(.systemBackground))
+
+            VStack(spacing: 14) {
+                RealtimeV4AnalyticsPanel(analytics: tripAnalytics, accent: Color(hex: "#38BDF8"))
+                RealtimeV4AnalyticsPanel(analytics: sandAnalytics, accent: Color(hex: "#F472B6"))
+                RealtimeV4ActivityFeed(events: activityEvents)
+            }
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#0F172A"), Color(hex: "#1E1B4B")],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(

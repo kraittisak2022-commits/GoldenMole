@@ -53,28 +53,31 @@ struct AnalyticsV2View: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("วิเคราะห์ (V.2)")
-                .font(.title2.bold())
+        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            SectionHeader(
+                title: "วิเคราะห์ (V.2)",
+                systemImage: "chart.bar.xaxis",
+                subtitle: "รายจ่ายและแนวโน้ม"
+            )
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                StatCardView(title: "รายจ่ายรวม", value: DashboardAggregations.formatCurrency(totalExpense), subtitle: "\(numDays) วัน", accent: .red, systemImage: "arrow.down.circle")
-                StatCardView(title: "เฉลี่ย/วัน", value: DashboardAggregations.formatCurrency(numDays > 0 ? totalExpense / Double(numDays) : 0), subtitle: "vs เมื่อวาน \(dayChange)%", accent: .blue, systemImage: "calendar")
-                StatCardView(title: "เฉลี่ย/สัปดาห์", value: DashboardAggregations.formatCurrency(totalExpense / max(1, Double(numDays) / 7)), subtitle: nil, accent: .orange, systemImage: "chart.bar")
-                StatCardView(title: "กำไรสุทธิ", value: DashboardAggregations.formatCurrency(totalIncome - totalExpense), subtitle: "รายรับ − รายจ่าย", accent: (totalIncome - totalExpense) >= 0 ? .green : .red, systemImage: "scalemass")
+                KPITile(title: "รายจ่ายรวม", value: DashboardAggregations.formatCurrency(totalExpense), subtitle: "\(numDays) วัน", accent: AppTheme.expense, systemImage: "arrow.down.circle")
+                KPITile(title: "เฉลี่ย/วัน", value: DashboardAggregations.formatCurrency(numDays > 0 ? totalExpense / Double(numDays) : 0), subtitle: "vs เมื่อวาน \(dayChange)%", accent: AppTheme.info, systemImage: "calendar")
+                KPITile(title: "เฉลี่ย/สัปดาห์", value: DashboardAggregations.formatCurrency(totalExpense / max(1, Double(numDays) / 7)), accent: AppTheme.warning, systemImage: "chart.bar")
+                KPITile(title: "กำไรสุทธิ", value: DashboardAggregations.formatCurrency(totalIncome - totalExpense), subtitle: "รายรับ − รายจ่าย", accent: (totalIncome - totalExpense) >= 0 ? AppTheme.income : AppTheme.expense, systemImage: "scalemass")
             }
 
-            GroupBox("รายจ่ายรายวัน") {
+            SectionCard("รายจ่ายรายวัน", systemImage: "chart.bar.fill") {
                 BarChartView(
                     labels: dailyExpenses.map(\.label),
                     values: dailyExpenses.map(\.total),
-                    barColor: Color(hex: "#ef4444")
+                    barColor: AppTheme.expense
                 )
             }
 
-            GroupBox("สัดส่วนตามหมวด") {
+            SectionCard("สัดส่วนตามหมวด", systemImage: "chart.pie.fill") {
                 if catSlices.isEmpty {
-                    Text("ไม่มีข้อมูล").foregroundStyle(.secondary)
+                    EmptyStateView(title: "ไม่มีข้อมูล", systemImage: "chart.pie")
                 } else {
                     DonutChartView(slices: catSlices)
                         .frame(height: 180)
@@ -82,7 +85,7 @@ struct AnalyticsV2View: View {
             }
 
             if !vehicleCosts.isEmpty {
-                GroupBox("ต้นทุนต่อรถ") {
+                SectionCard("ต้นทุนต่อรถ", systemImage: "car.fill") {
                     ForEach(vehicleCosts, id: \.name) { item in
                         HStack {
                             Text(item.name)
@@ -90,15 +93,16 @@ struct AnalyticsV2View: View {
                             Text(DashboardAggregations.formatCurrency(item.total)).bold()
                         }
                         .font(.subheadline)
+                        .padding(.vertical, 4)
                     }
                 }
             }
 
-            GroupBox("แนวโน้มรายจ่าย") {
+            SectionCard("แนวโน้มรายจ่าย", systemImage: "chart.line.uptrend.xyaxis") {
                 LineChartView(
                     labels: dailyExpenses.map(\.label),
                     values: dailyExpenses.map(\.total),
-                    lineColor: Color(hex: "#ef4444")
+                    lineColor: AppTheme.expense
                 )
             }
         }

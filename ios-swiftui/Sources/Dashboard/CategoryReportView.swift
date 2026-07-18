@@ -37,9 +37,12 @@ struct CategoryReportView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("รายงาน: \(type.title)")
-                .font(.title2.bold())
+        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            SectionHeader(
+                title: "รายงาน: \(type.title)",
+                systemImage: "doc.text.fill",
+                subtitle: "สรุปตามช่วงวันที่ที่เลือก"
+            )
 
             switch type {
             case .sand: sandView
@@ -266,7 +269,7 @@ struct CategoryReportView: View {
         let dates = DashboardAggregations.enumerateDates(in: dateFilter)
         let labels = dates.map { DashboardAggregations.dayLabel($0) }
         let values = dates.map(amountForDate)
-        return GroupBox("รายวัน") {
+        return SectionCard("รายวัน", systemImage: "calendar") {
             BarChartView(labels: labels, values: values)
         }
     }
@@ -274,7 +277,7 @@ struct CategoryReportView: View {
     private func detailByDate(category: String) -> some View {
         let grouped = Dictionary(grouping: transactions.filter { $0.category == category }) { String($0.date.prefix(10)) }
             .sorted { $0.key > $1.key }
-        return GroupBox("รายละเอียดรายวัน") {
+        return SectionCard("รายละเอียดรายวัน", systemImage: "list.bullet") {
             ForEach(grouped, id: \.0) { date, txs in
                 DisclosureGroup(isExpanded: Binding(
                     get: { expandedDate == date },

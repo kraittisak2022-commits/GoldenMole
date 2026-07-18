@@ -49,30 +49,50 @@ struct OverviewV1View: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("ภาพรวม (V.1)")
-                .font(.title2.bold())
+        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            SectionHeader(
+                title: "ภาพรวม (V.1)",
+                systemImage: "chart.pie.fill",
+                subtitle: "สรุปการเงินและทรายในช่วงที่เลือก"
+            )
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                StatCardView(title: "กำไรสุทธิ", value: DashboardAggregations.formatCurrency(financial.profit), subtitle: "รายรับ − รายจ่าย", accent: financial.profit >= 0 ? .green : .red, systemImage: "chart.line.uptrend.xyaxis")
-                StatCardView(title: "รายรับรวม", value: DashboardAggregations.formatCurrency(financial.income), subtitle: nil, accent: Color(hex: "#10b981"), systemImage: "banknote")
-                StatCardView(title: "รายจ่ายรวม", value: DashboardAggregations.formatCurrency(financial.expense), subtitle: nil, accent: Color(hex: "#ef4444"), systemImage: "creditcard")
+                KPITile(
+                    title: "กำไรสุทธิ",
+                    value: DashboardAggregations.formatCurrency(financial.profit),
+                    subtitle: "รายรับ − รายจ่าย",
+                    accent: financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
+                    systemImage: "chart.line.uptrend.xyaxis"
+                )
+                KPITile(
+                    title: "รายรับรวม",
+                    value: DashboardAggregations.formatCurrency(financial.income),
+                    accent: AppTheme.income,
+                    systemImage: "banknote"
+                )
+                KPITile(
+                    title: "รายจ่ายรวม",
+                    value: DashboardAggregations.formatCurrency(financial.expense),
+                    accent: AppTheme.expense,
+                    systemImage: "creditcard"
+                )
             }
 
-            GroupBox("โครงสร้างต้นทุน") {
+            SectionCard("โครงสร้างต้นทุน", systemImage: "circle.grid.cross.fill") {
                 if costSlices.isEmpty {
-                    Text("ไม่มีรายจ่ายในช่วงนี้").foregroundStyle(.secondary)
+                    EmptyStateView(title: "ไม่มีรายจ่ายในช่วงนี้", systemImage: "tray")
                 } else {
-                    HStack {
+                    HStack(alignment: .center, spacing: 16) {
                         DonutChartView(slices: costSlices)
                             .frame(width: 140, height: 140)
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 8) {
                             ForEach(costSlices) { slice in
                                 HStack {
                                     Circle().fill(Color(hex: slice.colorHex)).frame(width: 8, height: 8)
                                     Text(slice.label).font(.caption)
                                     Spacer()
-                                    Text(DashboardAggregations.formatCurrency(slice.value)).font(.caption.bold())
+                                    Text(DashboardAggregations.formatCurrency(slice.value))
+                                        .font(.caption.bold())
                                 }
                             }
                         }
@@ -80,37 +100,24 @@ struct OverviewV1View: View {
                 }
             }
 
-            GroupBox("รายจ่ายรายวัน") {
+            SectionCard("รายจ่ายรายวัน", systemImage: "chart.bar.fill") {
                 let bars = dailyExpenseBars
-                BarChartView(labels: bars.labels, values: bars.values, barColor: Color(hex: "#ef4444"))
+                BarChartView(labels: bars.labels, values: bars.values, barColor: AppTheme.expense)
             }
 
-            GroupBox("Sand Analytics") {
+            SectionCard("วิเคราะห์ทราย", systemImage: "drop.fill", subtitle: "ล้าง vs ขนทราย") {
                 let kpi = sandKPIs
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    miniKPI("ล้างทราย", value: "\(DashboardAggregations.formatNumber(kpi.washTotal)) คิว")
-                    miniKPI("ขนทราย", value: "\(DashboardAggregations.formatNumber(kpi.transportTotal)) คิว")
-                    miniKPI("ถังที่ได้", value: "\(DashboardAggregations.formatNumber(kpi.drumsObtained)) ถัง")
-                    miniKPI("ล้างที่บ้าน", value: "\(DashboardAggregations.formatNumber(kpi.drumsHome)) ถัง")
+                    KPITile(title: "ล้างทราย", value: "\(DashboardAggregations.formatNumber(kpi.washTotal)) คิว", accent: AppTheme.info, systemImage: "drop")
+                    KPITile(title: "ขนทราย", value: "\(DashboardAggregations.formatNumber(kpi.transportTotal)) คิว", accent: AppTheme.warning, systemImage: "truck.box")
+                    KPITile(title: "ถังที่ได้", value: "\(DashboardAggregations.formatNumber(kpi.drumsObtained)) ถัง", accent: AppTheme.sand, systemImage: "archivebox.fill")
+                    KPITile(title: "ล้างที่บ้าน", value: "\(DashboardAggregations.formatNumber(kpi.drumsHome)) ถัง", accent: AppTheme.purple, systemImage: "house")
                 }
-                Text("ล้าง vs ขนทราย (คิว/วัน)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 let series = sandSeries
                 SandDualLineChart(labels: series.labels, washed: series.washed, transported: series.transported)
                     .frame(height: 200)
             }
         }
-    }
-
-    private func miniKPI(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.subheadline.bold())
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.tertiarySystemBackground)))
     }
 }
 
@@ -125,15 +132,15 @@ private struct SandDualLineChart: View {
             let w = geo.size.width
             let h = geo.size.height
             let count = max(labels.count, 1)
-            ZStack {
-                path(values: washed, color: Color(hex: "#3b82f6"), maxV: maxV, w: w, h: h, count: count)
-                path(values: transported, color: Color(hex: "#f59e0b"), maxV: maxV, w: w, h: h, count: count)
+            ZStack(alignment: .topLeading) {
+                path(values: washed, color: AppTheme.info, maxV: maxV, w: w, h: h, count: count)
+                path(values: transported, color: AppTheme.warning, maxV: maxV, w: w, h: h, count: count)
+                HStack(spacing: 12) {
+                    Label("ล้าง", systemImage: "circle.fill").font(.caption2).foregroundStyle(AppTheme.info)
+                    Label("ขน", systemImage: "circle.fill").font(.caption2).foregroundStyle(AppTheme.warning)
+                }
+                .padding(.top, 4)
             }
-            HStack {
-                Label("ล้าง", systemImage: "circle.fill").font(.caption2).foregroundStyle(Color(hex: "#3b82f6"))
-                Label("ขน", systemImage: "circle.fill").font(.caption2).foregroundStyle(Color(hex: "#f59e0b"))
-            }
-            .offset(y: h / 2 - 8)
         }
     }
 
@@ -145,6 +152,6 @@ private struct SandDualLineChart: View {
                 if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
             }
         }
-        .stroke(color, lineWidth: 2)
+        .stroke(color, lineWidth: 2.5)
     }
 }

@@ -28,27 +28,43 @@ struct CalendarV3View: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("ปฏิทิน (V.3)")
-                .font(.title2.bold())
+        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            SectionHeader(
+                title: "ปฏิทิน (V.3)",
+                systemImage: "calendar",
+                subtitle: "รายรับ รายจ่าย และวันหยุด"
+            )
 
-            HStack {
-                Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-                Spacer()
-                Text(monthTitle).font(.headline)
-                Spacer()
-                Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
-            }
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
-                ForEach(["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"], id: \.self) { d in
-                    Text(d).font(.caption.bold()).foregroundStyle(.secondary)
+            SectionCard {
+                HStack {
+                    Button { shiftMonth(-1) } label: {
+                        Image(systemName: "chevron.left.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.brand)
+                    }
+                    Spacer()
+                    Text(monthTitle).font(.headline)
+                    Spacer()
+                    Button { shiftMonth(1) } label: {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.brand)
+                    }
                 }
-                ForEach(Array(monthDates.enumerated()), id: \.offset) { _, date in
-                    if let date {
-                        dayCell(date)
-                    } else {
-                        Color.clear.frame(height: 56)
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                    ForEach(["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"], id: \.self) { d in
+                        Text(d)
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                    ForEach(Array(monthDates.enumerated()), id: \.offset) { _, date in
+                        if let date {
+                            dayCell(date)
+                        } else {
+                            Color.clear.frame(height: 64)
+                        }
                     }
                 }
             }
@@ -79,30 +95,41 @@ struct CalendarV3View: View {
         let holiday = holidays[key]
         let laborCount = dayTx.filter { $0.category == "Labor" && $0.laborStatus == "Work" }.count
         let isSelected = selectedDay == key
+        let isToday = key == DashboardAggregations.formatYMD(Date())
 
         return Button {
             selectedDay = key
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text("\(Calendar.current.component(.day, from: date))")
-                    .font(.subheadline.bold())
-                if income > 0 {
-                    Text("+\(Int(income))").font(.system(size: 8)).foregroundStyle(.green)
+                    .font(.subheadline.weight(isToday ? .bold : .semibold))
+                    .foregroundStyle(isToday ? AppTheme.brand : .primary)
+                HStack(spacing: 3) {
+                    if income > 0 {
+                        Circle().fill(AppTheme.income).frame(width: 5, height: 5)
+                    }
+                    if expense > 0 {
+                        Circle().fill(AppTheme.expense).frame(width: 5, height: 5)
+                    }
+                    if holiday != nil {
+                        Circle().fill(AppTheme.warning).frame(width: 5, height: 5)
+                    }
+                    if laborCount > 0 {
+                        Circle().fill(AppTheme.info).frame(width: 5, height: 5)
+                    }
                 }
-                if expense > 0 {
-                    Text("-\(Int(expense))").font(.system(size: 8)).foregroundStyle(.red)
-                }
-                if let holiday {
-                    Text("🎌").font(.system(size: 8))
-                    Text(holiday).font(.system(size: 7)).lineLimit(1)
-                }
-                if laborCount > 0 {
-                    Text("👷\(laborCount)").font(.system(size: 8))
-                }
+                .frame(height: 6)
             }
-            .frame(maxWidth: .infinity, minHeight: 56)
+            .frame(maxWidth: .infinity, minHeight: 64)
             .padding(4)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground)))
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? AppTheme.brand.opacity(0.14) : Color(.secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isToday ? AppTheme.brand.opacity(0.5) : .clear, lineWidth: 1.5)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -115,29 +142,38 @@ struct CalendarV3View: View {
         let labor = dayTx.filter { $0.category == "Labor" }
         let logs = dayTx.filter { $0.category == "DailyLog" }
 
-        return GroupBox("รายละเอียด \(DashboardAggregations.thaiDateLong(date))") {
-            VStack(alignment: .leading, spacing: 8) {
+        return SectionCard(
+            "รายละเอียด \(DashboardAggregations.thaiDateLong(date))",
+            systemImage: "doc.text.fill"
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("รายรับ").foregroundStyle(.secondary)
                     Spacer()
-                    Text(DashboardAggregations.formatCurrency(income)).foregroundStyle(.green)
+                    Text(DashboardAggregations.formatCurrency(income)).foregroundStyle(AppTheme.income).bold()
                 }
                 HStack {
                     Text("รายจ่าย").foregroundStyle(.secondary)
                     Spacer()
-                    Text(DashboardAggregations.formatCurrency(expense)).foregroundStyle(.red)
+                    Text(DashboardAggregations.formatCurrency(expense)).foregroundStyle(AppTheme.expense).bold()
                 }
                 if let h = holidays[date] {
-                    Label(h, systemImage: "flag.fill").font(.caption)
+                    Label(h, systemImage: "flag.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.warning)
                 }
                 if !labor.isEmpty {
-                    Text("ค่าแรง \(labor.count) รายการ").font(.caption)
+                    Label("ค่าแรง \(labor.count) รายการ", systemImage: "person.2.fill")
+                        .font(.caption)
                 }
                 if !logs.isEmpty {
-                    Text("บันทึกงาน \(logs.count) รายการ").font(.caption)
+                    Label("บันทึกงาน \(logs.count) รายการ", systemImage: "list.clipboard")
+                        .font(.caption)
                 }
                 ForEach(calendarEntries) { e in
-                    Text("• \(e.description) (\(e.eventType ?? e.subCategory ?? ""))").font(.caption)
+                    Text("• \(e.description) (\(e.eventType ?? e.subCategory ?? ""))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

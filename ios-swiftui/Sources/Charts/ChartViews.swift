@@ -48,7 +48,7 @@ private struct DonutSlice: Shape {
 struct BarChartView: View {
     let labels: [String]
     let values: [Double]
-    var barColor: Color = Color(hex: "#3b82f6")
+    var barColor: Color = AppTheme.info
 
     private var maxValue: Double { max(values.max() ?? 1, 1) }
 
@@ -75,7 +75,7 @@ struct BarChartView: View {
 struct LineChartView: View {
     let labels: [String]
     let values: [Double]
-    var lineColor: Color = Color(hex: "#3b82f6")
+    var lineColor: Color = AppTheme.info
 
     private struct Point: Identifiable {
         let id: Int
@@ -162,27 +162,12 @@ struct StatCardView: View {
     let systemImage: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: systemImage)
-                    .foregroundStyle(accent)
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Text(value)
-                .font(.title2.bold())
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            RoundedRectangle(cornerRadius: 2)
-                .fill(accent)
-                .frame(height: 4)
-                .frame(maxWidth: .infinity)
-        }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+        KPITile(
+            title: title,
+            value: value,
+            subtitle: subtitle,
+            accent: accent,
+            systemImage: systemImage
+        )
     }
 }
