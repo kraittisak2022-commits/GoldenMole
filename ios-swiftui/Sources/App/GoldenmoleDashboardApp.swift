@@ -48,16 +48,27 @@ struct RootView: View {
             if let configError = bootstrap.configError {
                 ConfigErrorView(message: configError)
             } else if let auth = bootstrap.authService {
-                if auth.currentAdmin != nil {
-                    DashboardShell()
-                        .environmentObject(auth)
-                } else {
-                    LoginView()
-                        .environmentObject(auth)
-                        .environmentObject(bootstrap.appState)
-                }
+                // Observe AuthService so login/logout rebuilds this tree.
+                AuthGateView(auth: auth)
+                    .environmentObject(auth)
+                    .environmentObject(bootstrap.appState)
             } else {
                 ProgressView("กำลังเริ่มต้น…")
+            }
+        }
+    }
+}
+
+/// Holds `@ObservedObject` on AuthService so `currentAdmin` changes trigger navigation.
+private struct AuthGateView: View {
+    @ObservedObject var auth: AuthService
+
+    var body: some View {
+        Group {
+            if auth.currentAdmin != nil {
+                DashboardShell()
+            } else {
+                LoginView()
             }
         }
     }

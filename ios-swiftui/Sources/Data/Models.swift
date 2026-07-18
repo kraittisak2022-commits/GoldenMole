@@ -12,6 +12,11 @@ enum AdminRole: String, Codable, Sendable {
     case superAdmin = "SuperAdmin"
     case admin = "Admin"
     case assistant = "Assistant"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AdminRole(rawValue: raw) ?? .admin
+    }
 }
 
 struct DateFilter: Equatable, Sendable {
