@@ -1,6 +1,8 @@
 import type { Employee, Transaction } from '../../types';
 import { normalizeDate } from '../../utils';
 import {
+    OT_START_HOUR,
+    SAND_TARGET_ROUNDS,
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
     type CountRecordTripUnit,
@@ -11,6 +13,8 @@ const MS_PER_MIN = 60 * 1000;
 
 export const LUNCH_START_HOUR = 12;
 export const LUNCH_END_HOUR = 13;
+
+export { SAND_TARGET_ROUNDS };
 
 export function isLunchHour(hour: number): boolean {
     return hour >= LUNCH_START_HOUR && hour < LUNCH_END_HOUR;
@@ -461,25 +465,78 @@ export function formatDurationSec(sec: number | null, locale: FormatLocale = 'th
     return rm > 0 ? `${h} ชม. ${rm} นาที` : `${h} ชม.`;
 }
 
+export const PRIOR_DAY_LOOKBACK_DAYS = 14;
+
+/** หาวันย้อนหลังล่าสุดที่มีรอบ > 0 (ทราย/เที่ยวแยกกัน) */
+export function findPriorDayWithModeData(
+    fromDayKey: string,
+    mode: 'sand' | 'trip',
+    transactions: Transaction[],
+    employees: Employee[],
+    maxLookbackDays = PRIOR_DAY_LOOKBACK_DAYS,
+): string | null {
+    for (let offset = 1; offset <= maxLookbackDays; offset++) {
+        const key = addDaysToYmd(fromDayKey, -offset);
+        if (mode === 'sand') {
+            const sand = buildCountRecordSandUnit(key, transactions);
+            if ((sand?.rounds ?? 0) > 0) return key;
+        } else {
+            const trips = buildCountRecordTripUnits(key, transactions, employees);
+            const rounds = trips.reduce((s, u) => s + u.rounds, 0);
+            if (rounds > 0) return key;
+        }
+    }
+    return null;
+}
+
+/** ป้ายวันเปรียบเทียบ: เมื่อวาน / DD/MM / '' */
+export function formatComparisonDayLabel(
+    dayKey: string | null,
+    focusDayKey: string,
+    locale: FormatLocale = 'th',
+): string {
+    if (!dayKey) return '';
+    const calendarYesterday = addDaysToYmd(focusDayKey, -1);
+    if (dayKey === calendarYesterday) {
+        return locale === 'zh' ? '昨天' : 'เมื่อวาน';
+    }
+    const [, mm, dd] = dayKey.split('-');
+    if (!mm || !dd) return dayKey;
+    return `${dd}/${mm}`;
+}
+
 export function formatPaceDelta(
     pct: number | null,
     locale: FormatLocale = 'th',
+    /** omit = เมื่อวาน; '' = ไม่มีวันอ้างอิง (ไม่มีข้อมูลเปรียบเทียบ) */
+    priorLabel?: string,
 ): { text: string; faster: boolean | null } {
     if (pct == null || !Number.isFinite(pct)) {
-        return { text: locale === 'zh' ? '无昨天数据' : 'ไม่มีข้อมูลเมื่อวาน', faster: null };
+        if (priorLabel === '') {
+            return { text: locale === 'zh' ? '无对比数据' : 'ไม่มีข้อมูลเปรียบเทียบ', faster: null };
+        }
+        const label = priorLabel?.trim() || (locale === 'zh' ? '昨天' : 'เมื่อวาน');
+        return {
+            text: locale === 'zh' ? `无${label}数据` : `ไม่มีข้อมูล${label}`,
+            faster: null,
+        };
     }
+    const label = priorLabel?.trim() || (locale === 'zh' ? '昨天' : 'เมื่อวาน');
     const abs = Math.abs(Math.round(pct));
     if (abs < 1) {
-        return { text: locale === 'zh' ? '与昨天相同' : 'เท่าเมื่อวาน', faster: null };
+        return {
+            text: locale === 'zh' ? `与${label}相同` : `เท่า${label}`,
+            faster: null,
+        };
     }
     if (pct < 0) {
         return {
-            text: locale === 'zh' ? `比昨天快 ${abs}%` : `เร็วกว่าเมื่อวาน ${abs}%`,
+            text: locale === 'zh' ? `比${label}快 ${abs}%` : `เร็วกว่า${label} ${abs}%`,
             faster: true,
         };
     }
     return {
-        text: locale === 'zh' ? `比昨天慢 ${abs}%` : `ช้ากว่าเมื่อวาน ${abs}%`,
+        text: locale === 'zh' ? `比${label}慢 ${abs}%` : `ช้ากว่า${label} ${abs}%`,
         faster: false,
     };
 }
@@ -503,6 +560,9 @@ export interface DayModeComparison {
     paceDeltaPct: number | null;
     hasYesterdayData: boolean;
     hasYesterdayIntervals: boolean;
+    /** วันที่ใช้เทียบจริง (null = ไม่มีข้อมูลในช่วง lookback) */
+    referenceDayKey: string | null;
+    isCalendarYesterday: boolean;
 }
 
 export interface DayComparison {
@@ -517,11 +577,15 @@ function buildModeComparison(
     yesterdayRounds: number,
     dayKey: string,
     yesterdayKey: string,
+    referenceDayKey: string | null,
+    focusDayKey: string,
 ): DayModeComparison {
     const todayIntervals = computeLapIntervals(todayLaps, dayKey);
     const yesterdayIntervals = computeLapIntervals(yesterdayLaps, yesterdayKey);
     const todayStats = computeIntervalStats(todayIntervals.intervalsSec);
     const yesterdayStats = computeIntervalStats(yesterdayIntervals.intervalsSec);
+    const calendarYesterday = addDaysToYmd(focusDayKey, -1);
+    const hasData = yesterdayRounds > 0 && referenceDayKey != null;
 
     return {
         todayRounds,
@@ -530,8 +594,10 @@ function buildModeComparison(
         todayAvgSec: todayStats.avg,
         yesterdayAvgSec: yesterdayStats.avg,
         paceDeltaPct: computePaceDeltaPercent(todayStats.avg, yesterdayStats.avg),
-        hasYesterdayData: yesterdayRounds > 0,
+        hasYesterdayData: hasData,
         hasYesterdayIntervals: yesterdayIntervals.intervalsSec.length > 0,
+        referenceDayKey: hasData ? referenceDayKey : null,
+        isCalendarYesterday: hasData && referenceDayKey === calendarYesterday,
     };
 }
 
@@ -639,35 +705,200 @@ export function buildDayComparison(
     transactions: Transaction[],
     employees: Employee[],
 ): DayComparison {
-    const yesterdayKey = addDaysToYmd(todayKey, -1);
+    const calendarYesterday = addDaysToYmd(todayKey, -1);
+    const sandRef = findPriorDayWithModeData(todayKey, 'sand', transactions, employees);
+    const tripRef = findPriorDayWithModeData(todayKey, 'trip', transactions, employees);
+    const sandKey = sandRef ?? calendarYesterday;
+    const tripKey = tripRef ?? calendarYesterday;
 
     const todayTrips = buildCountRecordTripUnits(todayKey, transactions, employees);
-    const yesterdayTrips = buildCountRecordTripUnits(yesterdayKey, transactions, employees);
+    const priorTrips = buildCountRecordTripUnits(tripKey, transactions, employees);
     const todaySand = buildCountRecordSandUnit(todayKey, transactions);
-    const yesterdaySand = buildCountRecordSandUnit(yesterdayKey, transactions);
+    const priorSand = buildCountRecordSandUnit(sandKey, transactions);
 
     const todayTripTimeline = mergeTripLapTimeline(todayTrips, todayKey);
-    const yesterdayTripTimeline = mergeTripLapTimeline(yesterdayTrips, yesterdayKey);
+    const priorTripTimeline = mergeTripLapTimeline(priorTrips, tripKey);
 
     const todayTripRounds = todayTrips.reduce((s, u) => s + u.rounds, 0);
-    const yesterdayTripRounds = yesterdayTrips.reduce((s, u) => s + u.rounds, 0);
+    const priorTripRounds = priorTrips.reduce((s, u) => s + u.rounds, 0);
 
     return {
         sand: buildModeComparison(
             todaySand?.lapTimes ?? [],
-            yesterdaySand?.lapTimes ?? [],
+            priorSand?.lapTimes ?? [],
             todaySand?.rounds ?? 0,
-            yesterdaySand?.rounds ?? 0,
+            priorSand?.rounds ?? 0,
             todayKey,
-            yesterdayKey,
+            sandKey,
+            sandRef,
+            todayKey,
         ),
         trip: buildModeComparison(
             timelineToLapStamps(todayTripTimeline),
-            timelineToLapStamps(yesterdayTripTimeline),
+            timelineToLapStamps(priorTripTimeline),
             todayTripRounds,
-            yesterdayTripRounds,
+            priorTripRounds,
             todayKey,
-            yesterdayKey,
+            tripKey,
+            tripRef,
+            todayKey,
         ),
+    };
+}
+
+export type SandPeriodKey = 'morning' | 'afternoon' | 'ot';
+
+export interface SandPeriodEfficiencyBucket {
+    rounds: number;
+    activeHours: number;
+    roundsPerHour: number;
+}
+
+export interface SandPeriodEfficiency {
+    morning: SandPeriodEfficiencyBucket | null;
+    afternoon: SandPeriodEfficiencyBucket | null;
+    ot: SandPeriodEfficiencyBucket | null;
+}
+
+function periodKeyFromHour(hour: number): SandPeriodKey | null {
+    if (hour < LUNCH_START_HOUR) return 'morning';
+    if (hour >= OT_START_HOUR) return 'ot';
+    if (hour >= LUNCH_END_HOUR && hour < OT_START_HOUR) return 'afternoon';
+    // Lunch hour 12:00–13:00: count rounds in afternoon bucket but active time excludes lunch via activeDurationSec
+    if (isLunchHour(hour)) return 'afternoon';
+    return null;
+}
+
+function bucketFromLaps(stamps: { stamp: string; timeMs: number }[]): SandPeriodEfficiencyBucket | null {
+    if (stamps.length < 2) return null;
+    const sorted = [...stamps].sort((a, b) => a.timeMs - b.timeMs);
+    const first = sorted[0]!;
+    const last = sorted[sorted.length - 1]!;
+    const activeSec = activeDurationSec(first.timeMs, last.timeMs);
+    const activeHours = activeSec / 3600;
+    if (activeHours <= 0) return null;
+    const rounds = stamps.length;
+    return {
+        rounds,
+        activeHours,
+        roundsPerHour: rounds / activeHours,
+    };
+}
+
+/** Rounds/hour by morning (<12), afternoon (12–16 incl. lunch stamps), OT (>=17) */
+export function computeSandPeriodEfficiency(lapTimes: string[], dayKey: string): SandPeriodEfficiency {
+    const buckets: Record<SandPeriodKey, { stamp: string; timeMs: number }[]> = {
+        morning: [],
+        afternoon: [],
+        ot: [],
+    };
+    for (const stamp of lapTimes) {
+        const timeMs = parseLapStamp(stamp, dayKey);
+        if (timeMs == null) continue;
+        const d = new Date(timeMs + TZ_OFFSET_MS);
+        const hour = d.getUTCHours();
+        const key = periodKeyFromHour(hour);
+        if (!key) continue;
+        buckets[key].push({ stamp, timeMs });
+    }
+    return {
+        morning: bucketFromLaps(buckets.morning),
+        afternoon: bucketFromLaps(buckets.afternoon),
+        ot: bucketFromLaps(buckets.ot),
+    };
+}
+
+export interface SandTargetEta {
+    rounds: number;
+    target: number;
+    remaining: number;
+    reached: boolean;
+    progressPct: number;
+    etaClock: string | null;
+    hoursLeft: number | null;
+}
+
+export function computeSandTargetEta(
+    lapTimes: string[],
+    dayKey: string,
+    target: number = SAND_TARGET_ROUNDS,
+): SandTargetEta {
+    const rounds = lapTimes.length;
+    const remaining = Math.max(0, target - rounds);
+    const progressPct = target > 0 ? Math.min((rounds / target) * 100, 100) : 0;
+    if (remaining === 0) {
+        return {
+            rounds,
+            target,
+            remaining: 0,
+            reached: true,
+            progressPct,
+            etaClock: null,
+            hoursLeft: 0,
+        };
+    }
+
+    const { intervalsSec } = computeLapIntervals(lapTimes, dayKey);
+    const stats = computeIntervalStats(intervalsSec);
+    if (stats.avg == null || stats.avg <= 0) {
+        return {
+            rounds,
+            target,
+            remaining,
+            reached: false,
+            progressPct,
+            etaClock: null,
+            hoursLeft: null,
+        };
+    }
+
+    const span = computeWorkSpan(lapTimes, dayKey);
+    const lastMs = span.endStamp ? parseLapStamp(span.endStamp, dayKey) : null;
+    if (lastMs == null) {
+        return {
+            rounds,
+            target,
+            remaining,
+            reached: false,
+            progressPct,
+            etaClock: null,
+            hoursLeft: null,
+        };
+    }
+
+    const hoursLeft = (remaining * stats.avg) / 3600;
+    const etaMs = lastMs + remaining * stats.avg * 1000;
+    const d = new Date(etaMs + TZ_OFFSET_MS);
+    const etaClock = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+
+    return {
+        rounds,
+        target,
+        remaining,
+        reached: false,
+        progressPct,
+        etaClock,
+        hoursLeft,
+    };
+}
+
+export interface PaceConsistency {
+    pctInBand: number;
+    medianSec: number;
+    sampleSize: number;
+}
+
+/** % of intervals within ±25% of median; null if fewer than 3 intervals */
+export function computePaceConsistency(intervalsSec: number[]): PaceConsistency | null {
+    if (intervalsSec.length < 3) return null;
+    const stats = computeIntervalStats(intervalsSec);
+    if (stats.median == null || stats.median <= 0) return null;
+    const lo = stats.median * 0.75;
+    const hi = stats.median * 1.25;
+    const inBand = intervalsSec.filter((s) => s >= lo && s <= hi).length;
+    return {
+        pctInBand: (inBand / intervalsSec.length) * 100,
+        medianSec: stats.median,
+        sampleSize: intervalsSec.length,
     };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
     activeDurationSec,
+    addDaysToYmd,
     buildDayComparison,
     buildIntervalSparkline,
     computeCumulativeSeries,
@@ -14,12 +15,17 @@ import {
     computeLapIntervals,
     computeMinuteSandSpeed,
     computeMovingAverage,
+    computePaceConsistency,
     computePaceDeltaPercent,
     computePeakHour,
+    computeSandPeriodEfficiency,
+    computeSandTargetEta,
     computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
     computeWorkSpan,
+    findPriorDayWithModeData,
     formatActiveHours,
+    formatComparisonDayLabel,
     formatLapClock,
     formatPaceDelta,
     formatWorkSpanLabel,
@@ -323,7 +329,100 @@ describe('buildDayComparison', () => {
         expect(cmp.sand.yesterdayRounds).toBe(2);
         expect(cmp.sand.roundsDeltaPct).toBe(50);
         expect(cmp.sand.paceDeltaPct).not.toBeNull();
+        expect(cmp.sand.referenceDayKey).toBe('2026-06-25');
+        expect(cmp.sand.isCalendarYesterday).toBe(true);
         expect(cmp.trip.todayRounds).toBe(2);
+    });
+
+    it('falls back to most recent prior day with data when yesterday is empty', () => {
+        const txs: Transaction[] = [
+            sand({
+                id: 's-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 08:00:00', '26/06 08:10:00'],
+                drumsObtained: 2,
+            }),
+            sand({
+                id: 's-prior',
+                date: '2026-06-23',
+                lapTimes: ['23/06 08:00:00', '23/06 08:20:00', '23/06 08:40:00'],
+                drumsObtained: 3,
+            }),
+        ];
+        const cmp = buildDayComparison('2026-06-26', txs, []);
+        expect(cmp.sand.referenceDayKey).toBe('2026-06-23');
+        expect(cmp.sand.isCalendarYesterday).toBe(false);
+        expect(cmp.sand.yesterdayRounds).toBe(3);
+        expect(cmp.sand.roundsDeltaPct).toBeCloseTo((2 - 3) / 3 * 100);
+    });
+
+    it('resolves sand and trip reference days independently', () => {
+        const txs: Transaction[] = [
+            sand({
+                id: 's-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 08:00:00'],
+                drumsObtained: 1,
+            }),
+            sand({
+                id: 's-fri',
+                date: '2026-06-23',
+                lapTimes: ['23/06 08:00:00', '23/06 08:10:00'],
+                drumsObtained: 2,
+            }),
+            trip({
+                id: 'v-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 09:00:00'],
+                perCarTrips: 1,
+            }),
+            trip({
+                id: 'v-sat',
+                date: '2026-06-24',
+                lapTimes: ['24/06 09:00:00', '24/06 09:30:00'],
+                perCarTrips: 2,
+            }),
+        ];
+        const cmp = buildDayComparison('2026-06-26', txs, []);
+        expect(cmp.sand.referenceDayKey).toBe('2026-06-23');
+        expect(cmp.trip.referenceDayKey).toBe('2026-06-24');
+    });
+
+    it('returns null reference when no prior data within lookback', () => {
+        const txs: Transaction[] = [
+            sand({
+                id: 's-today',
+                date: '2026-06-26',
+                lapTimes: ['26/06 08:00:00'],
+                drumsObtained: 1,
+            }),
+        ];
+        const cmp = buildDayComparison('2026-06-26', txs, []);
+        expect(cmp.sand.referenceDayKey).toBeNull();
+        expect(cmp.sand.roundsDeltaPct).toBeNull();
+        expect(cmp.trip.referenceDayKey).toBeNull();
+    });
+});
+
+describe('findPriorDayWithModeData / formatComparisonDayLabel', () => {
+    it('finds prior day with rounds', () => {
+        const txs: Transaction[] = [
+            trip({
+                id: 'v1',
+                date: '2026-06-20',
+                lapTimes: ['20/06 09:00:00'],
+                perCarTrips: 1,
+            }),
+        ];
+        expect(findPriorDayWithModeData('2026-06-26', 'trip', txs, [])).toBe('2026-06-20');
+        expect(findPriorDayWithModeData('2026-06-26', 'sand', txs, [])).toBeNull();
+    });
+
+    it('labels calendar yesterday vs short date', () => {
+        expect(formatComparisonDayLabel('2026-06-25', '2026-06-26', 'th')).toBe('เมื่อวาน');
+        expect(formatComparisonDayLabel('2026-06-23', '2026-06-26', 'th')).toBe('23/06');
+        expect(formatComparisonDayLabel(null, '2026-06-26', 'th')).toBe('');
+        expect(addDaysToYmd('2026-06-26', -1)).toBe('2026-06-25');
     });
 });
 
@@ -364,5 +463,78 @@ describe('computeTripFleetWorkSpan', () => {
         const span = computeTripFleetWorkSpan(units, '2026-06-26');
         expect(span.startClock).toBe('08:00');
         expect(span.endClock).toBe('16:00');
+    });
+});
+
+describe('computeSandPeriodEfficiency', () => {
+    it('splits rounds/hour by morning afternoon and OT', () => {
+        const eff = computeSandPeriodEfficiency(
+            [
+                '26/06 08:00:00',
+                '26/06 09:00:00',
+                '26/06 10:00:00',
+                '26/06 13:00:00',
+                '26/06 14:00:00',
+                '26/06 15:00:00',
+                '26/06 17:00:00',
+                '26/06 18:00:00',
+            ],
+            '2026-06-26',
+        );
+        expect(eff.morning?.rounds).toBe(3);
+        expect(eff.morning?.roundsPerHour).toBeCloseTo(1.5, 5);
+        expect(eff.afternoon?.rounds).toBe(3);
+        expect(eff.afternoon?.roundsPerHour).toBeCloseTo(1.5, 5);
+        expect(eff.ot?.rounds).toBe(2);
+        expect(eff.ot?.roundsPerHour).toBeCloseTo(2, 5);
+    });
+
+    it('returns null for period with fewer than 2 laps', () => {
+        const eff = computeSandPeriodEfficiency(['26/06 08:00:00', '26/06 17:30:00'], '2026-06-26');
+        expect(eff.morning).toBeNull();
+        expect(eff.afternoon).toBeNull();
+        expect(eff.ot).toBeNull();
+    });
+});
+
+describe('computeSandTargetEta', () => {
+    it('estimates ETA when under target', () => {
+        const laps = Array.from({ length: 10 }, (_, i) => {
+            const m = String(i * 2).padStart(2, '0');
+            return `26/06 08:${m}:00`;
+        });
+        const eta = computeSandTargetEta(laps, '2026-06-26', 20);
+        expect(eta.reached).toBe(false);
+        expect(eta.remaining).toBe(10);
+        expect(eta.etaClock).not.toBeNull();
+        expect(eta.hoursLeft).not.toBeNull();
+        expect(eta.hoursLeft!).toBeGreaterThan(0);
+    });
+
+    it('marks reached when rounds meet target', () => {
+        const laps = Array.from({ length: 5 }, (_, i) => `26/06 08:0${i}:00`);
+        const eta = computeSandTargetEta(laps, '2026-06-26', 5);
+        expect(eta.reached).toBe(true);
+        expect(eta.remaining).toBe(0);
+        expect(eta.hoursLeft).toBe(0);
+    });
+});
+
+describe('computePaceConsistency', () => {
+    it('returns high pct for steady intervals', () => {
+        const c = computePaceConsistency([60, 62, 58, 61, 59, 60]);
+        expect(c).not.toBeNull();
+        expect(c!.pctInBand).toBeGreaterThanOrEqual(80);
+        expect(c!.sampleSize).toBe(6);
+    });
+
+    it('returns lower pct for uneven intervals', () => {
+        const c = computePaceConsistency([30, 120, 40, 200, 50, 180]);
+        expect(c).not.toBeNull();
+        expect(c!.pctInBand).toBeLessThan(70);
+    });
+
+    it('returns null with fewer than 3 intervals', () => {
+        expect(computePaceConsistency([60, 60])).toBeNull();
     });
 });

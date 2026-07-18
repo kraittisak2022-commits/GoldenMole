@@ -4,6 +4,7 @@ import {
     formatActiveHours,
     formatAvgPaceSec,
     formatAvgPaceUnit,
+    formatComparisonDayLabel,
     formatPaceDelta,
     formatPaceValue,
     type DayModeComparison,
@@ -19,6 +20,7 @@ interface CountRecordStatTilesProps {
     sparkline: number[];
     accentColor: string;
     mode: 'sand' | 'trip';
+    dayKey: string;
     sandWorkSummary?: SandWorkDurationSummary | null;
     tripWorkSummary?: SandWorkDurationSummary | null;
     onOpenDetail?: () => void;
@@ -45,9 +47,9 @@ function MiniSparkline({ values, color }: { values: number[]; color: string }) {
     );
 }
 
-function PaceGauge({ pct, color }: { pct: number | null; color: string }) {
+function PaceGauge({ pct, color, priorLabel }: { pct: number | null; color: string; priorLabel: string }) {
     const { locale } = useShareLocale();
-    const { faster } = formatPaceDelta(pct, locale);
+    const { faster } = formatPaceDelta(pct, locale, priorLabel || '');
     const abs = pct != null ? Math.min(Math.abs(Math.round(pct)), 100) : 0;
     const sweep = (abs / 100) * 180;
     const gaugeColor = faster === true ? '#34d399' : faster === false ? '#fbbf24' : '#94a3b8';
@@ -79,7 +81,17 @@ function PaceGauge({ pct, color }: { pct: number | null; color: string }) {
     );
 }
 
-function CompareBars({ today, yesterday, color }: { today: number; yesterday: number; color: string }) {
+function CompareBars({
+    today,
+    yesterday,
+    color,
+    priorLabel,
+}: {
+    today: number;
+    yesterday: number;
+    color: string;
+    priorLabel: string;
+}) {
     const { t } = useShareLocale();
     const max = Math.max(today, yesterday, 1);
     const todayPct = (today / max) * 100;
@@ -100,7 +112,7 @@ function CompareBars({ today, yesterday, color }: { today: number; yesterday: nu
             </div>
             <div className="space-y-1">
                 <div className="flex items-center justify-between text-[9px] font-semibold text-white/50">
-                    <span>{t('yesterdayLabel')}</span>
+                    <span>{priorLabel || t('yesterdayLabel')}</span>
                     <span className="tabular-nums">{formatDashboardMetric(yesterday)}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-black/20">
@@ -149,6 +161,7 @@ const CountRecordStatTiles = ({
     sparkline,
     accentColor,
     mode,
+    dayKey,
     sandWorkSummary,
     tripWorkSummary,
     onOpenDetail,
@@ -158,6 +171,13 @@ const CountRecordStatTiles = ({
     const roundsPct = comparison.roundsDeltaPct;
     const roundsSign = roundsPct != null && roundsPct > 0 ? '+' : '';
     const workSummary = mode === 'sand' ? sandWorkSummary : tripWorkSummary;
+    const priorLabel = formatComparisonDayLabel(comparison.referenceDayKey, dayKey, locale);
+    const paceTitle = priorLabel
+        ? comparison.isCalendarYesterday
+            ? t('paceVsYesterday')
+            : t('paceVsPriorDay', { label: priorLabel })
+        : t('paceVsYesterday');
+    const paceDeltaText = formatPaceDelta(comparison.paceDeltaPct, locale, priorLabel || '').text;
 
     const tileBtn =
         'press-pop relative w-full overflow-hidden rounded-2xl p-3 text-left text-white shadow-lg transition-transform active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:p-3.5';
@@ -196,19 +216,17 @@ const CountRecordStatTiles = ({
                     </div>
                 </button>
 
-                {/* Pace vs yesterday gauge */}
+                {/* Pace vs prior day gauge */}
                 <button type="button" onClick={onOpenDetail} className={`${tileBtn} bg-gradient-to-br from-slate-800 to-slate-950`}>
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
                         <TrendingDown size={11} />
-                        {t('paceVsYesterday')}
+                        {paceTitle}
                     </div>
-                    <PaceGauge pct={comparison.paceDeltaPct} color={accentColor} />
-                    <p className="mt-0.5 text-center text-[9px] font-medium text-white/50">
-                        {formatPaceDelta(comparison.paceDeltaPct, locale).text}
-                    </p>
+                    <PaceGauge pct={comparison.paceDeltaPct} color={accentColor} priorLabel={priorLabel} />
+                    <p className="mt-0.5 text-center text-[9px] font-medium text-white/50">{paceDeltaText}</p>
                 </button>
 
-                {/* Today vs yesterday bars */}
+                {/* Today vs prior day bars */}
                 <button type="button" onClick={onOpenDetail} className={`${tileBtn} bg-gradient-to-br from-indigo-900 to-slate-950`}>
                     <div className="flex items-center justify-between gap-1">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
@@ -225,7 +243,12 @@ const CountRecordStatTiles = ({
                             </span>
                         )}
                     </div>
-                    <CompareBars today={comparison.todayRounds} yesterday={comparison.yesterdayRounds} color={accentColor} />
+                    <CompareBars
+                        today={comparison.todayRounds}
+                        yesterday={comparison.yesterdayRounds}
+                        color={accentColor}
+                        priorLabel={priorLabel}
+                    />
                 </button>
 
                 {/* Work hours ring (sand/trip) or min/max range fallback */}

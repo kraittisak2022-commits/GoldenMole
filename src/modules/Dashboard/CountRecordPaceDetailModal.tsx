@@ -7,6 +7,7 @@ import {
     formatActiveHours,
     formatAvgPaceSec,
     formatAvgPaceUnit,
+    formatComparisonDayLabel,
     formatPaceDelta,
     formatPaceValue,
     type DayModeComparison,
@@ -44,7 +45,13 @@ const CountRecordPaceDetailModal = ({
 }: CountRecordPaceDetailModalProps) => {
     const { t, locale } = useShareLocale();
     const paceUnit = formatAvgPaceUnit(stats.avg, locale);
-    const paceDelta = formatPaceDelta(comparison.paceDeltaPct, locale);
+    const priorLabel = formatComparisonDayLabel(comparison.referenceDayKey, dayKey, locale);
+    const paceDelta = formatPaceDelta(comparison.paceDeltaPct, locale, priorLabel || '');
+    const paceTitle = priorLabel
+        ? comparison.isCalendarYesterday
+            ? t('paceVsYesterday')
+            : t('paceVsPriorDay', { label: priorLabel })
+        : t('paceVsYesterday');
     const roundsPct = comparison.roundsDeltaPct;
     const roundsSign = roundsPct != null && roundsPct > 0 ? '+' : '';
 
@@ -149,17 +156,17 @@ const CountRecordPaceDetailModal = ({
                         </div>
                     </section>
 
-                    {/* Pace vs yesterday */}
+                    {/* Pace vs prior day */}
                     <section className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 dark:border-slate-700/60 dark:bg-slate-800/50">
                         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                             <TrendingDown size={12} />
-                            {t('paceVsYesterday')}
+                            {paceTitle}
                         </div>
                         <p className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{paceDelta.text}</p>
                         {comparison.todayAvgSec != null && comparison.yesterdayAvgSec != null && (
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {t('todayLabel')}: {formatPaceValue(comparison.todayAvgSec, locale)} · {t('yesterdayLabel')}:{' '}
-                                {formatPaceValue(comparison.yesterdayAvgSec, locale)}
+                                {t('todayLabel')}: {formatPaceValue(comparison.todayAvgSec, locale)} ·{' '}
+                                {priorLabel || t('yesterdayLabel')}: {formatPaceValue(comparison.yesterdayAvgSec, locale)}
                             </p>
                         )}
                     </section>
@@ -194,7 +201,9 @@ const CountRecordPaceDetailModal = ({
                                 </p>
                             </div>
                             <div className="rounded-xl bg-white px-3 py-2 dark:bg-slate-900">
-                                <p className="text-[9px] font-bold text-slate-400">{t('yesterdayLabel')}</p>
+                                <p className="text-[9px] font-bold text-slate-400">
+                                    {priorLabel || t('yesterdayLabel')}
+                                </p>
                                 <p className="text-xl font-black tabular-nums text-slate-600 dark:text-slate-300">
                                     {formatDashboardMetric(comparison.yesterdayRounds)}
                                 </p>

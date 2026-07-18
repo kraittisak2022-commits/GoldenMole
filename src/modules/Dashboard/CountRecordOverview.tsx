@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Clock, UserRound, Pencil, Trophy, Medal, Boxes, Gauge, Target } from 'lucide-react';
+import { Truck, Droplets, AlertTriangle, Timer, Sun, Sunset, Moon, Clock, UserRound, Pencil, Trophy, Medal, Boxes, Gauge, Target } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
     VEHICLE_BUTTON_COLORS,
+    SAND_TARGET_ROUNDS,
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
     countRecordMenuStatusLabel,
@@ -16,6 +17,8 @@ import {
     computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
     computeWorkSpan,
+    findPriorDayWithModeData,
+    formatComparisonDayLabel,
     formatWorkSpanLabel,
 } from './countRecordAnalytics';
 import type { CountRecordIncrement } from './countRecordUtils';
@@ -36,7 +39,6 @@ interface CountRecordOverviewProps {
 
 const SAND_RECENT_LAPS = 5;
 const QUEUE_PER_TRIP = 3;
-const SAND_TARGET_ROUNDS = 800;
 const TRIP_TARGET_TRIPS = 266;
 
 function TargetProgressBar({
@@ -70,32 +72,46 @@ function TargetProgressBar({
     );
 }
 
-function EfficiencyVsYesterdayBadge({ deltaPct }: { deltaPct: number | null }) {
+function EfficiencyVsYesterdayBadge({
+    deltaPct,
+    priorLabel,
+    isCalendarYesterday,
+}: {
+    deltaPct: number | null;
+    priorLabel: string;
+    isCalendarYesterday: boolean;
+}) {
     const { t } = useShareLocale();
     if (deltaPct == null) {
         return (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {t('noYesterdayData')}
+                {!priorLabel || !isCalendarYesterday ? t('noPriorDayData') : t('noYesterdayData')}
             </span>
         );
     }
     if (Math.round(Math.abs(deltaPct)) === 0) {
         return (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {t('paceSameYesterday')}
+                {isCalendarYesterday ? t('paceSameYesterday') : t('paceSamePriorDay', { label: priorLabel })}
             </span>
         );
     }
     if (deltaPct > 0) {
         return (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                ▲ {t('moreEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+                ▲{' '}
+                {isCalendarYesterday
+                    ? t('moreEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })
+                    : t('moreEfficientPriorDay', { label: priorLabel, pct: Math.round(Math.abs(deltaPct)) })}
             </span>
         );
     }
     return (
         <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-400">
-            ▼ {t('lessEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+            ▼{' '}
+            {isCalendarYesterday
+                ? t('lessEfficientYesterday', { pct: Math.round(Math.abs(deltaPct)) })
+                : t('lessEfficientPriorDay', { label: priorLabel, pct: Math.round(Math.abs(deltaPct)) })}
         </span>
     );
 }
@@ -108,7 +124,13 @@ function TripSummaryHero({
 }: {
     tripTotal: number;
     tripFleetWorkSpan: string | null;
-    vehicleEfficiency: { perVehToday: number; countToday: number; deltaPct: number | null };
+    vehicleEfficiency: {
+        perVehToday: number;
+        countToday: number;
+        deltaPct: number | null;
+        priorLabel: string;
+        isCalendarYesterday: boolean;
+    };
     showEfficiency: boolean;
 }) {
     const { t } = useShareLocale();
@@ -176,7 +198,11 @@ function TripSummaryHero({
                                     <Gauge size={11} />
                                     {t('perVehicleTitle')}
                                 </div>
-                                <EfficiencyVsYesterdayBadge deltaPct={vehicleEfficiency.deltaPct} />
+                                <EfficiencyVsYesterdayBadge
+                                    deltaPct={vehicleEfficiency.deltaPct}
+                                    priorLabel={vehicleEfficiency.priorLabel}
+                                    isCalendarYesterday={vehicleEfficiency.isCalendarYesterday}
+                                />
                             </div>
                             <p className="mt-1 text-lg font-black tabular-nums leading-tight text-white">
                                 {t('perVehicleAvg', {
@@ -197,14 +223,17 @@ function TripSummaryHero({
 function PeriodPill({
     morning,
     afternoon,
+    ot = 0,
     variant = 'onLight',
 }: {
     morning: number;
     afternoon: number;
+    ot?: number;
     variant?: 'onDark' | 'onLight';
 }) {
     const { t } = useShareLocale();
-    if (morning <= 0 && afternoon <= 0) return null;
+    const afternoonDisplay = Math.max(0, afternoon - ot);
+    if (morning <= 0 && afternoonDisplay <= 0 && ot <= 0) return null;
 
     const morningCls =
         variant === 'onDark'
@@ -214,6 +243,10 @@ function PeriodPill({
         variant === 'onDark'
             ? 'bg-sky-400/30 text-sky-50 ring-1 ring-sky-200/50 shadow-sm'
             : 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-200 dark:ring-indigo-400/25';
+    const otCls =
+        variant === 'onDark'
+            ? 'bg-violet-400/30 text-violet-50 ring-1 ring-violet-200/50 shadow-sm'
+            : 'bg-violet-100 text-violet-900 ring-1 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/25';
 
     return (
         <div className="flex flex-wrap justify-center gap-1.5">
@@ -223,10 +256,16 @@ function PeriodPill({
                     {t('morning')} {formatDashboardMetric(morning)}
                 </span>
             )}
-            {afternoon > 0 && (
+            {afternoonDisplay > 0 && (
                 <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${afternoonCls}`}>
                     <Sunset size={10} />
-                    {t('afternoon')} {formatDashboardMetric(afternoon)}
+                    {t('afternoon')} {formatDashboardMetric(afternoonDisplay)}
+                </span>
+            )}
+            {ot > 0 && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${otCls}`}>
+                    <Moon size={10} />
+                    {t('ot')} {formatDashboardMetric(ot)}
                 </span>
             )}
         </div>
@@ -312,7 +351,7 @@ function TripVehicleCard({
                     </div>
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">{t('tripUnit')}</p>
                     <div className="mt-2">
-                        <PeriodPill morning={unit.morning} afternoon={unit.afternoon} variant="onDark" />
+                        <PeriodPill morning={unit.morning} afternoon={unit.afternoon} ot={unit.ot} variant="onDark" />
                     </div>
                 </div>
 
@@ -473,10 +512,14 @@ const CountRecordOverview = ({
         () => (sandUnit ? computeSandWorkDurationSummary(sandUnit.lapTimes, dayKey) : null),
         [sandUnit, dayKey],
     );
-    const yesterdayTripUnits = useMemo(
-        () => buildCountRecordTripUnits(addDaysToYmd(dayKey, -1), transactions, employees),
+    const priorTripDayKey = useMemo(
+        () => findPriorDayWithModeData(dayKey, 'trip', transactions, employees),
         [dayKey, transactions, employees],
     );
+    const yesterdayTripUnits = useMemo(() => {
+        if (!priorTripDayKey) return [];
+        return buildCountRecordTripUnits(priorTripDayKey, transactions, employees);
+    }, [priorTripDayKey, transactions, employees]);
 
     const sandSpeedPerHour = useMemo(() => {
         if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;
@@ -498,8 +541,10 @@ const CountRecordOverview = ({
         const perVehYest = countYest > 0 && yTripTotal > 0 ? yTripTotal / countYest : null;
         const deltaPct =
             perVehYest != null && perVehYest > 0 ? ((perVehToday - perVehYest) / perVehYest) * 100 : null;
-        return { perVehToday, countToday, deltaPct };
-    }, [tripUnits, yesterdayTripUnits, tripTotal]);
+        const priorLabel = formatComparisonDayLabel(priorTripDayKey, dayKey, locale);
+        const isCalendarYesterday = priorTripDayKey === addDaysToYmd(dayKey, -1);
+        return { perVehToday, countToday, deltaPct, priorLabel, isCalendarYesterday };
+    }, [tripUnits, yesterdayTripUnits, tripTotal, priorTripDayKey, dayKey, locale]);
 
     const isCompactLayout = compact || shareMode;
     const showOverviewHeader = showHeader && !shareMode;
@@ -705,7 +750,7 @@ const CountRecordOverview = ({
                                     </div>
                                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">{t('roundUnit')}</p>
                                     <div className="mt-3 flex justify-center">
-                                        <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} variant="onDark" />
+                                        <PeriodPill morning={sandUnit.morning} afternoon={sandUnit.afternoon} ot={sandUnit.ot} variant="onDark" />
                                     </div>
                                     {sandWorkSpan && (
                                         <div className="mt-3 flex justify-center">

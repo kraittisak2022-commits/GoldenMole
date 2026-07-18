@@ -44,6 +44,7 @@ describe('vehicleTripPeriodSplit', () => {
         const s = vehicleTripPeriodSplit(trip({ tripMorning: 2, tripAfternoon: 3 }));
         expect(s.morning).toBe(2);
         expect(s.afternoon).toBe(3);
+        expect(s.ot).toBe(0);
     });
 
     it('splits counter lapTimes by time of day (before/after 12:00)', () => {
@@ -56,18 +57,40 @@ describe('vehicleTripPeriodSplit', () => {
         );
         expect(s.morning).toBe(2);
         expect(s.afternoon).toBe(2);
+        expect(s.ot).toBe(0);
+    });
+
+    it('counts OT laps from 17:00 while keeping them in afternoon', () => {
+        const s = vehicleTripPeriodSplit(
+            trip({
+                perCarTrips: 5,
+                tripCount: 5,
+                lapTimes: [
+                    '26/06 08:10:00',
+                    '26/06 13:05:00',
+                    '26/06 15:40:00',
+                    '26/06 17:00:00',
+                    '26/06 18:30:00',
+                ],
+            }),
+        );
+        expect(s.morning).toBe(1);
+        expect(s.afternoon).toBe(4);
+        expect(s.ot).toBe(2);
     });
 
     it('counts unparseable laps as morning', () => {
         const s = vehicleTripPeriodSplit(trip({ perCarTrips: 2, lapTimes: ['bad', '26/06 14:00:00'] }));
         expect(s.morning).toBe(1);
         expect(s.afternoon).toBe(1);
+        expect(s.ot).toBe(0);
     });
 
     it('falls back to total trips as morning when no laps', () => {
         const s = vehicleTripPeriodSplit(trip({ perCarTrips: 5, tripCount: 5 }));
         expect(s.morning).toBe(5);
         expect(s.afternoon).toBe(0);
+        expect(s.ot).toBe(0);
     });
 });
 
@@ -106,6 +129,25 @@ describe('countRecordLapPeriods', () => {
         expect(p.morning).toBe(1);
         expect(p.afternoon).toBe(1);
         expect(p.unknown).toBe(1);
+        expect(p.ot).toBe(0);
+    });
+
+    it('counts OT as subset of afternoon from 17:00', () => {
+        const p = countRecordLapPeriods(
+            trip({
+                lapTimes: [
+                    '26/06 11:00:00',
+                    '26/06 12:30:00',
+                    '26/06 16:59:00',
+                    '26/06 17:30:00',
+                    '26/06 18:00:00',
+                ],
+            }),
+        );
+        expect(p.morning).toBe(1);
+        expect(p.afternoon).toBe(4);
+        expect(p.ot).toBe(2);
+        expect(p.unknown).toBe(0);
     });
 });
 

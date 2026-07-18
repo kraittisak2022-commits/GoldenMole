@@ -3,11 +3,12 @@ import { BarChart3, ChevronDown } from 'lucide-react';
 import { useShareLocale } from '../Share/shareI18n';
 import type { Employee, Transaction } from '../../types';
 import {
+    SAND_TARGET_ROUNDS,
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
+    formatDashboardMetric,
 } from './countRecordUtils';
 import {
-    addDaysToYmd,
     buildDayComparison,
     buildIntervalSparkline,
     computeCumulativeSeries,
@@ -17,17 +18,25 @@ import {
     computeIntervalStats,
     computeLapIntervals,
     computeMinuteSandSpeed,
+    computePaceConsistency,
     computePeakHour,
+    computeSandPeriodEfficiency,
     computeSandPeriodSplit,
+    computeSandTargetEta,
     computeSandWorkDurationSummary,
     computeTripFleetWorkDurationSummary,
     computeTripPeriodSplit,
     computeVehicleComparison,
     formatActiveHours,
+    formatComparisonDayLabel,
     formatPaceValue,
     mergeTripLapTimeline,
     timelineToLapStamps,
+    type PaceConsistency,
     type PeriodSplit,
+    type SandPeriodEfficiency,
+    type SandPeriodKey,
+    type SandTargetEta,
     type VehicleComparisonRow,
 } from './countRecordAnalytics';
 import CountRecordStatTiles from './CountRecordStatTiles';
@@ -266,6 +275,124 @@ function PeakHourCard({
     );
 }
 
+function PeriodEfficiencyCard({ data }: { data: SandPeriodEfficiency }) {
+    const { t } = useShareLocale();
+    const rows: { key: SandPeriodKey; label: string; tone: string }[] = [
+        { key: 'morning', label: t('morning'), tone: 'bg-amber-50 text-amber-900 dark:bg-amber-500/10 dark:text-amber-100' },
+        { key: 'afternoon', label: t('afternoon'), tone: 'bg-indigo-50 text-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-100' },
+        { key: 'ot', label: t('ot'), tone: 'bg-violet-50 text-violet-900 dark:bg-violet-500/10 dark:text-violet-100' },
+    ];
+    const rates = rows
+        .map((r) => data[r.key]?.roundsPerHour ?? null)
+        .filter((v): v is number => v != null && Number.isFinite(v));
+    const best = rates.length > 0 ? Math.max(...rates) : null;
+
+    return (
+        <div className="space-y-2">
+            {rows.map((row) => {
+                const bucket = data[row.key];
+                const isBest =
+                    bucket != null && best != null && Math.abs(bucket.roundsPerHour - best) < 1e-9;
+                return (
+                    <div
+                        key={row.key}
+                        className={`rounded-xl px-3 py-2 ${row.tone} ${isBest ? 'ring-2 ring-emerald-400/70 dark:ring-emerald-400/40' : ''}`}
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-bold uppercase tracking-wide opacity-80">{row.label}</p>
+                            {bucket ? (
+                                <p className="text-sm font-black tabular-nums">
+                                    {formatDashboardMetric(Math.round(bucket.roundsPerHour * 10) / 10)}{' '}
+                                    <span className="text-[10px] font-semibold opacity-70">{t('roundsPerHourShort')}</span>
+                                </p>
+                            ) : (
+                                <p className="text-[10px] font-medium opacity-50">{t('needTwoRoundsPeriod')}</p>
+                            )}
+                        </div>
+                        {bucket && (
+                            <p className="mt-0.5 text-[10px] font-medium opacity-70">
+                                {bucket.rounds} {t('roundUnit')} · {formatActiveHours(bucket.activeHours)}
+                            </p>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function TargetEtaCard({ eta }: { eta: SandTargetEta }) {
+    const { t } = useShareLocale();
+    return (
+        <div className="space-y-3 py-1">
+            <div className="flex items-end justify-between gap-2">
+                <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        {eta.reached ? t('targetReached') : t('remainingRounds', { n: formatDashboardMetric(eta.remaining) })}
+                    </p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-slate-100">
+                        {formatDashboardMetric(eta.rounds)}
+                        <span className="ml-1 text-sm font-semibold text-slate-400">/ {formatDashboardMetric(eta.target)}</span>
+                    </p>
+                </div>
+                <p className="text-lg font-black tabular-nums text-pink-600 dark:text-pink-400">
+                    {Math.round(eta.progressPct)}%
+                </p>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div
+                    className={`chart-bar-grow h-full rounded-full ${eta.reached ? 'bg-emerald-500' : 'bg-pink-500'}`}
+                    style={{ width: `${eta.progressPct}%` }}
+                />
+            </div>
+            {!eta.reached && eta.etaClock && (
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    {t('etaReachTarget', { time: eta.etaClock })}
+                    {eta.hoursLeft != null && (
+                        <span className="ml-1 text-slate-400 dark:text-slate-500">
+                            ({formatActiveHours(eta.hoursLeft)})
+                        </span>
+                    )}
+                </p>
+            )}
+            {!eta.reached && !eta.etaClock && (
+                <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{t('needTwoRounds')}</p>
+            )}
+            {eta.reached && (
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{t('targetReached')}</p>
+            )}
+        </div>
+    );
+}
+
+function PaceConsistencyCard({ data }: { data: PaceConsistency | null }) {
+    const { t, locale } = useShareLocale();
+    if (!data) {
+        return (
+            <p className="flex h-24 items-center justify-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                {t('needMoreLaps')}
+            </p>
+        );
+    }
+    const pct = Math.round(data.pctInBand);
+    const label = pct >= 70 ? t('paceSteady') : pct >= 50 ? t('paceModerate') : t('paceUneven');
+    const tone =
+        pct >= 70
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : pct >= 50
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-rose-600 dark:text-rose-400';
+    return (
+        <div className="flex flex-col items-center justify-center py-2 text-center">
+            <p className={`text-4xl font-black tabular-nums ${tone}`}>{pct}%</p>
+            <p className={`mt-1 text-xs font-bold ${tone}`}>{label}</p>
+            <p className="mt-2 text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                {formatPaceValue(data.medianSec, locale)} · n={data.sampleSize}
+            </p>
+        </div>
+    );
+}
+
 function labelToHourOfDay(label: string): number | null {
     const m = /^(\d{1,2}):(\d{2})$/.exec(label);
     if (!m) return null;
@@ -284,16 +411,21 @@ function YesterdayComparisonChart({
     deltaPct,
     color,
     roundLabel,
+    priorLabel,
+    isCalendarYesterday,
 }: {
     today: { label: string; value: number }[];
     yesterday: { label: string; value: number }[];
     deltaPct: number | null;
     color: string;
     roundLabel: string;
+    priorLabel: string;
+    isCalendarYesterday: boolean;
 }) {
     const { t } = useShareLocale();
     const containerRef = useRef<HTMLDivElement>(null);
     const [activeFrac, setActiveFrac] = useState<number | null>(null);
+    const refLabel = priorLabel || t('yesterdayLabel');
 
     const updateFrac = useCallback((clientX: number) => {
         const el = containerRef.current;
@@ -356,19 +488,25 @@ function YesterdayComparisonChart({
     const deltaBadge =
         deltaPct == null ? (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {t('noYesterdayData')}
+                {!priorLabel || !isCalendarYesterday ? t('noPriorDayData') : t('noYesterdayData')}
             </span>
         ) : Math.round(Math.abs(deltaPct)) === 0 ? (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {t('paceSameYesterday')}
+                {isCalendarYesterday ? t('paceSameYesterday') : t('paceSamePriorDay', { label: refLabel })}
             </span>
         ) : deltaPct > 0 ? (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                ▲ {t('moreThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+                ▲{' '}
+                {isCalendarYesterday
+                    ? t('moreThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })
+                    : t('moreThanPriorDay', { label: refLabel, pct: Math.round(Math.abs(deltaPct)) })}
             </span>
         ) : (
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-400">
-                ▼ {t('lessThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })}
+                ▼{' '}
+                {isCalendarYesterday
+                    ? t('lessThanYesterday', { pct: Math.round(Math.abs(deltaPct)) })
+                    : t('lessThanPriorDay', { label: refLabel, pct: Math.round(Math.abs(deltaPct)) })}
             </span>
         );
 
@@ -382,7 +520,7 @@ function YesterdayComparisonChart({
                     </span>
                     <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
                         <span className="h-0 w-3 border-t-2 border-dashed border-slate-400 dark:border-slate-500" />
-                        {t('yesterdayLabel')}
+                        {refLabel}
                     </span>
                 </div>
                 {deltaBadge}
@@ -456,7 +594,7 @@ function YesterdayComparisonChart({
                 {activeHour != null ? (
                     <ChartTip
                         title={hourOfDayToLabel(activeHour)}
-                        value={`${t('todayLabel')} ${valueAtHour(todayPts, activeHour)} · ${t('yesterdayLabel')} ${valueAtHour(yesterdayPts, activeHour)} ${roundLabel}`}
+                        value={`${t('todayLabel')} ${valueAtHour(todayPts, activeHour)} · ${refLabel} ${valueAtHour(yesterdayPts, activeHour)} ${roundLabel}`}
                         leftPct={activeFrac! * 100}
                     />
                 ) : null}
@@ -1005,7 +1143,7 @@ const CountRecordAnalyticsPanel = ({
     employees = [],
     accentColor,
 }: CountRecordAnalyticsPanelProps) => {
-    const { t, roundLabelTrip, roundLabelSand } = useShareLocale();
+    const { t, locale, roundLabelTrip, roundLabelSand } = useShareLocale();
     const [detailOpen, setDetailOpen] = useState(false);
     const color = accentColor ?? (mode === 'sand' ? '#db2777' : '#2563eb');
 
@@ -1015,6 +1153,12 @@ const CountRecordAnalyticsPanel = ({
     );
 
     const modeComparison = mode === 'sand' ? comparison.sand : comparison.trip;
+    const priorLabel = formatComparisonDayLabel(modeComparison.referenceDayKey, dayKey, locale);
+    const cumulativeTitle = priorLabel
+        ? modeComparison.isCalendarYesterday
+            ? t('vsYesterdayCumulative')
+            : t('vsPriorDayCumulative', { label: priorLabel })
+        : t('vsYesterdayCumulative');
 
     const { lapTimes, tripUnits } = useMemo(() => {
         if (mode === 'sand') {
@@ -1044,6 +1188,18 @@ const CountRecordAnalyticsPanel = ({
         () => (mode === 'sand' ? computeMinuteSandSpeed(lapTimes, dayKey) : []),
         [mode, lapTimes, dayKey],
     );
+    const sandPeriodEfficiency = useMemo(
+        () => (mode === 'sand' ? computeSandPeriodEfficiency(lapTimes, dayKey) : null),
+        [mode, lapTimes, dayKey],
+    );
+    const sandTargetEta = useMemo(
+        () => (mode === 'sand' ? computeSandTargetEta(lapTimes, dayKey, SAND_TARGET_ROUNDS) : null),
+        [mode, lapTimes, dayKey],
+    );
+    const sandPaceConsistency = useMemo(
+        () => (mode === 'sand' ? computePaceConsistency(intervals.intervalsSec) : null),
+        [mode, intervals.intervalsSec],
+    );
     const sandUnit = useMemo(
         () => (mode === 'sand' ? buildCountRecordSandUnit(dayKey, transactions) : null),
         [mode, dayKey, transactions],
@@ -1058,15 +1214,16 @@ const CountRecordAnalyticsPanel = ({
     );
     const peakHour = useMemo(() => computePeakHour(hourlyHeatmap), [hourlyHeatmap]);
     const yesterdayCumulative = useMemo(() => {
-        const yesterdayKey = addDaysToYmd(dayKey, -1);
+        const refKey = modeComparison.referenceDayKey;
+        if (!refKey) return [] as { label: string; value: number }[];
         if (mode === 'sand') {
-            const sand = buildCountRecordSandUnit(yesterdayKey, transactions);
-            return computeCumulativeSeries(sand?.lapTimes ?? [], yesterdayKey);
+            const sand = buildCountRecordSandUnit(refKey, transactions);
+            return computeCumulativeSeries(sand?.lapTimes ?? [], refKey);
         }
-        const units = buildCountRecordTripUnits(yesterdayKey, transactions, employees);
-        const timeline = mergeTripLapTimeline(units, yesterdayKey);
-        return computeCumulativeSeries(timelineToLapStamps(timeline), yesterdayKey);
-    }, [mode, dayKey, transactions, employees]);
+        const units = buildCountRecordTripUnits(refKey, transactions, employees);
+        const timeline = mergeTripLapTimeline(units, refKey);
+        return computeCumulativeSeries(timelineToLapStamps(timeline), refKey);
+    }, [mode, modeComparison.referenceDayKey, transactions, employees]);
     const tripWorkSummary = useMemo(
         () => (mode === 'trip' ? computeTripFleetWorkDurationSummary(tripUnits, dayKey) : null),
         [mode, tripUnits, dayKey],
@@ -1100,6 +1257,7 @@ const CountRecordAnalyticsPanel = ({
                 sparkline={sparkline}
                 accentColor={color}
                 mode={mode}
+                dayKey={dayKey}
                 sandWorkSummary={sandWorkSummary}
                 tripWorkSummary={tripWorkSummary}
                 onOpenDetail={() => setDetailOpen(true)}
@@ -1140,13 +1298,15 @@ const CountRecordAnalyticsPanel = ({
                     <HourlyBarChart buckets={hourly} color={color} roundLabel={roundLabel} />
                 </ChartBlock>
 
-                <ChartBlock title={t('vsYesterdayCumulative')} className="lg:col-span-6">
+                <ChartBlock title={cumulativeTitle} className="lg:col-span-6">
                     <YesterdayComparisonChart
                         today={cumulative}
                         yesterday={yesterdayCumulative}
                         deltaPct={modeComparison.roundsDeltaPct}
                         color={color}
                         roundLabel={roundLabel}
+                        priorLabel={priorLabel}
+                        isCalendarYesterday={modeComparison.isCalendarYesterday}
                     />
                 </ChartBlock>
 
@@ -1163,6 +1323,19 @@ const CountRecordAnalyticsPanel = ({
                         </ChartBlock>
                         <ChartBlock title={t('sandSpeedMinute')} className="lg:col-span-12">
                             <MinuteTimelineChart buckets={minuteSandSpeed} color={color} />
+                        </ChartBlock>
+                        {sandPeriodEfficiency && (
+                            <ChartBlock title={t('sandPeriodEfficiency')} className="lg:col-span-4">
+                                <PeriodEfficiencyCard data={sandPeriodEfficiency} />
+                            </ChartBlock>
+                        )}
+                        {sandTargetEta && (
+                            <ChartBlock title={t('sandTargetEta')} className="lg:col-span-4">
+                                <TargetEtaCard eta={sandTargetEta} />
+                            </ChartBlock>
+                        )}
+                        <ChartBlock title={t('sandPaceConsistency')} className="lg:col-span-4">
+                            <PaceConsistencyCard data={sandPaceConsistency} />
                         </ChartBlock>
                     </>
                 )}

@@ -12,6 +12,9 @@ export const VEHICLE_BUTTON_COLORS = [
     '#558B2F',
 ] as const;
 
+/** Daily sand-wash round target used by V.4 overview + analytics */
+export const SAND_TARGET_ROUNDS = 800;
+
 export function formatDashboardMetric(v: number): string {
     if (Math.abs(v) < 1e-9) return '0';
     if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
@@ -59,6 +62,9 @@ export function countRecordRowHasSavedData(t: Transaction): boolean {
     return false;
 }
 
+/** Lap hour >= 17:00 counts as OT (subset of afternoon for analytics) */
+export const OT_START_HOUR = 17;
+
 export function countRecordLapHour(lap: string): number | null {
     const s = lap.trim();
     const sp = s.indexOf(' ');
@@ -70,36 +76,47 @@ export function countRecordLapHour(lap: string): number | null {
     return Number.isFinite(h) ? h : null;
 }
 
-export function countRecordLapPeriods(t: Transaction): { morning: number; afternoon: number; unknown: number } {
+export function countRecordLapPeriods(t: Transaction): {
+    morning: number;
+    afternoon: number;
+    unknown: number;
+    ot: number;
+} {
     const laps = getLapTimes(t);
     let morning = 0;
     let afternoon = 0;
     let unknown = 0;
+    let ot = 0;
     for (const lap of laps) {
         const h = countRecordLapHour(lap);
         if (h == null) unknown += 1;
         else if (h < 12) morning += 1;
-        else afternoon += 1;
+        else {
+            afternoon += 1;
+            if (h >= OT_START_HOUR) ot += 1;
+        }
     }
-    return { morning, afternoon, unknown };
+    return { morning, afternoon, unknown, ot };
 }
 
-/** แยกจำนวนเที่ยวออกเป็นช่วงเช้า/บ่าย — สอดคล้อง mobile */
-export function vehicleTripPeriodSplit(t: Transaction): { morning: number; afternoon: number } {
+/** แยกจำนวนเที่ยวออกเป็นช่วงเช้า/บ่าย — สอดคล้อง mobile; ot จาก lap (>= 17:00) */
+export function vehicleTripPeriodSplit(t: Transaction): { morning: number; afternoon: number; ot: number } {
+    const lapOt = countRecordLapPeriods(t).ot;
     const tm = Number((t as { tripMorning?: number }).tripMorning ?? 0);
     const ta = Number((t as { tripAfternoon?: number }).tripAfternoon ?? 0);
-    if (tm !== 0 || ta !== 0) return { morning: tm, afternoon: ta };
+    if (tm !== 0 || ta !== 0) return { morning: tm, afternoon: ta, ot: lapOt };
 
     const periods = countRecordLapPeriods(t);
     if (periods.morning > 0 || periods.afternoon > 0 || periods.unknown > 0) {
         return {
             morning: periods.morning + periods.unknown,
             afternoon: periods.afternoon,
+            ot: periods.ot,
         };
     }
 
     const total = Number((t as { perCarTrips?: number; tripCount?: number }).perCarTrips ?? (t as { tripCount?: number }).tripCount ?? 0);
-    return { morning: total, afternoon: 0 };
+    return { morning: total, afternoon: 0, ot: 0 };
 }
 
 export function isWorkDetailsBroken(details?: string | null): boolean {
@@ -128,6 +145,8 @@ export interface CountRecordTripUnit {
     rounds: number;
     morning: number;
     afternoon: number;
+    /** Laps from 17:00 onward (subset of afternoon) */
+    ot: number;
     lapTimes: string[];
     broken: boolean;
 }
@@ -137,6 +156,8 @@ export interface CountRecordSandUnit {
     rounds: number;
     morning: number;
     afternoon: number;
+    /** Laps from 17:00 onward (subset of afternoon) */
+    ot: number;
     lapTimes: string[];
 }
 
@@ -186,6 +207,7 @@ export function buildCountRecordTripUnits(
             rounds: tripRoundsFromTx(t),
             morning: periods.morning,
             afternoon: periods.afternoon,
+            ot: periods.ot,
             lapTimes: getLapTimes(t),
             broken: isWorkDetailsBroken(t.workDetails),
         });
@@ -220,6 +242,7 @@ export function buildCountRecordSandUnit(dayKey: string, transactions: Transacti
         rounds: sandRoundsFromTx(sandRow),
         morning: periods.morning,
         afternoon: periods.afternoon,
+        ot: periods.ot,
         lapTimes: getLapTimes(sandRow),
     };
 }
