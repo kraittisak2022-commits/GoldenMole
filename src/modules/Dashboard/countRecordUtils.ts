@@ -193,6 +193,18 @@ export function buildCountRecordTripUnits(
     return units;
 }
 
+/** ทุกแถวร่อนทราย (count tap) ของวันนั้น — รวม empty เพื่อล้าง orphan ได้ */
+export function listCountRecordSandTapRows(dayKey: string, transactions: Transaction[]): Transaction[] {
+    const key = dayKey.trim();
+    const out: Transaction[] = [];
+    for (const t of transactions) {
+        if (String(t.date ?? '').trim().slice(0, 10) !== key) continue;
+        if (!isCountRecordSandTapRow(t)) continue;
+        out.push(t);
+    }
+    return out;
+}
+
 export function buildCountRecordSandUnit(dayKey: string, transactions: Transaction[]): CountRecordSandUnit | null {
     let sandRow: Transaction | null = null;
     for (const t of transactions) {

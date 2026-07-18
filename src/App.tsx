@@ -135,6 +135,20 @@ const saveBootstrapCache = (payload: Omit<BootstrapCachePayload, 'savedAt'>) => 
     window.localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(next));
 };
 
+/** อัปเดตเฉพาะ admins ใน bootstrap cache (คง sessionActive ข้ามรีเฟรช) */
+const patchBootstrapCacheAdmins = (admins: AdminUser[]) => {
+    const cached = readBootstrapCache();
+    if (!cached) return;
+    saveBootstrapCache({
+        employees: cached.employees,
+        transactions: cached.transactions,
+        projects: cached.projects,
+        settings: cached.settings,
+        admins,
+        adminLogs: cached.adminLogs,
+    });
+};
+
 type MobilePinState = {
     hash: string;
     failedAttempts: number;
@@ -630,15 +644,15 @@ function App() {
         setDarkMode(resolveDarkFromUiTheme(ui));
     }, []);
 
-    // Restore auth session from Supabase after initial data load
+    // Restore auth session after load — retry until a sessionActive admin appears (don't lock on stale cache)
     useEffect(() => {
-        if (isLoading || hasRestoredAuthSession.current) return;
-        hasRestoredAuthSession.current = true;
+        if (isLoading || isLoggedIn || hasRestoredAuthSession.current) return;
         const activeSessions = admins
             .filter(a => a.sessionActive)
             .sort((a, b) => String(b.lastLogin || '').localeCompare(String(a.lastLogin || '')));
         const matchedAdmin = activeSessions[0];
         if (!matchedAdmin) return;
+        hasRestoredAuthSession.current = true;
         void ensureSupabaseSessionForEdgeFunctions().catch((e) =>
             console.warn('ensureSupabaseSessionForEdgeFunctions on session restore:', e),
         );
@@ -646,7 +660,7 @@ function App() {
         setIsLoggedIn(true);
         setClientSurface(resolveClientSurfaceFromAdmin(matchedAdmin));
         applyUiThemeToApp(matchedAdmin.uiTheme);
-    }, [isLoading, admins, applyUiThemeToApp]);
+    }, [isLoading, isLoggedIn, admins, applyUiThemeToApp]);
 
     // Supabase Realtime: merge transaction changes from mobile / other tabs
     useEffect(() => {
@@ -829,15 +843,22 @@ function App() {
         const otherActiveAdmins = admins
             .filter(a => a.id !== loggedInAdmin.id && a.sessionActive)
             .map(a => ({ ...a, sessionActive: false as const }));
-        setClientSurface(restoredSurface);
-        setAdmins(prev => prev.map(a => {
+        const nextAdmins = admins.map(a => {
             if (a.id === loggedInAdmin.id) return loggedInAdmin;
-            if (a.sessionActive) return { ...a, sessionActive: false };
+            if (a.sessionActive) return { ...a, sessionActive: false as const };
             return a;
-        }));
+        });
+        // If admin wasn't in local list yet, append
+        if (!nextAdmins.some(a => a.id === loggedInAdmin.id)) {
+            nextAdmins.push(loggedInAdmin);
+        }
+        setClientSurface(restoredSurface);
+        setAdmins(nextAdmins);
         setCurrentAdmin(loggedInAdmin);
         currentAdminRef.current = loggedInAdmin;
         setIsLoggedIn(true);
+        hasRestoredAuthSession.current = true;
+        patchBootstrapCacheAdmins(nextAdmins);
         await Promise.all([
             db.saveAdmin(loggedInAdmin),
             ...otherActiveAdmins.map(a => db.saveAdmin(a)),
@@ -896,6 +917,14 @@ function App() {
             addLog('logout', 'สถานะ: สำเร็จ | เหตุการณ์: ออกจากระบบ');
             void persistAdminSession(admin, false);
         }
+        setAdmins(prev => {
+            const next = prev.map(a =>
+                admin && a.id === admin.id ? { ...a, sessionActive: false as const } : a,
+            );
+            patchBootstrapCacheAdmins(next);
+            return next;
+        });
+        hasRestoredAuthSession.current = false;
         void supabase.auth.signOut();
         setIsLoggedIn(false);
         setCurrentAdmin(null);
@@ -942,6 +971,14 @@ function App() {
                 db.saveAdminLog(log);
             }
             if (admin) void persistAdminSession(admin, false);
+            setAdmins(prev => {
+                const next = prev.map(a =>
+                    admin && a.id === admin.id ? { ...a, sessionActive: false as const } : a,
+                );
+                patchBootstrapCacheAdmins(next);
+                return next;
+            });
+            hasRestoredAuthSession.current = false;
             setIsLoggedIn(false);
             setCurrentAdmin(null);
             currentAdminRef.current = null;

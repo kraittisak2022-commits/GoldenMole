@@ -7,6 +7,7 @@ import {
     countRecordLapPeriods,
     driverDisplayName,
     getLapTimes,
+    listCountRecordSandTapRows,
 } from './countRecordUtils';
 import { getEmployeePositionTokens, vehicleTripDrumCarOptions } from './dailyStepRecorderUtils';
 import { driverOptionLabel, getVehicleDefaultDriverId } from '../../utils/vehicleDefaultDriverUtils';
@@ -190,6 +191,11 @@ const CountRecordRoundManager = ({
         [rows, filterKind],
     );
 
+    const visibleRowIdsKey = useMemo(
+        () => visibleRows.map((r) => r.id).join('|'),
+        [visibleRows],
+    );
+
     const driverEmployees = useMemo(
         () => employees.filter((e) => getEmployeePositionTokens(e).includes('คนขับรถ')),
         [employees],
@@ -201,6 +207,7 @@ const CountRecordRoundManager = ({
         return 'จัดการรอบ';
     }, [filterKind]);
 
+    // Reset drafts only when modal opens or the set of row ids changes — not on every poll/realtime tx update
     useEffect(() => {
         if (!open) return;
         const next: Record<string, RowDraft> = {};
@@ -210,7 +217,8 @@ const CountRecordRoundManager = ({
         setDrafts(next);
         setMessage(null);
         setBusyId(null);
-    }, [open, visibleRows]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by open + id set, not tx content
+    }, [open, visibleRowIdsKey]);
 
     useEffect(() => {
         if (!open) return;
@@ -264,6 +272,17 @@ const CountRecordRoundManager = ({
         updateDraft(rowId, (d) => ({ ...d, driverId: value }));
     };
 
+    /** ลบแถวร่อนทรายอื่นของวันเดียวกัน — keepId = แถวที่เก็บไว้ (null = ลบทั้งหมด) */
+    const deleteSandSiblingRows = async (keepId: string | null) => {
+        const targets = listCountRecordSandTapRows(dayKey, transactions).filter(
+            (t) => keepId == null || t.id !== keepId,
+        );
+        for (const sibling of targets) {
+            await onDeleteTransaction(sibling.id);
+        }
+        return targets.length;
+    };
+
     const handleSaveRow = async (row: ManagedRow) => {
         const draft = drafts[row.id];
         if (!draft) return;
@@ -283,7 +302,11 @@ const CountRecordRoundManager = ({
             if (!ok) return;
             setBusyId(row.id);
             try {
-                await onDeleteTransaction(row.id);
+                if (row.kind === 'sand') {
+                    await deleteSandSiblingRows(null);
+                } else {
+                    await onDeleteTransaction(row.id);
+                }
                 setMessage(`ลบรายการ ${row.title} แล้ว`);
             } finally {
                 setBusyId(null);
@@ -299,8 +322,16 @@ const CountRecordRoundManager = ({
         setBusyId(row.id);
         try {
             await onSaveTransaction(updated);
-            const savedTitle = row.kind === 'trip' ? draft.vehicleId.trim() : row.title;
-            setMessage(`บันทึก ${savedTitle} แล้ว (${count} ${row.kind === 'trip' ? 'เที่ยว' : 'รอบ'})`);
+            if (row.kind === 'sand') {
+                const removed = await deleteSandSiblingRows(row.id);
+                setMessage(
+                    removed > 0
+                        ? `บันทึก ${row.title} แล้ว (${count} รอบ) · ล้างแถวซ้ำ ${removed} รายการ`
+                        : `บันทึก ${row.title} แล้ว (${count} รอบ)`,
+                );
+            } else {
+                setMessage(`บันทึก ${draft.vehicleId.trim()} แล้ว (${count} เที่ยว)`);
+            }
         } finally {
             setBusyId(null);
         }
@@ -313,7 +344,11 @@ const CountRecordRoundManager = ({
         if (!ok) return;
         setBusyId(row.id);
         try {
-            await onDeleteTransaction(row.id);
+            if (row.kind === 'sand') {
+                await deleteSandSiblingRows(null);
+            } else {
+                await onDeleteTransaction(row.id);
+            }
             setMessage(`ลบรายการ ${row.title} จากฐานข้อมูลแล้ว`);
         } finally {
             setBusyId(null);
