@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/admin_user.dart';
+import '../models/saved_login_profile.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 import '../utils/mobile_error_screen_tracker.dart';
@@ -52,7 +53,11 @@ class _LoginScreenState extends State<LoginScreen>
   bool _darkMode = true;
   bool _obscurePassword = true;
   bool _rememberSession = true;
+  bool _showForm = true;
+  bool _prefsLoaded = false;
   String? _errorMessage;
+  String? _unlockingProfileId;
+  List<SavedLoginProfile> _savedProfiles = const [];
   late AnimationController _shimmerController;
   late AnimationController _entranceController;
   late AnimationController _ambientController;
@@ -89,11 +94,34 @@ class _LoginScreenState extends State<LoginScreen>
       final remember =
           await widget.sessionService.getRememberSessionPreference();
       final lastUser = await widget.sessionService.getLastLoginUsername();
+      final profiles = await widget.sessionService.getSavedProfiles();
       if (!mounted) return;
       setState(() {
         _rememberSession = remember;
-        if (lastUser != null && lastUser.isNotEmpty) {
+        _savedProfiles = profiles;
+        _showForm = profiles.isEmpty;
+        _prefsLoaded = true;
+        if (lastUser != null && lastUser.isNotEmpty && profiles.isEmpty) {
           _usernameController.text = lastUser;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _prefsLoaded = true;
+        _showForm = true;
+      });
+    }
+  }
+
+  Future<void> _reloadSavedProfiles() async {
+    try {
+      final profiles = await widget.sessionService.getSavedProfiles();
+      if (!mounted) return;
+      setState(() {
+        _savedProfiles = profiles;
+        if (profiles.isEmpty) {
+          _showForm = true;
         }
       });
     } catch (_) {
@@ -113,26 +141,33 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool fromSavedProfile = false}) async {
     if (_submitting) return;
-    if (!_formKey.currentState!.validate()) return;
+    if (!fromSavedProfile && !_formKey.currentState!.validate()) return;
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
+      return;
+    }
+
     setState(() {
       _submitting = true;
       _errorMessage = null;
     });
 
     try {
-      final admin = await widget.authService.login(
-        _usernameController.text.trim(),
-        _passwordController.text,
-      );
-      await widget.sessionService.setRememberSessionPreference(
-        _rememberSession,
-      );
-      await widget.sessionService.setLastLoginUsername(
-        _usernameController.text.trim(),
-      );
-      await widget.onLoginSuccess(admin, _rememberSession);
+      final admin = await widget.authService.login(username, password);
+      final remember = fromSavedProfile ? true : _rememberSession;
+      await widget.sessionService.setRememberSessionPreference(remember);
+      await widget.sessionService.setLastLoginUsername(username);
+      if (remember) {
+        await widget.sessionService.saveLoginProfile(
+          admin: admin,
+          password: password,
+        );
+      }
+      await widget.onLoginSuccess(admin, remember);
     } on AdminLoginException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
@@ -152,9 +187,78 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _errorMessage = 'เข้าสู่ระบบไม่สำเร็จ: $detail');
     } finally {
       if (mounted) {
-        setState(() => _submitting = false);
+        setState(() {
+          _submitting = false;
+          _unlockingProfileId = null;
+        });
       }
     }
+  }
+
+  Future<void> _unlockProfile(SavedLoginProfile profile) async {
+    if (_submitting || _unlockingProfileId != null) return;
+    setState(() {
+      _unlockingProfileId = profile.id;
+      _errorMessage = null;
+    });
+
+    final password =
+        await widget.sessionService.getProfilePassword(profile.id);
+    if (!mounted) return;
+
+    if (password == null || password.isEmpty) {
+      setState(() {
+        _unlockingProfileId = null;
+        _errorMessage =
+            'ไม่พบรหัสผ่านของโปรไฟล์นี้ — กรุณาเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านอีกครั้ง';
+        _usernameController.text = profile.username;
+        _passwordController.clear();
+        _showForm = true;
+      });
+      await widget.sessionService.removeSavedProfile(profile.id);
+      await _reloadSavedProfiles();
+      return;
+    }
+
+    _usernameController.text = profile.username;
+    _passwordController.text = password;
+    await widget.sessionService.touchSavedProfile(profile.id);
+    await _submit(fromSavedProfile: true);
+  }
+
+  Future<void> _confirmRemoveProfile(SavedLoginProfile profile) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            'ลบโปรไฟล์นี้?',
+            style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'ลบ «${profile.displayName}» — จะต้องเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านอีกครั้ง',
+            style: GoogleFonts.kanit(height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('ยกเลิก', style: GoogleFonts.kanit()),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: Text(
+                'ลบโปรไฟล์',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    await widget.sessionService.removeSavedProfile(profile.id);
+    await _reloadSavedProfiles();
   }
 
   void _handleKeyboardSubmit() {
@@ -408,216 +512,33 @@ class _LoginScreenState extends State<LoginScreen>
                                         const SizedBox(height: 16),
                                         _featureBadges(),
                                         const SizedBox(height: 22),
-                                        TextFormField(
-                                          controller: _usernameController,
-                                          focusNode: _usernameFocus,
-                                          style: GoogleFonts.kanit(
-                                            color: textPrimary,
-                                            fontSize: 15,
-                                          ),
-                                          textInputAction: TextInputAction.next,
-                                          onFieldSubmitted: (_) {
-                                            _passwordFocus.requestFocus();
-                                          },
-                                          cursorColor: _darkMode
-                                              ? const Color(0xFF00C8FF)
-                                              : _goldDark,
-                                          decoration: _fieldDecoration(
-                                            label: 'ชื่อผู้ใช้ (Username)',
-                                            hint: 'กรอกชื่อผู้ใช้',
-                                            icon: Icons.person_outline_rounded,
-                                          ),
-                                          validator: (value) {
-                                            if (value == null ||
-                                                value.trim().isEmpty) {
-                                              return 'กรุณากรอกชื่อผู้ใช้';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                        const SizedBox(height: 14),
-                                        TextFormField(
-                                          controller: _passwordController,
-                                          focusNode: _passwordFocus,
-                                          obscureText: _obscurePassword,
-                                          style: GoogleFonts.kanit(
-                                            color: textPrimary,
-                                            fontSize: 15,
-                                          ),
-                                          textInputAction: TextInputAction.done,
-                                          onFieldSubmitted: (_) =>
-                                              _handleKeyboardSubmit(),
-                                          cursorColor: _darkMode
-                                              ? const Color(0xFF00C8FF)
-                                              : _goldDark,
-                                          decoration: _fieldDecoration(
-                                            label: 'รหัสผ่าน (Password)',
-                                            hint: 'กรอกรหัสผ่าน',
-                                            icon: Icons.lock_outline_rounded,
-                                            suffixIcon: IconButton(
-                                              onPressed: () => setState(
-                                                () => _obscurePassword =
-                                                    !_obscurePassword,
-                                              ),
-                                              icon: Icon(
-                                                _obscurePassword
-                                                    ? Icons.visibility_outlined
-                                                    : Icons
-                                                          .visibility_off_outlined,
-                                                color: _darkMode
-                                                    ? Colors.white54
-                                                    : Colors.brown.shade400,
-                                              ),
+                                        if (!_prefsLoaded)
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 24,
                                             ),
-                                          ),
-                                          validator: (value) {
-                                            if (value == null ||
-                                                value.isEmpty) {
-                                              return 'กรุณากรอกรหัสผ่าน';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                        const SizedBox(height: 10),
-                                        InkWell(
-                                          onTap: () => setState(
-                                            () => _rememberSession =
-                                                !_rememberSession,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 4,
-                                            ),
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                SizedBox(
-                                                  width: 28,
-                                                  height: 28,
-                                                  child: Checkbox(
-                                                    value: _rememberSession,
-                                                    onChanged: (v) => setState(
-                                                      () => _rememberSession =
-                                                          v ?? false,
-                                                    ),
-                                                    checkColor: Colors.white,
-                                                    fillColor:
-                                                        WidgetStateProperty
-                                                            .resolveWith((
-                                                      states,
-                                                    ) {
-                                                      if (states.contains(
-                                                        WidgetState.selected,
-                                                      )) {
-                                                        return _darkMode
-                                                            ? const Color(
-                                                                0xFF0080FF,
-                                                              )
-                                                            : _goldDark;
-                                                      }
-                                                      return _darkMode
-                                                          ? Colors.white
-                                                                .withValues(
-                                                                  alpha: 0.1,
-                                                                )
-                                                          : Colors.black
-                                                                .withValues(
-                                                                  alpha: 0.06,
-                                                                );
-                                                    }),
-                                                    side: BorderSide(
-                                                      color: _darkMode
-                                                          ? Colors.white38
-                                                          : Colors.brown
-                                                                .shade200,
-                                                    ),
-                                                    materialTapTargetSize:
-                                                        MaterialTapTargetSize
-                                                            .shrinkWrap,
-                                                    visualDensity:
-                                                        VisualDensity.compact,
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  child: Text(
-                                                    'คงอยู่ในระบบ — ไม่ต้องล็อกอินบ่อย (เปิดแอปครั้งถัดไปเข้าได้เลย)',
-                                                    style: GoogleFonts.kanit(
-                                                      fontSize: 13,
-                                                      height: 1.35,
-                                                      color: textPrimary
-                                                          .withValues(
-                                                        alpha: 0.92,
-                                                      ),
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        if (_errorMessage != null) ...[
-                                          const SizedBox(height: 14),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 12,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.red.withValues(
-                                                alpha: _darkMode ? 0.14 : 0.08,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                              border: Border.all(
-                                                color: Colors.red.withValues(
-                                                  alpha: 0.35,
+                                            child: Center(
+                                              child: SizedBox(
+                                                width: 28,
+                                                height: 28,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2.4,
                                                 ),
                                               ),
                                             ),
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Icon(
-                                                  Icons.shield_outlined,
-                                                  size: 20,
-                                                  color: Colors.red.shade300,
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Text(
-                                                    _errorMessage!,
-                                                    style: GoogleFonts.kanit(
-                                                      color:
-                                                          Colors.red.shade200,
-                                                      fontSize: 13,
-                                                      height: 1.35,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
+                                          )
+                                        else if (_savedProfiles.isNotEmpty &&
+                                            !_showForm)
+                                          _buildProfilePicker(
+                                            textPrimary: textPrimary,
+                                            textSecondary: textSecondary,
+                                          )
+                                        else
+                                          _buildLoginFormFields(
+                                            textPrimary: textPrimary,
+                                            textSecondary: textSecondary,
                                           ),
-                                        ],
-                                        const SizedBox(height: 18),
-                                        _gradientSubmitButton(),
-                                        const SizedBox(height: 18),
-                                        Text(
-                                          'ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน',
-                                          textAlign: TextAlign.center,
-                                          style: GoogleFonts.kanit(
-                                            fontSize: 11,
-                                            color: textSecondary.withValues(
-                                              alpha: 0.75,
-                                            ),
-                                          ),
-                                        ),
                                       ],
                                     ),
                                   ),
@@ -840,6 +761,368 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildProfilePicker({
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
+    final busy = _submitting || _unlockingProfileId != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'โปรไฟล์ที่บันทึกไว้',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'แตะโปรไฟล์เพื่อเข้าสู่ระบบ',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(fontSize: 13, color: textSecondary),
+        ),
+        const SizedBox(height: 18),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 14,
+          runSpacing: 16,
+          children: _savedProfiles
+              .map((p) => _profileChip(p, busy: busy))
+              .toList(),
+        ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 16),
+          _errorBanner(),
+        ],
+        const SizedBox(height: 20),
+        TextButton(
+          onPressed: busy
+              ? null
+              : () => setState(() {
+                    _errorMessage = null;
+                    _usernameController.clear();
+                    _passwordController.clear();
+                    _showForm = true;
+                  }),
+          child: Text(
+            'ใช้บัญชีอื่น',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: _darkMode ? const Color(0xFF7ADFFF) : _goldDark,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _profileChip(SavedLoginProfile profile, {required bool busy}) {
+    final unlocking = _unlockingProfileId == profile.id;
+    final accent = _darkMode ? const Color(0xFF0080FF) : _gold;
+    final accentDark = _darkMode ? const Color(0xFF6020C0) : _goldDark;
+
+    return SizedBox(
+      width: 96,
+      child: Column(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: busy ? null : () => _unlockProfile(profile),
+                  onLongPress:
+                      busy ? null : () => _confirmRemoveProfile(profile),
+                  child: Ink(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [accent, accentDark],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: unlocking
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              profile.initials,
+                              style: GoogleFonts.kanit(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 22,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: busy ? null : () => _confirmRemoveProfile(profile),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _darkMode
+                            ? Colors.black.withValues(alpha: 0.65)
+                            : Colors.black54,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: busy ? null : () => _unlockProfile(profile),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: Column(
+                children: [
+                  Text(
+                    profile.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _darkMode ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    profile.username,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 10,
+                      color: _darkMode ? Colors.white54 : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginFormFields({
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          controller: _usernameController,
+          focusNode: _usernameFocus,
+          style: GoogleFonts.kanit(color: textPrimary, fontSize: 15),
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+          cursorColor: _darkMode ? const Color(0xFF00C8FF) : _goldDark,
+          decoration: _fieldDecoration(
+            label: 'ชื่อผู้ใช้ (Username)',
+            hint: 'กรอกชื่อผู้ใช้',
+            icon: Icons.person_outline_rounded,
+          ),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'กรุณากรอกชื่อผู้ใช้';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 14),
+        TextFormField(
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          obscureText: _obscurePassword,
+          style: GoogleFonts.kanit(color: textPrimary, fontSize: 15),
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _handleKeyboardSubmit(),
+          cursorColor: _darkMode ? const Color(0xFF00C8FF) : _goldDark,
+          decoration: _fieldDecoration(
+            label: 'รหัสผ่าน (Password)',
+            hint: 'กรอกรหัสผ่าน',
+            icon: Icons.lock_outline_rounded,
+            suffixIcon: IconButton(
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: _darkMode ? Colors.white54 : Colors.brown.shade400,
+              ),
+            ),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'กรุณากรอกรหัสผ่าน';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: () => setState(() => _rememberSession = !_rememberSession),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Checkbox(
+                    value: _rememberSession,
+                    onChanged: (v) =>
+                        setState(() => _rememberSession = v ?? false),
+                    checkColor: Colors.white,
+                    fillColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return _darkMode
+                            ? const Color(0xFF0080FF)
+                            : _goldDark;
+                      }
+                      return _darkMode
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.black.withValues(alpha: 0.06);
+                    }),
+                    side: BorderSide(
+                      color: _darkMode
+                          ? Colors.white38
+                          : Colors.brown.shade200,
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'จำโปรไฟล์นี้ — เข้าครั้งถัดไปได้เร็วขึ้น',
+                    style: GoogleFonts.kanit(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: textPrimary.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 14),
+          _errorBanner(),
+        ],
+        const SizedBox(height: 18),
+        _gradientSubmitButton(),
+        if (_savedProfiles.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: _submitting
+                ? null
+                : () => setState(() {
+                      _errorMessage = null;
+                      _showForm = false;
+                    }),
+            child: Text(
+              'กลับไปเลือกโปรไฟล์',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: _darkMode ? const Color(0xFF7ADFFF) : _goldDark,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Text(
+          'ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 11,
+            color: textSecondary.withValues(alpha: 0.75),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _errorBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: _darkMode ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.shield_outlined, size: 20, color: Colors.red.shade300),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: GoogleFonts.kanit(
+                color: Colors.red.shade200,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
