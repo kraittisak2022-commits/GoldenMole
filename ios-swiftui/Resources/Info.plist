@@ -24,6 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ใช้ Face ID เพื่อเข้าสู่ระบบด้วยโปรไฟล์ที่บันทึกไว้ได้อย่างรวดเร็วและปลอดภัย</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

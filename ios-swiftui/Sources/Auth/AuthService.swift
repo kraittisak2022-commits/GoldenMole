@@ -4,6 +4,7 @@ enum AuthError: LocalizedError {
     case invalidCredentials
     case notConfigured
     case network(String)
+    case savedProfileMissing
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum AuthError: LocalizedError {
             return "ยังไม่ได้ตั้งค่า Supabase"
         case .network(let detail):
             return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — \(detail)"
+        case .savedProfileMissing:
+            return "ไม่พบรหัสผ่านของโปรไฟล์นี้ — กรุณาเข้าสู่ระบบใหม่"
         }
     }
 }
@@ -21,6 +24,7 @@ enum AuthError: LocalizedError {
 final class AuthService: ObservableObject {
     private let dataService: SupabaseService
     private let sessionKey = "goldenmole.dashboard.session.adminId"
+    private let profilesStore = SavedProfilesStore.shared
 
     @Published private(set) var currentAdmin: AdminUser?
 
@@ -41,7 +45,7 @@ final class AuthService: ObservableObject {
         }
     }
 
-    func login(username: String, password: String) async throws {
+    func login(username: String, password: String, rememberProfile: Bool = false) async throws {
         let normalized = normalizeUsername(username)
         let plainPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty, !plainPassword.isEmpty else {
@@ -65,12 +69,34 @@ final class AuthService: ObservableObject {
         // Persist session first so UI can navigate even if last_login update fails.
         currentAdmin = matched
         UserDefaults.standard.set(matched.id, forKey: sessionKey)
+
+        if rememberProfile {
+            profilesStore.save(from: matched, password: plainPassword)
+        }
+
         await dataService.updateAdminLastLogin(id: matched.id)
+    }
+
+    func loginWithSavedProfile(id: String) async throws {
+        guard let profile = profilesStore.profiles.first(where: { $0.id == id }),
+              let password = profilesStore.password(for: id)
+        else {
+            throw AuthError.savedProfileMissing
+        }
+
+        do {
+            try await login(username: profile.username, password: password, rememberProfile: true)
+            profilesStore.touch(id: id)
+        } catch AuthError.invalidCredentials {
+            profilesStore.remove(id: id)
+            throw AuthError.savedProfileMissing
+        }
     }
 
     func logout() {
         currentAdmin = nil
         UserDefaults.standard.removeObject(forKey: sessionKey)
+        // Keep saved profiles (Facebook-style).
     }
 
     private func normalizeUsername(_ value: String) -> String {
