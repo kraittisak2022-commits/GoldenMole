@@ -7,7 +7,7 @@ final class AppState: ObservableObject {
     @Published var settings: AppSettings = .fallback
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var selectedTab: DashboardTab = .overviewV1
+    @Published var selectedTab: DashboardTab = .realtimeV4
     @Published var datePreset: DateRangePreset = .days7
     @Published var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @Published var customEnd = Date()
