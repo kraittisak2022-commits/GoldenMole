@@ -12,6 +12,13 @@ final class AppState: ObservableObject {
     @Published var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @Published var customEnd = Date()
 
+    /// Diagnostics: last successful fetch sizes / skip counts.
+    @Published var lastFetchTransactionCount = 0
+    @Published var lastFetchEmployeeCount = 0
+    @Published var lastSkippedTransactionCount = 0
+    @Published var lastFetchedAt: Date?
+    @Published var supabaseHost: String = SupabaseConfig.isConfigured ? SupabaseConfig.host : "(ยังไม่ตั้งค่า)"
+
     private var dataService: SupabaseService?
     private var realtimeTask: Task<Void, Never>?
 
@@ -23,8 +30,14 @@ final class AppState: ObservableObject {
         DashboardAggregations.filterByRange(transactions, range: dateFilter)
     }
 
+    /// True after a successful transactions fetch that returned zero rows (not a network/decode failure).
+    var hasEmptySuccessfulFetch: Bool {
+        lastFetchedAt != nil && errorMessage == nil && transactions.isEmpty
+    }
+
     func configure(dataService: SupabaseService) {
         self.dataService = dataService
+        supabaseHost = SupabaseConfig.host
         realtimeTask?.cancel()
         realtimeTask = dataService.subscribeToTransactions { [weak self] in
             Task { await self?.refresh() }
@@ -38,18 +51,42 @@ final class AppState: ObservableObject {
     func refresh() async {
         guard let dataService else { return }
         isLoading = transactions.isEmpty
-        errorMessage = nil
+        var errors: [String] = []
+
+        // Fetch independently so one failing endpoint cannot blank the whole app.
         do {
-            async let txs = dataService.fetchTransactions()
-            async let emps = dataService.fetchEmployees()
-            async let sett = dataService.fetchSettings()
-            let (t, e, s) = try await (txs, emps, sett)
-            transactions = t
-            employees = e
-            settings = s
+            let fetchResult = try await dataService.fetchTransactions()
+            transactions = fetchResult.transactions
+            lastFetchTransactionCount = fetchResult.transactions.count
+            lastSkippedTransactionCount = fetchResult.skippedCount
+            lastFetchedAt = Date()
         } catch {
-            errorMessage = error.localizedDescription
+            errors.append("transactions: \(error.localizedDescription)")
         }
+
+        do {
+            let e = try await dataService.fetchEmployees()
+            employees = e
+            lastFetchEmployeeCount = e.count
+        } catch {
+            errors.append("employees: \(error.localizedDescription)")
+        }
+
+        do {
+            settings = try await dataService.fetchSettings()
+        } catch {
+            errors.append("settings: \(error.localizedDescription)")
+        }
+
+        if transactions.isEmpty && !errors.isEmpty {
+            errorMessage = errors.joined(separator: " · ")
+        } else if !errors.isEmpty && transactions.isEmpty == false {
+            // Soft warning — keep data, surface issue in Profile diagnostics
+            errorMessage = errors.joined(separator: " · ")
+        } else {
+            errorMessage = nil
+        }
+
         isLoading = false
     }
 

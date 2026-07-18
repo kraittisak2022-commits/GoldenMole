@@ -15,6 +15,7 @@ struct ProfileView: View {
             VStack(spacing: AppTheme.spaceLG) {
                 profileCard
                 orgCard
+                connectionCard
                 actionsCard
                 aboutCard
             }
@@ -78,6 +79,44 @@ struct ProfileView: View {
             row(icon: "car.fill", title: "จำนวนรถ", value: "\(appState.settings.cars.count) คัน")
             Divider()
             row(icon: "person.3.fill", title: "พนักงาน", value: "\(appState.employees.count) คน")
+        }
+    }
+
+    private var connectionCard: some View {
+        SectionCard("การเชื่อมต่อ API", systemImage: "antenna.radiowaves.left.and.right", subtitle: "ตรวจว่าชี้ไป project เดียวกับเว็บ") {
+            row(icon: "server.rack", title: "Supabase host", value: appState.supabaseHost)
+            Divider()
+            row(icon: "doc.text.fill", title: "ธุรกรรมที่ดึงได้", value: "\(appState.lastFetchTransactionCount) รายการ")
+            Divider()
+            row(icon: "person.3.fill", title: "พนักงานที่ดึงได้", value: "\(appState.lastFetchEmployeeCount) คน")
+            if appState.lastSkippedTransactionCount > 0 {
+                Divider()
+                row(icon: "exclamationmark.triangle.fill", title: "ข้ามแถวเสีย", value: "\(appState.lastSkippedTransactionCount) แถว")
+            }
+            Divider()
+            row(
+                icon: "clock.fill",
+                title: "ดึงล่าสุด",
+                value: appState.lastFetchedAt.map { Self.timeFormatter.string(from: $0) } ?? "ยังไม่เคยดึง"
+            )
+            if let error = appState.errorMessage, !error.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("ข้อผิดพลาดล่าสุด", systemImage: "wifi.exclamationmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.expense)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else if appState.hasEmptySuccessfulFetch {
+                Divider()
+                Text("เชื่อมต่อสำเร็จ แต่ยังไม่มีธุรกรรมในโปรเจกต์นี้ — ตรวจว่า SUPABASE_URL ใน Codemagic ตรงกับเว็บหรือไม่")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -151,4 +190,12 @@ struct ProfileView: View {
         if parts.isEmpty { return "?" }
         return parts.map { String($0.prefix(1)).uppercased() }.joined()
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "th_TH")
+        f.dateStyle = .short
+        f.timeStyle = .medium
+        return f
+    }()
 }

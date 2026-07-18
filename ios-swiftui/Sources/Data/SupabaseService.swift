@@ -13,6 +13,11 @@ enum DataServiceError: LocalizedError {
     }
 }
 
+struct TransactionFetchResult: Sendable {
+    let transactions: [Transaction]
+    let skippedCount: Int
+}
+
 @MainActor
 final class SupabaseService: ObservableObject {
     private let client: SupabaseClient
@@ -38,12 +43,40 @@ final class SupabaseService: ObservableObject {
             .execute()
     }
 
-    func fetchTransactions() async throws -> [Transaction] {
-        try await client.from("transactions")
-            .select()
-            .order("created_at", ascending: false)
-            .execute()
-            .value
+    /// Fetches transactions and decodes row-by-row so one bad row cannot wipe the whole dataset.
+    func fetchTransactions() async throws -> TransactionFetchResult {
+        let data: Data
+        do {
+            data = try await client.from("transactions")
+                .select()
+                .order("created_at", ascending: false)
+                .execute()
+                .data
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [Any] else {
+            throw DataServiceError.fetchFailed("รูปแบบข้อมูล transactions ไม่ถูกต้อง")
+        }
+
+        let decoder = JSONDecoder()
+        var decoded: [Transaction] = []
+        var skipped = 0
+        decoded.reserveCapacity(rows.count)
+
+        for row in rows {
+            guard JSONSerialization.isValidJSONObject(row),
+                  let rowData = try? JSONSerialization.data(withJSONObject: row),
+                  let tx = try? decoder.decode(Transaction.self, from: rowData)
+            else {
+                skipped += 1
+                continue
+            }
+            decoded.append(tx)
+        }
+
+        return TransactionFetchResult(transactions: decoded, skippedCount: skipped)
     }
 
     func fetchEmployees() async throws -> [Employee] {
@@ -64,11 +97,13 @@ final class SupabaseService: ObservableObject {
         return rows.first?.toAppSettings() ?? .fallback
     }
 
-    /// Polls every 12s (matches web dashboard refresh cadence). Realtime channel can be enabled on device builds.
+    /// Polls every 12s (matches web dashboard refresh cadence). Fires once immediately.
     func subscribeToTransactions(onChange: @escaping () -> Void) -> Task<Void, Never> {
         Task {
+            await MainActor.run { onChange() }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 12_000_000_000)
+                if Task.isCancelled { break }
                 await MainActor.run { onChange() }
             }
         }

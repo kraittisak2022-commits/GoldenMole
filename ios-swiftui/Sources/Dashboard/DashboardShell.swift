@@ -53,6 +53,9 @@ struct DashboardShell: View {
             .tag(AppMainTab.profile)
         }
         .tint(AppTheme.brand)
+        .task {
+            await appState.refresh()
+        }
     }
 
     // MARK: - Home
@@ -312,6 +315,9 @@ struct DashboardShell: View {
                 Spacer()
                 ProgressView("กำลังโหลดข้อมูล…")
                     .tint(AppTheme.brand)
+                Text("เชื่อมต่อ \(appState.supabaseHost)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
             }
             .frame(maxWidth: .infinity)
@@ -320,8 +326,24 @@ struct DashboardShell: View {
                 Spacer()
                 EmptyStateView(
                     title: "โหลดไม่สำเร็จ",
-                    message: error,
+                    message: "\(error)\n\nHost: \(appState.supabaseHost)",
                     systemImage: "wifi.exclamationmark"
+                )
+                Button("ลองอีกครั้ง") {
+                    Task { await appState.refresh() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.brand)
+                Spacer()
+            }
+            .padding()
+        } else if appState.hasEmptySuccessfulFetch {
+            VStack(spacing: 12) {
+                Spacer()
+                EmptyStateView(
+                    title: "เชื่อมต่อสำเร็จ แต่ยังไม่มีข้อมูล",
+                    message: "ดึงจาก \(appState.supabaseHost) ได้ 0 รายการ\nถ้าเว็บมีข้อมูล ให้ตรวจว่า SUPABASE_URL ใน Codemagic ตรงกับเว็บ (ดูแท็บโปรไฟล์)",
+                    systemImage: "tray"
                 )
                 Button("ลองอีกครั้ง") {
                     Task { await appState.refresh() }

@@ -6,6 +6,34 @@ enum TransactionType: String, Codable, Sendable {
     case income = "Income"
     case expense = "Expense"
     case leave = "Leave"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TransactionType(rawValue: raw) ?? .expense
+    }
+}
+
+/// Decodes JSON numbers that may arrive as Double, Int, or numeric String (PostgREST / legacy rows).
+enum FlexibleNumber {
+    static func decode<K: CodingKey>(_ container: KeyedDecodingContainer<K>, forKey key: K) throws -> Double {
+        if let v = try? container.decode(Double.self, forKey: key) { return v }
+        if let v = try? container.decode(Int.self, forKey: key) { return Double(v) }
+        if let s = try? container.decode(String.self, forKey: key) {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return 0 }
+            if let v = Double(trimmed) { return v }
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Expected numeric value for \(key.stringValue)"
+        )
+    }
+
+    static func decodeIfPresent<K: CodingKey>(_ container: KeyedDecodingContainer<K>, forKey key: K) -> Double? {
+        guard container.contains(key), (try? container.decodeNil(forKey: key)) != true else { return nil }
+        return try? decode(container, forKey: key)
+    }
 }
 
 enum AdminRole: String, Codable, Sendable {
@@ -245,57 +273,92 @@ struct Transaction: Decodable, Identifiable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         date = try c.decode(String.self, forKey: .date)
-        type = try c.decode(TransactionType.self, forKey: .type)
-        category = try c.decode(String.self, forKey: .category)
+        type = (try? c.decode(TransactionType.self, forKey: .type)) ?? .expense
+        category = (try? c.decode(String.self, forKey: .category)) ?? ""
         subCategory = try c.decodeIfPresent(String.self, forKey: .subCategory)
-        description = try c.decode(String.self, forKey: .description)
-        amount = try c.decode(Double.self, forKey: .amount)
+        description = (try? c.decode(String.self, forKey: .description)) ?? ""
+        amount = (try? FlexibleNumber.decode(c, forKey: .amount)) ?? 0
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         employeeId = try c.decodeIfPresent(String.self, forKey: .employeeId)
         employeeIds = try c.decodeIfPresent([String].self, forKey: .employeeIds)
         driverId = try c.decodeIfPresent(String.self, forKey: .driverId)
-        driverWage = try c.decodeIfPresent(Double.self, forKey: .driverWage)
-        vehicleWage = try c.decodeIfPresent(Double.self, forKey: .vehicleWage)
+        driverWage = FlexibleNumber.decodeIfPresent(c, forKey: .driverWage)
+        vehicleWage = FlexibleNumber.decodeIfPresent(c, forKey: .vehicleWage)
         vehicleId = try c.decodeIfPresent(String.self, forKey: .vehicleId)
-        quantity = try c.decodeIfPresent(Double.self, forKey: .quantity)
+        quantity = FlexibleNumber.decodeIfPresent(c, forKey: .quantity)
         unit = try c.decodeIfPresent(String.self, forKey: .unit)
-        unitPrice = try c.decodeIfPresent(Double.self, forKey: .unitPrice)
+        unitPrice = FlexibleNumber.decodeIfPresent(c, forKey: .unitPrice)
         projectId = try c.decodeIfPresent(String.self, forKey: .projectId)
         laborStatus = try c.decodeIfPresent(String.self, forKey: .laborStatus)
         workType = try c.decodeIfPresent(String.self, forKey: .workType)
         workTypeByEmployee = try c.decodeIfPresent([String: String].self, forKey: .workTypeByEmployee)
-        workAssignments = try? c.decodeIfPresent([String: [String]].self, forKey: .workAssignments)
-        otAmount = try c.decodeIfPresent(Double.self, forKey: .otAmount)
-        advanceAmount = try c.decodeIfPresent(Double.self, forKey: .advanceAmount)
-        specialAmount = try c.decodeIfPresent(Double.self, forKey: .specialAmount)
-        otHours = try c.decodeIfPresent(Double.self, forKey: .otHours)
+        workAssignments = Self.decodeWorkAssignments(from: c)
+        otAmount = FlexibleNumber.decodeIfPresent(c, forKey: .otAmount)
+        advanceAmount = FlexibleNumber.decodeIfPresent(c, forKey: .advanceAmount)
+        specialAmount = FlexibleNumber.decodeIfPresent(c, forKey: .specialAmount)
+        otHours = FlexibleNumber.decodeIfPresent(c, forKey: .otHours)
         leaveReason = try c.decodeIfPresent(String.self, forKey: .leaveReason)
-        leaveDays = try c.decodeIfPresent(Double.self, forKey: .leaveDays)
+        leaveDays = FlexibleNumber.decodeIfPresent(c, forKey: .leaveDays)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         workDetails = try c.decodeIfPresent(String.self, forKey: .workDetails)
         fuelType = try c.decodeIfPresent(String.self, forKey: .fuelType)
         fuelMovement = try c.decodeIfPresent(String.self, forKey: .fuelMovement)
         machineId = try c.decodeIfPresent(String.self, forKey: .machineId)
-        machineHours = try c.decodeIfPresent(Double.self, forKey: .machineHours)
-        tripCount = try c.decodeIfPresent(Double.self, forKey: .tripCount)
-        tripMorning = try c.decodeIfPresent(Double.self, forKey: .tripMorning)
-        tripAfternoon = try c.decodeIfPresent(Double.self, forKey: .tripAfternoon)
-        cubicPerTrip = try c.decodeIfPresent(Double.self, forKey: .cubicPerTrip)
-        totalCubic = try c.decodeIfPresent(Double.self, forKey: .totalCubic)
-        perCarTrips = try c.decodeIfPresent(Double.self, forKey: .perCarTrips)
-        perCarCubic = try c.decodeIfPresent(Double.self, forKey: .perCarCubic)
-        sandMorning = try c.decodeIfPresent(Double.self, forKey: .sandMorning)
-        sandAfternoon = try c.decodeIfPresent(Double.self, forKey: .sandAfternoon)
+        machineHours = FlexibleNumber.decodeIfPresent(c, forKey: .machineHours)
+        tripCount = FlexibleNumber.decodeIfPresent(c, forKey: .tripCount)
+        tripMorning = FlexibleNumber.decodeIfPresent(c, forKey: .tripMorning)
+        tripAfternoon = FlexibleNumber.decodeIfPresent(c, forKey: .tripAfternoon)
+        cubicPerTrip = FlexibleNumber.decodeIfPresent(c, forKey: .cubicPerTrip)
+        totalCubic = FlexibleNumber.decodeIfPresent(c, forKey: .totalCubic)
+        perCarTrips = FlexibleNumber.decodeIfPresent(c, forKey: .perCarTrips)
+        perCarCubic = FlexibleNumber.decodeIfPresent(c, forKey: .perCarCubic)
+        sandMorning = FlexibleNumber.decodeIfPresent(c, forKey: .sandMorning)
+        sandAfternoon = FlexibleNumber.decodeIfPresent(c, forKey: .sandAfternoon)
         sandMachineType = try c.decodeIfPresent(String.self, forKey: .sandMachineType)
         sandOperators = try c.decodeIfPresent([String].self, forKey: .sandOperators)
-        sandTransport = try c.decodeIfPresent(Double.self, forKey: .sandTransport)
-        drumsObtained = try c.decodeIfPresent(Double.self, forKey: .drumsObtained)
-        drumsWashedAtHome = try c.decodeIfPresent(Double.self, forKey: .drumsWashedAtHome)
+        sandTransport = FlexibleNumber.decodeIfPresent(c, forKey: .sandTransport)
+        drumsObtained = FlexibleNumber.decodeIfPresent(c, forKey: .drumsObtained)
+        drumsWashedAtHome = FlexibleNumber.decodeIfPresent(c, forKey: .drumsWashedAtHome)
         sandBatchId = try c.decodeIfPresent(String.self, forKey: .sandBatchId)
         eventType = try c.decodeIfPresent(String.self, forKey: .eventType)
         eventPriority = try c.decodeIfPresent(String.self, forKey: .eventPriority)
         eventTime = try c.decodeIfPresent(String.self, forKey: .eventTime)
         incomePaymentStatus = try c.decodeIfPresent(String.self, forKey: .incomePaymentStatus)
+    }
+
+    /// Accepts `[String: [String]]` or coerces mixed JSON arrays (numbers → strings) for lapTimes.
+    private static func decodeWorkAssignments(
+        from c: KeyedDecodingContainer<CodingKeys>
+    ) -> [String: [String]]? {
+        if let direct = try? c.decodeIfPresent([String: [String]].self, forKey: .workAssignments) {
+            return direct
+        }
+        guard let raw = try? c.decodeIfPresent([String: [FlexibleStringValue]].self, forKey: .workAssignments) else {
+            return nil
+        }
+        var out: [String: [String]] = [:]
+        for (key, values) in raw {
+            out[key] = values.map(\.value)
+        }
+        return out.isEmpty ? nil : out
+    }
+}
+
+/// Wrapper so JSON array elements that are numbers or strings both become String.
+private struct FlexibleStringValue: Decodable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) {
+            value = s
+        } else if let i = try? c.decode(Int.self) {
+            value = String(i)
+        } else if let d = try? c.decode(Double.self) {
+            value = String(d)
+        } else {
+            value = ""
+        }
     }
 }
 

@@ -17,6 +17,12 @@ enum SupabaseConfig {
         return key
     }
 
+    /// Host only (e.g. `abcd.supabase.co`) — used for diagnostics in Profile.
+    static var host: String {
+        guard isConfigured else { return "(ยังไม่ตั้งค่า)" }
+        return url.host ?? url.absoluteString
+    }
+
     static var isConfigured: Bool {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
               let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String else {
