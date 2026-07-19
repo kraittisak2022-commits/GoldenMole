@@ -5,6 +5,7 @@ enum AppMainTab: Hashable {
     case realtime
     case reports
     case calendar
+    case market
 }
 
 struct DashboardShell: View {
@@ -51,6 +52,12 @@ struct DashboardShell: View {
             }
             .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
+
+            NavigationStack {
+                marketTab
+            }
+            .tabItem { Label("ทอง/น้ำมัน", systemImage: "chart.line.uptrend.xyaxis") }
+            .tag(AppMainTab.market)
         }
         .tint(AppTheme.brand)
         .task {
@@ -147,6 +154,18 @@ struct DashboardShell: View {
         }
     }
 
+    // MARK: - Market (Gold / Oil AI)
+
+    private var marketTab: some View {
+        MarketInsightsView(
+            insight: appState.marketInsight,
+            loading: appState.marketLoading,
+            error: appState.marketError,
+            onRefresh: { await appState.loadMarket() }
+        )
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
     // MARK: - Reports hub
 
     private var reportsHub: some View {
@@ -177,6 +196,22 @@ struct DashboardShell: View {
                         color: AppTheme.slate,
                         destination: {
                             RecordListView(transactions: appState.transactions)
+                        }
+                    )
+                    reportLink(
+                        title: "ทอง/น้ำมัน (AI)",
+                        subtitle: "วิเคราะห์แนวโน้มราคารายวัน",
+                        icon: "chart.line.uptrend.xyaxis",
+                        color: AppTheme.warning,
+                        destination: {
+                            MarketInsightsView(
+                                insight: appState.marketInsight,
+                                loading: appState.marketLoading,
+                                error: appState.marketError,
+                                onRefresh: { await appState.loadMarket() }
+                            )
+                            .navigationTitle("ทอง/น้ำมัน")
+                            .navigationBarTitleDisplayMode(.inline)
                         }
                     )
                 }

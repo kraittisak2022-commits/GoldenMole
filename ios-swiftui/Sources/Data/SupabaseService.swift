@@ -87,6 +87,22 @@ final class SupabaseService: ObservableObject {
             .value
     }
 
+    /// Latest AI market insight row (gold + oil). Returns nil when the table is empty.
+    func fetchMarketInsights() async throws -> MarketInsightSnapshot? {
+        let rows: [MarketInsightSnapshot]
+        do {
+            rows = try await client.from("market_insights")
+                .select("generated_at,status,payload")
+                .order("generated_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+        return rows.first
+    }
+
     func fetchSettings() async throws -> AppSettings {
         let rows: [AppSettingsRow] = try await client.from("app_settings")
             .select()

@@ -12,6 +12,11 @@ final class AppState: ObservableObject {
     @Published var customStart = DashboardAggregations.gregorian.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @Published var customEnd = Date()
 
+    /// AI market insights (gold + oil). Loaded lazily when the tab opens; independent of the 12s poll.
+    @Published var marketInsight: MarketInsightSnapshot?
+    @Published var marketLoading = false
+    @Published var marketError: String?
+
     /// Diagnostics: last successful fetch sizes / skip counts.
     @Published var lastFetchTransactionCount = 0
     @Published var lastFetchEmployeeCount = 0
@@ -97,6 +102,19 @@ final class AppState: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Loads the latest market insight row. Safe to call repeatedly (tab appear / manual refresh).
+    func loadMarket() async {
+        guard let dataService else { return }
+        marketLoading = true
+        marketError = nil
+        do {
+            marketInsight = try await dataService.fetchMarketInsights()
+        } catch {
+            marketError = error.localizedDescription
+        }
+        marketLoading = false
     }
 
     deinit {
