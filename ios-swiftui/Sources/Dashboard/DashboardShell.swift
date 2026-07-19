@@ -5,19 +5,25 @@ enum AppMainTab: Hashable {
     case realtime
     case reports
     case calendar
-    case profile
 }
 
 struct DashboardShell: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var appState: AppState
+    @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtime
     @State private var homeSegment: HomeSegment = .v1
+    @State private var showProfile = false
 
     private enum HomeSegment: String, CaseIterable, Identifiable {
         case v1 = "ภาพรวม V.1"
         case v5 = "ภาพรวม V.5"
+        case worklog = "บันทึกงาน"
         var id: String { rawValue }
+    }
+
+    init() {
+        Self.applyTabBarAppearance()
     }
 
     var body: some View {
@@ -25,7 +31,7 @@ struct DashboardShell: View {
             NavigationStack {
                 homeTab
             }
-            .tabItem { Label("หน้าหลัก", systemImage: "chart.pie.fill") }
+            .tabItem { Label("หน้าหลัก", systemImage: "square.grid.2x2.fill") }
             .tag(AppMainTab.home)
 
             NavigationStack {
@@ -37,7 +43,7 @@ struct DashboardShell: View {
             NavigationStack {
                 reportsHub
             }
-            .tabItem { Label("รายงาน", systemImage: "list.bullet.rectangle") }
+            .tabItem { Label("รายงาน", systemImage: "chart.bar.doc.horizontal.fill") }
             .tag(AppMainTab.reports)
 
             NavigationStack {
@@ -45,16 +51,23 @@ struct DashboardShell: View {
             }
             .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
-
-            NavigationStack {
-                ProfileView()
-            }
-            .tabItem { Label("โปรไฟล์", systemImage: "person.crop.circle") }
-            .tag(AppMainTab.profile)
         }
         .tint(AppTheme.brand)
         .task {
             await appState.refresh()
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack {
+                ProfileView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("เสร็จ") { showProfile = false }
+                                .fontWeight(.semibold)
+                        }
+                    }
+            }
+            .environmentObject(auth)
+            .environmentObject(appState)
         }
     }
 
@@ -90,6 +103,12 @@ struct DashboardShell: View {
                                 transactions: appState.transactions,
                                 dateFilter: appState.dateFilter
                             )
+                        case .worklog:
+                            WorkLogView(
+                                transactions: appState.transactions,
+                                employees: appState.employees,
+                                settings: appState.settings
+                            )
                         }
                     }
                     .padding(AppTheme.spaceLG)
@@ -100,7 +119,7 @@ struct DashboardShell: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(appState.settings.appName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { refreshToolbar }
+        .toolbar { headerToolbar }
     }
 
     // MARK: - Realtime
@@ -123,89 +142,142 @@ struct DashboardShell: View {
         .background(RealtimeV4Palette.page.ignoresSafeArea())
         .environment(\.colorScheme, .dark)
         .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .topTrailing) {
+            headerControlsOverlay
+        }
     }
 
     // MARK: - Reports hub
 
     private var reportsHub: some View {
         ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 12
-            ) {
-                reportLink(
-                    title: "วิเคราะห์ (V.2)",
-                    subtitle: "รายจ่ายและแนวโน้ม",
-                    icon: "chart.bar.xaxis",
-                    color: AppTheme.info,
-                    destination: AnyView(
-                        reportDetail(title: "วิเคราะห์ (V.2)") {
-                            AnalyticsV2View(
-                                transactions: appState.filteredTransactions,
-                                settings: appState.settings,
-                                dateFilter: appState.dateFilter
-                            )
-                        }
+            VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
+                reportsHero
+
+                reportsSection(title: "วิเคราะห์และรายการ", systemImage: "sparkles") {
+                    reportLink(
+                        title: "วิเคราะห์ (V.2)",
+                        subtitle: "รายจ่ายและแนวโน้ม",
+                        icon: "chart.bar.xaxis",
+                        color: AppTheme.info,
+                        destination: AnyView(
+                            reportDetail(title: "วิเคราะห์ (V.2)") {
+                                AnalyticsV2View(
+                                    transactions: appState.filteredTransactions,
+                                    settings: appState.settings,
+                                    dateFilter: appState.dateFilter
+                                )
+                            }
+                        )
                     )
-                )
-                reportLink(
-                    title: "ค่าแรง",
-                    subtitle: "สรุปค่าแรงตามช่วง",
-                    icon: "person.2.fill",
-                    color: AppTheme.labor,
-                    destination: AnyView(categoryDetail(.labor))
-                )
-                reportLink(
-                    title: "การใช้รถ",
-                    subtitle: "ค่าใช้จ่ายยานพาหนะ",
-                    icon: "truck.box.fill",
-                    color: AppTheme.vehicle,
-                    destination: AnyView(categoryDetail(.vehicle))
-                )
-                reportLink(
-                    title: "ล้างทราย",
-                    subtitle: "ทรายและถัง",
-                    icon: "drop.fill",
-                    color: AppTheme.sand,
-                    destination: AnyView(categoryDetail(.sand))
-                )
-                reportLink(
-                    title: "น้ำมัน",
-                    subtitle: "ดีเซล / เบนซิน",
-                    icon: "fuelpump.fill",
-                    color: AppTheme.fuel,
-                    destination: AnyView(categoryDetail(.fuel))
-                )
-                reportLink(
-                    title: "ที่ดิน",
-                    subtitle: "โครงการและค่าใช้จ่าย",
-                    icon: "map.fill",
-                    color: AppTheme.land,
-                    destination: AnyView(categoryDetail(.land))
-                )
-                reportLink(
-                    title: "รายรับ",
-                    subtitle: "สรุปรายได้",
-                    icon: "banknote.fill",
-                    color: AppTheme.income,
-                    destination: AnyView(categoryDetail(.income))
-                )
-                reportLink(
-                    title: "รายการบันทึก",
-                    subtitle: "ค้นหาธุรกรรมทั้งหมด",
-                    icon: "list.bullet.rectangle.portrait",
-                    color: AppTheme.slate,
-                    destination: AnyView(
-                        RecordListView(transactions: appState.transactions)
+                    reportLink(
+                        title: "รายการบันทึก",
+                        subtitle: "ค้นหาธุรกรรมทั้งหมด",
+                        icon: "list.bullet.rectangle.portrait",
+                        color: AppTheme.slate,
+                        destination: AnyView(
+                            RecordListView(transactions: appState.transactions)
+                        )
                     )
-                )
+                }
+
+                reportsSection(title: "รายงานตามหมวด", systemImage: "square.grid.2x2.fill") {
+                    reportLink(
+                        title: "ค่าแรง",
+                        subtitle: "สรุปค่าแรงตามช่วง",
+                        icon: "person.2.fill",
+                        color: AppTheme.labor,
+                        destination: AnyView(categoryDetail(.labor))
+                    )
+                    reportLink(
+                        title: "การใช้รถ",
+                        subtitle: "ค่าใช้จ่ายยานพาหนะ",
+                        icon: "truck.box.fill",
+                        color: AppTheme.vehicle,
+                        destination: AnyView(categoryDetail(.vehicle))
+                    )
+                    reportLink(
+                        title: "ล้างทราย",
+                        subtitle: "ทรายและถัง",
+                        icon: "drop.fill",
+                        color: AppTheme.sand,
+                        destination: AnyView(categoryDetail(.sand))
+                    )
+                    reportLink(
+                        title: "น้ำมัน",
+                        subtitle: "ดีเซล / เบนซิน",
+                        icon: "fuelpump.fill",
+                        color: AppTheme.fuel,
+                        destination: AnyView(categoryDetail(.fuel))
+                    )
+                    reportLink(
+                        title: "ที่ดิน",
+                        subtitle: "โครงการและค่าใช้จ่าย",
+                        icon: "map.fill",
+                        color: AppTheme.land,
+                        destination: AnyView(categoryDetail(.land))
+                    )
+                    reportLink(
+                        title: "รายรับ",
+                        subtitle: "สรุปรายได้",
+                        icon: "banknote.fill",
+                        color: AppTheme.income,
+                        destination: AnyView(categoryDetail(.income))
+                    )
+                }
             }
             .padding(AppTheme.spaceLG)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("รายงาน")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar { refreshToolbar }
+        .toolbar { headerToolbar }
+    }
+
+    private var reportsHero: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.white.opacity(0.18)))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ศูนย์รายงาน")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [AppTheme.brand, AppTheme.brandMid],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.25), radius: 12, y: 6)
+    }
+
+    private func reportsSection<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
+            SectionHeader(title: title, systemImage: systemImage)
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                spacing: 12
+            ) {
+                content()
+            }
+        }
     }
 
     private func reportLink(
@@ -219,27 +291,48 @@ struct DashboardShell: View {
             destination
         } label: {
             VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 44, height: 44)
-                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                Text(title)
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
+                HStack {
+                    Image(systemName: icon)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 46, height: 46)
+                        .background(
+                            LinearGradient(
+                                colors: [color, color.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .shadow(color: color.opacity(0.35), radius: 6, y: 3)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(color.opacity(0.6))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
             }
             .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                     .fill(Color(.systemBackground))
-                    .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .stroke(color.opacity(0.14), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -293,21 +386,113 @@ struct DashboardShell: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("ปฏิทิน")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { refreshToolbar }
+        .toolbar { headerToolbar }
     }
 
-    // MARK: - Shared
+    // MARK: - Header controls (refresh + appearance + profile)
 
     @ToolbarContentBuilder
-    private var refreshToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-                Task { await appState.refresh() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .disabled(appState.isLoading)
+    private var headerToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            refreshButton
+            appearanceMenu
+            avatarButton
         }
+    }
+
+    /// Floating cluster for the Real-time tab, which hides its navigation bar.
+    private var headerControlsOverlay: some View {
+        HStack(spacing: 4) {
+            refreshButton
+            appearanceMenu
+            avatarButton
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule().fill(.ultraThinMaterial)
+        )
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
+        .environment(\.colorScheme, .dark)
+        .padding(.top, 6)
+        .padding(.trailing, AppTheme.spaceLG)
+    }
+
+    private var refreshButton: some View {
+        Button {
+            Task { await appState.refresh() }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .disabled(appState.isLoading)
+        .accessibilityLabel("รีเฟรชข้อมูล")
+    }
+
+    private var appearanceMenu: some View {
+        Menu {
+            Picker("โหมดการแสดงผล", selection: $appearanceMode) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.systemImage).tag(mode.rawValue)
+                }
+            }
+        } label: {
+            Image(systemName: currentAppearance.systemImage)
+        }
+        .accessibilityLabel("สลับโหมดสว่าง/มืด")
+    }
+
+    private var avatarButton: some View {
+        Button {
+            showProfile = true
+        } label: {
+            Text(profileInitials)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle().fill(
+                        LinearGradient(
+                            colors: [AppTheme.brand, AppTheme.brandMid],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                )
+        }
+        .accessibilityLabel("โปรไฟล์")
+    }
+
+    private var currentAppearance: AppearanceMode {
+        AppearanceMode(rawValue: appearanceMode) ?? .system
+    }
+
+    private var profileInitials: String {
+        let name = auth.currentAdmin?.displayName ?? auth.currentAdmin?.username ?? "?"
+        let parts = name.split(whereSeparator: { $0.isWhitespace }).prefix(2)
+        if parts.isEmpty { return "?" }
+        return parts.map { String($0.prefix(1)).uppercased() }.joined()
+    }
+
+    private static func applyTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemThinMaterial)
+        appearance.shadowColor = UIColor.separator.withAlphaComponent(0.25)
+
+        let brand = UIColor(AppTheme.brand)
+        for item in [appearance.stackedLayoutAppearance, appearance.inlineLayoutAppearance, appearance.compactInlineLayoutAppearance] {
+            item.selected.iconColor = brand
+            item.selected.titleTextAttributes = [
+                .foregroundColor: brand,
+                .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+            ]
+            item.normal.titleTextAttributes = [
+                .font: UIFont.systemFont(ofSize: 10, weight: .medium)
+            ]
+        }
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
     @ViewBuilder

@@ -21,6 +21,8 @@ struct RealtimeV4View: View {
     @State private var lastRefresh = Date()
     @State private var boardPulse = false
     @State private var livePing = false
+    @State private var selectedVehicle: CountRecordTripUnit?
+    @State private var showSandDetail = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var focusDateStr: String { DashboardAggregations.formatYMD(focusDate) }
@@ -74,6 +76,14 @@ struct RealtimeV4View: View {
         }
         .onChange(of: tripTotal) { _ in triggerPulse() }
         .onChange(of: sandRounds) { _ in triggerPulse() }
+        .sheet(item: $selectedVehicle) { unit in
+            VehicleDetailSheet(unit: unit, dayKey: focusDateStr)
+        }
+        .sheet(isPresented: $showSandDetail) {
+            if let sand = sandUnit {
+                SandDetailSheet(sand: sand, dayKey: focusDateStr, analytics: sandAnalytics)
+            }
+        }
     }
 
     private func triggerPulse() {
@@ -378,6 +388,8 @@ struct RealtimeV4View: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(Array(tripUnits.enumerated()), id: \.element.id) { index, unit in
                             TripVehicleCard(unit: unit, index: index, dayKey: focusDateStr)
+                                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .onTapGesture { selectedVehicle = unit }
                         }
                     }
                     tripLeaderboard
@@ -575,6 +587,8 @@ struct RealtimeV4View: View {
             if let sand = sandUnit, sand.rounds > 0 {
                 VStack(spacing: 12) {
                     sandHero(sand)
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .onTapGesture { showSandDetail = true }
                     sandKPI(sand)
                     sandRecentLaps(sand)
                     if sandAnalytics.rounds > 0 {
@@ -1008,6 +1022,197 @@ private struct TripVehicleCard: View {
         .frame(minHeight: 168)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .padding(6)
+                .background(Circle().fill(Color.black.opacity(0.22)))
+                .padding(8)
+        }
+    }
+}
+
+// MARK: - Detail sheets (tap to inspect)
+
+private struct VehicleDetailSheet: View {
+    let unit: CountRecordTripUnit
+    let dayKey: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var workSpan: String? {
+        CountRecordLogic.formatWorkSpanLabel(
+            CountRecordLogic.computeWorkSpan(lapTimes: unit.lapTimes, dayKey: dayKey)
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(unit.vehicleId)
+                            .font(.title2.weight(.black))
+                            .foregroundStyle(.white)
+                        Label(unit.driverLabel, systemImage: "person.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(unit.rounds)")
+                            .font(.system(size: 56, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text("เที่ยว").font(.title3.weight(.bold)).foregroundStyle(.white.opacity(0.7))
+                        Spacer()
+                        if unit.broken {
+                            Label("รถเสีย", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Color(hex: "#451A03"))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Capsule().fill(Color(hex: "#FCD34D")))
+                        }
+                    }
+
+                    DetailStatRow(items: [
+                        ("เช้า", "\(unit.morning)"),
+                        ("บ่าย", "\(max(0, unit.afternoon - unit.ot))"),
+                        ("OT", "\(unit.ot)")
+                    ])
+
+                    if let workSpan {
+                        Label(workSpan, systemImage: "clock")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+
+                    LapTimeList(title: "เวลาประทับทุกเที่ยว", lapTimes: unit.lapTimes)
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("รายละเอียดรถ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct SandDetailSheet: View {
+    let sand: CountRecordSandUnit
+    let dayKey: String
+    let analytics: CountRecordAnalytics.ModeAnalytics
+    @Environment(\.dismiss) private var dismiss
+
+    private var workSpan: String? {
+        CountRecordLogic.formatWorkSpanLabel(
+            CountRecordLogic.computeWorkSpan(lapTimes: sand.lapTimes, dayKey: dayKey)
+        )
+    }
+    private var hours: Double? { CountRecordLogic.activeDurationHours(lapTimes: sand.lapTimes, dayKey: dayKey) }
+    private var perHour: Double? { hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil } }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(CountRecordLogic.formatMetric(sand.rounds))
+                            .font(.system(size: 56, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text("รอบ").font(.title3.weight(.bold)).foregroundStyle(.white.opacity(0.7))
+                    }
+
+                    DetailStatRow(items: [
+                        ("เช้า", "\(sand.morning)"),
+                        ("บ่าย", "\(max(0, sand.afternoon - sand.ot))"),
+                        ("OT", "\(sand.ot)")
+                    ])
+
+                    DetailStatRow(items: [
+                        ("รอบ/ชม.", perHour.map { String(format: "%.1f", $0) } ?? "—"),
+                        ("เป้าหมาย", "\(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget))"),
+                        ("คงเหลือ", "\(max(0, CountRecordLogic.sandTarget - sand.rounds))")
+                    ])
+
+                    if let workSpan {
+                        Label(workSpan, systemImage: "clock")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+
+                    LapTimeList(title: "เวลาประทับทุกรอบ", lapTimes: sand.lapTimes)
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("รายละเอียดร่อนทราย")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct DetailStatRow: View {
+    let items: [(String, String)]
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                VStack(spacing: 4) {
+                    Text(item.0).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+                    Text(item.1).font(.title3.weight(.black)).foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.06)))
+            }
+        }
+    }
+}
+
+private struct LapTimeList: View {
+    let title: String
+    let lapTimes: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(.white.opacity(0.55))
+            if lapTimes.isEmpty {
+                Text("ยังไม่มีเวลาประทับ").font(.caption).foregroundStyle(.white.opacity(0.4))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(Array(lapTimes.enumerated()), id: \.offset) { idx, stamp in
+                        HStack(spacing: 6) {
+                            Text("\(idx + 1)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.55))
+                            Text(CountRecordLogic.formatLapClock(stamp) ?? stamp)
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
