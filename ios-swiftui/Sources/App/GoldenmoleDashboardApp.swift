@@ -47,12 +47,17 @@ final class AppBootstrap: ObservableObject {
 struct RootView: View {
     @EnvironmentObject private var bootstrap: AppBootstrap
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
 
     @State private var showSplash = true
     @State private var minDurationElapsed = false
 
     private var canDismissSplash: Bool {
         bootstrap.isReady && minDurationElapsed
+    }
+
+    private var resolvedScheme: ColorScheme? {
+        AppearanceMode(rawValue: appearanceMode)?.colorScheme
     }
 
     var body: some View {
@@ -71,6 +76,7 @@ struct RootView: View {
                     .transition(contentEnterTransition)
             }
         }
+        .preferredColorScheme(resolvedScheme)
         .animation(gateAnimation, value: showSplash)
         .task {
             let nanos: UInt64 = reduceMotion ? 400_000_000 : 1_400_000_000
