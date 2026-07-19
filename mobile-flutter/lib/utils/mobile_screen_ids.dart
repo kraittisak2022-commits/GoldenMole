@@ -50,6 +50,8 @@ abstract final class MobileScreenIds {
         return 'step.quick_input.events';
       case 'ค่าแรง':
         return 'step.quick_input.labor';
+      case 'เช็คชื่อ':
+        return 'step.quick_input.attendance';
       case 'OT':
         return 'step.quick_input.ot';
       case 'ลางาน':

@@ -29,6 +29,7 @@ class AppTransaction {
     this.workDetails,
     this.workType,
     this.workAssignments,
+    this.workTypeByEmployee,
     this.customWorkCategories,
     this.quantity,
     this.unitPrice,
@@ -86,6 +87,8 @@ class AppTransaction {
   final String? workDetails;
   final String? workType;
   final Map<String, List<String>>? workAssignments;
+  /// แมปพนักงาน → ประเภทวันทำงาน (เช่น FullDay | HalfDay) — ตรงกับคอลัมน์ work_type_by_employee (jsonb) บนเว็บ
+  final Map<String, String>? workTypeByEmployee;
   final List<Map<String, String>>? customWorkCategories;
   final double? quantity;
   final double? unitPrice;
@@ -166,6 +169,7 @@ class AppTransaction {
       workDetails: row['work_details']?.toString(),
       workType: row['work_type']?.toString(),
       workAssignments: _toStringListMap(row['work_assignments']),
+      workTypeByEmployee: _toStringStringMap(row['work_type_by_employee']),
       customWorkCategories: _toStringMapList(row['custom_work_categories']),
       quantity: _toDouble(row['quantity']),
       unitPrice: _toDouble(row['unit_price']),
@@ -240,6 +244,8 @@ class AppTransaction {
       if (workType != null && workType!.isNotEmpty) 'work_type': workType,
       if (workAssignments != null && workAssignments!.isNotEmpty)
         'work_assignments': workAssignments,
+      if (workTypeByEmployee != null && workTypeByEmployee!.isNotEmpty)
+        'work_type_by_employee': workTypeByEmployee,
       if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
         'custom_work_categories': customWorkCategories,
       if (quantity != null) 'quantity': quantity,
@@ -313,6 +319,8 @@ class AppTransaction {
       if (workType != null && workType!.isNotEmpty) 'work_type': workType,
       if (workAssignments != null && workAssignments!.isNotEmpty)
         'work_assignments': workAssignments,
+      if (workTypeByEmployee != null && workTypeByEmployee!.isNotEmpty)
+        'work_type_by_employee': workTypeByEmployee,
       if (customWorkCategories != null && customWorkCategories!.isNotEmpty)
         'custom_work_categories': customWorkCategories,
       if (quantity != null) 'quantity': quantity,
@@ -377,6 +385,7 @@ class AppTransaction {
     String? workDetails,
     String? workType,
     Map<String, List<String>>? workAssignments,
+    Map<String, String>? workTypeByEmployee,
     List<Map<String, String>>? customWorkCategories,
     double? quantity,
     double? unitPrice,
@@ -432,6 +441,7 @@ class AppTransaction {
       workDetails: workDetails ?? this.workDetails,
       workType: workType ?? this.workType,
       workAssignments: workAssignments ?? this.workAssignments,
+      workTypeByEmployee: workTypeByEmployee ?? this.workTypeByEmployee,
       customWorkCategories: customWorkCategories ?? this.customWorkCategories,
       quantity: quantity ?? this.quantity,
       unitPrice: unitPrice ?? this.unitPrice,
@@ -478,6 +488,19 @@ class AppTransaction {
           .where((e) => e.trim().isNotEmpty)
           .toList();
       if (items.isNotEmpty) out[key] = items;
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  static Map<String, String>? _toStringStringMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final out = <String, String>{};
+    for (final entry in raw.entries) {
+      final key = '${entry.key}'.trim();
+      if (key.isEmpty) continue;
+      final value = '${entry.value ?? ''}'.trim();
+      if (value.isEmpty) continue;
+      out[key] = value;
     }
     return out.isEmpty ? null : out;
   }

@@ -105,6 +105,13 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFF9145FF),
   ),
   _DailyModuleDef(
+    title: 'เช็คชื่อ',
+    icon: Icons.how_to_reg_outlined,
+    category: 'เช็คชื่อ',
+    quickInputTitle: 'เช็คชื่อประจำวัน',
+    color: Color(0xFF2FB6A6),
+  ),
+  _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
     icon: Icons.groups_2_outlined,
     category: 'OT',
@@ -873,6 +880,7 @@ const _kDailyMenuDetailCategories = {
   'การใช้รถแม็คโคร',
   'น้ำมัน',
   'ค่าแรง',
+  'เช็คชื่อ',
   'OT',
 };
 

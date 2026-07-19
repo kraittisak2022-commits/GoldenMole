@@ -1264,6 +1264,8 @@ bool transactionTouchesDailyModule(
       return t.category == 'ค่าแรง' || laborTouches();
     case 'บันทึกการทำงาน':
       return laborTouches() || t.category == 'ค่าแรง';
+    case 'เช็คชื่อ':
+      return laborTouches() || leaveRecordTouches() || otTouches();
     case 'ลางาน':
       return leaveRecordTouches();
     case 'เบิกเงิน':
@@ -1404,6 +1406,11 @@ bool transactionMatchesDailyModule(
         t.employeeIds.isNotEmpty;
   }
 
+  // เช็คชื่อ: รวมรายการที่กระดานเช็คชื่อเขียนลง — ค่าแรง(มาทำงาน)/ลางาน/OT
+  bool attendanceLike() {
+    return laborLike() || leaveLike() || otLike();
+  }
+
   switch (moduleCategory) {
     case 'บันทึกการร่อนทราย':
       return sandWashLike();
@@ -1421,6 +1428,8 @@ bool transactionMatchesDailyModule(
       return t.category == 'ค่าแรง' || laborLike();
     case 'บันทึกการทำงาน':
       return laborLike() || t.category == 'ค่าแรง';
+    case 'เช็คชื่อ':
+      return attendanceLike();
     case 'ลางาน':
       return leaveLike();
     case 'เบิกเงิน':
