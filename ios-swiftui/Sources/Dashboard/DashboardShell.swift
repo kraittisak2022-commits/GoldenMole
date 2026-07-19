@@ -116,8 +116,12 @@ struct DashboardShell: View {
                 .padding(AppTheme.spaceLG)
             }
             .refreshable { await appState.refresh() }
+            .scrollContentBackground(.hidden)
         }
-        .background(Color(.systemGroupedBackground))
+        // The web "Real-time V.4" share view is always a dark, premium dashboard —
+        // force a dark page + colorScheme here regardless of the device appearance.
+        .background(RealtimeV4Palette.page.ignoresSafeArea())
+        .environment(\.colorScheme, .dark)
         .navigationTitle("Real-time V.4")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { refreshToolbar }

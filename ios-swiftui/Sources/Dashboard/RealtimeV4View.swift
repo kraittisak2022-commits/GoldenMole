@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Fixed dark palette for the always-dark Real-time V.4 dashboard (matches the web share view).
+enum RealtimeV4Palette {
+    static let page = Color(hex: "#020617")       // slate-950 page background
+    static let panel = Color(hex: "#0F172A")      // slate-900 panel body
+    static let panelTop = Color(hex: "#111C31")   // slightly lifted top of panel body
+    static let card = Color(hex: "#0B1424")        // inner card surface
+    static let cardSoft = Color.white.opacity(0.06)
+    static let border = Color.white.opacity(0.08)
+    static let textMuted = Color(hex: "#94A3B8")   // slate-400
+}
+
 struct RealtimeV4View: View {
     let transactions: [Transaction]
     let employees: [Employee]
@@ -190,19 +201,12 @@ struct RealtimeV4View: View {
             VStack(spacing: 16) {
                 tripPanel
                 sandPanel
-            }
-            .padding(16)
-            .background(Color(.systemBackground))
-
-            VStack(spacing: 14) {
-                RealtimeV4AnalyticsPanel(analytics: tripAnalytics, accent: Color(hex: "#38BDF8"))
-                RealtimeV4AnalyticsPanel(analytics: sandAnalytics, accent: Color(hex: "#F472B6"))
                 RealtimeV4ActivityFeed(events: activityEvents)
             }
             .padding(16)
             .background(
                 LinearGradient(
-                    colors: [Color(hex: "#0F172A"), Color(hex: "#1E1B4B")],
+                    colors: [Color(hex: "#0F172A"), Color(hex: "#0B1120"), Color(hex: "#0F172A")],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -211,7 +215,7 @@ struct RealtimeV4View: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(boardPulse ? Color(hex: "#A5B4FC").opacity(0.8) : Color(.separator).opacity(0.4), lineWidth: boardPulse ? 2 : 1)
+                .stroke(boardPulse ? Color(hex: "#A5B4FC").opacity(0.8) : RealtimeV4Palette.border, lineWidth: boardPulse ? 2 : 1)
         )
         .shadow(color: boardPulse ? Color(hex: "#6366F1").opacity(0.25) : .black.opacity(0.06), radius: boardPulse ? 18 : 10, y: 6)
         .animation(.easeOut(duration: 0.35), value: boardPulse)
@@ -359,6 +363,9 @@ struct RealtimeV4View: View {
                         }
                     }
                     tripLeaderboard
+                    if tripAnalytics.rounds > 0 {
+                        RealtimeV4AnalyticsPanel(analytics: tripAnalytics, accent: Color(hex: "#38BDF8"))
+                    }
                 }
             }
         }
@@ -482,26 +489,28 @@ struct RealtimeV4View: View {
             Text("บันทึกล่าสุด")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RealtimeV4Palette.textMuted)
             if ranked.isEmpty {
                 Text("ยังไม่มีเวลาประทับ")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.white.opacity(0.4))
             } else {
                 ForEach(Array(ranked.enumerated()), id: \.element.id) { rank, unit in
                     HStack(spacing: 8) {
                         if rank == 0 {
-                            Image(systemName: "trophy.fill").foregroundStyle(Color(hex: "#F59E0B"))
+                            Image(systemName: "trophy.fill").foregroundStyle(Color(hex: "#FBBF24"))
                         } else if rank <= 2 {
                             Image(systemName: "medal.fill")
-                                .foregroundStyle(rank == 1 ? Color.gray : Color(hex: "#B45309"))
+                                .foregroundStyle(rank == 1 ? Color(hex: "#CBD5E1") : Color(hex: "#D97706"))
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(unit.vehicleId).font(.caption.weight(.bold))
+                            Text(unit.vehicleId)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
                             if let last = unit.lapTimes.last {
                                 Text(CountRecordLogic.formatLapClock(last) ?? last)
                                     .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.white.opacity(0.55))
                             }
                         }
                         Spacer()
@@ -515,11 +524,11 @@ struct RealtimeV4View: View {
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(rank == 0 ? Color(hex: "#FFFBEB") : Color(.secondarySystemBackground))
+                            .fill(rank == 0 ? Color(hex: "#F59E0B").opacity(0.14) : Color.white.opacity(0.05))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(rank == 0 ? Color(hex: "#FCD34D").opacity(0.8) : .clear, lineWidth: 1.5)
+                            .stroke(rank == 0 ? Color(hex: "#FCD34D").opacity(0.5) : .clear, lineWidth: 1.5)
                     )
                 }
             }
@@ -527,12 +536,11 @@ struct RealtimeV4View: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
+                .fill(RealtimeV4Palette.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 1)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
     }
 
@@ -550,6 +558,9 @@ struct RealtimeV4View: View {
                     sandHero(sand)
                     sandKPI(sand)
                     sandRecentLaps(sand)
+                    if sandAnalytics.rounds > 0 {
+                        RealtimeV4AnalyticsPanel(analytics: sandAnalytics, accent: Color(hex: "#F472B6"))
+                    }
                 }
             } else {
                 emptyState(icon: "drop", title: "ยังไม่มีรอบทราย", subtitle: "รอการนับร่อนทรายจากมือถือ")
@@ -608,7 +619,7 @@ struct RealtimeV4View: View {
             Text("ตัวชี้วัดร่อนทราย")
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.2)
-                .foregroundStyle(Color(hex: "#DB2777"))
+                .foregroundStyle(Color(hex: "#F9A8D4"))
 
             HStack(spacing: 8) {
                 kpiCell(
@@ -625,16 +636,17 @@ struct RealtimeV4View: View {
                 HStack {
                     Text("เป้าหมาย")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.7))
                     Spacer()
                     Text("\(CountRecordLogic.formatMetric(sand.rounds)) / \(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget)) · \(Int(pct.rounded()))%")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color(.tertiarySystemFill))
+                        Capsule().fill(Color.white.opacity(0.12))
                         Capsule()
-                            .fill(Color(hex: "#DB2777"))
+                            .fill(Color(hex: "#EC4899"))
                             .frame(width: geo.size.width * CGFloat(pct / 100))
                     }
                 }
@@ -646,7 +658,7 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(
                     LinearGradient(
-                        colors: [Color(hex: "#FDF2F8"), Color(hex: "#FFF1F2")],
+                        colors: [Color(hex: "#4C0519").opacity(0.55), Color(hex: "#4A044E").opacity(0.4)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -654,7 +666,7 @@ struct RealtimeV4View: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#FBCFE8"), lineWidth: 1)
+                .stroke(Color(hex: "#EC4899").opacity(0.3), lineWidth: 1)
         )
     }
 
@@ -662,14 +674,14 @@ struct RealtimeV4View: View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color(hex: "#DB2777"))
+                .foregroundStyle(Color(hex: "#F9A8D4"))
             Text(value)
                 .font(.title3.weight(.black))
-                .foregroundStyle(Color(hex: "#831843"))
+                .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.85)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.28)))
     }
 
     private func sandRecentLaps(_ sand: CountRecordSandUnit) -> some View {
@@ -679,11 +691,11 @@ struct RealtimeV4View: View {
             Text("รอบล่าสุด")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RealtimeV4Palette.textMuted)
             if recent.isEmpty {
                 Text("ยังไม่มีเวลาประทับ")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.white.opacity(0.4))
             } else {
                 FlexibleChipWrap {
                     ForEach(recent, id: \.offset) { item in
@@ -691,21 +703,21 @@ struct RealtimeV4View: View {
                         let latest = roundNo == sand.lapTimes.count
                         HStack(spacing: 6) {
                             Text("รอบ \(roundNo)")
-                                .foregroundStyle(latest ? Color(hex: "#FCE7F3") : Color(hex: "#DB2777"))
+                                .foregroundStyle(latest ? Color(hex: "#FCE7F3") : Color(hex: "#F9A8D4"))
                             Text(CountRecordLogic.formatLapClock(item.element) ?? item.element)
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(latest ? .white.opacity(0.9) : .secondary)
+                                .foregroundStyle(latest ? .white.opacity(0.9) : .white.opacity(0.6))
                         }
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(latest ? Color(hex: "#DB2777") : Color(.systemBackground))
+                                .fill(latest ? Color(hex: "#DB2777") : Color.white.opacity(0.06))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(latest ? Color.clear : Color(hex: "#FBCFE8"), lineWidth: 1)
+                                .stroke(latest ? Color.clear : Color(hex: "#EC4899").opacity(0.3), lineWidth: 1)
                         )
                         .shadow(color: latest ? Color(hex: "#DB2777").opacity(0.25) : .clear, radius: 4, y: 2)
                     }
@@ -715,11 +727,11 @@ struct RealtimeV4View: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemBackground))
+                .fill(RealtimeV4Palette.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 1)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
     }
 
@@ -750,27 +762,35 @@ struct RealtimeV4View: View {
             content()
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemBackground))
+                .background(
+                    LinearGradient(
+                        colors: [RealtimeV4Palette.panelTop, RealtimeV4Palette.panel],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 1)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+        .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
     }
 
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.5))
                 .frame(width: 48, height: 48)
-                .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-            Text(title).font(.subheadline.weight(.semibold))
+                .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.06)))
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.85))
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -778,7 +798,7 @@ struct RealtimeV4View: View {
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6]))
-                .foregroundStyle(Color(.separator))
+                .foregroundStyle(Color.white.opacity(0.15))
         )
     }
 

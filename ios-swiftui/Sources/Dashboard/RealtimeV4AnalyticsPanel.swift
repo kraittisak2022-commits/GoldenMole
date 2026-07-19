@@ -44,32 +44,119 @@ struct RealtimeV4AnalyticsPanel: View {
 
     // MARK: - Stat tiles
 
+    private var priorLabel: String {
+        analytics.comparison.priorLabel.isEmpty ? "วันก่อน" : analytics.comparison.priorLabel
+    }
+
     private var statTiles: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            tileCard(title: "จังหวะเฉลี่ย", value: CountRecordAnalytics.formatPace(analytics.stats.avg)) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("สรุปจังหวะการทำงาน")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(.white.opacity(0.42))
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                avgPaceTile
+                paceDeltaTile
+                totalRoundsTile
+                workTimeTile
+            }
+        }
+    }
+
+    private var avgPaceTile: some View {
+        statTileShell(gradient: [accent, Color(hex: "#0F172A")]) {
+            VStack(alignment: .leading, spacing: 6) {
+                tileLabel("จังหวะเฉลี่ย", icon: "timer")
+                Text(CountRecordAnalytics.formatPace(analytics.stats.avg))
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                 sparkline
+                if let last = analytics.stats.last {
+                    Text("ล่าสุด \(CountRecordAnalytics.formatPace(last))")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
             }
-            tileCard(
-                title: "Pace vs \(analytics.comparison.priorLabel.isEmpty ? "วันก่อน" : analytics.comparison.priorLabel)",
-                value: CountRecordAnalytics.formatDeltaPct(analytics.comparison.paceDeltaPct)
-            ) {
+        }
+    }
+
+    private var paceDeltaTile: some View {
+        statTileShell(gradient: [Color(hex: "#1E293B"), Color(hex: "#020617")]) {
+            VStack(spacing: 4) {
+                tileLabel("Pace vs \(priorLabel)", icon: "chart.line.downtrend.xyaxis")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                PaceGaugeView(pct: analytics.comparison.paceDeltaPct)
                 Text(paceHint)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
             }
-            tileCard(
-                title: "ยอดรวม",
-                value: "\(analytics.rounds) \(analytics.unitLabel)"
-            ) {
-                Text(roundsHint)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
+        }
+    }
+
+    private var totalRoundsTile: some View {
+        statTileShell(gradient: [Color(hex: "#312E81"), Color(hex: "#020617")]) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 4) {
+                    tileLabel("ยอดรวม", icon: "chart.bar.fill")
+                    Spacer(minLength: 0)
+                    if let d = analytics.comparison.roundsDeltaPct {
+                        let r = Int(d.rounded())
+                        Text("\(r > 0 ? "+" : "")\(r)%")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(r > 0 ? Color(hex: "#6EE7B7") : (r < 0 ? Color(hex: "#FDA4AF") : .white.opacity(0.6)))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill((r > 0 ? Color(hex: "#10B981") : (r < 0 ? Color(hex: "#F43F5E") : Color.white)).opacity(0.18))
+                            )
+                    }
+                }
+                CompareBarsView(
+                    today: analytics.comparison.todayRounds,
+                    prior: analytics.comparison.yesterdayRounds,
+                    accent: accent,
+                    priorLabel: priorLabel
+                )
             }
-            tileCard(
-                title: "เวลาทำงาน",
-                value: CountRecordAnalytics.formatDurationHours(analytics.workDuration?.totalActiveHours ?? 0)
-            ) {
-                workRing
+        }
+    }
+
+    private var workTimeTile: some View {
+        let hours = analytics.workDuration?.totalActiveHours ?? 0
+        let progress = min(hours / CountRecordAnalytics.workHoursTarget, 1)
+        let ringColor = analytics.mode == .sand ? Color(hex: "#F9A8D4") : Color(hex: "#93C5FD")
+        return statTileShell(
+            gradient: analytics.mode == .sand
+                ? [Color(hex: "#BE185D"), Color(hex: "#0F172A")]
+                : [accent, Color(hex: "#0F172A")]
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                tileLabel("เวลาทำงาน", icon: "clock.fill")
+                HStack(spacing: 8) {
+                    WorkRingView(progress: progress, color: ringColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(CountRecordAnalytics.formatDurationHours(hours))
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("เป้า 8 ชม.")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.5))
+                        if let s = analytics.workDuration?.startClock, let e = analytics.workDuration?.endClock {
+                            Text("\(s) – \(e)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.55))
+                                .lineLimit(1)
+                        }
+                    }
+                }
             }
         }
     }
@@ -78,40 +165,37 @@ struct RealtimeV4AnalyticsPanel: View {
         guard let pct = analytics.comparison.paceDeltaPct else {
             return analytics.comparison.hasYesterdayData ? "ไม่มีข้อมูลจังหวะ" : "ไม่มีข้อมูลเปรียบเทียบ"
         }
-        let label = analytics.comparison.priorLabel.isEmpty ? "วันก่อน" : analytics.comparison.priorLabel
-        if abs(pct) < 1 { return "เท่า\(label)" }
-        return pct < 0 ? "เร็วกว่า\(label)" : "ช้ากว่า\(label)"
+        if abs(pct) < 1 { return "เท่า\(priorLabel)" }
+        return pct < 0 ? "เร็วกว่า\(priorLabel)" : "ช้ากว่า\(priorLabel)"
     }
 
-    private var roundsHint: String {
-        guard analytics.comparison.hasYesterdayData else { return "เทียบวันก่อนไม่ได้" }
-        let prior = analytics.comparison.yesterdayRounds
-        let delta = CountRecordAnalytics.formatDeltaPct(analytics.comparison.roundsDeltaPct)
-        return "\(analytics.comparison.priorLabel): \(prior) · \(delta)"
-    }
-
-    private func tileCard<Content: View>(
-        title: String,
-        value: String,
-        @ViewBuilder footer: () -> Content
+    private func statTileShell<Content: View>(
+        gradient: [Color],
+        @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.55))
-            Text(value)
-                .font(.title3.bold())
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-            footer()
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(11)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+    }
+
+    private func tileLabel(_ text: String, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9, weight: .bold))
+            Text(text.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.5)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.22))
-        )
+        .foregroundStyle(.white.opacity(0.7))
+        .lineLimit(1)
+        .minimumScaleFactor(0.65)
     }
 
     @ViewBuilder
@@ -122,35 +206,16 @@ struct RealtimeV4AnalyticsPanel: View {
                     x: .value("i", item.offset),
                     y: .value("sec", item.element)
                 )
-                .foregroundStyle(accent)
+                .foregroundStyle(Color(hex: "#FDE047"))
                 .interpolationMethod(.catmullRom)
             }
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
-            .frame(height: 28)
+            .frame(height: 26)
         } else {
-            Text("รอบล่าสุด: \(CountRecordAnalytics.formatPace(analytics.stats.last))")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
-        }
-    }
-
-    private var workRing: some View {
-        let hours = analytics.workDuration?.totalActiveHours ?? 0
-        let progress = min(hours / CountRecordAnalytics.workHoursTarget, 1)
-        return HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.12), lineWidth: 4)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
-            .frame(width: 28, height: 28)
-            Text("เป้า 8 ชม.")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.55))
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 26)
         }
     }
 
@@ -187,27 +252,60 @@ struct RealtimeV4AnalyticsPanel: View {
     }
 
     private var periodSplitCard: some View {
-        bentoShell(title: "สัดส่วนเช้า / บ่าย") {
+        let split = analytics.periodSplit
+        return bentoShell(title: "สัดส่วนเช้า / บ่าย") {
             GeometryReader { geo in
                 HStack(spacing: 3) {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#38BDF8"))
-                        .frame(width: max(geo.size.width * analytics.periodSplit.morningPct / 100, analytics.periodSplit.morning > 0 ? 8 : 0))
+                        .fill(LinearGradient(colors: [Color(hex: "#FBBF24"), Color(hex: "#F59E0B")], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(geo.size.width * split.morningPct / 100, split.morning > 0 ? 8 : 0))
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#F472B6"))
+                        .fill(LinearGradient(colors: [Color(hex: "#6366F1"), Color(hex: "#7C3AED")], startPoint: .leading, endPoint: .trailing))
                         .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 14)
-            HStack {
-                Text("เช้า \(analytics.periodSplit.morning) (\(Int(analytics.periodSplit.morningPct.rounded()))%)")
-                    .foregroundStyle(Color(hex: "#7DD3FC"))
-                Spacer()
-                Text("บ่าย \(analytics.periodSplit.afternoon) (\(Int(analytics.periodSplit.afternoonPct.rounded()))%)")
-                    .foregroundStyle(Color(hex: "#F9A8D4"))
+            .frame(height: 28)
+
+            HStack(spacing: 8) {
+                periodSplitStat(
+                    label: "เช้า",
+                    value: split.morning,
+                    pct: split.morningPct,
+                    fg: Color(hex: "#FCD34D"),
+                    bg: Color(hex: "#F59E0B").opacity(0.14)
+                )
+                periodSplitStat(
+                    label: "บ่าย",
+                    value: split.afternoon,
+                    pct: split.afternoonPct,
+                    fg: Color(hex: "#C7D2FE"),
+                    bg: Color(hex: "#6366F1").opacity(0.16)
+                )
             }
-            .font(.caption2.weight(.semibold))
         }
+    }
+
+    private func periodSplitStat(label: String, value: Int, pct: Double, fg: Color, bg: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(fg.opacity(0.9))
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(value)")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text(analytics.unitLabel)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            Text("\(Int(pct.rounded()))%")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(fg.opacity(0.8))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(bg))
     }
 
     private func peakCard(_ peak: CountRecordAnalytics.PeakHourInfo) -> some View {
@@ -334,31 +432,47 @@ struct RealtimeV4AnalyticsPanel: View {
     private func etaCard(_ eta: CountRecordAnalytics.SandTargetEta) -> some View {
         bentoShell(title: "คาดการณ์ถึงเป้า") {
             VStack(alignment: .leading, spacing: 8) {
-                ProgressView(value: eta.progressPct, total: 100)
-                    .tint(AppTheme.sand)
-                HStack {
-                    Text("\(eta.rounds) / \(eta.target) รอบ")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(eta.reached ? "ถึงเป้าแล้ว" : "เหลืออีก \(CountRecordLogic.formatMetric(eta.remaining)) รอบ")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(0.5)
+                            .foregroundStyle(.white.opacity(0.55))
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(CountRecordLogic.formatMetric(eta.rounds))
+                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text("/ \(CountRecordLogic.formatMetric(eta.target))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
                     Spacer()
-                    if eta.reached {
-                        Text("ถึงเป้าแล้ว")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.income)
-                    } else if let clock = eta.etaClock {
-                        Text("ETA \(clock)")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.warning)
-                    } else {
-                        Text("คำนวณไม่ได้")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.5))
+                    Text("\(Int(eta.progressPct.rounded()))%")
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(eta.reached ? AppTheme.income : Color(hex: "#F472B6"))
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.12))
+                        Capsule()
+                            .fill(eta.reached ? AppTheme.income : Color(hex: "#EC4899"))
+                            .frame(width: geo.size.width * CGFloat(min(eta.progressPct / 100, 1)))
                     }
                 }
-                if let hours = eta.hoursLeft, !eta.reached {
-                    Text("เหลือ \(eta.remaining) รอบ · ~\(CountRecordAnalytics.formatDurationHours(hours))")
+                .frame(height: 8)
+                if eta.reached {
+                    Text("ถึงเป้าแล้ว")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.income)
+                } else if let clock = eta.etaClock {
+                    Text("คาดถึงเป้าเวลา \(clock)" + (eta.hoursLeft.map { " · ~\(CountRecordAnalytics.formatDurationHours($0))" } ?? ""))
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.white.opacity(0.6))
+                } else {
+                    Text("ต้องมีอย่างน้อย 2 รอบเพื่อคำนวณ")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.45))
                 }
             }
         }
@@ -416,6 +530,106 @@ struct RealtimeV4AnalyticsPanel: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.black.opacity(0.18))
         )
+    }
+}
+
+// MARK: - Stat tile visualizations
+
+/// Semicircular gauge for pace-vs-prior-day delta (matches web PaceGauge).
+private struct PaceGaugeView: View {
+    let pct: Double?
+
+    var body: some View {
+        let faster: Bool? = {
+            guard let pct else { return nil }
+            if pct < -0.5 { return true }
+            if pct > 0.5 { return false }
+            return nil
+        }()
+        let color = faster == true ? Color(hex: "#34D399") : (faster == false ? Color(hex: "#FBBF24") : Color(hex: "#94A3B8"))
+        let absPct = pct != nil ? min(Int(abs(pct!).rounded()), 100) : 0
+        let trim = Double(absPct) / 100.0
+        let icon = faster == true ? "arrow.down.right" : (faster == false ? "arrow.up.right" : "minus")
+
+        return VStack(spacing: 2) {
+            // Top-dome arc: Circle trim 0.5→1.0 spans left → top → right.
+            ZStack {
+                Circle()
+                    .trim(from: 0.5, to: 1.0)
+                    .stroke(Color.white.opacity(0.15), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                Circle()
+                    .trim(from: 0.5, to: 0.5 + 0.5 * trim)
+                    .stroke(color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+            }
+            .frame(width: 58, height: 58)
+            .frame(height: 32, alignment: .top)
+            .clipped()
+
+            HStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: 9, weight: .bold))
+                Text(pct != nil ? "\(absPct)%" : "—")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+            }
+            .foregroundStyle(color)
+        }
+    }
+}
+
+/// Circular progress ring showing % toward the 8h work target.
+private struct WorkRingView: View {
+    let progress: Double
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.12), lineWidth: 5)
+            Circle()
+                .trim(from: 0, to: max(0, min(progress, 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(Int((max(0, min(progress, 1)) * 100).rounded()))%")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 44, height: 44)
+    }
+}
+
+/// Today-vs-prior-day comparison bars (matches web CompareBars).
+private struct CompareBarsView: View {
+    let today: Int
+    let prior: Int
+    let accent: Color
+    let priorLabel: String
+
+    var body: some View {
+        let maxV = Double(max(today, prior, 1))
+        return VStack(spacing: 6) {
+            bar(label: "วันนี้", value: today, frac: Double(today) / maxV, fill: accent, valueColor: .white)
+            bar(label: priorLabel, value: prior, frac: Double(prior) / maxV, fill: Color.white.opacity(0.3), valueColor: .white.opacity(0.6))
+        }
+    }
+
+    private func bar(label: String, value: Int, frac: Double, fill: Color, valueColor: Color) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(value)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(valueColor)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.black.opacity(0.25))
+                    Capsule().fill(fill).frame(width: geo.size.width * CGFloat(max(0, min(frac, 1))))
+                }
+            }
+            .frame(height: 6)
+        }
     }
 }
 
