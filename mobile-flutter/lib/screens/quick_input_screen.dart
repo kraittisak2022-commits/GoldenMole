@@ -22,6 +22,7 @@ import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
 import '../services/mobile_error_report_service.dart';
@@ -245,6 +246,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<Employee> _driverEmployees = const [];
   Map<String, Employee> _employeesById = const {};
   List<String> _cars = const [];
+  Map<String, String> _vehicleDefaultDrivers = const {};
 
   late DateTime _selectedDate;
   late DateTime _leaveStartDate;
@@ -447,6 +449,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       } else if (!typed && byVehicle.containsKey(car)) {
         _hydrateMacroDraftFromTransaction(row, byVehicle[car]!);
       }
+      // เติมคนขับเริ่มต้นจากเว็บ เมื่อยังไม่บันทึกและยังไม่ได้เลือกคนขับ
+      if ((row.txId == null || row.txId!.trim().isEmpty) &&
+          row.driverId.trim().isEmpty) {
+        final defId = _defaultDriverIdForVehicle(car);
+        if (defId != null &&
+            _macroDriverEmployees.any((e) => e.id == defId)) {
+          row.driverId = defId;
+        }
+      }
       next.add(row);
     }
 
@@ -551,6 +562,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [];
   bool _fuelExtraVehiclesExpanded = false;
+  bool _macroExtraVehiclesExpanded = false;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
@@ -1318,6 +1330,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return id;
   }
 
+  /// คนขับเริ่มต้นของรถจากตั้งค่าเว็บ (`vehicleDefaultDrivers`) — รองรับชื่อไม่ตรงเป๊ะ
+  String? _defaultDriverIdForVehicle(String vehicle) {
+    final v = vehicle.trim();
+    if (v.isEmpty || _vehicleDefaultDrivers.isEmpty) return null;
+    final exact = _vehicleDefaultDrivers[v]?.trim();
+    if (exact != null && exact.isNotEmpty) return exact;
+    for (final entry in _vehicleDefaultDrivers.entries) {
+      if (vehicleIdsLikelyMatch(entry.key, v)) {
+        final id = entry.value.trim();
+        if (id.isNotEmpty) return id;
+      }
+    }
+    return null;
+  }
+
+  /// ชื่อคนขับเริ่มต้นสำหรับแสดงหลังชื่อรถ — ว่างถ้ายังไม่ได้ตั้งค่า
+  String _fuelDriverLabelForVehicle(String vehicle) {
+    final id = _defaultDriverIdForVehicle(vehicle);
+    if (id == null || id.isEmpty) return '';
+    final label = _driverLabelFromId(id);
+    return label == '-' ? '' : label;
+  }
+
   String _employeeLabelFromIdOrName(String raw) {
     final token = raw.trim();
     if (token.isEmpty) return '';
@@ -1689,6 +1724,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               .where((e) => !e.inactive)
               .where(_isDriverEmployee)
               .toList();
+          if (_isMacroVehicleMode) {
+            _syncMacroVehicleDraftsFromMacroCars();
+          }
           _employeesLoading = false;
           _employeesLoadPercent = 0;
         });
@@ -1711,6 +1749,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 .where((e) => !e.inactive)
                 .where(_isDriverEmployee)
                 .toList();
+            if (_isMacroVehicleMode) {
+              _syncMacroVehicleDraftsFromMacroCars();
+            }
           });
         }),
       );
@@ -1760,6 +1801,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             .where((e) => !e.inactive)
             .where(_isDriverEmployee)
             .toList();
+        if (_isMacroVehicleMode) {
+          _syncMacroVehicleDraftsFromMacroCars();
+        }
         _employeesLoading = false;
         _employeesLoadPercent = 0;
       });
@@ -1799,8 +1843,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       });
     }
 
+    Future<void> applyDefaultDrivers(Map<String, String> map) async {
+      if (!mounted) return;
+      setState(() {
+        _vehicleDefaultDrivers = map;
+        if (_isMacroVehicleMode) {
+          _syncMacroVehicleDraftsFromMacroCars();
+        }
+      });
+    }
+
     if (_isOfflineCapableCategory && !widget.serverOnlineHint) {
       await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
+      await applyDefaultDrivers(
+        await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
+      );
       return;
     }
 
@@ -1808,10 +1865,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final client = Supabase.instance.client;
       final rows = await client
           .from('app_settings')
-          .select('cars')
+          .select('cars, app_defaults')
           .eq('id', 'default')
           .limit(1);
-      if (rows.isEmpty) return;
+      if (rows.isEmpty) {
+        await applyDefaultDrivers(
+          await CountRecordOfflineSync.instance
+              .readCachedVehicleDefaultDrivers(),
+        );
+        return;
+      }
       final raw = rows.first['cars'];
       final cars = <String>[
         if (raw is List)
@@ -1821,8 +1884,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await CountRecordOfflineSync.instance.cacheCars(cars);
       }
       await applyCars(cars);
+
+      final appDefaults = rows.first['app_defaults'];
+      var defaults =
+          await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers();
+      if (appDefaults is Map) {
+        final parsed = CountRecordOfflineSync.parseVehicleDefaultDrivers(
+          appDefaults['vehicleDefaultDrivers'],
+        );
+        if (parsed.isNotEmpty) {
+          defaults = parsed;
+          await CountRecordOfflineSync.instance
+              .cacheVehicleDefaultDrivers(defaults);
+        }
+      }
+      await applyDefaultDrivers(defaults);
     } catch (_) {
       await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
+      await applyDefaultDrivers(
+        await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
+      );
     }
   }
 
@@ -7906,6 +7987,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         height: 1.2,
                       ),
                     ),
+                    if (_fuelDriverLabelForVehicle(vehicleName).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.person_outline_rounded,
+                            size: 15,
+                            color: Color(0xFF8D6E63),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'คนขับเริ่มต้น: ${_fuelDriverLabelForVehicle(vehicleName)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.kanit(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF6D4C41),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -7956,7 +8063,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   (e) => DropdownMenuItem<String>(
                     value: e.id,
                     child: Text(
-                      e.nickname.isNotEmpty ? e.nickname : e.name,
+                      e.id == _defaultDriverIdForVehicle(vehicleName)
+                          ? '${e.nickname.isNotEmpty ? e.nickname : e.name} (ค่าเริ่มต้น)'
+                          : (e.nickname.isNotEmpty ? e.nickname : e.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.kanit(fontSize: 18),
@@ -8030,12 +8139,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildMacroVehicleFormCard() {
     final macroCars = _fuelMacroCars();
+    final pinnedCars = _fuelPinnedMacroCars(macroCars);
+    final extraCars = _fuelExtraMacroCars(macroCars);
+    bool rowHasData(String car) {
+      final r = _macroDraftForVehicle(car);
+      if (r == null) return false;
+      final saved = r.txId != null && r.txId!.trim().isNotEmpty;
+      return saved || r.driverId.trim().isNotEmpty;
+    }
+
+    // นับเฉพาะรถที่แสดง (3 คันหลัก + คันเพิ่มเติมที่มีข้อมูล)
+    final relevantCars = <String>[
+      ...pinnedCars,
+      ...extraCars.where(rowHasData),
+    ];
     var savedCount = 0;
     var filledCount = 0;
-    for (final row in _macroVehicleDrafts) {
+    for (final car in relevantCars) {
+      final row = _macroDraftForVehicle(car);
+      if (row == null) continue;
       if (row.txId != null && row.txId!.trim().isNotEmpty) savedCount++;
       if (row.driverId.trim().isNotEmpty) filledCount++;
     }
+    final totalShown = relevantCars.length;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -8108,8 +8234,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                   ),
                 const SizedBox(height: 12),
-                ...List.generate(macroCars.length, (index) {
-                  final car = macroCars[index];
+                ...List.generate(pinnedCars.length, (index) {
+                  final car = pinnedCars[index];
                   final row = _macroDraftForVehicle(car);
                   if (row == null) return const SizedBox.shrink();
                   return _buildMacroVehicleRow(
@@ -8118,6 +8244,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     displayIndex: index + 1,
                   );
                 }),
+                if (extraCars.isNotEmpty)
+                  Theme(
+                    data: Theme.of(context)
+                        .copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      initiallyExpanded: _macroExtraVehiclesExpanded,
+                      onExpansionChanged: (expanded) {
+                        setState(() => _macroExtraVehiclesExpanded = expanded);
+                      },
+                      title: Text(
+                        'เพิ่มเติม (${extraCars.length} คัน)',
+                        style: GoogleFonts.kanit(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFE65100),
+                        ),
+                      ),
+                      children: [
+                        for (var i = 0; i < extraCars.length; i++)
+                          Builder(
+                            builder: (context) {
+                              final car = extraCars[i];
+                              final row = _macroDraftForVehicle(car);
+                              if (row == null) return const SizedBox.shrink();
+                              return _buildMacroVehicleRow(
+                                row: row,
+                                vehicleName: car,
+                                displayIndex: pinnedCars.length + i + 1,
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -8131,7 +8293,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                   ),
                   child: Text(
-                    'บันทึกแล้ว $savedCount/${macroCars.length} คัน · กรอกแล้ว $filledCount คัน',
+                    'บันทึกแล้ว $savedCount/$totalShown คัน · กรอกแล้ว $filledCount คัน',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
@@ -8236,6 +8398,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         height: 1.2,
                       ),
                     ),
+                    if (_fuelDriverLabelForVehicle(vehicleName).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.person_outline_rounded,
+                            size: 15,
+                            color: Color(0xFF546E7A),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'คนขับ: ${_fuelDriverLabelForVehicle(vehicleName)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.kanit(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF37474F),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
