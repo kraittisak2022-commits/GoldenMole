@@ -122,9 +122,7 @@ struct DashboardShell: View {
         // force a dark page + colorScheme here regardless of the device appearance.
         .background(RealtimeV4Palette.page.ignoresSafeArea())
         .environment(\.colorScheme, .dark)
-        .navigationTitle("Real-time V.4")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { refreshToolbar }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     // MARK: - Reports hub

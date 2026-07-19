@@ -17,6 +17,7 @@ struct RealtimeV4View: View {
     let settings: AppSettings
 
     @State private var focusDate = Date()
+    @State private var showDatePicker = false
     @State private var lastRefresh = Date()
     @State private var boardPulse = false
     @State private var livePing = false
@@ -140,33 +141,83 @@ struct RealtimeV4View: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.2), radius: 16, y: 8)
+        .sheet(isPresented: $showDatePicker) {
+            focusDatePickerSheet
+        }
     }
 
     private var dateChip: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "calendar")
-                .font(.caption)
-            Text("กำลังดู: \(thaiDateShort(focusDateStr))")
-                .font(.caption.weight(.semibold))
-            if isToday {
-                Text("วันนี้")
+        Button {
+            showDatePicker = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.caption)
+                Text("กำลังดู: \(thaiDateShort(focusDateStr))")
+                    .font(.caption.weight(.semibold))
+                if isToday {
+                    Text("วันนี้")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.emerald.opacity(0.3)))
+                        .foregroundStyle(Color(hex: "#A7F3D0"))
+                }
+                Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.emerald.opacity(0.3)))
-                    .foregroundStyle(Color(hex: "#A7F3D0"))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color.white.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("เลือกวันที่กำลังดู")
+        .accessibilityHint("แตะเพื่อเลือกวันย้อนหลัง")
+    }
+
+    private var focusDatePickerSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                DatePicker(
+                    "เลือกวันที่",
+                    selection: $focusDate,
+                    in: ...Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .tint(Color(hex: "#6366F1"))
+                .padding(.horizontal, 8)
+
+                Button {
+                    focusDate = Date()
+                } label: {
+                    Label("วันนี้", systemImage: "sun.max.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .tint(Color.emerald)
+                .padding(.horizontal, 20)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("กำลังดู")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("เสร็จ") { showDatePicker = false }
+                        .fontWeight(.semibold)
+                }
             }
         }
-        .foregroundStyle(.white.opacity(0.92))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(Color.white.opacity(0.1)))
-        .overlay {
-            DatePicker("", selection: $focusDate, in: ...Date(), displayedComponents: .date)
-                .labelsHidden()
-                .colorMultiply(.clear)
-                .opacity(0.02)
-        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Live board
@@ -231,15 +282,6 @@ struct RealtimeV4View: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     liveBadge
-                    dateChipCompact
-                    if !isToday {
-                        Button("กลับวันนี้") { focusDate = Date() }
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.white.opacity(0.1)))
-                    }
                     if boardPulse {
                         Group {
                             if #available(iOS 17.0, *) {
@@ -306,30 +348,6 @@ struct RealtimeV4View: View {
         .padding(.vertical, 5)
         .background(Capsule().fill(Color.emerald.opacity(0.15)))
         .overlay(Capsule().strokeBorder(Color.emerald.opacity(0.35)))
-    }
-
-    private var dateChipCompact: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "calendar").font(.system(size: 10))
-            Text(thaiDateShort(focusDateStr)).font(.caption.weight(.semibold))
-            if isToday {
-                Text("วันนี้")
-                    .font(.system(size: 9, weight: .bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.emerald.opacity(0.28)))
-                    .foregroundStyle(Color(hex: "#A7F3D0"))
-            }
-        }
-        .foregroundStyle(.white.opacity(0.9))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.white.opacity(0.1)))
-        .overlay {
-            DatePicker("", selection: $focusDate, in: ...Date(), displayedComponents: .date)
-                .labelsHidden()
-                .opacity(0.02)
-        }
     }
 
     private func metricChip(icon: String, text: String, bg: Color, fg: Color) -> some View {
@@ -407,6 +425,7 @@ struct RealtimeV4View: View {
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tripTotal)
+                        .modifier(ScoreFloatOverlay(value: tripTotal, dayKey: focusDateStr))
                     Text("เที่ยว")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white.opacity(0.8))
@@ -584,6 +603,7 @@ struct RealtimeV4View: View {
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: sand.rounds)
+                    .modifier(ScoreFloatOverlay(value: sand.rounds, dayKey: focusDateStr))
                 Text("รอบ")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(2)
@@ -820,6 +840,82 @@ struct RealtimeV4View: View {
     }
 }
 
+// MARK: - Score popup (+N / -N game-style float)
+
+/// Floating +N / -N badge when a live count changes (skips day switches and Reduce Motion).
+private struct ScoreFloatOverlay: ViewModifier {
+    let value: Int
+    let dayKey: String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lastValue: Int?
+    @State private var lastDayKey: String?
+    @State private var popupDelta: Int?
+    @State private var popupID = UUID()
+    @State private var floatAway = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let delta = popupDelta, delta != 0 {
+                    Text(delta > 0 ? "+\(delta)" : "\(delta)")
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundStyle(delta > 0 ? Color.emerald : Color(hex: "#FB7185"))
+                        .shadow(color: (delta > 0 ? Color.emerald : Color(hex: "#FB7185")).opacity(0.55), radius: 8, y: 0)
+                        .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+                        .scaleEffect(floatAway ? 1.15 : 0.55)
+                        .opacity(floatAway ? 0 : 1)
+                        .offset(y: floatAway ? -42 : -6)
+                        .allowsHitTesting(false)
+                        .id(popupID)
+                        .accessibilityHidden(true)
+                }
+            }
+            .onAppear {
+                lastValue = value
+                lastDayKey = dayKey
+            }
+            .onChange(of: dayKey) { newKey in
+                lastDayKey = newKey
+                lastValue = value
+                popupDelta = nil
+                floatAway = false
+            }
+            .onChange(of: value) { newValue in
+                handleValueChange(newValue)
+            }
+    }
+
+    private func handleValueChange(_ newValue: Int) {
+        defer {
+            lastValue = newValue
+            lastDayKey = dayKey
+        }
+
+        guard !reduceMotion else { return }
+        guard lastDayKey == dayKey, let previous = lastValue else { return }
+        let delta = newValue - previous
+        guard delta != 0 else { return }
+
+        popupID = UUID()
+        floatAway = false
+        popupDelta = delta
+
+        // Appear at rest, then float up and fade (game score popup).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+            withAnimation(.easeOut(duration: 0.85)) {
+                floatAway = true
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+            if popupDelta == delta {
+                popupDelta = nil
+                floatAway = false
+            }
+        }
+    }
+}
+
 // MARK: - Subviews
 
 private struct TripVehicleCard: View {
@@ -875,6 +971,7 @@ private struct TripVehicleCard: View {
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: unit.rounds)
+                        .modifier(ScoreFloatOverlay(value: unit.rounds, dayKey: dayKey))
                     Text("เที่ยว")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(1.6)
