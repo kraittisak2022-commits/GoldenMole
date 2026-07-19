@@ -56,7 +56,11 @@ final class AppState: ObservableObject {
         // Fetch independently so one failing endpoint cannot blank the whole app.
         do {
             let fetchResult = try await dataService.fetchTransactions()
-            transactions = fetchResult.transactions
+            // Only reassign when data actually changed so the 12s poll doesn't
+            // re-render the whole dashboard when nothing is new.
+            if transactions != fetchResult.transactions {
+                transactions = fetchResult.transactions
+            }
             lastFetchTransactionCount = fetchResult.transactions.count
             lastSkippedTransactionCount = fetchResult.skippedCount
             lastFetchedAt = Date()
@@ -66,14 +70,19 @@ final class AppState: ObservableObject {
 
         do {
             let e = try await dataService.fetchEmployees()
-            employees = e
+            if employees != e {
+                employees = e
+            }
             lastFetchEmployeeCount = e.count
         } catch {
             errors.append("employees: \(error.localizedDescription)")
         }
 
         do {
-            settings = try await dataService.fetchSettings()
+            let s = try await dataService.fetchSettings()
+            if settings != s {
+                settings = s
+            }
         } catch {
             errors.append("settings: \(error.localizedDescription)")
         }

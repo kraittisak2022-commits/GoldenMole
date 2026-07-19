@@ -140,7 +140,7 @@ struct AdminUser: Codable, Identifiable, Sendable {
 
 // MARK: - Employee
 
-struct Employee: Codable, Identifiable, Sendable {
+struct Employee: Codable, Identifiable, Sendable, Equatable {
     let id: String
     let name: String
     let nickname: String?
@@ -166,7 +166,7 @@ struct Employee: Codable, Identifiable, Sendable {
 
 // MARK: - Transaction
 
-struct Transaction: Decodable, Identifiable, Sendable {
+struct Transaction: Decodable, Identifiable, Sendable, Equatable {
     let id: String
     let date: String
     let type: TransactionType
@@ -364,7 +364,7 @@ private struct FlexibleStringValue: Decodable {
 
 // MARK: - AppSettings
 
-struct AppSettings: Codable, Sendable {
+struct AppSettings: Codable, Sendable, Equatable {
     let appName: String
     let appSubtext: String?
     let appIcon: String?
@@ -408,7 +408,7 @@ struct AppSettings: Codable, Sendable {
     )
 }
 
-struct FuelStock: Codable, Sendable {
+struct FuelStock: Codable, Sendable, Equatable {
     let diesel: Double?
     let benzine: Double?
 

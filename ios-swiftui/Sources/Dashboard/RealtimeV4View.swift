@@ -11,12 +11,48 @@ enum RealtimeV4Palette {
     static let textMuted = Color(hex: "#94A3B8")   // slate-400
 }
 
+/// Memoized bundle of all heavy Real-time V.4 analytics.
+/// Built once per input change (date / transactions / employees) instead of on every body eval.
+struct RealtimeV4Snapshot {
+    let tripUnits: [CountRecordTripUnit]
+    let sandUnit: CountRecordSandUnit?
+    let statusLabel: String?
+    let efficiency: VehicleEfficiency
+    let fleetWorkSpan: String?
+    let tripAnalytics: CountRecordAnalytics.ModeAnalytics
+    let sandAnalytics: CountRecordAnalytics.ModeAnalytics
+    let activityEvents: [CountRecordAnalytics.ActivityEvent]
+
+    var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
+    var sandRounds: Int { sandUnit?.rounds ?? 0 }
+
+    static func build(dayKey: String, transactions: [Transaction], employees: [Employee]) -> RealtimeV4Snapshot {
+        let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        return RealtimeV4Snapshot(
+            tripUnits: units,
+            sandUnit: CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions),
+            statusLabel: CountRecordLogic.menuStatusLabel(dayKey: dayKey, transactions: transactions, employees: employees),
+            efficiency: CountRecordLogic.vehicleEfficiency(
+                dayKey: dayKey,
+                tripUnits: units,
+                transactions: transactions,
+                employees: employees
+            ),
+            fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
+            tripAnalytics: CountRecordAnalytics.buildTripAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
+            sandAnalytics: CountRecordAnalytics.buildSandAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
+            activityEvents: CountRecordAnalytics.buildActivityFeed(dayKey: dayKey, transactions: transactions, employees: employees)
+        )
+    }
+}
+
 struct RealtimeV4View: View {
     let transactions: [Transaction]
     let employees: [Employee]
     let settings: AppSettings
 
     @State private var focusDate = Date()
+    @State private var snapshot = RealtimeV4Snapshot.build(dayKey: "", transactions: [], employees: [])
     @State private var showDatePicker = false
     @State private var lastRefresh = Date()
     @State private var boardPulse = false
@@ -29,33 +65,15 @@ struct RealtimeV4View: View {
     private var todayStr: String { DashboardAggregations.formatYMD(Date()) }
     private var isToday: Bool { focusDateStr == todayStr }
 
-    private var tripUnits: [CountRecordTripUnit] {
-        CountRecordLogic.buildTripUnits(dayKey: focusDateStr, transactions: transactions, employees: employees)
-    }
-
-    private var sandUnit: CountRecordSandUnit? {
-        CountRecordLogic.buildSandUnit(dayKey: focusDateStr, transactions: transactions)
-    }
-
-    private var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
-    private var sandRounds: Int { sandUnit?.rounds ?? 0 }
-
-    private var statusLabel: String? {
-        CountRecordLogic.menuStatusLabel(dayKey: focusDateStr, transactions: transactions, employees: employees)
-    }
-
-    private var efficiency: VehicleEfficiency {
-        CountRecordLogic.vehicleEfficiency(
-            dayKey: focusDateStr,
-            tripUnits: tripUnits,
-            transactions: transactions,
-            employees: employees
-        )
-    }
-
-    private var fleetWorkSpan: String? {
-        CountRecordLogic.fleetWorkSpanLabel(units: tripUnits, dayKey: focusDateStr)
-    }
+    // Memoized analytics — rebuilt only when inputs (date / transactions / employees) change,
+    // so pulse/score animations and the 12s poll no longer trigger heavy recomputation.
+    private var tripUnits: [CountRecordTripUnit] { snapshot.tripUnits }
+    private var sandUnit: CountRecordSandUnit? { snapshot.sandUnit }
+    private var tripTotal: Int { snapshot.tripTotal }
+    private var sandRounds: Int { snapshot.sandRounds }
+    private var statusLabel: String? { snapshot.statusLabel }
+    private var efficiency: VehicleEfficiency { snapshot.efficiency }
+    private var fleetWorkSpan: String? { snapshot.fleetWorkSpan }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -63,6 +81,7 @@ struct RealtimeV4View: View {
             liveBoard
         }
         .onAppear {
+            rebuild()
             lastRefresh = Date()
             if !reduceMotion {
                 withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
@@ -70,10 +89,12 @@ struct RealtimeV4View: View {
                 }
             }
         }
-        .onChange(of: transactions.count) { _ in
+        .onChange(of: focusDateStr) { _ in rebuild() }
+        .onChange(of: transactions) { _ in
+            rebuild()
             lastRefresh = Date()
-            triggerPulse()
         }
+        .onChange(of: employees) { _ in rebuild() }
         .onChange(of: tripTotal) { _ in triggerPulse() }
         .onChange(of: sandRounds) { _ in triggerPulse() }
         .sheet(item: $selectedVehicle) { unit in
@@ -84,6 +105,14 @@ struct RealtimeV4View: View {
                 SandDetailSheet(sand: sand, dayKey: focusDateStr, analytics: sandAnalytics)
             }
         }
+    }
+
+    private func rebuild() {
+        snapshot = RealtimeV4Snapshot.build(
+            dayKey: focusDateStr,
+            transactions: transactions,
+            employees: employees
+        )
     }
 
     private func triggerPulse() {
@@ -106,7 +135,7 @@ struct RealtimeV4View: View {
             Circle()
                 .fill(Color(hex: "#6366F1").opacity(0.28))
                 .frame(width: 160, height: 160)
-                .blur(radius: 40)
+                .blur(radius: 26)
                 .offset(x: 220, y: -40)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -232,29 +261,9 @@ struct RealtimeV4View: View {
 
     // MARK: - Live board
 
-    private var tripAnalytics: CountRecordAnalytics.ModeAnalytics {
-        CountRecordAnalytics.buildTripAnalytics(
-            dayKey: focusDateStr,
-            transactions: transactions,
-            employees: employees
-        )
-    }
-
-    private var sandAnalytics: CountRecordAnalytics.ModeAnalytics {
-        CountRecordAnalytics.buildSandAnalytics(
-            dayKey: focusDateStr,
-            transactions: transactions,
-            employees: employees
-        )
-    }
-
-    private var activityEvents: [CountRecordAnalytics.ActivityEvent] {
-        CountRecordAnalytics.buildActivityFeed(
-            dayKey: focusDateStr,
-            transactions: transactions,
-            employees: employees
-        )
-    }
+    private var tripAnalytics: CountRecordAnalytics.ModeAnalytics { snapshot.tripAnalytics }
+    private var sandAnalytics: CountRecordAnalytics.ModeAnalytics { snapshot.sandAnalytics }
+    private var activityEvents: [CountRecordAnalytics.ActivityEvent] { snapshot.activityEvents }
 
     private var liveBoard: some View {
         VStack(spacing: 0) {
@@ -416,7 +425,7 @@ struct RealtimeV4View: View {
             Circle()
                 .fill(Color.white.opacity(0.12))
                 .frame(width: 110, height: 110)
-                .blur(radius: 24)
+                .blur(radius: 16)
                 .offset(x: 240, y: -30)
 
             VStack(alignment: .leading, spacing: 10) {
@@ -844,13 +853,17 @@ struct RealtimeV4View: View {
         return String(format: "%02d/%02d/%04d", parts[2], parts[1], parts[0])
     }
 
-    private func timeString(_ date: Date) -> String {
+    private static let clockFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = DashboardAggregations.gregorian
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         f.dateFormat = "HH:mm:ss"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func timeString(_ date: Date) -> String {
+        Self.clockFormatter.string(from: date)
     }
 }
 
@@ -957,7 +970,7 @@ private struct TripVehicleCard: View {
             Circle()
                 .fill(Color.white.opacity(0.12))
                 .frame(width: 80, height: 80)
-                .blur(radius: 18)
+                .blur(radius: 12)
                 .offset(x: 90, y: -20)
 
             VStack(spacing: 8) {

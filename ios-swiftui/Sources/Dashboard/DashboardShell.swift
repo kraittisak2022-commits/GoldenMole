@@ -160,7 +160,7 @@ struct DashboardShell: View {
                         subtitle: "รายจ่ายและแนวโน้ม",
                         icon: "chart.bar.xaxis",
                         color: AppTheme.info,
-                        destination: AnyView(
+                        destination: {
                             reportDetail(title: "วิเคราะห์ (V.2)") {
                                 AnalyticsV2View(
                                     transactions: appState.filteredTransactions,
@@ -168,16 +168,16 @@ struct DashboardShell: View {
                                     dateFilter: appState.dateFilter
                                 )
                             }
-                        )
+                        }
                     )
                     reportLink(
                         title: "รายการบันทึก",
                         subtitle: "ค้นหาธุรกรรมทั้งหมด",
                         icon: "list.bullet.rectangle.portrait",
                         color: AppTheme.slate,
-                        destination: AnyView(
+                        destination: {
                             RecordListView(transactions: appState.transactions)
-                        )
+                        }
                     )
                 }
 
@@ -187,42 +187,42 @@ struct DashboardShell: View {
                         subtitle: "สรุปค่าแรงตามช่วง",
                         icon: "person.2.fill",
                         color: AppTheme.labor,
-                        destination: AnyView(categoryDetail(.labor))
+                        destination: { categoryDetail(.labor) }
                     )
                     reportLink(
                         title: "การใช้รถ",
                         subtitle: "ค่าใช้จ่ายยานพาหนะ",
                         icon: "truck.box.fill",
                         color: AppTheme.vehicle,
-                        destination: AnyView(categoryDetail(.vehicle))
+                        destination: { categoryDetail(.vehicle) }
                     )
                     reportLink(
                         title: "ล้างทราย",
                         subtitle: "ทรายและถัง",
                         icon: "drop.fill",
                         color: AppTheme.sand,
-                        destination: AnyView(categoryDetail(.sand))
+                        destination: { categoryDetail(.sand) }
                     )
                     reportLink(
                         title: "น้ำมัน",
                         subtitle: "ดีเซล / เบนซิน",
                         icon: "fuelpump.fill",
                         color: AppTheme.fuel,
-                        destination: AnyView(categoryDetail(.fuel))
+                        destination: { categoryDetail(.fuel) }
                     )
                     reportLink(
                         title: "ที่ดิน",
                         subtitle: "โครงการและค่าใช้จ่าย",
                         icon: "map.fill",
                         color: AppTheme.land,
-                        destination: AnyView(categoryDetail(.land))
+                        destination: { categoryDetail(.land) }
                     )
                     reportLink(
                         title: "รายรับ",
                         subtitle: "สรุปรายได้",
                         icon: "banknote.fill",
                         color: AppTheme.income,
-                        destination: AnyView(categoryDetail(.income))
+                        destination: { categoryDetail(.income) }
                     )
                 }
             }
@@ -280,15 +280,15 @@ struct DashboardShell: View {
         }
     }
 
-    private func reportLink(
+    private func reportLink<Destination: View>(
         title: String,
         subtitle: String,
         icon: String,
         color: Color,
-        destination: AnyView
+        @ViewBuilder destination: () -> Destination
     ) -> some View {
         NavigationLink {
-            destination
+            destination()
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
