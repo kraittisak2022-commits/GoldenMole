@@ -11,6 +11,7 @@ enum AppMainTab: Hashable {
 struct DashboardShell: View {
     @Environment(AuthService.self) private var auth
     @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var systemScheme
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtime
     @State private var homeSegment: HomeSegment = .v1
@@ -430,22 +431,27 @@ struct DashboardShell: View {
 
     @ToolbarContentBuilder
     private var headerToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            appearanceToggle
+        }
         ToolbarItemGroup(placement: .navigationBarTrailing) {
             refreshButton
-            appearanceMenu
             avatarButton
         }
     }
 
     /// Floating cluster for the Real-time tab, which hides its navigation bar.
     private var headerControlsOverlay: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 10) {
+            appearanceToggle
+            Divider()
+                .frame(height: 20)
+                .overlay(Color.white.opacity(0.15))
             refreshButton
-            appearanceMenu
             avatarButton
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(
             Capsule().fill(.ultraThinMaterial)
         )
@@ -465,36 +471,42 @@ struct DashboardShell: View {
         .accessibilityLabel("รีเฟรชข้อมูล")
     }
 
-    private var appearanceMenu: some View {
-        Menu {
-            Picker("โหมดการแสดงผล", selection: $appearanceMode) {
-                ForEach(AppearanceMode.allCases) { mode in
-                    Label(mode.label, systemImage: mode.systemImage).tag(mode.rawValue)
-                }
-            }
-        } label: {
-            Image(systemName: currentAppearance.systemImage)
+    /// Light/dark switch — separate control from the profile avatar.
+    private var appearanceToggle: some View {
+        Toggle(isOn: isDarkModeBinding) {
+            Image(systemName: isDarkModeBinding.wrappedValue ? "moon.stars.fill" : "sun.max.fill")
         }
+        .toggleStyle(.switch)
+        .labelsHidden()
+        .tint(AppTheme.brand)
         .accessibilityLabel("สลับโหมดสว่าง/มืด")
+    }
+
+    /// True when the app is showing dark. Writing flips between explicit light/dark.
+    private var isDarkModeBinding: Binding<Bool> {
+        Binding(
+            get: {
+                switch currentAppearance {
+                case .dark: return true
+                case .light: return false
+                case .system: return systemScheme == .dark
+                }
+            },
+            set: { newValue in
+                appearanceMode = (newValue ? AppearanceMode.dark : AppearanceMode.light).rawValue
+            }
+        )
     }
 
     private var avatarButton: some View {
         Button {
             showProfile = true
         } label: {
-            Text(profileInitials)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(
-                    Circle().fill(
-                        LinearGradient(
-                            colors: [AppTheme.brand, AppTheme.brandMid],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                )
+            AvatarCircle(
+                avatar: auth.currentAdmin?.avatar ?? "",
+                initials: profileInitials,
+                size: 30
+            )
         }
         .accessibilityLabel("โปรไฟล์")
     }

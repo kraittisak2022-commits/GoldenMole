@@ -45,6 +45,19 @@ final class SupabaseService: ObservableObject {
             .value
     }
 
+    /// Updates editable admin_users columns (display_name / avatar / password) for one admin.
+    func updateAdminProfile(id: String, fields: [String: String]) async throws {
+        guard !fields.isEmpty else { return }
+        do {
+            try await client.from("admin_users")
+                .update(fields)
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
     func updateAdminLastLogin(id: String) async {
         let payload: [String: String] = ["last_login": ISO8601DateFormatter().string(from: Date())]
         _ = try? await client.from("admin_users")

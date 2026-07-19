@@ -5,6 +5,11 @@ enum PasswordAuth {
     private static let hashPrefix = "sha256$"
     private static let hashPrefixAlt = "sha256:"
 
+    /// Produces the storage format used by the web app: `sha256$<hex>`.
+    static func hashForStorage(_ plain: String) -> String {
+        hashPrefix + sha256Hex(plain)
+    }
+
     static func verify(stored: String, inputPlain: String) -> Bool {
         let s = stored.trimmingCharacters(in: .whitespacesAndNewlines)
         if isHashedFormat(s) {

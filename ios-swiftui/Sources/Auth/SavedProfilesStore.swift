@@ -60,6 +60,29 @@ final class SavedProfilesStore: ObservableObject {
         KeychainStore.password(account: id)
     }
 
+    /// Keep a saved profile's display name / avatar in sync after a profile edit
+    /// (does not touch the stored password used for biometric login).
+    func updateProfileInfo(id: String, displayName: String, avatar: String?) {
+        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return }
+        var next = profiles
+        let old = next[index]
+        next[index] = SavedLoginProfile(
+            id: old.id,
+            username: old.username,
+            displayName: displayName.isEmpty ? old.username : displayName,
+            avatar: avatar,
+            lastUsedAt: old.lastUsedAt
+        )
+        persist(next)
+    }
+
+    /// Update the stored password for a saved profile after a password change so
+    /// Face ID / Touch ID login keeps working.
+    func updatePassword(id: String, password: String) {
+        guard profiles.contains(where: { $0.id == id }) else { return }
+        KeychainStore.setPassword(password, account: id)
+    }
+
     func remove(id: String) {
         KeychainStore.deletePassword(account: id)
         persist(profiles.filter { $0.id != id })

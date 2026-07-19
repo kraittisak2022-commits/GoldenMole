@@ -138,6 +138,25 @@ struct AdminUser: Codable, Identifiable, Sendable {
     }
 }
 
+extension AdminUser {
+    /// Returns a copy with selected fields replaced. Pass `avatar: .some(value)` to change it
+    /// (including clearing with `""`); omit it to keep the current value.
+    func copy(displayName: String? = nil, avatar: String?? = nil, password: String? = nil) -> AdminUser {
+        AdminUser(
+            id: id,
+            username: username,
+            password: password ?? self.password,
+            displayName: displayName ?? self.displayName,
+            role: role,
+            createdAt: createdAt,
+            lastLogin: lastLogin,
+            avatar: avatar ?? self.avatar,
+            mustChangePassword: mustChangePassword,
+            sessionActive: sessionActive
+        )
+    }
+}
+
 // MARK: - Employee
 
 struct Employee: Codable, Identifiable, Sendable, Equatable {
