@@ -91,13 +91,6 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFFFFAB00),
   ),
   _DailyModuleDef(
-    title: 'ทรายที่ล้างที่บ้าน',
-    icon: Icons.waves_outlined,
-    category: 'ทรายที่ล้างที่บ้าน',
-    quickInputTitle: 'ทรายที่ล้างที่บ้าน',
-    color: Color(0xFF3D6CFF),
-  ),
-  _DailyModuleDef(
     title: 'เหตุการณ์',
     icon: Icons.warning_amber_rounded,
     category: 'เหตุการณ์',
@@ -879,7 +872,6 @@ const _kDailyMenuDetailCategories = {
   'จำนวนเที่ยวรถ',
   'การใช้รถแม็คโคร',
   'น้ำมัน',
-  'ทรายที่ล้างที่บ้าน',
   'ค่าแรง',
   'OT',
 };

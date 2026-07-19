@@ -138,12 +138,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF24A7B8),
     ),
     _LaborWorkCategory(
-      id: 'washHome',
-      label: 'ล้างทรายที่บ้าน',
-      shortTitle: 'ล้างทรายที่บ้าน',
-      color: Color(0xFF2CB67D),
-    ),
-    _LaborWorkCategory(
       id: 'sand_watch',
       label: 'เฝ้าท่าทราย',
       shortTitle: 'เฝ้าท่าทราย',
@@ -12363,7 +12357,6 @@ enum _LaborEmpPoolKind { allEmployees, sandSieve, excavatorMac, nightWatch, gene
 const _sandSievePoolCategoryIds = {
   'wash_old',
   'wash_new',
-  'washHome',
   'sand_watch',
 };
 const _excavatorMacPoolCategoryIds = {'macro_driver', 'dig_haul'};
