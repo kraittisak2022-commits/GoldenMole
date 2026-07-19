@@ -1,6 +1,10 @@
 import Foundation
 import Supabase
 
+private struct RealtimeIdOnly: Decodable, Sendable {
+    let id: String
+}
+
 /// Keeps `AppState.transactions` in sync using Supabase Realtime (WebSocket) for instant
 /// incremental updates, with a delta poll fallback and a periodic full reconcile.
 ///
@@ -18,9 +22,6 @@ final class RealtimeSyncCoordinator {
     private var fallbackTask: Task<Void, Never>?
 
     private static let encoder = JSONEncoder()
-    private static let decoder = JSONDecoder()
-
-    private struct IdOnly: Decodable { let id: String }
 
     init(service: SupabaseService, appState: AppState) {
         self.service = service
@@ -68,7 +69,15 @@ final class RealtimeSyncCoordinator {
     // MARK: - Realtime event handlers
 
     private func handleUpsert(_ record: JSONObject) async {
-        guard let tx = Self.decodeTransaction(record) else {
+        // Encode on main (cheap); decode Transaction off-main so bursts don't hitch the UI.
+        guard let data = try? Self.encoder.encode(record) else {
+            await appState?.refresh()
+            return
+        }
+        let tx = await Task.detached(priority: .userInitiated) {
+            SupabaseService.decodeSingleTransaction(from: data)
+        }.value
+        guard let tx else {
             await appState?.refresh()
             return
         }
@@ -76,17 +85,18 @@ final class RealtimeSyncCoordinator {
     }
 
     private func handleDelete(_ oldRecord: JSONObject) async {
-        guard let data = try? Self.encoder.encode(oldRecord),
-              let idOnly = try? Self.decoder.decode(IdOnly.self, from: data) else {
+        guard let data = try? Self.encoder.encode(oldRecord) else {
             await appState?.refresh()
             return
         }
-        appState?.removeTransaction(id: idOnly.id)
-    }
-
-    private static func decodeTransaction(_ record: JSONObject) -> Transaction? {
-        guard let data = try? encoder.encode(record) else { return nil }
-        return SupabaseService.decodeSingleTransaction(from: data)
+        let id = await Task.detached(priority: .userInitiated) {
+            try? JSONDecoder().decode(RealtimeIdOnly.self, from: data)?.id
+        }.value
+        guard let id else {
+            await appState?.refresh()
+            return
+        }
+        appState?.removeTransaction(id: id)
     }
 
     // MARK: - Fallback

@@ -12,8 +12,8 @@ enum RealtimeV4Palette {
 }
 
 /// Memoized bundle of all heavy Real-time V.4 analytics.
-/// Built once per input change (date / transactions / employees) instead of on every body eval.
-struct RealtimeV4Snapshot {
+/// Built off the main thread (see `scheduleRebuild`) so realtime bursts never freeze the UI.
+struct RealtimeV4Snapshot: Sendable {
     let tripUnits: [CountRecordTripUnit]
     let sandUnit: CountRecordSandUnit?
     let statusLabel: String?
@@ -26,7 +26,7 @@ struct RealtimeV4Snapshot {
     var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
     var sandRounds: Int { sandUnit?.rounds ?? 0 }
 
-    static func build(dayKey: String, transactions: [Transaction], employees: [Employee]) -> RealtimeV4Snapshot {
+    nonisolated static func build(dayKey: String, transactions: [Transaction], employees: [Employee]) -> RealtimeV4Snapshot {
         let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
         return RealtimeV4Snapshot(
             tripUnits: units,
@@ -53,6 +53,7 @@ struct RealtimeV4View: View {
 
     @State private var focusDate = Date()
     @State private var snapshot = RealtimeV4Snapshot.build(dayKey: "", transactions: [], employees: [])
+    @State private var rebuildTask: Task<Void, Never>?
     @State private var showDatePicker = false
     @State private var lastRefresh = Date()
     @State private var boardPulse = false
@@ -65,8 +66,7 @@ struct RealtimeV4View: View {
     private var todayStr: String { DashboardAggregations.formatYMD(Date()) }
     private var isToday: Bool { focusDateStr == todayStr }
 
-    // Memoized analytics — rebuilt only when inputs (date / transactions / employees) change,
-    // so pulse/score animations and the 12s poll no longer trigger heavy recomputation.
+    // Memoized analytics — rebuilt off-main (debounced) when inputs change.
     private var tripUnits: [CountRecordTripUnit] { snapshot.tripUnits }
     private var sandUnit: CountRecordSandUnit? { snapshot.sandUnit }
     private var tripTotal: Int { snapshot.tripTotal }
@@ -81,7 +81,7 @@ struct RealtimeV4View: View {
             liveBoard
         }
         .onAppear {
-            rebuild()
+            scheduleRebuild()
             lastRefresh = Date()
             if !reduceMotion {
                 withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
@@ -89,14 +89,18 @@ struct RealtimeV4View: View {
                 }
             }
         }
-        .onChange(of: focusDateStr) { _ in rebuild() }
-        .onChange(of: transactions) { _ in
-            rebuild()
+        .onDisappear {
+            rebuildTask?.cancel()
+            rebuildTask = nil
+        }
+        .onChange(of: focusDateStr) { _, _ in scheduleRebuild() }
+        .onChange(of: transactions) { _, _ in
+            scheduleRebuild()
             lastRefresh = Date()
         }
-        .onChange(of: employees) { _ in rebuild() }
-        .onChange(of: tripTotal) { _ in triggerPulse() }
-        .onChange(of: sandRounds) { _ in triggerPulse() }
+        .onChange(of: employees) { _, _ in scheduleRebuild() }
+        .onChange(of: tripTotal) { _, _ in triggerPulse() }
+        .onChange(of: sandRounds) { _, _ in triggerPulse() }
         .sheet(item: $selectedVehicle) { unit in
             VehicleDetailSheet(unit: unit, dayKey: focusDateStr)
         }
@@ -107,12 +111,21 @@ struct RealtimeV4View: View {
         }
     }
 
-    private func rebuild() {
-        snapshot = RealtimeV4Snapshot.build(
-            dayKey: focusDateStr,
-            transactions: transactions,
-            employees: employees
-        )
+    /// Coalesces rapid realtime/delta updates into one off-main snapshot build.
+    private func scheduleRebuild() {
+        rebuildTask?.cancel()
+        let dayKey = focusDateStr
+        let txs = transactions
+        let emps = employees
+        rebuildTask = Task {
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms debounce
+            guard !Task.isCancelled else { return }
+            let built = await Task.detached(priority: .userInitiated) {
+                RealtimeV4Snapshot.build(dayKey: dayKey, transactions: txs, employees: emps)
+            }.value
+            guard !Task.isCancelled else { return }
+            snapshot = built
+        }
     }
 
     private func triggerPulse() {

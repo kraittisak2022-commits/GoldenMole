@@ -63,12 +63,15 @@ final class AppState {
     // MARK: - Incremental realtime apply
 
     /// Inserts or replaces a transaction by id, keeping the list ordered by created_at desc.
+    /// New rows use sorted insertion (O(n)) instead of re-sorting the whole array.
     func upsertTransaction(_ tx: Transaction) {
         if let idx = transactions.firstIndex(where: { $0.id == tx.id }) {
             if transactions[idx] != tx { transactions[idx] = tx }
         } else {
-            transactions.append(tx)
-            transactions.sort { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+            let key = tx.createdAt ?? ""
+            // List is newest-first; insert before the first older row.
+            let insertAt = transactions.firstIndex { ($0.createdAt ?? "") < key } ?? transactions.count
+            transactions.insert(tx, at: insertAt)
         }
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()

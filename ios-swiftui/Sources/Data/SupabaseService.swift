@@ -87,14 +87,17 @@ final class SupabaseService: ObservableObject {
         return TransactionFetchResult(transactions: decoded, skippedCount: skipped)
     }
 
-    /// Fetches all transactions. Network runs here; decoding is offloaded off the main actor
-    /// (`Task.detached`) so large payloads never block the UI.
+    /// Recent transactions only (≈90 days, max 2000 rows) so analytics stay light.
+    /// Network runs here; decoding is offloaded off the main actor.
     func fetchTransactions() async throws -> TransactionFetchResult {
+        let since = Self.transactionsWindowStartYMD()
         let data: Data
         do {
             data = try await client.from("transactions")
                 .select()
+                .gte("date", value: since)
                 .order("created_at", ascending: false)
+                .limit(2000)
                 .execute()
                 .data
         } catch {
@@ -103,6 +106,17 @@ final class SupabaseService: ObservableObject {
         return await Task.detached(priority: .userInitiated) {
             Self.decodeTransactions(from: data)
         }.value
+    }
+
+    /// Gregorian YMD ~90 days ago (Bangkok calendar), used to bound the main fetch.
+    nonisolated private static func transactionsWindowStartYMD() -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Bangkok") ?? .current
+        let start = cal.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let y = cal.component(.year, from: start)
+        let m = cal.component(.month, from: start)
+        let d = cal.component(.day, from: start)
+        return String(format: "%04d-%02d-%02d", y, m, d)
     }
 
     /// Delta fetch: only rows changed since `isoTimestamp` (used by the realtime fallback poll).
