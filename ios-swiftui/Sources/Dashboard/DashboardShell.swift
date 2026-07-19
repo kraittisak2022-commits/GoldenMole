@@ -9,8 +9,8 @@ enum AppMainTab: Hashable {
 }
 
 struct DashboardShell: View {
-    @EnvironmentObject private var auth: AuthService
-    @EnvironmentObject private var appState: AppState
+    @Environment(AuthService.self) private var auth
+    @Environment(AppState.self) private var appState
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtime
     @State private var homeSegment: HomeSegment = .v1
@@ -73,19 +73,20 @@ struct DashboardShell: View {
                         }
                     }
             }
-            .environmentObject(auth)
-            .environmentObject(appState)
+            .environment(auth)
+            .environment(appState)
         }
     }
 
     // MARK: - Home
 
     private var homeTab: some View {
-        VStack(spacing: 0) {
+        let appStateBindable = Bindable(appState)
+        return VStack(spacing: 0) {
             DateFilterBar(
-                datePreset: $appState.datePreset,
-                customStart: $appState.customStart,
-                customEnd: $appState.customEnd
+                datePreset: appStateBindable.datePreset,
+                customStart: appStateBindable.customStart,
+                customEnd: appStateBindable.customEnd
             )
             Picker("มุมมอง", selection: $homeSegment) {
                 ForEach(HomeSegment.allCases) { seg in
@@ -388,11 +389,12 @@ struct DashboardShell: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(spacing: 0) {
+        let appStateBindable = Bindable(appState)
+        return VStack(spacing: 0) {
             DateFilterBar(
-                datePreset: $appState.datePreset,
-                customStart: $appState.customStart,
-                customEnd: $appState.customEnd
+                datePreset: appStateBindable.datePreset,
+                customStart: appStateBindable.customStart,
+                customEnd: appStateBindable.customEnd
             )
             ScrollView {
                 content()

@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct ProfileView: View {
-    @EnvironmentObject private var auth: AuthService
-    @EnvironmentObject private var appState: AppState
+    @Environment(AuthService.self) private var auth
+    @Environment(AppState.self) private var appState
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"

@@ -175,6 +175,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
     let description: String
     let amount: Double
     let createdAt: String?
+    let updatedAt: String?
     let employeeId: String?
     let employeeIds: [String]?
     let driverId: String?
@@ -225,6 +226,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
         case id, date, type, category, description, amount, quantity, unit, note
         case subCategory = "sub_category"
         case createdAt = "created_at"
+        case updatedAt = "updated_at"
         case employeeId = "employee_id"
         case employeeIds = "employee_ids"
         case driverId = "driver_id"
@@ -279,6 +281,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
         description = (try? c.decode(String.self, forKey: .description)) ?? ""
         amount = (try? FlexibleNumber.decode(c, forKey: .amount)) ?? 0
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
         employeeId = try c.decodeIfPresent(String.self, forKey: .employeeId)
         employeeIds = try c.decodeIfPresent([String].self, forKey: .employeeIds)
         driverId = try c.decodeIfPresent(String.self, forKey: .driverId)

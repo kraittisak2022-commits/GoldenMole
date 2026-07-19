@@ -1,26 +1,28 @@
 import SwiftUI
+import Observation
 
 @main
 struct GoldenmoleDashboardApp: App {
-    @StateObject private var bootstrap = AppBootstrap()
+    @State private var bootstrap = AppBootstrap()
 
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(bootstrap)
-                .environmentObject(bootstrap.appState)
+                .environment(bootstrap)
+                .environment(bootstrap.appState)
                 .task { await bootstrap.start() }
         }
     }
 }
 
 @MainActor
-final class AppBootstrap: ObservableObject {
-    @Published var appState = AppState()
-    @Published var authService: AuthService?
-    @Published var configError: String?
+@Observable
+final class AppBootstrap {
+    var appState = AppState()
+    var authService: AuthService?
+    var configError: String?
     /// Becomes true once bootstrap finishes (success or config error).
-    @Published var isReady = false
+    var isReady = false
 
     func start() async {
         defer { isReady = true }
@@ -45,7 +47,7 @@ final class AppBootstrap: ObservableObject {
 }
 
 struct RootView: View {
-    @EnvironmentObject private var bootstrap: AppBootstrap
+    @Environment(AppBootstrap.self) private var bootstrap
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
 
@@ -71,8 +73,8 @@ struct RootView: View {
                     .transition(contentEnterTransition)
             } else if let auth = bootstrap.authService {
                 AuthGateView(auth: auth)
-                    .environmentObject(auth)
-                    .environmentObject(bootstrap.appState)
+                    .environment(auth)
+                    .environment(bootstrap.appState)
                     .transition(contentEnterTransition)
             }
         }
@@ -84,7 +86,7 @@ struct RootView: View {
             minDurationElapsed = true
             dismissSplashIfReady()
         }
-        .onChange(of: bootstrap.isReady) { ready in
+        .onChange(of: bootstrap.isReady) { _, ready in
             if ready {
                 dismissSplashIfReady()
             }
@@ -123,9 +125,9 @@ struct RootView: View {
     }
 }
 
-/// Holds `@ObservedObject` on AuthService so `currentAdmin` changes trigger navigation.
+/// Observes `AuthService.currentAdmin` (via the Observation framework) to trigger navigation.
 private struct AuthGateView: View {
-    @ObservedObject var auth: AuthService
+    let auth: AuthService
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {

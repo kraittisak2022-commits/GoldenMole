@@ -1,31 +1,38 @@
 import SwiftUI
+import Observation
 
 @MainActor
-final class AppState: ObservableObject {
-    @Published var transactions: [Transaction] = []
-    @Published var employees: [Employee] = []
-    @Published var settings: AppSettings = .fallback
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var selectedTab: DashboardTab = .realtimeV4
-    @Published var datePreset: DateRangePreset = .days7
-    @Published var customStart = DashboardAggregations.gregorian.date(byAdding: .day, value: -6, to: Date()) ?? Date()
-    @Published var customEnd = Date()
+@Observable
+final class AppState {
+    var transactions: [Transaction] = []
+    var employees: [Employee] = []
+    var settings: AppSettings = .fallback
+    var isLoading = false
+    var errorMessage: String?
+    var selectedTab: DashboardTab = .realtimeV4
+    var datePreset: DateRangePreset = .days7
+    var customStart = DashboardAggregations.gregorian.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+    var customEnd = Date()
 
-    /// AI market insights (gold + oil). Loaded lazily when the tab opens; independent of the 12s poll.
-    @Published var marketInsight: MarketInsightSnapshot?
-    @Published var marketLoading = false
-    @Published var marketError: String?
+    /// AI market insights (gold + oil). Loaded lazily when the tab opens; independent of transactions sync.
+    var marketInsight: MarketInsightSnapshot?
+    var marketLoading = false
+    var marketError: String?
 
     /// Diagnostics: last successful fetch sizes / skip counts.
-    @Published var lastFetchTransactionCount = 0
-    @Published var lastFetchEmployeeCount = 0
-    @Published var lastSkippedTransactionCount = 0
-    @Published var lastFetchedAt: Date?
-    @Published var supabaseHost: String = SupabaseConfig.isConfigured ? SupabaseConfig.host : "(ยังไม่ตั้งค่า)"
+    var lastFetchTransactionCount = 0
+    var lastFetchEmployeeCount = 0
+    var lastSkippedTransactionCount = 0
+    var lastFetchedAt: Date?
+    var supabaseHost: String = SupabaseConfig.isConfigured ? SupabaseConfig.host : "(ยังไม่ตั้งค่า)"
 
-    private var dataService: SupabaseService?
-    private var realtimeTask: Task<Void, Never>?
+    @ObservationIgnored private var dataService: SupabaseService?
+    @ObservationIgnored private var syncCoordinator: RealtimeSyncCoordinator?
+
+    /// Newest `updated_at` currently held — used as the delta-poll cursor.
+    var maxTransactionUpdatedAt: String? {
+        transactions.compactMap(\.updatedAt).max()
+    }
 
     var dateFilter: DateFilter {
         DashboardAggregations.dateFilter(preset: datePreset, customStart: customStart, customEnd: customEnd)
@@ -43,25 +50,49 @@ final class AppState: ObservableObject {
     func configure(dataService: SupabaseService) {
         self.dataService = dataService
         supabaseHost = SupabaseConfig.host
-        realtimeTask?.cancel()
-        realtimeTask = dataService.subscribeToTransactions { [weak self] in
-            Task { await self?.refresh() }
-        }
+        syncCoordinator?.stop()
+        let coordinator = RealtimeSyncCoordinator(service: dataService, appState: self)
+        syncCoordinator = coordinator
+        coordinator.start()
     }
 
     func loadInitial() async {
         await refresh()
     }
 
+    // MARK: - Incremental realtime apply
+
+    /// Inserts or replaces a transaction by id, keeping the list ordered by created_at desc.
+    func upsertTransaction(_ tx: Transaction) {
+        if let idx = transactions.firstIndex(where: { $0.id == tx.id }) {
+            if transactions[idx] != tx { transactions[idx] = tx }
+        } else {
+            transactions.append(tx)
+            transactions.sort { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+        }
+        lastFetchTransactionCount = transactions.count
+        lastFetchedAt = Date()
+    }
+
+    func removeTransaction(id: String) {
+        guard let idx = transactions.firstIndex(where: { $0.id == id }) else { return }
+        transactions.remove(at: idx)
+        lastFetchTransactionCount = transactions.count
+        lastFetchedAt = Date()
+    }
+
     func refresh() async {
         guard let dataService else { return }
-        isLoading = transactions.isEmpty
+        // Only show the blocking spinner on the very first load; reconciles stay silent
+        // to avoid invalidating views that observe `isLoading`.
+        let shouldShowLoading = transactions.isEmpty
+        if isLoading != shouldShowLoading { isLoading = shouldShowLoading }
         var errors: [String] = []
 
         // Fetch independently so one failing endpoint cannot blank the whole app.
         do {
             let fetchResult = try await dataService.fetchTransactions()
-            // Only reassign when data actually changed so the 12s poll doesn't
+            // Only reassign when data actually changed so periodic reconciles don't
             // re-render the whole dashboard when nothing is new.
             if transactions != fetchResult.transactions {
                 transactions = fetchResult.transactions
@@ -101,7 +132,7 @@ final class AppState: ObservableObject {
             errorMessage = nil
         }
 
-        isLoading = false
+        if isLoading { isLoading = false }
     }
 
     /// Loads the latest market insight row. Safe to call repeatedly (tab appear / manual refresh).
@@ -115,9 +146,5 @@ final class AppState: ObservableObject {
             marketError = error.localizedDescription
         }
         marketLoading = false
-    }
-
-    deinit {
-        realtimeTask?.cancel()
     }
 }

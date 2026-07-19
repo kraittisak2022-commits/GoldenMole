@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct LoginView: View {
-    @EnvironmentObject private var auth: AuthService
-    @EnvironmentObject private var appState: AppState
+    @Environment(AuthService.self) private var auth
+    @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var profilesStore = SavedProfilesStore.shared
 

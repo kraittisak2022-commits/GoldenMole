@@ -18,6 +18,16 @@ struct TransactionFetchResult: Sendable {
     let skippedCount: Int
 }
 
+/// Lossy element: decodes T when possible, otherwise keeps nil so one bad row
+/// never aborts decoding of the whole array.
+struct FailableDecodable<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        value = try? container.decode(T.self)
+    }
+}
+
 @MainActor
 final class SupabaseService: ObservableObject {
     private let client: SupabaseClient
@@ -43,7 +53,29 @@ final class SupabaseService: ObservableObject {
             .execute()
     }
 
-    /// Fetches transactions and decodes row-by-row so one bad row cannot wipe the whole dataset.
+    /// Shared decoder — reused instead of allocating one per fetch.
+    private nonisolated static let jsonDecoder = JSONDecoder()
+
+    /// Decodes a single transaction (used for realtime record payloads).
+    nonisolated static func decodeSingleTransaction(from data: Data) -> Transaction? {
+        try? jsonDecoder.decode(Transaction.self, from: data)
+    }
+
+    /// Decodes an array of transactions off the caller's actor, skipping malformed rows.
+    /// Runs on a background executor because it is `nonisolated`.
+    nonisolated static func decodeTransactions(from data: Data) -> TransactionFetchResult {
+        let items = (try? jsonDecoder.decode([FailableDecodable<Transaction>].self, from: data)) ?? []
+        var decoded: [Transaction] = []
+        decoded.reserveCapacity(items.count)
+        var skipped = 0
+        for item in items {
+            if let value = item.value { decoded.append(value) } else { skipped += 1 }
+        }
+        return TransactionFetchResult(transactions: decoded, skippedCount: skipped)
+    }
+
+    /// Fetches all transactions. Network runs here; decoding is offloaded off the main actor
+    /// (`Task.detached`) so large payloads never block the UI.
     func fetchTransactions() async throws -> TransactionFetchResult {
         let data: Data
         do {
@@ -55,28 +87,32 @@ final class SupabaseService: ObservableObject {
         } catch {
             throw DataServiceError.fetchFailed(error.localizedDescription)
         }
+        return await Task.detached(priority: .userInitiated) {
+            Self.decodeTransactions(from: data)
+        }.value
+    }
 
-        guard let rows = try JSONSerialization.jsonObject(with: data) as? [Any] else {
-            throw DataServiceError.fetchFailed("รูปแบบข้อมูล transactions ไม่ถูกต้อง")
+    /// Delta fetch: only rows changed since `isoTimestamp` (used by the realtime fallback poll).
+    func fetchTransactionsSince(_ isoTimestamp: String) async throws -> TransactionFetchResult {
+        let data: Data
+        do {
+            data = try await client.from("transactions")
+                .select()
+                .gt("updated_at", value: isoTimestamp)
+                .order("created_at", ascending: false)
+                .execute()
+                .data
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
         }
+        return await Task.detached(priority: .userInitiated) {
+            Self.decodeTransactions(from: data)
+        }.value
+    }
 
-        let decoder = JSONDecoder()
-        var decoded: [Transaction] = []
-        var skipped = 0
-        decoded.reserveCapacity(rows.count)
-
-        for row in rows {
-            guard JSONSerialization.isValidJSONObject(row),
-                  let rowData = try? JSONSerialization.data(withJSONObject: row),
-                  let tx = try? decoder.decode(Transaction.self, from: rowData)
-            else {
-                skipped += 1
-                continue
-            }
-            decoded.append(tx)
-        }
-
-        return TransactionFetchResult(transactions: decoded, skippedCount: skipped)
+    /// A realtime channel for the given topic (used by RealtimeSyncCoordinator).
+    func realtimeChannel(_ topic: String) -> RealtimeChannelV2 {
+        client.channel(topic)
     }
 
     func fetchEmployees() async throws -> [Employee] {
@@ -113,15 +149,4 @@ final class SupabaseService: ObservableObject {
         return rows.first?.toAppSettings() ?? .fallback
     }
 
-    /// Polls every 12s (matches web dashboard refresh cadence). Fires once immediately.
-    func subscribeToTransactions(onChange: @escaping () -> Void) -> Task<Void, Never> {
-        Task {
-            await MainActor.run { onChange() }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
-                if Task.isCancelled { break }
-                await MainActor.run { onChange() }
-            }
-        }
-    }
 }

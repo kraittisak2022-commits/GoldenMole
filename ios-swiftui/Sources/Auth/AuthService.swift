@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum AuthError: LocalizedError {
     case invalidCredentials
@@ -21,12 +22,13 @@ enum AuthError: LocalizedError {
 }
 
 @MainActor
-final class AuthService: ObservableObject {
-    private let dataService: SupabaseService
-    private let sessionKey = "goldenmole.dashboard.session.adminId"
-    private let profilesStore = SavedProfilesStore.shared
+@Observable
+final class AuthService {
+    @ObservationIgnored private let dataService: SupabaseService
+    @ObservationIgnored private let sessionKey = "goldenmole.dashboard.session.adminId"
+    @ObservationIgnored private let profilesStore = SavedProfilesStore.shared
 
-    @Published private(set) var currentAdmin: AdminUser?
+    private(set) var currentAdmin: AdminUser?
 
     init(dataService: SupabaseService) {
         self.dataService = dataService
