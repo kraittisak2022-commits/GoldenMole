@@ -15,7 +15,6 @@ struct LoginView: View {
     @State private var errorText: String?
     @State private var showPassword = false
     @State private var appeared = false
-    @State private var ambientPhase = false
     @State private var shakeTrigger = 0
     @State private var profilePendingRemove: SavedLoginProfile?
     @FocusState private var focusedField: Field?
@@ -23,8 +22,6 @@ struct LoginView: View {
     private enum Field: Hashable {
         case username, password
     }
-
-    private let brand = Color(hex: "#0D98A5")
 
     private var hasSavedProfiles: Bool {
         !profilesStore.profiles.isEmpty
@@ -40,10 +37,10 @@ struct LoginView: View {
 
             ScrollView {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 48)
+                    Spacer(minLength: 56)
 
                     brandHeader
-                        .padding(.bottom, 36)
+                        .padding(.bottom, 40)
 
                     Group {
                         if showingPicker {
@@ -52,12 +49,12 @@ struct LoginView: View {
                             formCard
                         }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .modifier(ShakeEffect(animatableData: CGFloat(shakeTrigger)))
 
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 48)
                 }
-                .frame(maxWidth: 440)
+                .frame(maxWidth: 400)
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
@@ -105,102 +102,55 @@ struct LoginView: View {
             appeared = true
             return
         }
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
             appeared = true
-        }
-        withAnimation(
-            .easeInOut(duration: 9)
-            .repeatForever(autoreverses: true)
-        ) {
-            ambientPhase = true
         }
     }
 
     // MARK: - Background
 
     private var background: some View {
-        LinearGradient(
-            colors: [
-                Color(hex: "#063A40"),
-                Color(hex: "#0A6B75"),
-                brand.opacity(0.85)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-        .overlay {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 40)
-                    .scaleEffect(ambientScale(base: 1.0, delta: 0.12))
-                    .offset(
-                        x: ambientOffset(from: 120, to: 160),
-                        y: ambientOffset(from: -240, to: -190)
-                    )
+        ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
 
-                Circle()
-                    .fill(Color.black.opacity(0.14))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 50)
-                    .scaleEffect(ambientScale(base: 1.05, delta: -0.08))
-                    .offset(
-                        x: ambientOffset(from: -170, to: -130),
-                        y: ambientOffset(from: 320, to: 360)
-                    )
-
-                Circle()
-                    .fill(brand.opacity(0.18))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 36)
-                    .scaleEffect(ambientScale(base: 0.95, delta: 0.15))
-                    .offset(
-                        x: ambientOffset(from: -40, to: 30),
-                        y: ambientOffset(from: 80, to: 40)
-                    )
-            }
+            // Single soft brand glow — premium, not busy
+            Circle()
+                .fill(AppTheme.brand.opacity(0.12))
+                .frame(width: 340, height: 340)
+                .blur(radius: 80)
+                .offset(x: 100, y: -220)
+                .ignoresSafeArea()
         }
-    }
-
-    private func ambientScale(base: CGFloat, delta: CGFloat) -> CGFloat {
-        guard !reduceMotion else { return base }
-        return ambientPhase ? base + delta : base
-    }
-
-    private func ambientOffset(from: CGFloat, to: CGFloat) -> CGFloat {
-        guard !reduceMotion else { return from }
-        return ambientPhase ? to : from
     }
 
     // MARK: - Header
 
     private var brandHeader: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 96, height: 96)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                .scaleEffect(appeared ? 1 : 0.8)
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+                .scaleEffect(appeared ? 1 : 0.88)
                 .opacity(appeared ? 1 : 0)
 
             VStack(spacing: 6) {
                 Text("Goldenmole")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
 
                 Text("Dashboard")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.78))
-                    .tracking(2)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .tracking(3.2)
                     .textCase(.uppercase)
             }
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 16)
-            .animation(entranceAnimation(delay: 0.15), value: appeared)
+            .offset(y: appeared ? 0 : 12)
+            .animation(entranceAnimation(delay: 0.12), value: appeared)
         }
         .animation(entranceAnimation(delay: 0), value: appeared)
         .accessibilityElement(children: .combine)
@@ -211,61 +161,73 @@ struct LoginView: View {
         if reduceMotion {
             return .easeOut(duration: 0.2).delay(delay)
         }
-        return .spring(response: 0.6, dampingFraction: 0.78).delay(delay)
+        return .spring(response: 0.55, dampingFraction: 0.82).delay(delay)
+    }
+
+    // MARK: - Card chrome
+
+    private func premiumCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.regularMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 28)
+            .animation(entranceAnimation(delay: 0.22), value: appeared)
     }
 
     // MARK: - Profile picker
 
     private var profilePicker: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("เลือกโปรไฟล์")
-                    .font(.title3.bold())
-                    .foregroundStyle(.primary)
-                Text("แตะเพื่อเข้าด้วย \(BiometricAuth.biometryLabel)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 96), spacing: 16)],
-                spacing: 16
-            ) {
-                ForEach(profilesStore.profiles) { profile in
-                    profileCard(profile)
+        premiumCard {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("เลือกโปรไฟล์")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("แตะเพื่อเข้าด้วย \(BiometricAuth.biometryLabel)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-            }
 
-            if let errorText {
-                errorBanner(errorText)
-            }
-
-            Button {
-                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.8)) {
-                    username = ""
-                    password = ""
-                    errorText = nil
-                    showForm = true
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 96), spacing: 16)],
+                    spacing: 16
+                ) {
+                    ForEach(profilesStore.profiles) { profile in
+                        profileCard(profile)
+                    }
                 }
-            } label: {
-                Text("ใช้บัญชีอื่น")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(brand)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+
+                if let errorText {
+                    errorBanner(errorText)
+                }
+
+                Button {
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.85)) {
+                        username = ""
+                        password = ""
+                        errorText = nil
+                        showForm = true
+                    }
+                } label: {
+                    Text("ใช้บัญชีอื่น")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmitting || unlockingProfileId != nil)
             }
-            .buttonStyle(.plain)
-            .disabled(isSubmitting || unlockingProfileId != nil)
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-        )
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 36)
-        .animation(entranceAnimation(delay: 0.3), value: appeared)
     }
 
     private func profileCard(_ profile: SavedLoginProfile) -> some View {
@@ -281,7 +243,7 @@ struct LoginView: View {
                         .overlay {
                             if isUnlocking {
                                 Circle()
-                                    .fill(Color.black.opacity(0.35))
+                                    .fill(Color.black.opacity(0.28))
                                 ProgressView()
                                     .tint(.white)
                             }
@@ -294,13 +256,15 @@ struct LoginView: View {
                 Button {
                     profilePendingRemove = profile
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.black.opacity(0.55))
-                        .font(.system(size: 20))
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .offset(x: 6, y: -6)
+                .offset(x: 4, y: -4)
                 .disabled(busy)
                 .accessibilityLabel("ลบโปรไฟล์ \(profile.displayName)")
             }
@@ -324,7 +288,7 @@ struct LoginView: View {
             .buttonStyle(.plain)
             .disabled(busy)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 
     private func avatarCircle(for profile: SavedLoginProfile) -> some View {
@@ -332,13 +296,13 @@ struct LoginView: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [brand, Color(hex: "#0A6B75")],
+                        colors: [AppTheme.brand, AppTheme.brandMid],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 72, height: 72)
-                .shadow(color: brand.opacity(0.35), radius: 8, y: 4)
+                .frame(width: 68, height: 68)
+                .shadow(color: AppTheme.brand.opacity(0.22), radius: 8, y: 4)
 
             if let avatar = profile.avatar, let url = URL(string: avatar), !avatar.isEmpty {
                 AsyncImage(url: url) { phase in
@@ -349,15 +313,15 @@ struct LoginView: View {
                             .scaledToFill()
                     default:
                         Text(profile.initials)
-                            .font(.title3.bold())
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(.white)
                     }
                 }
-                .frame(width: 72, height: 72)
+                .frame(width: 68, height: 68)
                 .clipShape(Circle())
             } else {
                 Text(profile.initials)
-                    .font(.title3.bold())
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
             }
         }
@@ -366,125 +330,120 @@ struct LoginView: View {
     // MARK: - Form
 
     private var formCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("เข้าสู่ระบบ")
-                    .font(.title3.bold())
-                    .foregroundStyle(.primary)
-                Text("ใช้บัญชีแอดมินเดียวกับเว็บ")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(spacing: 12) {
-                fieldRow(systemImage: "person.fill", field: .username) {
-                    TextField("ชื่อผู้ใช้", text: $username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .textContentType(.username)
-                        .submitLabel(.next)
-                        .focused($focusedField, equals: .username)
-                        .onSubmit { focusedField = .password }
+        premiumCard {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("เข้าสู่ระบบ")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("ใช้บัญชีแอดมินเดียวกับเว็บ")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
 
-                fieldRow(systemImage: "lock.fill", field: .password) {
-                    Group {
-                        if showPassword {
-                            TextField("รหัสผ่าน", text: $password)
-                        } else {
-                            SecureField("รหัสผ่าน", text: $password)
-                        }
+                VStack(spacing: 10) {
+                    fieldRow(systemImage: "person", field: .username) {
+                        TextField("ชื่อผู้ใช้", text: $username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textContentType(.username)
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .username)
+                            .onSubmit { focusedField = .password }
                     }
-                    .textContentType(.password)
-                    .submitLabel(.go)
-                    .focused($focusedField, equals: .password)
-                    .onSubmit { Task { await submit() } }
 
-                    Button {
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.7)) {
-                            showPassword.toggle()
-                        }
-                    } label: {
+                    fieldRow(systemImage: "lock", field: .password) {
                         Group {
-                            if #available(iOS 17.0, *) {
-                                Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                    .contentTransition(.symbolEffect(.replace))
+                            if showPassword {
+                                TextField("รหัสผ่าน", text: $password)
                             } else {
-                                Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                SecureField("รหัสผ่าน", text: $password)
                             }
                         }
-                        .foregroundStyle(.secondary)
+                        .textContentType(.password)
+                        .submitLabel(.go)
+                        .focused($focusedField, equals: .password)
+                        .onSubmit { Task { await submit() } }
+
+                        Button {
+                            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.75)) {
+                                showPassword.toggle()
+                            }
+                        } label: {
+                            Group {
+                                if #available(iOS 17.0, *) {
+                                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                                        .contentTransition(.symbolEffect(.replace))
+                                } else {
+                                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                                }
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน")
+                    }
+                }
+
+                Toggle(isOn: $rememberProfile) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("จำโปรไฟล์นี้")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("เข้าครั้งถัดไปได้เร็วขึ้นด้วย \(BiometricAuth.biometryLabel)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(AppTheme.brand)
+
+                if let errorText {
+                    errorBanner(errorText)
+                }
+
+                Button {
+                    Task { await submit() }
+                } label: {
+                    ZStack {
+                        if isSubmitting {
+                            ProgressView().tint(.white)
+                                .transition(.opacity)
+                        } else {
+                            Text("เข้าสู่ระบบ")
+                                .font(.headline.weight(.semibold))
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(
+                        reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85),
+                        value: isSubmitting
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                }
+                .buttonStyle(LoginPrimaryButtonStyle(enabled: canSubmit))
+                .disabled(!canSubmit)
+                .accessibilityLabel("เข้าสู่ระบบ")
+
+                if hasSavedProfiles {
+                    Button {
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.85)) {
+                            errorText = nil
+                            showForm = false
+                        }
+                    } label: {
+                        Text("กลับไปเลือกโปรไฟล์")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.brand)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน")
+                    .disabled(isSubmitting)
                 }
-            }
-
-            Toggle(isOn: $rememberProfile) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("จำโปรไฟล์นี้")
-                        .font(.subheadline.weight(.medium))
-                    Text("เข้าครั้งถัดไปได้เร็วขึ้นด้วย \(BiometricAuth.biometryLabel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(brand)
-
-            if let errorText {
-                errorBanner(errorText)
-            }
-
-            Button {
-                Task { await submit() }
-            } label: {
-                ZStack {
-                    if isSubmitting {
-                        ProgressView().tint(.white)
-                            .transition(.opacity)
-                    } else {
-                        Text("เข้าสู่ระบบ")
-                            .font(.headline)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(
-                    reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85),
-                    value: isSubmitting
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-            }
-            .buttonStyle(LoginPrimaryButtonStyle(brand: brand, enabled: canSubmit))
-            .disabled(!canSubmit)
-            .accessibilityLabel("เข้าสู่ระบบ")
-
-            if hasSavedProfiles {
-                Button {
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.8)) {
-                        errorText = nil
-                        showForm = false
-                    }
-                } label: {
-                    Text("กลับไปเลือกโปรไฟล์")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(brand)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 4)
-                }
-                .buttonStyle(.plain)
-                .disabled(isSubmitting)
             }
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-        )
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 36)
-        .animation(entranceAnimation(delay: 0.3), value: appeared)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -494,12 +453,12 @@ struct LoginView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(.footnote)
-        .foregroundStyle(Color(hex: "#DC2626"))
+        .foregroundStyle(AppTheme.expense)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(hex: "#FEE2E2"))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.expense.opacity(0.12))
         )
         .transition(
             .asymmetric(
@@ -523,21 +482,24 @@ struct LoginView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         let isFocused = focusedField == field
-        return HStack(spacing: 10) {
+        return HStack(spacing: 12) {
             fieldIcon(systemImage: systemImage, isFocused: isFocused)
             content()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 13)
+        .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isFocused ? brand : Color.black.opacity(0.06), lineWidth: isFocused ? 1.5 : 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    isFocused ? AppTheme.brand.opacity(0.65) : Color.primary.opacity(0.06),
+                    lineWidth: isFocused ? 1.5 : 1
+                )
         )
-        .shadow(color: isFocused ? brand.opacity(0.22) : .clear, radius: isFocused ? 8 : 0, y: 2)
+        .shadow(color: isFocused ? AppTheme.brand.opacity(0.14) : .clear, radius: isFocused ? 8 : 0, y: 2)
         .animation(
             reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85),
             value: focusedField
@@ -547,9 +509,10 @@ struct LoginView: View {
     @ViewBuilder
     private func fieldIcon(systemImage: String, isFocused: Bool) -> some View {
         let icon = Image(systemName: systemImage)
-            .foregroundStyle(brand)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(isFocused ? AppTheme.brand : .secondary)
             .frame(width: 20)
-            .scaleEffect(isFocused ? 1.08 : 1.0)
+            .scaleEffect(isFocused ? 1.06 : 1.0)
 
         if #available(iOS 17.0, *), !reduceMotion {
             icon.symbolEffect(.bounce, value: isFocused)
@@ -577,21 +540,20 @@ struct LoginView: View {
         } catch let bio as BiometricAuthError {
             switch bio {
             case .cancelled, .unavailable:
-                // Fall back to password form prefilled with username.
                 username = profile.username
                 password = ""
                 rememberProfile = true
-                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.8)) {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.85)) {
                     showForm = true
                 }
             case .failed:
-                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.7)) {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.75)) {
                     errorText = bio.errorDescription
                 }
             }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.7)) {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.75)) {
                 errorText = message
             }
             if !reduceMotion {
@@ -599,7 +561,6 @@ struct LoginView: View {
                     shakeTrigger += 1
                 }
             }
-            // If credentials were purged, offer the form.
             if let authError = error as? AuthError, case .savedProfileMissing = authError {
                 username = profile.username
                 password = ""
@@ -627,7 +588,7 @@ struct LoginView: View {
             await appState.loadInitial()
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.7)) {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.75)) {
                 errorText = message
             }
             if !reduceMotion {
@@ -643,19 +604,31 @@ struct LoginView: View {
 // MARK: - Button style
 
 private struct LoginPrimaryButtonStyle: ButtonStyle {
-    let brand: Color
     let enabled: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(enabled ? brand : brand.opacity(0.45))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: enabled
+                                ? [AppTheme.brand, AppTheme.brandMid]
+                                : [AppTheme.brand.opacity(0.45), AppTheme.brandMid.opacity(0.4)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             )
-            .scaleEffect(configuration.isPressed && enabled ? 0.97 : 1)
-            .opacity(configuration.isPressed && enabled ? 0.92 : 1)
-            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: configuration.isPressed)
+            .shadow(
+                color: enabled ? AppTheme.brand.opacity(configuration.isPressed ? 0.18 : 0.28) : .clear,
+                radius: configuration.isPressed ? 6 : 12,
+                y: configuration.isPressed ? 2 : 6
+            )
+            .scaleEffect(configuration.isPressed && enabled ? 0.98 : 1)
+            .opacity(configuration.isPressed && enabled ? 0.94 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
 
