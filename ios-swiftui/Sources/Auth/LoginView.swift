@@ -102,8 +102,12 @@ struct LoginView: View {
             appeared = true
             return
         }
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-            appeared = true
+        // Slight delay so splash exit and login entrance don't compete.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            withAnimation(.spring(response: 0.62, dampingFraction: 0.8)) {
+                appeared = true
+            }
         }
     }
 
@@ -134,8 +138,9 @@ struct LoginView: View {
                 .frame(width: 76, height: 76)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
-                .scaleEffect(appeared ? 1 : 0.88)
+                .scaleEffect(appeared ? 1 : 0.9)
                 .opacity(appeared ? 1 : 0)
+                .animation(entranceAnimation(delay: 0.05), value: appeared)
 
             VStack(spacing: 6) {
                 Text("Goldenmole")
@@ -149,19 +154,19 @@ struct LoginView: View {
                     .textCase(.uppercase)
             }
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
-            .animation(entranceAnimation(delay: 0.12), value: appeared)
+            .offset(y: appeared ? 0 : 14)
+            .animation(entranceAnimation(delay: 0.16), value: appeared)
         }
-        .animation(entranceAnimation(delay: 0), value: appeared)
+        .animation(entranceAnimation(delay: 0.05), value: appeared)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Goldenmole Dashboard")
     }
 
     private func entranceAnimation(delay: Double) -> Animation? {
         if reduceMotion {
-            return .easeOut(duration: 0.2).delay(delay)
+            return .easeOut(duration: 0.18).delay(delay)
         }
-        return .spring(response: 0.55, dampingFraction: 0.82).delay(delay)
+        return .spring(response: 0.62, dampingFraction: 0.8).delay(delay)
     }
 
     // MARK: - Card chrome
@@ -179,8 +184,8 @@ struct LoginView: View {
             )
             .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 28)
-            .animation(entranceAnimation(delay: 0.22), value: appeared)
+            .offset(y: appeared ? 0 : 32)
+            .animation(entranceAnimation(delay: 0.28), value: appeared)
     }
 
     // MARK: - Profile picker
