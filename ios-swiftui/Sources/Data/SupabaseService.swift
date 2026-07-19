@@ -149,4 +149,11 @@ final class SupabaseService: ObservableObject {
         return rows.first?.toAppSettings() ?? .fallback
     }
 
+    /// Inserts one diagnostic row (crash / hang / runtime error) into `mobile_error_reports`.
+    func submitErrorReport(_ row: MobileErrorReportInsert) async throws {
+        _ = try await client.from("mobile_error_reports")
+            .insert(row)
+            .execute()
+    }
+
 }

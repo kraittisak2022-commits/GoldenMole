@@ -55,6 +55,7 @@ const TAB_HELP: Record<string, string> = {
     laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
     aiLogs: 'ประวัติการเรียกใช้งาน AI จากเมนูวางแผนงาน รวมผลลัพธ์สำเร็จ/ผิดพลาด',
     mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
+    mobileIOS: 'รายงานข้อผิดพลาด/แอปค้าง จากแอป iOS — ส่งอัตโนมัติเมื่อแอปค้าง (hang) แครช (crash) หรือโหลดข้อมูลไม่สำเร็จ · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
 };
 
 const LIST_TAB_KEYS = ['jobDescriptions', 'incomeTypes', 'expenseTypes', 'maintenanceTypes', 'locations', 'landGroups', 'versionNotes'] as const;
@@ -161,6 +162,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     const [mobileLoading, setMobileLoading] = useState(false);
     const [mobileLoadErr, setMobileLoadErr] = useState<string | null>(null);
     const [mobileUnreadCount, setMobileUnreadCount] = useState<number | null>(null);
+    const [mobileUnreadCountIOS, setMobileUnreadCountIOS] = useState<number | null>(null);
     const [mobileResolvingId, setMobileResolvingId] = useState<string | null>(null);
     const [mobileResolvedSupported, setMobileResolvedSupported] = useState(true);
     const [mobileActionNotice, setMobileActionNotice] = useState<{
@@ -175,8 +177,16 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     const isMissingResolvedColumnError = (message: string) =>
         /resolved|schema cache|column/i.test(message);
 
+    // Which platform's reports are being viewed / counted. Android keeps legacy rows
+    // where `platform` is null; iOS matches only `platform = 'ios'`.
+    const mobilePlatform: 'android' | 'ios' = activeTab === 'mobileIOS' ? 'ios' : 'android';
+    const applyMobilePlatformFilter = (query: any, platform: 'android' | 'ios') =>
+        platform === 'ios'
+            ? query.eq('platform', 'ios')
+            : query.or('platform.eq.android,platform.is.null');
+
     const refreshMobileUnreadCount = async () => {
-        try {
+        const countFor = async (platform: 'android' | 'ios') => {
             let query = supabase
                 .from('mobile_error_reports')
                 .select('id', { count: 'exact', head: true })
@@ -184,15 +194,26 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             if (mobileResolvedSupported) {
                 query = query.eq('resolved', false);
             }
+            query = applyMobilePlatformFilter(query, platform);
             const { count, error } = await query;
             if (error) throw error;
-            setMobileUnreadCount(count ?? 0);
+            return count ?? 0;
+        };
+        try {
+            setMobileUnreadCount(await countFor('android'));
         } catch {
             setMobileUnreadCount(null);
         }
+        try {
+            setMobileUnreadCountIOS(await countFor('ios'));
+        } catch {
+            setMobileUnreadCountIOS(null);
+        }
     };
 
-    const loadMobileAndroidErrors = async () => {
+    const loadMobileAndroidErrors = async (
+        platform: 'android' | 'ios' = mobilePlatform,
+    ) => {
         setMobileLoading(true);
         setMobileLoadErr(null);
         try {
@@ -206,17 +227,23 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                 setMobileResolvedSupported(true);
             }
 
-            const { data, error } = await supabase
-                .from('mobile_error_reports')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(100);
+            const { data, error } = await applyMobilePlatformFilter(
+                supabase
+                    .from('mobile_error_reports')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(100),
+                platform,
+            );
             if (error) throw error;
             const rows = (data || []) as MobileErrorReportRow[];
             setMobileErrors(rows);
-            setMobileUnreadCount(
-                rows.filter((r) => !r.reviewed && !r.resolved).length,
-            );
+            const unread = rows.filter((r) => !r.reviewed && !r.resolved).length;
+            if (platform === 'ios') {
+                setMobileUnreadCountIOS(unread);
+            } else {
+                setMobileUnreadCount(unread);
+            }
         } catch (err: any) {
             setMobileLoadErr(err?.message || 'โหลดไม่สำเร็จ');
             setMobileErrors([]);
@@ -335,7 +362,9 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     }, []);
 
     useEffect(() => {
-        if (activeTab === 'mobileAndroid') void loadMobileAndroidErrors();
+        if (activeTab === 'mobileAndroid' || activeTab === 'mobileIOS') {
+            void loadMobileAndroidErrors(activeTab === 'mobileIOS' ? 'ios' : 'android');
+        }
     }, [activeTab]);
 
     useEffect(() => {
@@ -1012,6 +1041,13 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                     ? `แอป Android · ${mobileUnreadCount} ยังไม่อ่าน`
                     : 'แอป Android',
         },
+        {
+            key: 'mobileIOS',
+            l:
+                mobileUnreadCountIOS != null && mobileUnreadCountIOS > 0
+                    ? `แอป iOS · ${mobileUnreadCountIOS} ยังไม่อ่าน`
+                    : 'แอป iOS',
+        },
         { key: 'positionsLocal', l: 'ตำแหน่งพนักงาน' },
     ];
 
@@ -1452,18 +1488,20 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                 </div>
                             </Card>
                         </div>
-                    ) : activeTab === 'mobileAndroid' ? (
+                    ) : activeTab === 'mobileAndroid' || activeTab === 'mobileIOS' ? (
                         <div className="space-y-5">
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <Smartphone className="text-slate-600" size={22} />
-                                        <h3 className="font-bold text-lg">รายงานจากแอป Android</h3>
+                                        <h3 className="font-bold text-lg">
+                                            {mobilePlatform === 'ios' ? 'รายงานจากแอป iOS' : 'รายงานจากแอป Android'}
+                                        </h3>
                                     </div>
-                                    {TAB_HELP.mobileAndroid && (
+                                    {(mobilePlatform === 'ios' ? TAB_HELP.mobileIOS : TAB_HELP.mobileAndroid) && (
                                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-2 max-w-2xl">
                                             <Info size={15} className="shrink-0 mt-0.5 opacity-70" />
-                                            {TAB_HELP.mobileAndroid}
+                                            {mobilePlatform === 'ios' ? TAB_HELP.mobileIOS : TAB_HELP.mobileAndroid}
                                         </p>
                                     )}
                                 </div>

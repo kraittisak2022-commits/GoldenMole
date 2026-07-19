@@ -125,6 +125,13 @@ final class AppState {
 
         if transactions.isEmpty && !errors.isEmpty {
             errorMessage = errors.joined(separator: " · ")
+            // Critical: app has no data because every source failed. Report it (deduped/rate-limited).
+            ErrorReportCenter.shared.reportMessage(
+                "โหลดข้อมูลไม่สำเร็จ (ไม่มีข้อมูลแสดง)",
+                detail: errors.joined(separator: "\n"),
+                source: "error",
+                screenPage: String(describing: selectedTab)
+            )
         } else if !errors.isEmpty && transactions.isEmpty == false {
             // Soft warning — keep data, surface issue in Profile diagnostics
             errorMessage = errors.joined(separator: " · ")

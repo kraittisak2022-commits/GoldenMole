@@ -33,6 +33,7 @@ final class AppBootstrap {
         }
         do {
             let service = try SupabaseService()
+            ErrorReportCenter.shared.configure(service: service)
             let auth = AuthService(dataService: service)
             authService = auth
             appState.configure(dataService: service)

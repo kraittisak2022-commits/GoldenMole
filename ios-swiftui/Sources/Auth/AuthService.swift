@@ -71,6 +71,8 @@ final class AuthService {
         // Persist session first so UI can navigate even if last_login update fails.
         currentAdmin = matched
         UserDefaults.standard.set(matched.id, forKey: sessionKey)
+        // Attribute later crash/error reports to this user (persists across launches).
+        ErrorReportCenter.setReporter(username: matched.username, name: matched.displayName)
 
         if rememberProfile {
             profilesStore.save(from: matched, password: plainPassword)
