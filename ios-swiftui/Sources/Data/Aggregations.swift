@@ -3,12 +3,19 @@ import Foundation
 enum DashboardAggregations {
     // MARK: - Date helpers
 
+    /// Always Gregorian + Bangkok — avoids Buddhist-era year keys (2569) that never match DB (2026).
+    static let gregorian: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Bangkok") ?? .current
+        return cal
+    }()
+
     static func todayYMD() -> String {
         formatYMD(Date())
     }
 
     static func formatYMD(_ date: Date) -> String {
-        let cal = Calendar.current
+        let cal = gregorian
         let y = cal.component(.year, from: date)
         let m = cal.component(.month, from: date)
         let d = cal.component(.day, from: date)
@@ -21,19 +28,19 @@ enum DashboardAggregations {
             return DateFilter(start: formatYMD(start), end: formatYMD(customEnd))
         }
         let days = Int(preset.rawValue) ?? 7
-        let start = Calendar.current.date(byAdding: .day, value: -(days - 1), to: end) ?? end
+        let start = gregorian.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         return DateFilter(start: formatYMD(start), end: formatYMD(end))
     }
 
     static func countInclusiveDays(_ start: String, _ end: String) -> Int {
         guard let a = parseYMD(start), let b = parseYMD(end) else { return 1 }
-        let diff = Calendar.current.dateComponents([.day], from: a, to: b).day ?? 0
+        let diff = gregorian.dateComponents([.day], from: a, to: b).day ?? 0
         return max(1, diff + 1)
     }
 
     static func shiftDateStr(_ dateStr: String, deltaDays: Int) -> String {
         guard let d = parseYMD(dateStr) else { return dateStr }
-        let shifted = Calendar.current.date(byAdding: .day, value: deltaDays, to: d) ?? d
+        let shifted = gregorian.date(byAdding: .day, value: deltaDays, to: d) ?? d
         return formatYMD(shifted)
     }
 
@@ -58,14 +65,16 @@ enum DashboardAggregations {
 
     static func dayLabel(_ dateStr: String) -> String {
         guard let d = parseYMD(dateStr) else { return dateStr }
-        let day = Calendar.current.component(.day, from: d)
-        let month = Calendar.current.component(.month, from: d)
+        let day = gregorian.component(.day, from: d)
+        let month = gregorian.component(.month, from: d)
         return "\(day)/\(month)"
     }
 
     static func thaiDateLong(_ dateStr: String) -> String {
         guard let d = parseYMD(dateStr) else { return dateStr }
         let formatter = DateFormatter()
+        // Display-only Buddhist era (พ.ศ.); keys always use gregorian above.
+        formatter.calendar = Calendar(identifier: .buddhist)
         formatter.locale = Locale(identifier: "th_TH")
         formatter.timeZone = TimeZone(identifier: "Asia/Bangkok")
         formatter.dateFormat = "EEEE d MMM yyyy"

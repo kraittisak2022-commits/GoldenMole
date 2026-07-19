@@ -193,7 +193,9 @@ struct ProfileView: View {
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.calendar = DashboardAggregations.gregorian
         f.locale = Locale(identifier: "th_TH")
+        f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         f.dateStyle = .short
         f.timeStyle = .medium
         return f

@@ -110,7 +110,7 @@ struct CategoryReportView: View {
 
     private func sandGroupKey(_ dateStr: String) -> (String, String) {
         guard let d = parseDate(dateStr) else { return (dateStr, dateStr) }
-        let cal = Calendar.current
+        let cal = DashboardAggregations.gregorian
         switch sandPeriod {
         case .week:
             var comp = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: d)
@@ -121,7 +121,9 @@ struct CategoryReportView: View {
         case .month:
             let key = String(format: "%04d-%02d", cal.component(.year, from: d), cal.component(.month, from: d))
             let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .buddhist)
             formatter.locale = Locale(identifier: "th_TH")
+            formatter.timeZone = TimeZone(identifier: "Asia/Bangkok")
             formatter.dateFormat = "MMMM yyyy"
             return (key, formatter.string(from: d))
         case .year:
@@ -304,6 +306,8 @@ struct CategoryReportView: View {
 
     private func parseDate(_ s: String) -> Date? {
         let f = DateFormatter()
+        f.calendar = DashboardAggregations.gregorian
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         return f.date(from: String(s.prefix(10)))

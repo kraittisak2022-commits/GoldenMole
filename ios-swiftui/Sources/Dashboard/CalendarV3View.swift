@@ -8,7 +8,7 @@ struct CalendarV3View: View {
     @State private var selectedDay: String?
 
     private var monthDates: [Date?] {
-        let cal = Calendar.current
+        let cal = DashboardAggregations.gregorian
         let comps = cal.dateComponents([.year, .month], from: visibleMonth)
         guard let first = cal.date(from: comps),
               let range = cal.range(of: .day, in: .month, for: first) else { return [] }
@@ -23,7 +23,7 @@ struct CalendarV3View: View {
     }
 
     private var holidays: [String: String] {
-        let year = Calendar.current.component(.year, from: visibleMonth)
+        let year = DashboardAggregations.gregorian.component(.year, from: visibleMonth)
         return DashboardAggregations.thaiPublicHolidayMap(year: year)
     }
 
@@ -77,13 +77,15 @@ struct CalendarV3View: View {
 
     private var monthTitle: String {
         let f = DateFormatter()
+        f.calendar = Calendar(identifier: .buddhist)
         f.locale = Locale(identifier: "th_TH")
+        f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         f.dateFormat = "MMMM yyyy"
         return f.string(from: visibleMonth)
     }
 
     private func shiftMonth(_ delta: Int) {
-        visibleMonth = Calendar.current.date(byAdding: .month, value: delta, to: visibleMonth) ?? visibleMonth
+        visibleMonth = DashboardAggregations.gregorian.date(byAdding: .month, value: delta, to: visibleMonth) ?? visibleMonth
         selectedDay = nil
     }
 
@@ -101,7 +103,7 @@ struct CalendarV3View: View {
             selectedDay = key
         } label: {
             VStack(spacing: 4) {
-                Text("\(Calendar.current.component(.day, from: date))")
+                Text("\(DashboardAggregations.gregorian.component(.day, from: date))")
                     .font(.subheadline.weight(isToday ? .bold : .semibold))
                     .foregroundStyle(isToday ? AppTheme.brand : .primary)
                 HStack(spacing: 3) {

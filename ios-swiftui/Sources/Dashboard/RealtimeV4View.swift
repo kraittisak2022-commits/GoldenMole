@@ -792,7 +792,8 @@ struct RealtimeV4View: View {
 
     private func timeString(_ date: Date) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "th_TH")
+        f.calendar = DashboardAggregations.gregorian
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         f.dateFormat = "HH:mm:ss"
         return f.string(from: date)
