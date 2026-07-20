@@ -99,6 +99,7 @@ struct DashboardShell: View {
                     OverviewHubView(
                         transactions: appState.filteredTransactions,
                         allTransactions: appState.transactions,
+                        employees: appState.employees,
                         settings: appState.settings,
                         dateFilter: appState.dateFilter,
                         greetingName: auth.currentAdmin?.displayName
@@ -186,26 +187,36 @@ struct DashboardShell: View {
             headerControlsOverlay
         }
     }
-// MARK: - Reports hub
+
+    // MARK: - Reports hub
 
     private var reportsHub: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
                 reportsHero
 
-                reportsSection(title: "วิเคราะห์และรายการ", systemImage: "sparkles") {
+                reportsSection(
+                    eyebrow: "INSIGHTS",
+                    title: "วิเคราะห์และรายการ",
+                    subtitle: "มุมมองรวมและรายการธุรกรรม"
+                ) {
                     reportLink(
                         title: "รายการบันทึก",
                         subtitle: "ค้นหาธุรกรรมทั้งหมด",
                         icon: "list.bullet.rectangle.portrait",
                         color: AppTheme.slate,
+                        showsDivider: false,
                         destination: {
                             RecordListView(transactions: appState.transactions)
                         }
                     )
                 }
 
-                reportsSection(title: "รายงานตามหมวด", systemImage: "square.grid.2x2.fill") {
+                reportsSection(
+                    eyebrow: "CATEGORIES",
+                    title: "รายงานตามหมวด",
+                    subtitle: "สรุปค่าใช้จ่ายและรายได้"
+                ) {
                     reportLink(
                         title: "ค่าแรง",
                         subtitle: "สรุปค่าแรงตามช่วง",
@@ -246,62 +257,121 @@ struct DashboardShell: View {
                         subtitle: "สรุปรายได้",
                         icon: "banknote.fill",
                         color: AppTheme.income,
+                        showsDivider: false,
                         destination: { categoryDetail(.income) }
                     )
                 }
             }
             .padding(AppTheme.spaceLG)
+            .padding(.bottom, AppTheme.spaceXL)
         }
         .background(DashboardBackground())
         .scrollContentBackground(.hidden)
         .navigationTitle("รายงาน")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
     }
 
     private var reportsHero: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 48, height: 48)
-                .background(Circle().fill(Color.white.opacity(0.18)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("ศูนย์รายงาน")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.85))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
+        ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [AppTheme.brand, AppTheme.brandMid],
+                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            Circle()
+                .fill(Color.white.opacity(0.14))
+                .frame(width: 150, height: 150)
+                .blur(radius: 26)
+                .offset(x: 210, y: -48)
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("REPORTS")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.6)
+                            .foregroundStyle(.white.opacity(0.75))
+                        Text("ศูนย์รายงาน")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text("เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.white.opacity(0.16)))
+                        .accessibilityHidden(true)
+                }
+
+                HStack(spacing: 10) {
+                    reportsHeroChip(title: "มุมมอง", value: "1", tint: Color(hex: "#A7F3D0"))
+                    reportsHeroChip(title: "หมวด", value: "6", tint: Color(hex: "#CFFAFE"))
+                }
+            }
+            .padding(20)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("ศูนย์รายงาน เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
+    }
+
+    private func reportsHeroChip(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.12))
         )
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 14, y: 6)
     }
 
     private func reportsSection<Content: View>(
+        eyebrow: String,
         title: String,
-        systemImage: String,
+        subtitle: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            SectionHeader(title: title, systemImage: systemImage)
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                spacing: 12
-            ) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(eyebrow)
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(AppTheme.brand)
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            VStack(spacing: 0) {
                 content()
             }
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .fill(AppTheme.surface)
+                    .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
         }
     }
 
@@ -310,34 +380,29 @@ struct DashboardShell: View {
         subtitle: String,
         icon: String,
         color: Color,
+        showsDivider: Bool = true,
         @ViewBuilder destination: () -> Destination
     ) -> some View {
         NavigationLink {
             destination()
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 46, height: 46)
-                        .background(
-                            LinearGradient(
-                                colors: [color, color.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                        .shadow(color: color.opacity(0.35), radius: 6, y: 3)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(color.opacity(0.6))
-                }
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(color.opacity(0.14))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(color.opacity(0.22), lineWidth: 1)
+                    )
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.subheadline.bold())
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                         .multilineTextAlignment(.leading)
                     Text(subtitle)
@@ -346,20 +411,27 @@ struct DashboardShell: View {
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
                 }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.inkMuted)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .fill(AppTheme.surface)
-                    .shadow(color: AppTheme.cardShadow, radius: 14, y: 5)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .strokeBorder(color.opacity(0.22), lineWidth: 1)
-            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Rectangle()
+                    .fill(AppTheme.hairline)
+                    .frame(height: 1)
+                    .padding(.leading, 70)
+            }
+        }
     }
 
     private func categoryDetail(_ type: CategoryReportType) -> some View {

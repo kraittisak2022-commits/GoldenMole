@@ -144,17 +144,20 @@ struct OverviewSnapshot: Sendable {
 struct OverviewHubView: View {
     let transactions: [Transaction]
     let allTransactions: [Transaction]
+    let employees: [Employee]
     let settings: AppSettings
     let dateFilter: DateFilter
     var greetingName: String? = nil
 
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
+    @State private var todayOps = TodayOpsSnapshot.empty
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showShare = false
     @State private var jumpTarget: OverviewSection?
-    @State private var activeJump: OverviewSection = .finance
+    @State private var activeJump: OverviewSection = .today
 
     private enum OverviewSection: String, CaseIterable, Identifiable, Hashable {
+        case today = "วันนี้"
         case finance = "การเงิน"
         case expense = "รายจ่าย"
         case sand = "ทราย"
@@ -164,6 +167,7 @@ struct OverviewHubView: View {
 
         var eyebrow: String {
             switch self {
+            case .today: return "TODAY"
             case .finance: return "FINANCE"
             case .expense: return "EXPENSE"
             case .sand: return "SAND"
@@ -180,6 +184,7 @@ struct OverviewHubView: View {
                     heroCard
                     jumpChips(proxy: proxy)
 
+                    todayOpsSection.id(OverviewSection.today)
                     financeSection.id(OverviewSection.finance)
                     expenseSection.id(OverviewSection.expense)
                     sandSection.id(OverviewSection.sand)
@@ -206,6 +211,7 @@ struct OverviewHubView: View {
         .onChange(of: dateFilter) { _, _ in scheduleRebuild() }
         .onChange(of: transactions) { _, _ in scheduleRebuild() }
         .onChange(of: allTransactions.count) { _, _ in scheduleRebuild() }
+        .onChange(of: employees.count) { _, _ in scheduleRebuild() }
         .onChange(of: settings.cars) { _, _ in scheduleRebuild() }
         .sheet(isPresented: $showShare) {
             ShareSheet(items: [snapshot.csvText])
@@ -217,20 +223,29 @@ struct OverviewHubView: View {
         let filter = dateFilter
         let txs = transactions
         let all = allTransactions
+        let emps = employees
         let settingsCopy = settings
         rebuildTask = Task {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
             let built = await Task.detached(priority: .userInitiated) {
-                OverviewSnapshot.build(
-                    filter: filter,
-                    transactions: txs,
-                    allTransactions: all,
-                    settings: settingsCopy
+                (
+                    OverviewSnapshot.build(
+                        filter: filter,
+                        transactions: txs,
+                        allTransactions: all,
+                        settings: settingsCopy
+                    ),
+                    TodayOpsSnapshot.build(
+                        transactions: all,
+                        employees: emps,
+                        settings: settingsCopy
+                    )
                 )
             }.value
             guard !Task.isCancelled else { return }
-            snapshot = built
+            snapshot = built.0
+            todayOps = built.1
         }
     }
 
@@ -405,6 +420,211 @@ struct OverviewHubView: View {
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
+        }
+    }
+
+    // MARK: - Today ops
+
+    private var todayOpsSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
+            sectionEyebrow(
+                .today,
+                title: "สรุปวันนี้",
+                subtitle: todayOps.dayKey.isEmpty
+                    ? "น้ำมัน · ค่าแรง · รถ · พนักงาน"
+                    : DashboardAggregations.thaiDateLong(todayOps.dayKey)
+            )
+
+            HStack(spacing: 12) {
+                fuelStockCard(
+                    title: "ดีเซลคงเหลือ",
+                    liters: todayOps.dieselLiters,
+                    systemImage: "fuelpump.fill",
+                    accent: AppTheme.fuel
+                )
+                fuelStockCard(
+                    title: "เบนซินคงเหลือ",
+                    liters: todayOps.benzineLiters,
+                    systemImage: "drop.fill",
+                    accent: AppTheme.warning
+                )
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                KPITile(
+                    title: "ค่าแรงวันนี้",
+                    value: DashboardAggregations.formatCurrency(todayOps.laborBaht),
+                    subtitle: "มาทำงาน \(todayOps.presentCount) คน",
+                    accent: AppTheme.labor,
+                    systemImage: "person.2.fill"
+                )
+                KPITile(
+                    title: "ใช้รถวันนี้",
+                    value: DashboardAggregations.formatCurrency(todayOps.vehicleBaht),
+                    subtitle: "ค่าเที่ยว / ค่าขับ",
+                    accent: AppTheme.vehicle,
+                    systemImage: "car.fill"
+                )
+            }
+
+            HStack(spacing: 10) {
+                attendanceChip(count: todayOps.presentCount, title: "มาทำงาน", color: AppTheme.income)
+                attendanceChip(count: todayOps.leaveCount, title: "ลา", color: AppTheme.warning)
+                attendanceChip(count: todayOps.absentCount, title: "ขาด", color: AppTheme.expense)
+            }
+
+            SectionCard("พนักงานวันนี้", systemImage: "person.crop.rectangle.stack.fill") {
+                if todayOps.staffRows.isEmpty {
+                    EmptyStateView(
+                        title: "ยังไม่มีข้อมูลพนักงานวันนี้",
+                        message: "รอการบันทึกค่าแรง / ลางาน",
+                        systemImage: "person.slash"
+                    )
+                } else {
+                    let working = todayOps.staffRows.filter { $0.status == .work }
+                    let onLeave = todayOps.staffRows.filter { $0.status == .leave }
+                    let absent = todayOps.staffRows.filter { $0.status == .absent }
+
+                    if !working.isEmpty {
+                        staffGroupHeader("มาทำงาน · ทำอะไรบ้าง", count: working.count, color: AppTheme.income)
+                        ForEach(working) { row in
+                            staffRowView(row)
+                        }
+                    }
+                    if !onLeave.isEmpty {
+                        if !working.isEmpty { Divider().padding(.vertical, 4) }
+                        staffGroupHeader("ลางาน", count: onLeave.count, color: AppTheme.warning)
+                        ForEach(onLeave) { row in
+                            staffRowView(row)
+                        }
+                    }
+                    if !absent.isEmpty {
+                        if !working.isEmpty || !onLeave.isEmpty { Divider().padding(.vertical, 4) }
+                        staffGroupHeader("ขาดงาน", count: absent.count, color: AppTheme.expense)
+                        ForEach(absent.prefix(12)) { row in
+                            staffRowView(row)
+                        }
+                        if absent.count > 12 {
+                            Text("และอีก \(absent.count - 12) คน")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.inkMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fuelStockCard(title: String, liters: Double, systemImage: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        LinearGradient(colors: [accent, accent.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .lineLimit(1)
+            }
+            Text("\(DashboardAggregations.formatNumber(liters)) L")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text("คงเหลือในสต็อก")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private func attendanceChip(count: Int, title: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                .fill(color.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                .strokeBorder(color.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private func staffGroupHeader(_ title: String, count: Int, color: Color) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            Spacer()
+            PillBadge(text: "\(count) คน", color: color)
+        }
+        .padding(.bottom, 2)
+    }
+
+    private func staffRowView(_ row: TodayOpsSnapshot.StaffRow) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(staffStatusColor(row.status).opacity(0.18))
+                .frame(width: 34, height: 34)
+                .overlay(
+                    Text(String(row.name.prefix(1)))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(staffStatusColor(row.status))
+                )
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(row.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Spacer(minLength: 8)
+                    Text(row.status.rawValue)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(staffStatusColor(row.status))
+                }
+                if !row.workLabels.isEmpty {
+                    Text(row.workLabels.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if row.status == .work {
+                    Text(DashboardAggregations.formatCurrency(row.wage))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.labor)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func staffStatusColor(_ status: TodayOpsSnapshot.StaffRow.Status) -> Color {
+        switch status {
+        case .work: return AppTheme.income
+        case .leave: return AppTheme.warning
+        case .absent: return AppTheme.expense
         }
     }
 

@@ -1,0 +1,295 @@
+import Foundation
+
+/// Home-tab “วันนี้” ops snapshot — fuel stock, labor, vehicle, attendance.
+struct TodayOpsSnapshot: Sendable {
+    struct StaffRow: Identifiable, Sendable {
+        let id: String
+        let name: String
+        let status: Status
+        let workLabels: [String]
+        let wage: Double
+
+        enum Status: String, Sendable {
+            case work = "มาทำงาน"
+            case leave = "ลา"
+            case absent = "ขาด"
+        }
+    }
+
+    let dayKey: String
+    let dieselLiters: Double
+    let benzineLiters: Double
+    let laborBaht: Double
+    let vehicleBaht: Double
+    let presentCount: Int
+    let leaveCount: Int
+    let absentCount: Int
+    let staffRows: [StaffRow]
+
+    static let empty = TodayOpsSnapshot(
+        dayKey: "",
+        dieselLiters: 0,
+        benzineLiters: 0,
+        laborBaht: 0,
+        vehicleBaht: 0,
+        presentCount: 0,
+        leaveCount: 0,
+        absentCount: 0,
+        staffRows: []
+    )
+
+    nonisolated static func build(
+        transactions: [Transaction],
+        employees: [Employee],
+        settings: AppSettings,
+        dayKey: String = DashboardAggregations.todayYMD()
+    ) -> TodayOpsSnapshot {
+        let fuel = DashboardAggregations.fuelStockBalances(
+            transactions: transactions,
+            opening: settings.fuelOpeningStockLiters
+        )
+        let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey }
+
+        let laborBaht = dayTx
+            .filter { $0.category == "Labor" }
+            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+
+        let vehicleBaht = dayTx.reduce(0.0) { sum, t in
+            let isVehicle = t.category == "Vehicle"
+                || (t.category == "DailyLog" && t.subCategory == "VehicleTrip")
+            guard isVehicle else { return sum }
+            return sum + DashboardAggregations.wizardMonetaryAmount(t, employees: employees)
+        }
+
+        var workingIds = Set<String>()
+        var leaveIds = Set<String>()
+        var wageByEmployee: [String: Double] = [:]
+        var workLabelsByEmployee: [String: [String]] = [:]
+
+        for t in dayTx where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
+            let ids = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            for id in ids { workingIds.insert(id) }
+
+            let inferredTotal = DashboardAggregations.wizardMonetaryAmount(t, employees: employees)
+            let share = ids.isEmpty ? 0 : inferredTotal / Double(ids.count)
+            for id in ids {
+                wageByEmployee[id, default: 0] += share
+            }
+
+            if let assignments = t.workAssignments {
+                for (catId, empIds) in assignments {
+                    let label = DashboardAggregations.workCategoryLabel(catId)
+                    for eid in empIds where !eid.isEmpty {
+                        var labels = workLabelsByEmployee[eid] ?? []
+                        if !labels.contains(label) { labels.append(label) }
+                        workLabelsByEmployee[eid] = labels
+                    }
+                }
+            }
+            if let wte = t.workTypeByEmployee {
+                for (eid, wt) in wte where wt == "HalfDay" {
+                    var labels = workLabelsByEmployee[eid] ?? []
+                    if !labels.contains("ครึ่งวัน") { labels.append("ครึ่งวัน") }
+                    workLabelsByEmployee[eid] = labels
+                }
+            }
+            if t.laborStatus == "OT" {
+                for id in ids {
+                    var labels = workLabelsByEmployee[id] ?? []
+                    if !labels.contains("OT") { labels.append("OT") }
+                    workLabelsByEmployee[id] = labels
+                }
+            }
+        }
+
+        for t in transactions where CalendarV3Logic.leaveRecordCoversDay(t, day: dayKey) {
+            for id in (t.employeeIds ?? []) where !id.isEmpty {
+                leaveIds.insert(id)
+                workingIds.remove(id)
+            }
+        }
+
+        let empById = Dictionary(uniqueKeysWithValues: employees.map { ($0.id, $0) })
+        let allIds = Set(employees.map(\.id))
+        let absentIds = allIds.subtracting(workingIds).subtracting(leaveIds)
+
+        var rows: [StaffRow] = []
+        for id in workingIds.sorted() {
+            let name = empById[id]?.displayName ?? id
+            rows.append(StaffRow(
+                id: id,
+                name: name,
+                status: .work,
+                workLabels: workLabelsByEmployee[id] ?? [],
+                wage: wageByEmployee[id] ?? 0
+            ))
+        }
+        for id in leaveIds.sorted() {
+            let name = empById[id]?.displayName ?? id
+            rows.append(StaffRow(
+                id: "leave-\(id)",
+                name: name,
+                status: .leave,
+                workLabels: [],
+                wage: 0
+            ))
+        }
+        for id in absentIds.sorted() {
+            let name = empById[id]?.displayName ?? id
+            rows.append(StaffRow(
+                id: "absent-\(id)",
+                name: name,
+                status: .absent,
+                workLabels: [],
+                wage: 0
+            ))
+        }
+
+        return TodayOpsSnapshot(
+            dayKey: dayKey,
+            dieselLiters: fuel.diesel,
+            benzineLiters: fuel.benzine,
+            laborBaht: laborBaht,
+            vehicleBaht: vehicleBaht,
+            presentCount: workingIds.count,
+            leaveCount: leaveIds.count,
+            absentCount: absentIds.count,
+            staffRows: rows
+        )
+    }
+}
+
+extension DashboardAggregations {
+    // MARK: - Fuel stock (web parity: computeFuelStockBalances)
+
+    struct FuelBalances: Sendable {
+        var diesel: Double
+        var benzine: Double
+    }
+
+    static func fuelTxToLiters(_ t: Transaction) -> Double {
+        let q = t.quantity ?? 0
+        guard q != 0 else { return 0 }
+        let u = (t.unit ?? "L").lowercased()
+        if u == "gallon" || u == "แกลลอน" { return q * 3.785411784 }
+        return q
+    }
+
+    static func inferFuelMovement(_ t: Transaction) -> String {
+        guard t.category == "Fuel" else { return "stock_out" }
+        if t.fuelMovement == "stock_in" || t.fuelMovement == "stock_out" {
+            return t.fuelMovement ?? "stock_out"
+        }
+        return (t.vehicleId?.isEmpty == false) ? "stock_out" : "stock_in"
+    }
+
+    static func fuelStockBalances(
+        transactions: [Transaction],
+        opening: FuelStock?
+    ) -> FuelBalances {
+        var diesel = opening?.diesel ?? 0
+        var benzine = opening?.benzine ?? 0
+        for t in transactions {
+            guard t.category == "Fuel", t.type == .expense else { continue }
+            let liters = fuelTxToLiters(t)
+            guard liters != 0 else { continue }
+            let delta = inferFuelMovement(t) == "stock_in" ? liters : -liters
+            if t.fuelType == "Benzine" {
+                benzine += delta
+            } else {
+                diesel += delta
+            }
+        }
+        return FuelBalances(diesel: diesel, benzine: benzine)
+    }
+
+    // MARK: - Wizard monetary amount (web parity)
+
+    static func isMonthlyEmployee(_ emp: Employee) -> Bool {
+        let normalized = (emp.type ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "monthly" || normalized == "รายเดือน"
+    }
+
+    static func toDailyWage(emp: Employee, wage: Double) -> Double {
+        isMonthlyEmployee(emp) ? wage / 30 : wage
+    }
+
+    static func dailyWageForWorkType(emp: Employee, wage: Double, workType: String) -> Double {
+        let daily = toDailyWage(emp: emp, wage: wage)
+        return workType == "HalfDay" ? daily / 2 : daily
+    }
+
+    static func inferredLaborAttendanceTotal(_ t: Transaction, employees: [Employee]) -> Double {
+        let ids = t.employeeIds ?? []
+        guard !ids.isEmpty else { return 0 }
+        let wte = t.workTypeByEmployee
+        var sum = 0.0
+        for id in ids {
+            guard let emp = employees.first(where: { $0.id == id }) else { continue }
+            guard let wage = emp.baseWage, wage.isFinite else { continue }
+            let wt = wte?[id] == "HalfDay" ? "HalfDay" : "FullDay"
+            sum += dailyWageForWorkType(emp: emp, wage: wage, workType: wt)
+        }
+        return sum
+    }
+
+    static func inferredVehicleSpend(_ t: Transaction) -> Double {
+        if t.amount > 0 { return t.amount }
+        return (t.driverWage ?? 0) + (t.vehicleWage ?? 0)
+    }
+
+    static func inferredOtSpend(_ t: Transaction) -> Double {
+        if t.amount > 0 { return t.amount }
+        guard let rate = t.otAmount, let hours = t.otHours, rate > 0, hours > 0 else { return 0 }
+        let n = max(1, (t.employeeIds ?? []).count)
+        return rate * hours * Double(n)
+    }
+
+    /// Matches web `wizardMonetaryAmount` — prefer amount, else infer from wage fields.
+    static func wizardMonetaryAmount(_ t: Transaction, employees: [Employee]) -> Double {
+        if t.amount > 0 { return t.amount }
+
+        if t.category == "Labor" {
+            if t.subCategory == "Attendance", t.laborStatus == "Work", !employees.isEmpty {
+                let inferred = inferredLaborAttendanceTotal(t, employees: employees)
+                if inferred > 0 { return inferred }
+            }
+            if t.laborStatus == "OT" || t.subCategory == "OT" {
+                let ot = inferredOtSpend(t)
+                if ot > 0 { return ot }
+            }
+            // Fallback: Work without Attendance subcategory still needs wage estimate
+            if t.laborStatus == "Work", !employees.isEmpty {
+                let inferred = inferredLaborAttendanceTotal(t, employees: employees)
+                if inferred > 0 { return inferred }
+            }
+        }
+
+        if t.category == "Vehicle" || (t.category == "DailyLog" && t.subCategory == "VehicleTrip") {
+            let v = inferredVehicleSpend(t)
+            if v > 0 { return v }
+        }
+
+        return 0
+    }
+
+    static func workCategoryLabel(_ rawId: String) -> String {
+        let id = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if id.hasPrefix("general:") {
+            let rest = String(id.dropFirst("general:".count))
+            return rest.isEmpty ? "งานทั่วไป" : rest
+        }
+        switch id {
+        case "wash1": return "ล้างทราย เครื่องร่อน 1"
+        case "wash2": return "ล้างทราย เครื่องร่อน 2"
+        case "washHome", "wash_home", "wash_yard_house", "sift_home": return "ล้างทรายที่บ้าน"
+        case "pierWatch": return "เฝ้าท่าทราย"
+        case "nightShift": return "กะดึก"
+        case "digHaul": return "ขุด/ขน"
+        case "generalWork": return "งานทั่วไป"
+        case "labor_menu_attendance": return "ลงเวลา (ค่าแรง/ลา)"
+        case "other": return "อื่นๆ"
+        default: return id.isEmpty ? "งาน" : id
+        }
+    }
+}
