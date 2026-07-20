@@ -22,7 +22,8 @@ struct CalendarV3View: View {
     @State private var selectedDay: String?
 
     // Sunday-first weekday headers (matches web).
-    private let weekdayLabels = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"]
+    private let weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]
+    private let weekdayLabelsFull = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"]
 
     private var days: [CalendarDayModel] {
         CalendarV3Logic.buildDays(visibleMonth: visibleMonth, transactions: transactions, employees: employees)
@@ -30,19 +31,13 @@ struct CalendarV3View: View {
 
     private var monthIncome: Double { days.reduce(0) { $0 + $1.income } }
     private var monthExpense: Double { days.reduce(0) { $0 + $1.expense } }
+    private var monthNet: Double { monthIncome - monthExpense }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
-            SectionHeader(
-                title: "ปฏิทินการทำงาน (V.3)",
-                systemImage: "calendar",
-                subtitle: "ภาพรวมรายรับรายจ่าย การมาทำงาน วันหยุดและนัดหมาย"
-            )
-
-            monthSummary
+        VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
+            heroCard
 
             SectionCard {
-                monthNavigation
                 legend
                 calendarGrid
             }
@@ -53,90 +48,130 @@ struct CalendarV3View: View {
         }
     }
 
-    // MARK: - Month summary
+    // MARK: - Hero
 
-    private var monthSummary: some View {
-        HStack(spacing: AppTheme.spaceMD) {
-            summaryTile(
-                title: "รายรับเดือนนี้",
-                value: "฿" + DashboardAggregations.formatNumber(monthIncome),
-                systemImage: "arrow.up.right",
-                color: AppTheme.income
+    private var heroCard: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
-            summaryTile(
-                title: "รายจ่ายเดือนนี้",
-                value: "฿" + DashboardAggregations.formatNumber(monthExpense),
-                systemImage: "arrow.down.right",
-                color: AppTheme.expense
-            )
+            Circle()
+                .fill(Color.white.opacity(0.14))
+                .frame(width: 150, height: 150)
+                .blur(radius: 26)
+                .offset(x: 210, y: -40)
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CALENDAR")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.6)
+                            .foregroundStyle(.white.opacity(0.75))
+                        Text("ปฏิทินการทำงาน")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text("รายรับ · รายจ่าย · วันหยุด · นัดหมาย")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "calendar")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.white.opacity(0.16)))
+                        .accessibilityHidden(true)
+                }
+
+                monthNavigation
+
+                HStack(spacing: 10) {
+                    heroMiniStat(
+                        title: "รายรับ",
+                        value: "฿" + DashboardAggregations.formatNumber(monthIncome),
+                        tint: Color(hex: "#A7F3D0")
+                    )
+                    heroMiniStat(
+                        title: "รายจ่าย",
+                        value: "฿" + DashboardAggregations.formatNumber(monthExpense),
+                        tint: Color(hex: "#FECACA")
+                    )
+                    heroMiniStat(
+                        title: "สุทธิ",
+                        value: (monthNet >= 0 ? "+" : "") + "฿" + DashboardAggregations.formatNumber(monthNet),
+                        tint: .white
+                    )
+                }
+            }
+            .padding(20)
         }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
     }
 
-    private func summaryTile(title: String, value: String, systemImage: String, color: Color) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
+    private func heroMiniStat(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            Text(value)
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(color)
-                .frame(width: 36, height: 36)
-                .background(color.opacity(0.15), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(.headline)
-                    .foregroundStyle(color)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(color.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .stroke(color.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                .fill(Color.white.opacity(0.12))
         )
     }
 
     // MARK: - Month navigation
 
     private var monthNavigation: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button { shiftMonth(-1) } label: {
-                Image(systemName: "chevron.left.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.brand)
+                Image(systemName: "chevron.left")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.white.opacity(0.16)))
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("เดือนก่อน")
 
-            Spacer(minLength: 0)
-
-            VStack(spacing: 2) {
-                Text(monthTitle).font(.headline)
+            VStack(spacing: 4) {
+                Text(monthTitle)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Button { goThisMonth() } label: {
                     Text("เดือนนี้")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppTheme.brand)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(AppTheme.brand.opacity(0.12), in: Capsule())
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white.opacity(0.18)))
                 }
                 .buttonStyle(.plain)
             }
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
 
             Button { shiftMonth(1) } label: {
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.brand)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.white.opacity(0.16)))
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("เดือนถัดไป")
         }
     }
@@ -144,21 +179,40 @@ struct CalendarV3View: View {
     // MARK: - Legend
 
     private var legend: some View {
-        HStack(spacing: 14) {
-            legendItem(systemImage: "party.popper", color: AppTheme.expense, label: "วันหยุด")
-            legendItem(systemImage: "clock", color: AppTheme.purple, label: "นัดหมาย")
-            legendItem(systemImage: "sparkles", color: AppTheme.warning, label: "เหตุการณ์ / อื่นๆ")
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: AppTheme.spaceSM) {
+            Text("สัญลักษณ์")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+            HStack(spacing: 0) {
+                legendItem(systemImage: "party.popper", color: AppTheme.expense, label: "วันหยุด")
+                legendItem(systemImage: "clock", color: AppTheme.purple, label: "นัดหมาย")
+                legendItem(systemImage: "sparkles", color: AppTheme.warning, label: "เหตุการณ์")
+            }
         }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
     }
 
     private func legendItem(systemImage: String, color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage).foregroundStyle(color)
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(color)
             Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(AppTheme.inkSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Grid
@@ -167,19 +221,24 @@ struct CalendarV3View: View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
         let leading = CalendarV3Logic.leadingBlankCount(visibleMonth: visibleMonth)
         return LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(weekdayLabels, id: \.self) { d in
+            ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { index, d in
                 Text(d)
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(index == 0 ? AppTheme.expense.opacity(0.85) : AppTheme.inkMuted)
                     .frame(maxWidth: .infinity)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
+                    .padding(.vertical, 4)
+                    .accessibilityLabel(weekdayLabelsFull[index])
             }
             ForEach(0..<leading, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppTheme.surfaceSoft.opacity(0.4))
-                    .frame(minHeight: 66)
+                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                    .fill(AppTheme.surfaceSoft.opacity(0.45))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                            .strokeBorder(AppTheme.hairline.opacity(0.5), lineWidth: 1)
+                    )
+                    .frame(minHeight: 68)
                     .id("blank-\(i)")
+                    .accessibilityHidden(true)
             }
             ForEach(days) { day in
                 dayCell(day)
@@ -199,7 +258,7 @@ struct CalendarV3View: View {
                 HStack(alignment: .top, spacing: 2) {
                     Text("\(day.day)")
                         .font(.subheadline.weight(isToday ? .bold : .semibold))
-                        .foregroundStyle(style.dayNumberColor)
+                        .foregroundStyle(isToday && !day.hasFinance ? AppTheme.brand : style.dayNumberColor)
                     Spacer(minLength: 0)
                     indicatorDots(day)
                 }
@@ -215,18 +274,29 @@ struct CalendarV3View: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 66, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
                     .fill(isSelected ? AppTheme.brand.opacity(0.16) : style.background)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isToday ? AppTheme.brand.opacity(0.6) : style.border, lineWidth: isToday ? 1.6 : 1)
+                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                    .strokeBorder(
+                        isSelected
+                            ? AppTheme.brand.opacity(0.55)
+                            : (isToday ? AppTheme.brand.opacity(0.65) : style.border),
+                        lineWidth: (isSelected || isToday) ? 1.6 : 1
+                    )
+            )
+            .shadow(
+                color: isSelected ? AppTheme.brand.opacity(0.18) : .clear,
+                radius: 6,
+                y: 2
             )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel(day))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func indicatorDots(_ day: CalendarDayModel) -> some View {
@@ -241,7 +311,7 @@ struct CalendarV3View: View {
     }
 
     private func dot(_ color: Color) -> some View {
-        Circle().fill(color).frame(width: 6, height: 6)
+        Circle().fill(color).frame(width: 5, height: 5)
     }
 
     private func amountTag(_ text: String, color: Color) -> some View {
@@ -250,9 +320,12 @@ struct CalendarV3View: View {
             .foregroundStyle(color)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(color.opacity(0.14))
+            )
     }
 
     private func accessibilityLabel(_ day: CalendarDayModel) -> String {
@@ -308,21 +381,21 @@ private struct DayCellStyle {
         if day.hasFinance {
             if day.net > 0 {
                 background = AppTheme.income.opacity(0.12)
-                border = AppTheme.income.opacity(0.3)
+                border = AppTheme.income.opacity(0.28)
                 dayNumberColor = AppTheme.income
             } else if day.net < 0 {
                 background = AppTheme.expense.opacity(0.10)
-                border = AppTheme.expense.opacity(0.3)
+                border = AppTheme.expense.opacity(0.28)
                 dayNumberColor = AppTheme.expense
             } else {
                 background = AppTheme.warning.opacity(0.12)
-                border = AppTheme.warning.opacity(0.3)
+                border = AppTheme.warning.opacity(0.28)
                 dayNumberColor = AppTheme.warning
             }
         } else {
             background = AppTheme.surfaceSoft
-            border = Color.black.opacity(0.05)
-            dayNumberColor = .secondary
+            border = AppTheme.hairline
+            dayNumberColor = AppTheme.inkSecondary
         }
     }
 }
@@ -359,40 +432,66 @@ private struct DayDetailSheet: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(longThaiDate(day.date))
-                .font(.title3.bold())
-            Label("สรุปกิจกรรมและข้อมูลการเงิน", systemImage: "waveform.path.ecg")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.8)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Circle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 120, height: 120)
+                .blur(radius: 20)
+                .offset(x: 240, y: -30)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("DAY DETAIL")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.7))
+                Text(longThaiDate(day.date))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("สรุปกิจกรรมและข้อมูลการเงิน")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .padding(18)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.28), radius: 14, y: 6)
     }
 
     private var calendarSection: some View {
         SectionCard("วันหยุด / นัดหมาย / เหตุการณ์", systemImage: "calendar") {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(day.calendarRows) { row in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         PillBadge(text: row.kindLabel, color: kindColor(row.subCategory))
                         Text(row.title)
                             .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
                         if let time = row.eventTime, !time.isEmpty {
                             Label("\(time) น.", systemImage: "clock")
-                                .font(.caption)
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(AppTheme.purple)
                         }
                         if let note = row.note, !note.isEmpty {
                             Text(note)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.inkMuted)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
+                    .padding(12)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                             .fill(AppTheme.surfaceSoft)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                            .strokeBorder(AppTheme.hairline, lineWidth: 1)
                     )
                 }
             }
@@ -412,25 +511,25 @@ private struct DayDetailSheet: View {
     }
 
     private func totalTile(title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(color)
             Text(value)
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(color)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(color.opacity(0.10))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .stroke(color.opacity(0.25), lineWidth: 1)
+                .strokeBorder(color.opacity(0.22), lineWidth: 1)
         )
     }
 
@@ -456,19 +555,25 @@ private struct DayDetailSheet: View {
                 .frame(width: 44, height: 44)
                 .background(color.opacity(0.15), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
@@ -496,12 +601,17 @@ private struct DayDetailSheet: View {
                 .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text(text)
                 .font(.caption)
+                .foregroundStyle(AppTheme.inkSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(10)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
@@ -532,20 +642,25 @@ private struct DayDetailSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.description)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
                     .lineLimit(2)
                 Text(t.category + (t.subCategory.map { " • \($0)" } ?? ""))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             Spacer(minLength: 0)
             Text(amountText)
                 .font(.subheadline.bold())
                 .foregroundStyle(amountColor)
         }
-        .padding(10)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
