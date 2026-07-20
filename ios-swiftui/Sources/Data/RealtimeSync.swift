@@ -90,7 +90,7 @@ final class RealtimeSyncCoordinator {
             return
         }
         let id = await Task.detached(priority: .userInitiated) {
-            try? JSONDecoder().decode(RealtimeIdOnly.self, from: data)?.id
+            (try? JSONDecoder().decode(RealtimeIdOnly.self, from: data))?.id
         }.value
         guard let id else {
             await appState?.refresh()
