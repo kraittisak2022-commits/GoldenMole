@@ -5,6 +5,7 @@ enum AppMainTab: Hashable {
     case realtime
     case reports
     case calendar
+    case market
 }
 
 private enum HomeSegment: String, CaseIterable, Identifiable {
@@ -52,6 +53,12 @@ struct DashboardShell: View {
             .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
 
+            NavigationStack {
+                marketTab
+            }
+            .tabItem { Label("ทอง/น้ำมัน", systemImage: "chart.line.uptrend.xyaxis") }
+            .tag(AppMainTab.market)
+
         }
         .tint(AppTheme.brand)
         .task {
@@ -77,7 +84,7 @@ struct DashboardShell: View {
     private var homeTab: some View {
         let appStateBindable = Bindable(appState)
         return VStack(spacing: 0) {
-            homeControlRow(appStateBindable: appStateBindable)
+            homeControlRow()
 
             if appState.datePreset == .custom {
                 HStack {
@@ -126,7 +133,7 @@ struct DashboardShell: View {
     }
 
     /// Compact pill segment + date-range chip for the Home tab.
-    private func homeControlRow(appStateBindable: Bindable<AppState>) -> some View {
+    private func homeControlRow() -> some View {
         HStack(spacing: 10) {
             HomeSegmentPill(selection: $homeSegment)
             Spacer(minLength: 0)
@@ -186,6 +193,19 @@ struct DashboardShell: View {
         .overlay(alignment: .topTrailing) {
             headerControlsOverlay
         }
+    }
+
+
+    // MARK: - Market (Gold / Oil AI)
+
+    private var marketTab: some View {
+        MarketInsightsView(
+            insight: appState.marketInsight,
+            loading: appState.marketLoading,
+            error: appState.marketError,
+            onRefresh: { await appState.loadMarket() }
+        )
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     // MARK: - Reports hub
