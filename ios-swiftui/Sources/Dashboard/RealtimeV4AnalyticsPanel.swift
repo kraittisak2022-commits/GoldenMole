@@ -11,10 +11,10 @@ struct RealtimeV4AnalyticsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("วิเคราะห์จังหวะ")
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(RealtimeV4Palette.ink)
                     Text("หักพักเที่ยง 12:00–13:00 น.")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(RealtimeV4Palette.inkMuted)
                 }
                 Spacer()
                 PillBadge(text: analytics.unitLabel, color: accent)
@@ -23,7 +23,7 @@ struct RealtimeV4AnalyticsPanel: View {
             if analytics.rounds == 0 {
                 Text("ยังไม่มีข้อมูลวิเคราะห์")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(RealtimeV4Palette.inkMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 12)
             } else {
@@ -34,11 +34,11 @@ struct RealtimeV4AnalyticsPanel: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(RealtimeV4Palette.cardSoft)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08))
+                .strokeBorder(RealtimeV4Palette.border)
         )
     }
 
@@ -53,7 +53,7 @@ struct RealtimeV4AnalyticsPanel: View {
             Text("สรุปจังหวะการทำงาน")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.5)
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(RealtimeV4Palette.inkFaint)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 avgPaceTile
                 paceDeltaTile
@@ -271,14 +271,14 @@ struct RealtimeV4AnalyticsPanel: View {
                     label: "เช้า",
                     value: split.morning,
                     pct: split.morningPct,
-                    fg: Color(hex: "#FCD34D"),
+                    fg: Color(light: Color(hex: "#B45309"), dark: Color(hex: "#FCD34D")),
                     bg: Color(hex: "#F59E0B").opacity(0.14)
                 )
                 periodSplitStat(
                     label: "บ่าย",
                     value: split.afternoon,
                     pct: split.afternoonPct,
-                    fg: Color(hex: "#C7D2FE"),
+                    fg: Color(light: Color(hex: "#4338CA"), dark: Color(hex: "#C7D2FE")),
                     bg: Color(hex: "#6366F1").opacity(0.16)
                 )
             }
@@ -294,10 +294,10 @@ struct RealtimeV4AnalyticsPanel: View {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text("\(value)")
                     .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RealtimeV4Palette.ink)
                 Text(analytics.unitLabel)
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
             }
             Text("\(Int(pct.rounded()))%")
                 .font(.system(size: 9, weight: .medium))
@@ -314,10 +314,10 @@ struct RealtimeV4AnalyticsPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(peak.label)
                         .font(.title3.bold())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(RealtimeV4Palette.ink)
                     Text("\(peak.count) \(analytics.unitLabel)")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(RealtimeV4Palette.inkSecondary)
                 }
                 Spacer()
                 Image(systemName: "flame.fill")
@@ -333,14 +333,14 @@ struct RealtimeV4AnalyticsPanel: View {
                 ForEach(analytics.heatmap) { cell in
                     RoundedRectangle(cornerRadius: 3)
                         .fill(cell.isLunch
-                              ? Color.white.opacity(0.08)
+                              ? RealtimeV4Palette.cardSoft
                               : accent.opacity(0.15 + cell.intensity * 0.85))
                         .frame(height: 22)
                         .overlay {
                             if cell.isLunch {
                                 Text("/")
                                     .font(.system(size: 7))
-                                    .foregroundStyle(.white.opacity(0.25))
+                                    .foregroundStyle(RealtimeV4Palette.inkFaint)
                             }
                         }
                 }
@@ -353,7 +353,7 @@ struct RealtimeV4AnalyticsPanel: View {
                 Text("23")
             }
             .font(.system(size: 9))
-            .foregroundStyle(.white.opacity(0.4))
+            .foregroundStyle(RealtimeV4Palette.inkFaint)
         }
     }
 
@@ -369,12 +369,12 @@ struct RealtimeV4AnalyticsPanel: View {
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                    AxisValueLabel().foregroundStyle(.white.opacity(0.45))
+                    AxisValueLabel().foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
             .chartYAxis {
                 AxisMarks { _ in
-                    AxisValueLabel().foregroundStyle(.white.opacity(0.45))
+                    AxisValueLabel().foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
             .frame(height: 120)
@@ -390,12 +390,12 @@ struct RealtimeV4AnalyticsPanel: View {
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                    AxisValueLabel().foregroundStyle(.white.opacity(0.45))
+                    AxisValueLabel().foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
             .chartYAxis {
                 AxisMarks { _ in
-                    AxisValueLabel().foregroundStyle(.white.opacity(0.45))
+                    AxisValueLabel().foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
             .frame(height: 120)
@@ -411,7 +411,7 @@ struct RealtimeV4AnalyticsPanel: View {
                         HStack {
                             Text(row.vehicleId)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(RealtimeV4Palette.ink)
                             Spacer()
                             Text("\(row.rounds)")
                                 .font(.caption.bold())
@@ -437,14 +437,14 @@ struct RealtimeV4AnalyticsPanel: View {
                         Text(eta.reached ? "ถึงเป้าแล้ว" : "เหลืออีก \(CountRecordLogic.formatMetric(eta.remaining)) รอบ")
                             .font(.system(size: 9, weight: .bold))
                             .tracking(0.5)
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(RealtimeV4Palette.inkMuted)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(CountRecordLogic.formatMetric(eta.rounds))
                                 .font(.system(size: 24, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(RealtimeV4Palette.ink)
                             Text("/ \(CountRecordLogic.formatMetric(eta.target))")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.5))
+                                .foregroundStyle(RealtimeV4Palette.inkMuted)
                         }
                     }
                     Spacer()
@@ -454,7 +454,7 @@ struct RealtimeV4AnalyticsPanel: View {
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.12))
+                        Capsule().fill(RealtimeV4Palette.cardSoft)
                         Capsule()
                             .fill(eta.reached ? AppTheme.income : Color(hex: "#EC4899"))
                             .frame(width: geo.size.width * CGFloat(min(eta.progressPct / 100, 1)))
@@ -468,11 +468,11 @@ struct RealtimeV4AnalyticsPanel: View {
                 } else if let clock = eta.etaClock {
                     Text("คาดถึงเป้าเวลา \(clock)" + (eta.hoursLeft.map { " · ~\(CountRecordAnalytics.formatDurationHours($0))" } ?? ""))
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(RealtimeV4Palette.inkMuted)
                 } else {
                     Text("ต้องมีอย่างน้อย 2 รอบเพื่อคำนวณ")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
         }
@@ -483,14 +483,14 @@ struct RealtimeV4AnalyticsPanel: View {
             HStack {
                 Text("\(Int(c.pctInBand.rounded()))%")
                     .font(.title2.bold())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RealtimeV4Palette.ink)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("อยู่ในช่วง ±25% ของค่ามัธยฐาน")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(RealtimeV4Palette.inkMuted)
                     Text("มัธยฐาน \(CountRecordAnalytics.formatPace(c.medianSec)) · \(c.sampleSize) ช่วง")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
                 Spacer()
             }
@@ -510,7 +510,7 @@ struct RealtimeV4AnalyticsPanel: View {
             .chartXAxis(.hidden)
             .chartYAxis {
                 AxisMarks { _ in
-                    AxisValueLabel().foregroundStyle(.white.opacity(0.45))
+                    AxisValueLabel().foregroundStyle(RealtimeV4Palette.inkFaint)
                 }
             }
             .frame(height: 90)
@@ -521,14 +521,18 @@ struct RealtimeV4AnalyticsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(RealtimeV4Palette.inkSecondary)
             content()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.18))
+                .fill(RealtimeV4Palette.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
     }
 }
@@ -645,17 +649,17 @@ struct RealtimeV4ActivityFeed: View {
                     .foregroundStyle(AppTheme.warning)
                 Text("อัปเดตล่าสุดจากมือถือ")
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RealtimeV4Palette.ink)
                 Spacer()
                 Text("\(events.count)")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(RealtimeV4Palette.inkMuted)
             }
 
             if events.isEmpty {
                 Text("ยังไม่มีเหตุการณ์วันนี้")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(RealtimeV4Palette.inkMuted)
                     .padding(.vertical, 8)
             } else {
                 ForEach(events) { event in
@@ -666,10 +670,10 @@ struct RealtimeV4ActivityFeed: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(event.label)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(RealtimeV4Palette.ink)
                             Text(event.stamp)
                                 .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.45))
+                                .foregroundStyle(RealtimeV4Palette.inkFaint)
                         }
                         Spacer()
                         Text(event.kind == .trip ? "เที่ยว" : "ทราย")
@@ -683,11 +687,11 @@ struct RealtimeV4ActivityFeed: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(RealtimeV4Palette.cardSoft)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08))
+                .strokeBorder(RealtimeV4Palette.border)
         )
     }
 }

@@ -141,10 +141,7 @@ struct DashboardShell: View {
             .refreshable { await appState.refresh() }
             .scrollContentBackground(.hidden)
         }
-        // The web "Real-time V.4" share view is always a dark, premium dashboard —
-        // force a dark page + colorScheme here regardless of the device appearance.
         .background(RealtimeV4Palette.page.ignoresSafeArea())
-        .environment(\.colorScheme, .dark)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topTrailing) {
             headerControlsOverlay
@@ -407,15 +404,14 @@ struct DashboardShell: View {
         .toolbar { headerToolbar }
     }
 
-    // MARK: - Header controls (refresh + appearance + profile)
+    // MARK: - Header controls (appearance + profile)
 
     @ToolbarContentBuilder
     private var headerToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             appearanceToggle
         }
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
-            refreshButton
+        ToolbarItem(placement: .navigationBarTrailing) {
             avatarButton
         }
     }
@@ -426,8 +422,7 @@ struct DashboardShell: View {
             appearanceToggle
             Divider()
                 .frame(height: 20)
-                .overlay(Color.white.opacity(0.15))
-            refreshButton
+                .overlay(Color.primary.opacity(0.15))
             avatarButton
         }
         .padding(.horizontal, 10)
@@ -435,20 +430,9 @@ struct DashboardShell: View {
         .background(
             Capsule().fill(.ultraThinMaterial)
         )
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
-        .environment(\.colorScheme, .dark)
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         .padding(.top, 6)
         .padding(.trailing, AppTheme.spaceLG)
-    }
-
-    private var refreshButton: some View {
-        Button {
-            Task { await appState.refresh() }
-        } label: {
-            Image(systemName: "arrow.clockwise")
-        }
-        .disabled(appState.isLoading)
-        .accessibilityLabel("รีเฟรชข้อมูล")
     }
 
     /// Light/dark switch — separate control from the profile avatar.
