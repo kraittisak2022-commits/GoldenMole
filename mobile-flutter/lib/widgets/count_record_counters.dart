@@ -125,6 +125,7 @@ class CountRecordCounterPanel extends StatefulWidget {
     this.embedded = false,
     this.serverOnline = true,
     this.onDataChanged,
+    this.onRequireToday,
   });
 
   final CounterMode mode;
@@ -138,6 +139,8 @@ class CountRecordCounterPanel extends StatefulWidget {
   final bool embedded;
   final bool serverOnline;
   final VoidCallback? onDataChanged;
+  /// เมื่อกดนับขณะดูวันอื่น — เรียกให้ parent สลับเป็นวันนี้
+  final VoidCallback? onRequireToday;
 
   @override
   State<CountRecordCounterPanel> createState() =>
@@ -885,11 +888,27 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
+  String _todayYmd() {
+    final n = DateTime.now();
+    final y = n.year.toString().padLeft(4, '0');
+    final m = n.month.toString().padLeft(2, '0');
+    final d = n.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
   /// กดปุ่ม = บันทึกวันเวลา + เพิ่มจำนวน 1 (จำกัด 1 ครั้งทุก 3 วินาทีต่อปุ่ม)
   Future<void> _recordTap(_CounterUnit u) async {
     if (u.busy) return;
     if (u.isOnRecordCooldown) return;
     if (widget.mode == CounterMode.trip && u.isBrokenReported) return;
+    // บังคับนับเฉพาะวันปัจจุบัน — กันลืมเปลี่ยนวันแล้วนับซ้ำวันเก่า
+    if (widget.dateYmd != _todayYmd()) {
+      _toast(
+        'บันทึกได้เฉพาะวันปัจจุบัน — เปลี่ยนเป็นวันนี้ให้อัตโนมัติ แล้วกดนับอีกครั้ง',
+      );
+      widget.onRequireToday?.call();
+      return;
+    }
     final prevRounds = u.rounds;
     final prevLaps = List<String>.from(u.lapTimes);
     final prevCombo = u.comboCount;

@@ -642,6 +642,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  /// สลับวันที่เลือกเป็นวันนี้ — เรียกเมื่อกดนับขณะดูวันอื่นใน «บันทึกและนับจำนวน»
+  void _forceCountRecordToday() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_dateKey(_selectedDay) == _dateKey(today)) return;
+    if (!mounted) return;
+    setState(() => _selectedDay = today);
+    _configureTransactionRealtime();
+    unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
+  }
+
   void _openQuickInput(_DailyModuleDef m) {
     if (!_serverOnline && !_isOfflineCapableModule(m.category)) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -793,6 +804,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         onPullRefresh: _pullRefresh,
                                         onCountRecordDataChanged:
                                             _refreshAfterCountRecordChange,
+                                        onRequireToday: _forceCountRecordToday,
                                         onPickDay: _pickDay,
                                         dateKey: _dateKey,
                                         formatBuddhistDateButton:
@@ -910,6 +922,7 @@ class _DailyHomeContent extends StatefulWidget {
     required this.selectedDay,
     required this.onPullRefresh,
     required this.onCountRecordDataChanged,
+    required this.onRequireToday,
     required this.onPickDay,
     required this.dateKey,
     required this.formatBuddhistDateButton,
@@ -927,6 +940,8 @@ class _DailyHomeContent extends StatefulWidget {
   final DateTime selectedDay;
   final Future<void> Function() onPullRefresh;
   final Future<void> Function() onCountRecordDataChanged;
+  /// สลับวันที่เลือกเป็นวันนี้เมื่อกดนับขณะดูวันอื่น
+  final VoidCallback onRequireToday;
   final VoidCallback onPickDay;
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
@@ -1187,6 +1202,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       onDataChanged: () {
                         unawaited(widget.onCountRecordDataChanged());
                       },
+                      onRequireToday: widget.onRequireToday,
                     ),
                   );
                 }
