@@ -953,7 +953,7 @@ struct OverviewHubView: View {
                     .background(AppTheme.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text("คะแนนรวม")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             HStack(spacing: 12) {
                 ZStack {
