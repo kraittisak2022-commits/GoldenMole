@@ -1,11 +1,16 @@
-﻿import SwiftUI
+import SwiftUI
 
 enum AppMainTab: Hashable {
     case home
     case realtime
     case reports
     case calendar
-    case market
+}
+
+private enum HomeSegment: String, CaseIterable, Identifiable {
+    case overview = "ภาพรวม"
+    case worklog = "บันทึกงาน"
+    var id: String { rawValue }
 }
 
 struct DashboardShell: View {
@@ -17,12 +22,6 @@ struct DashboardShell: View {
     @State private var homeSegment: HomeSegment = .overview
     @State private var showProfile = false
 
-    private enum HomeSegment: String, CaseIterable, Identifiable {
-        case overview = "เธ เธฒเธเธฃเธงเธก"
-        case worklog = "เธเธฑเธเธ—เธถเธเธเธฒเธ"
-        var id: String { rawValue }
-    }
-
     init() {
         Self.applyTabBarAppearance()
     }
@@ -32,7 +31,7 @@ struct DashboardShell: View {
             NavigationStack {
                 homeTab
             }
-            .tabItem { Label("เธซเธเนเธฒเธซเธฅเธฑเธ", systemImage: "square.grid.2x2.fill") }
+            .tabItem { Label("หน้าหลัก", systemImage: "square.grid.2x2.fill") }
             .tag(AppMainTab.home)
 
             NavigationStack {
@@ -44,20 +43,15 @@ struct DashboardShell: View {
             NavigationStack {
                 reportsHub
             }
-            .tabItem { Label("เธฃเธฒเธขเธเธฒเธ", systemImage: "chart.bar.doc.horizontal.fill") }
+            .tabItem { Label("รายงาน", systemImage: "chart.bar.doc.horizontal.fill") }
             .tag(AppMainTab.reports)
 
             NavigationStack {
                 calendarTab
             }
-            .tabItem { Label("เธเธเธดเธ—เธดเธ", systemImage: "calendar") }
+            .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
 
-            NavigationStack {
-                marketTab
-            }
-            .tabItem { Label("เธ—เธญเธ/เธเนเธณเธกเธฑเธ", systemImage: "chart.line.uptrend.xyaxis") }
-            .tag(AppMainTab.market)
         }
         .tint(AppTheme.brand)
         .task {
@@ -68,7 +62,7 @@ struct DashboardShell: View {
                 ProfileView()
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("เน€เธชเธฃเนเธ") { showProfile = false }
+                            Button("เสร็จ") { showProfile = false }
                                 .fontWeight(.semibold)
                         }
                     }
@@ -83,19 +77,22 @@ struct DashboardShell: View {
     private var homeTab: some View {
         let appStateBindable = Bindable(appState)
         return VStack(spacing: 0) {
-            DateFilterBar(
-                datePreset: appStateBindable.datePreset,
-                customStart: appStateBindable.customStart,
-                customEnd: appStateBindable.customEnd
-            )
-            Picker("เธกเธธเธกเธกเธญเธ", selection: $homeSegment) {
-                ForEach(HomeSegment.allCases) { seg in
-                    Text(seg.rawValue).tag(seg)
+            homeControlRow(appStateBindable: appStateBindable)
+
+            if appState.datePreset == .custom {
+                HStack {
+                    DatePicker("เริ่ม", selection: appStateBindable.customStart, displayedComponents: .date)
+                        .labelsHidden()
+                    Text("–")
+                        .foregroundStyle(AppTheme.inkMuted)
+                    DatePicker("สิ้นสุด", selection: appStateBindable.customEnd, displayedComponents: .date)
+                        .labelsHidden()
+                    Spacer(minLength: 0)
                 }
+                .font(.subheadline)
+                .padding(.horizontal, AppTheme.spaceLG)
+                .padding(.bottom, 8)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, AppTheme.spaceLG)
-            .padding(.vertical, 10)
 
             loadingOr {
                 switch homeSegment {
@@ -104,7 +101,8 @@ struct DashboardShell: View {
                         transactions: appState.filteredTransactions,
                         allTransactions: appState.transactions,
                         settings: appState.settings,
-                        dateFilter: appState.dateFilter
+                        dateFilter: appState.dateFilter,
+                        greetingName: auth.currentAdmin?.displayName
                     )
                     .refreshable { await appState.refresh() }
                 case .worklog:
@@ -127,6 +125,47 @@ struct DashboardShell: View {
         .toolbar { headerToolbar }
     }
 
+    /// Compact pill segment + date-range chip for the Home tab.
+    private func homeControlRow(appStateBindable: Bindable<AppState>) -> some View {
+        HStack(spacing: 10) {
+            HomeSegmentPill(selection: $homeSegment)
+            Spacer(minLength: 0)
+            Menu {
+                ForEach(DateRangePreset.allCases) { preset in
+                    Button {
+                        appState.datePreset = preset
+                    } label: {
+                        if appState.datePreset == preset {
+                            Label(preset.label, systemImage: "checkmark")
+                        } else {
+                            Text(preset.label)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.caption.weight(.semibold))
+                    Text(appState.datePreset.label)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.surfaceSoft)
+                )
+                .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
+            }
+        }
+        .padding(.horizontal, AppTheme.spaceLG)
+        .padding(.vertical, 10)
+    }
+
     // MARK: - Realtime
 
     private var realtimeTab: some View {
@@ -144,21 +183,9 @@ struct DashboardShell: View {
         }
         .background(RealtimeV4Palette.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .topTrailing) {
             headerControlsOverlay
         }
-    }
-
-    // MARK: - Market (Gold / Oil AI)
-
-    private var marketTab: some View {
-        MarketInsightsView(
-            insight: appState.marketInsight,
-            loading: appState.marketLoading,
-            error: appState.marketError,
-            onRefresh: { await appState.loadMarket() }
-        )
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     // MARK: - Reports hub
@@ -168,73 +195,57 @@ struct DashboardShell: View {
             VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
                 reportsHero
 
-                reportsSection(title: "เธงเธดเน€เธเธฃเธฒเธฐเธซเนเนเธฅเธฐเธฃเธฒเธขเธเธฒเธฃ", systemImage: "sparkles") {
+                reportsSection(title: "วิเคราะห์และรายการ", systemImage: "sparkles") {
                     reportLink(
-                        title: "เธฃเธฒเธขเธเธฒเธฃเธเธฑเธเธ—เธถเธ",
-                        subtitle: "เธเนเธเธซเธฒเธเธธเธฃเธเธฃเธฃเธกเธ—เธฑเนเธเธซเธกเธ”",
+                        title: "รายการบันทึก",
+                        subtitle: "ค้นหาธุรกรรมทั้งหมด",
                         icon: "list.bullet.rectangle.portrait",
                         color: AppTheme.slate,
                         destination: {
                             RecordListView(transactions: appState.transactions)
                         }
                     )
-                    reportLink(
-                        title: "เธ—เธญเธ/เธเนเธณเธกเธฑเธ (AI)",
-                        subtitle: "เธงเธดเน€เธเธฃเธฒเธฐเธซเนเนเธเธงเนเธเนเธกเธฃเธฒเธเธฒเธฃเธฒเธขเธงเธฑเธ",
-                        icon: "chart.line.uptrend.xyaxis",
-                        color: AppTheme.warning,
-                        destination: {
-                            MarketInsightsView(
-                                insight: appState.marketInsight,
-                                loading: appState.marketLoading,
-                                error: appState.marketError,
-                                onRefresh: { await appState.loadMarket() }
-                            )
-                            .navigationTitle("เธ—เธญเธ/เธเนเธณเธกเธฑเธ")
-                            .navigationBarTitleDisplayMode(.inline)
-                        }
-                    )
                 }
 
-                reportsSection(title: "เธฃเธฒเธขเธเธฒเธเธ•เธฒเธกเธซเธกเธงเธ”", systemImage: "square.grid.2x2.fill") {
+                reportsSection(title: "รายงานตามหมวด", systemImage: "square.grid.2x2.fill") {
                     reportLink(
-                        title: "เธเนเธฒเนเธฃเธ",
-                        subtitle: "เธชเธฃเธธเธเธเนเธฒเนเธฃเธเธ•เธฒเธกเธเนเธงเธ",
+                        title: "ค่าแรง",
+                        subtitle: "สรุปค่าแรงตามช่วง",
                         icon: "person.2.fill",
                         color: AppTheme.labor,
                         destination: { categoryDetail(.labor) }
                     )
                     reportLink(
-                        title: "เธเธฒเธฃเนเธเนเธฃเธ–",
-                        subtitle: "เธเนเธฒเนเธเนเธเนเธฒเธขเธขเธฒเธเธเธฒเธซเธเธฐ",
+                        title: "การใช้รถ",
+                        subtitle: "ค่าใช้จ่ายยานพาหนะ",
                         icon: "truck.box.fill",
                         color: AppTheme.vehicle,
                         destination: { categoryDetail(.vehicle) }
                     )
                     reportLink(
-                        title: "เธฅเนเธฒเธเธ—เธฃเธฒเธข",
-                        subtitle: "เธ—เธฃเธฒเธขเนเธฅเธฐเธ–เธฑเธ",
+                        title: "ล้างทราย",
+                        subtitle: "ทรายและถัง",
                         icon: "drop.fill",
                         color: AppTheme.sand,
                         destination: { categoryDetail(.sand) }
                     )
                     reportLink(
-                        title: "เธเนเธณเธกเธฑเธ",
-                        subtitle: "เธ”เธตเน€เธเธฅ / เน€เธเธเธเธดเธ",
+                        title: "น้ำมัน",
+                        subtitle: "ดีเซล / เบนซิน",
                         icon: "fuelpump.fill",
                         color: AppTheme.fuel,
                         destination: { categoryDetail(.fuel) }
                     )
                     reportLink(
-                        title: "เธ—เธตเนเธ”เธดเธ",
-                        subtitle: "เนเธเธฃเธเธเธฒเธฃเนเธฅเธฐเธเนเธฒเนเธเนเธเนเธฒเธข",
+                        title: "ที่ดิน",
+                        subtitle: "โครงการและค่าใช้จ่าย",
                         icon: "map.fill",
                         color: AppTheme.land,
                         destination: { categoryDetail(.land) }
                     )
                     reportLink(
-                        title: "เธฃเธฒเธขเธฃเธฑเธ",
-                        subtitle: "เธชเธฃเธธเธเธฃเธฒเธขเนเธ”เน",
+                        title: "รายรับ",
+                        subtitle: "สรุปรายได้",
                         icon: "banknote.fill",
                         color: AppTheme.income,
                         destination: { categoryDetail(.income) }
@@ -245,7 +256,7 @@ struct DashboardShell: View {
         }
         .background(DashboardBackground())
         .scrollContentBackground(.hidden)
-        .navigationTitle("เธฃเธฒเธขเธเธฒเธ")
+        .navigationTitle("รายงาน")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { headerToolbar }
     }
@@ -258,10 +269,10 @@ struct DashboardShell: View {
                 .frame(width: 48, height: 48)
                 .background(Circle().fill(Color.white.opacity(0.18)))
             VStack(alignment: .leading, spacing: 3) {
-                Text("เธจเธนเธเธขเนเธฃเธฒเธขเธเธฒเธ")
+                Text("ศูนย์รายงาน")
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                Text("เน€เธฅเธทเธญเธเธ”เธนเธชเธฃเธธเธเธ•เธฒเธกเธกเธธเธกเธกเธญเธเธซเธฃเธทเธญเธซเธกเธงเธ”เธซเธกเธนเน")
+                Text("เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.85))
             }
@@ -403,7 +414,7 @@ struct DashboardShell: View {
             .scrollContentBackground(.hidden)
         }
         .background(DashboardBackground())
-        .navigationTitle("เธเธเธดเธ—เธดเธ")
+        .navigationTitle("ปฏิทิน")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
     }
@@ -412,20 +423,20 @@ struct DashboardShell: View {
 
     @ToolbarContentBuilder
     private var headerToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarLeading) {
-            avatarButton
+        ToolbarItemGroup(placement: .topBarTrailing) {
             appearanceButton
+            avatarButton
         }
     }
 
     /// Floating cluster for the Real-time tab, which hides its navigation bar.
     private var headerControlsOverlay: some View {
         HStack(spacing: 10) {
-            avatarButton
+            appearanceButton
             Divider()
                 .frame(height: 20)
                 .overlay(Color.primary.opacity(0.15))
-            appearanceButton
+            avatarButton
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -434,10 +445,10 @@ struct DashboardShell: View {
         )
         .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         .padding(.top, 6)
-        .padding(.leading, AppTheme.spaceLG)
+        .padding(.trailing, AppTheme.spaceLG)
     }
 
-    /// Pro sun/moon icon button โ€” tap to flip light/dark.
+    /// Pro sun/moon icon button — tap to flip light/dark.
     private var appearanceButton: some View {
         let isDark = isDarkModeBinding.wrappedValue
         return Button {
@@ -454,7 +465,7 @@ struct DashboardShell: View {
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("เธชเธฅเธฑเธเนเธซเธกเธ”เธชเธงเนเธฒเธ/เธกเธทเธ”")
+        .accessibilityLabel("สลับโหมดสว่าง/มืด")
     }
 
     /// True when the app is showing dark. Writing flips between explicit light/dark.
@@ -483,7 +494,7 @@ struct DashboardShell: View {
                 size: 30
             )
         }
-        .accessibilityLabel("เนเธเธฃเนเธเธฅเน")
+        .accessibilityLabel("โปรไฟล์")
     }
 
     private var currentAppearance: AppearanceMode {
@@ -524,9 +535,9 @@ struct DashboardShell: View {
         if appState.isLoading && appState.transactions.isEmpty {
             VStack(spacing: 12) {
                 Spacer()
-                ProgressView("เธเธณเธฅเธฑเธเนเธซเธฅเธ”เธเนเธญเธกเธนเธฅโ€ฆ")
+                ProgressView("กำลังโหลดข้อมูล…")
                     .tint(AppTheme.brand)
-                Text("เน€เธเธทเนเธญเธกเธ•เนเธญ \(appState.supabaseHost)")
+                Text("เชื่อมต่อ \(appState.supabaseHost)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -536,11 +547,11 @@ struct DashboardShell: View {
             VStack(spacing: 12) {
                 Spacer()
                 EmptyStateView(
-                    title: "เนเธซเธฅเธ”เนเธกเนเธชเธณเน€เธฃเนเธ",
+                    title: "โหลดไม่สำเร็จ",
                     message: "\(error)\n\nHost: \(appState.supabaseHost)",
                     systemImage: "wifi.exclamationmark"
                 )
-                Button("เธฅเธญเธเธญเธตเธเธเธฃเธฑเนเธ") {
+                Button("ลองอีกครั้ง") {
                     Task { await appState.refresh() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -552,11 +563,11 @@ struct DashboardShell: View {
             VStack(spacing: 12) {
                 Spacer()
                 EmptyStateView(
-                    title: "เน€เธเธทเนเธญเธกเธ•เนเธญเธชเธณเน€เธฃเนเธ เนเธ•เนเธขเธฑเธเนเธกเนเธกเธตเธเนเธญเธกเธนเธฅ",
-                    message: "เธ”เธถเธเธเธฒเธ \(appState.supabaseHost) เนเธ”เน 0 เธฃเธฒเธขเธเธฒเธฃ\nเธ–เนเธฒเน€เธงเนเธเธกเธตเธเนเธญเธกเธนเธฅ เนเธซเนเธ•เธฃเธงเธเธงเนเธฒ SUPABASE_URL เนเธ Codemagic เธ•เธฃเธเธเธฑเธเน€เธงเนเธ (เธ”เธนเนเธ—เนเธเนเธเธฃเนเธเธฅเน)",
+                    title: "เชื่อมต่อสำเร็จ แต่ยังไม่มีข้อมูล",
+                    message: "ดึงจาก \(appState.supabaseHost) ได้ 0 รายการ\nถ้าเว็บมีข้อมูล ให้ตรวจว่า SUPABASE_URL ใน Codemagic ตรงกับเว็บ (ดูแท็บโปรไฟล์)",
                     systemImage: "tray"
                 )
-                Button("เธฅเธญเธเธญเธตเธเธเธฃเธฑเนเธ") {
+                Button("ลองอีกครั้ง") {
                     Task { await appState.refresh() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -567,5 +578,41 @@ struct DashboardShell: View {
         } else {
             content()
         }
+    }
+}
+
+
+// MARK: - Home segment pill
+
+private struct HomeSegmentPill: View {
+    @Binding var selection: HomeSegment
+    @Namespace private var pillNS
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(HomeSegment.allCases) { seg in
+                Button {
+                    withAnimation(.snappy(duration: 0.28)) { selection = seg }
+                } label: {
+                    Text(seg.rawValue)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(selection == seg ? .white : AppTheme.inkMuted)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background {
+                            if selection == seg {
+                                Capsule()
+                                    .fill(AppTheme.brand)
+                                    .matchedGeometryEffect(id: "homeSegThumb", in: pillNS)
+                                    .shadow(color: AppTheme.brand.opacity(0.35), radius: 6, y: 2)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(AppTheme.surfaceSoft))
+        .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
     }
 }
