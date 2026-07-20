@@ -5,7 +5,6 @@ enum AppMainTab: Hashable {
     case realtime
     case reports
     case calendar
-    case market
 }
 
 private enum HomeSegment: String, CaseIterable, Identifiable {
@@ -52,14 +51,7 @@ struct DashboardShell: View {
             }
             .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
-
-            NavigationStack {
-                marketTab
-            }
-            .tabItem { Label("ทอง/น้ำมัน", systemImage: "chart.line.uptrend.xyaxis") }
-            .tag(AppMainTab.market)
-
-        }
+}
         .tint(AppTheme.brand)
         .task {
             await appState.refresh()
@@ -194,21 +186,7 @@ struct DashboardShell: View {
             headerControlsOverlay
         }
     }
-
-
-    // MARK: - Market (Gold / Oil AI)
-
-    private var marketTab: some View {
-        MarketInsightsView(
-            insight: appState.marketInsight,
-            loading: appState.marketLoading,
-            error: appState.marketError,
-            onRefresh: { await appState.loadMarket() }
-        )
-        .toolbar(.hidden, for: .navigationBar)
-    }
-
-    // MARK: - Reports hub
+// MARK: - Reports hub
 
     private var reportsHub: some View {
         ScrollView {
