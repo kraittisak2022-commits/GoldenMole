@@ -143,7 +143,7 @@ struct DashboardShell: View {
         }
         .background(RealtimeV4Palette.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .topLeading) {
             headerControlsOverlay
         }
     }
@@ -404,26 +404,24 @@ struct DashboardShell: View {
         .toolbar { headerToolbar }
     }
 
-    // MARK: - Header controls (appearance + profile)
+    // MARK: - Header controls (profile + appearance)
 
     @ToolbarContentBuilder
     private var headerToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            appearanceToggle
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        ToolbarItemGroup(placement: .navigationBarLeading) {
             avatarButton
+            appearanceButton
         }
     }
 
     /// Floating cluster for the Real-time tab, which hides its navigation bar.
     private var headerControlsOverlay: some View {
         HStack(spacing: 10) {
-            appearanceToggle
+            avatarButton
             Divider()
                 .frame(height: 20)
                 .overlay(Color.primary.opacity(0.15))
-            avatarButton
+            appearanceButton
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -432,17 +430,26 @@ struct DashboardShell: View {
         )
         .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         .padding(.top, 6)
-        .padding(.trailing, AppTheme.spaceLG)
+        .padding(.leading, AppTheme.spaceLG)
     }
 
-    /// Light/dark switch — separate control from the profile avatar.
-    private var appearanceToggle: some View {
-        Toggle(isOn: isDarkModeBinding) {
-            Image(systemName: isDarkModeBinding.wrappedValue ? "moon.stars.fill" : "sun.max.fill")
+    /// Pro sun/moon icon button — tap to flip light/dark.
+    private var appearanceButton: some View {
+        let isDark = isDarkModeBinding.wrappedValue
+        return Button {
+            withAnimation(.snappy(duration: 0.25)) {
+                isDarkModeBinding.wrappedValue.toggle()
+            }
+        } label: {
+            Image(systemName: isDark ? "moon.stars.fill" : "sun.max.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isDark ? Color(hex: "#C7D2FE") : Color(hex: "#F59E0B"))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.08)))
         }
-        .toggleStyle(.switch)
-        .labelsHidden()
-        .tint(AppTheme.brand)
+        .buttonStyle(.plain)
         .accessibilityLabel("สลับโหมดสว่าง/มืด")
     }
 
