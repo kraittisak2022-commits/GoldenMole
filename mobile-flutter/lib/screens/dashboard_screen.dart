@@ -178,6 +178,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   late Future<_HomePayload> _homeFuture;
   _HomePayload? _lastHomePayload;
   Timer? _offlineDebounceTimer;
+  /// ตั้งปลุกที่เที่ยงคืน — สลับ `_selectedDay` เป็นวันใหม่เมื่อแอปค้างข้ามคืน
+  Timer? _midnightRolloverTimer;
 
   void _applyServerReachability(bool online, {bool force = false}) {
     if (!mounted) return;
@@ -314,6 +316,43 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     CountRecordOfflineSync.instance.syncState.addListener(_onSyncStateChanged);
     _configureTransactionRealtime();
+    _scheduleMidnightRollover();
+  }
+
+  /// ตั้ง Timer ให้ปลุกหลังเที่ยงคืน (+1 วิ) เพื่อสลับวันอัตโนมัติ
+  void _scheduleMidnightRollover() {
+    _midnightRolloverTimer?.cancel();
+    _midnightRolloverTimer = null;
+    if (!mounted) return;
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    final delay = nextMidnight.difference(now) + const Duration(seconds: 1);
+    _midnightRolloverTimer = Timer(delay, () {
+      if (!mounted) return;
+      _handleDayRollover();
+    });
+  }
+
+  /// เมื่อวันปฏิทินเปลี่ยน — สลับ `_selectedDay` เป็นวันนี้ + toast + refresh
+  void _handleDayRollover() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_dateKey(_selectedDay) != _dateKey(today)) {
+      setState(() => _selectedDay = today);
+      _configureTransactionRealtime();
+      unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'ขึ้นวันใหม่แล้ว — เปลี่ยนเป็นวันปัจจุบันให้อัตโนมัติ',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+    _scheduleMidnightRollover();
   }
 
   /// โหลดแคชในเครื่องทันที — แสดงแดชบอร์ดได้เร็วโดยไม่รอเน็ต
@@ -342,12 +381,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         .removeListener(_onSyncStateChanged);
     CountRecordOfflineSync.instance.stopAutoSync();
     _offlineDebounceTimer?.cancel();
+    _midnightRolloverTimer?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // เช็คว่าข้ามวันระหว่างพักเบื้องหลังไหม — สลับเป็นวันนี้ + ตั้ง timer ใหม่
+      _handleDayRollover();
       unawaited(_syncCountRecordQueueThenRefresh());
     }
   }
