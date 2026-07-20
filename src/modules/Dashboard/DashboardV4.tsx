@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FocusEvent, type MouseEvent } from 'react';
 import { Activity, Calendar, Droplets, Link2, Truck, Wallet, TrendingUp, CreditCard, Zap, Settings2 } from 'lucide-react';
 import ShareLinkManager from '../Share/ShareLinkManager';
 import { useShareLocale } from '../Share/shareI18n';
@@ -48,6 +48,15 @@ const syncSourceLabel = (source: CountRecordSyncSource | null, t: ReturnType<typ
     if (source === 'poll') return t('syncPoll');
     if (source === 'local') return t('syncLocal');
     return '—';
+};
+
+/** Force-open native date picker when the overlay input is clicked/focused (Chrome only opens on calendar icon otherwise). */
+const openDatePicker = (e: MouseEvent<HTMLInputElement> | FocusEvent<HTMLInputElement>) => {
+    try {
+        e.currentTarget.showPicker?.();
+    } catch {
+        /* Unsupported / not allowed — keep native behavior */
+    }
 };
 
 const DashboardV4 = ({
@@ -165,6 +174,8 @@ const DashboardV4 = ({
                                     value={selectedDate || today}
                                     max={today}
                                     onChange={(e) => setSelectedDate(e.target.value)}
+                                    onClick={openDatePicker}
+                                    onFocus={openDatePicker}
                                     className="absolute inset-0 cursor-pointer opacity-0"
                                     aria-label={t('selectDate')}
                                 />
@@ -275,6 +286,8 @@ const DashboardV4 = ({
                                     value={selectedDate || today}
                                     max={today}
                                     onChange={(e) => setSelectedDate(e.target.value)}
+                                    onClick={openDatePicker}
+                                    onFocus={openDatePicker}
                                     className="absolute inset-0 cursor-pointer opacity-0"
                                     aria-label={t('selectDate')}
                                 />
