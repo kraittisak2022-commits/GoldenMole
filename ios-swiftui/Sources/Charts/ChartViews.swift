@@ -77,25 +77,78 @@ struct LineChartView: View {
     let labels: [String]
     let values: [Double]
     var lineColor: Color = AppTheme.info
+    /// Optional second series (e.g. income overlay on expense).
+    var secondaryValues: [Double]? = nil
+    var secondaryColor: Color = AppTheme.purple
+    var primaryLabel: String = ""
+    var secondaryLabel: String = ""
 
     private struct Point: Identifiable {
-        let id: Int
+        let id: String
         let label: String
         let value: Double
+        let series: String
     }
 
     var body: some View {
-        let points = zip(labels, values).enumerated().map { Point(id: $0.offset, label: $0.element.0, value: $0.element.1) }
-        Chart(points) { p in
-            LineMark(x: .value("วัน", p.label), y: .value("ค่า", p.value))
-                .foregroundStyle(lineColor)
-                .interpolationMethod(.catmullRom)
-            AreaMark(x: .value("วัน", p.label), y: .value("ค่า", p.value))
-                .foregroundStyle(lineColor.opacity(0.15))
-                .interpolationMethod(.catmullRom)
+        let primary = zip(labels, values).enumerated().map {
+            Point(id: "a-\($0.offset)", label: $0.element.0, value: $0.element.1, series: primaryLabel.isEmpty ? "A" : primaryLabel)
         }
-        .chartYAxis { AxisMarks(position: .leading) }
-        .frame(height: 180)
+        let secondary: [Point] = {
+            guard let secondaryValues, secondaryValues.count == labels.count else { return [] }
+            return zip(labels, secondaryValues).enumerated().map {
+                Point(id: "b-\($0.offset)", label: $0.element.0, value: $0.element.1, series: secondaryLabel.isEmpty ? "B" : secondaryLabel)
+            }
+        }()
+        let all = primary + secondary
+
+        VStack(alignment: .leading, spacing: 10) {
+            if !primaryLabel.isEmpty || !secondaryLabel.isEmpty {
+                HStack(spacing: 12) {
+                    if !primaryLabel.isEmpty {
+                        legendChip(primaryLabel, lineColor)
+                    }
+                    if !secondary.isEmpty, !secondaryLabel.isEmpty {
+                        legendChip(secondaryLabel, secondaryColor)
+                    }
+                }
+            }
+            Chart(all) { p in
+                LineMark(x: .value("วัน", p.label), y: .value("ค่า", p.value), series: .value("s", p.series))
+                    .foregroundStyle(by: .value("s", p.series))
+                    .interpolationMethod(.catmullRom)
+                AreaMark(x: .value("วัน", p.label), y: .value("ค่า", p.value), series: .value("s", p.series))
+                    .foregroundStyle(by: .value("s", p.series))
+                    .interpolationMethod(.catmullRom)
+                    .opacity(0.18)
+            }
+            .chartForegroundStyleScale([
+                (primaryLabel.isEmpty ? "A" : primaryLabel): lineColor,
+                (secondaryLabel.isEmpty ? "B" : secondaryLabel): secondaryColor
+            ])
+            .chartLegend(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading) { _ in
+                    AxisGridLine().foregroundStyle(AppTheme.hairline)
+                    AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                    AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
+                }
+            }
+            .frame(height: 180)
+        }
+    }
+
+    private func legendChip(_ text: String, _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            Capsule().fill(color).frame(width: 12, height: 3)
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
     }
 }
 

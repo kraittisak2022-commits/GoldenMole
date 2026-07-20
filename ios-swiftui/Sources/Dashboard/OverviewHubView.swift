@@ -146,11 +146,13 @@ struct OverviewHubView: View {
     let allTransactions: [Transaction]
     let settings: AppSettings
     let dateFilter: DateFilter
+    var greetingName: String? = nil
 
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showShare = false
     @State private var jumpTarget: OverviewSection?
+    @State private var activeJump: OverviewSection = .finance
 
     private enum OverviewSection: String, CaseIterable, Identifiable, Hashable {
         case finance = "การเงิน"
@@ -159,13 +161,23 @@ struct OverviewHubView: View {
         case compare = "เปรียบเทียบ"
         case quality = "คุณภาพ"
         var id: String { rawValue }
+
+        var eyebrow: String {
+            switch self {
+            case .finance: return "FINANCE"
+            case .expense: return "EXPENSE"
+            case .sand: return "SAND"
+            case .compare: return "COMPARE"
+            case .quality: return "QUALITY"
+            }
+        }
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
-                    header
+                VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
+                    heroCard
                     jumpChips(proxy: proxy)
 
                     financeSection.id(OverviewSection.finance)
@@ -179,6 +191,7 @@ struct OverviewHubView: View {
             .scrollContentBackground(.hidden)
             .onChange(of: jumpTarget) { _, target in
                 guard let target else { return }
+                activeJump = target
                 withAnimation(.easeInOut(duration: 0.35)) {
                     proxy.scrollTo(target, anchor: .top)
                 }
@@ -223,43 +236,175 @@ struct OverviewHubView: View {
 
     // MARK: - Header / chips
 
-    private var header: some View {
-        HStack(alignment: .top) {
-            SectionHeader(
-                title: "ภาพรวม",
-                systemImage: "chart.pie.fill",
-                subtitle: "การเงิน · รายจ่าย · ทราย · เทียบช่วงก่อน"
-            )
-            Spacer()
-            Button {
-                showShare = true
-            } label: {
-                Label("CSV", systemImage: "square.and.arrow.up")
-                    .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.brand)
-            .disabled(snapshot.csvText.isEmpty)
-        }
+    private var greetingDisplay: String {
+        let raw = (greetingName ?? settings.appName).trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return settings.appName }
+        if raw.hasPrefix("คุณ") { return raw }
+        return "คุณ\(raw)"
     }
 
-    private func jumpChips(proxy: ScrollViewProxy) -> some View {
+    private var periodLabel: String {
+        let start = dateFilter.start
+        let end = dateFilter.end
+        if start.isEmpty || end.isEmpty { return "ช่วงที่เลือก" }
+        if start == end { return DashboardAggregations.thaiDateLong(start) }
+        return "\(start) – \(end)"
+    }
+
+    private var heroCard: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Circle()
+                .fill(Color.white.opacity(0.14))
+                .frame(width: 160, height: 160)
+                .blur(radius: 28)
+                .offset(x: 220, y: -50)
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ภาพรวมธุรกิจ")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.6)
+                            .foregroundStyle(.white.opacity(0.75))
+                        Text("สวัสดี \(greetingDisplay)")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text(periodLabel)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        showShare = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Color.white.opacity(0.16)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(snapshot.csvText.isEmpty)
+                    .opacity(snapshot.csvText.isEmpty ? 0.45 : 1)
+                    .accessibilityLabel("ส่งออก CSV")
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(DashboardAggregations.formatCurrency(snapshot.financial.profit))
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    if let delta = compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit) {
+                        Text(delta)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule().fill(
+                                    (snapshot.financial.profit >= snapshot.prevFinancial.profit
+                                     ? AppTheme.income : AppTheme.expense).opacity(0.35)
+                                )
+                            )
+                    }
+                }
+
+                Text("กำไรสุทธิช่วงนี้")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+
+                HStack(spacing: 10) {
+                    heroMiniStat(
+                        title: "รายรับ",
+                        value: DashboardAggregations.formatCurrency(snapshot.financial.income),
+                        tint: Color(hex: "#A7F3D0")
+                    )
+                    heroMiniStat(
+                        title: "รายจ่าย",
+                        value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
+                        tint: Color(hex: "#FECACA")
+                    )
+                }
+            }
+            .padding(20)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
+    }
+
+    private func heroMiniStat(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.12)))
+    }
+
+    private func jumpChips(proxy _: ScrollViewProxy) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(OverviewSection.allCases) { section in
+                    let isActive = activeJump == section
                     Button {
                         jumpTarget = section
                     } label: {
                         Text(section.rawValue)
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(AppTheme.brand.opacity(0.12), in: Capsule())
-                            .foregroundStyle(AppTheme.brand)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(isActive ? .white : AppTheme.brand)
+                            .background(
+                                Capsule().fill(isActive ? AppTheme.brand : AppTheme.surfaceSoft)
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    isActive ? Color.clear : AppTheme.brand.opacity(0.35),
+                                    lineWidth: 1
+                                )
+                            )
                     }
                     .buttonStyle(.plain)
                 }
             }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.surface.opacity(0.7))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private func sectionEyebrow(_ section: OverviewSection, title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(section.eyebrow)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.4)
+                .foregroundStyle(AppTheme.brand)
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
         }
     }
 
@@ -267,42 +412,24 @@ struct OverviewHubView: View {
 
     private var financeSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            SectionHeader(title: "การเงิน", systemImage: "banknote.fill", subtitle: "กำไร · รายรับ · รายจ่าย · โครงสร้างต้นทุน")
+            sectionEyebrow(.finance, title: "การเงิน", subtitle: "KPI · โครงสร้างต้นทุน · แนวโน้ม")
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "กำไรสุทธิ",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
-                    subtitle: "รายรับ − รายจ่าย",
-                    accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "chart.line.uptrend.xyaxis",
-                    trend: expenseTrendSeries,
-                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
-                )
-                KPITile(
-                    title: "รายรับรวม",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.income),
-                    accent: AppTheme.income,
-                    systemImage: "banknote",
-                    deltaText: compactDelta(snapshot.financial.income, snapshot.prevFinancial.income)
-                )
-                KPITile(
-                    title: "รายจ่ายรวม",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
-                    subtitle: "\(snapshot.numDays) วัน",
-                    accent: AppTheme.expense,
-                    systemImage: "creditcard",
-                    trend: expenseTrendSeries,
-                    deltaText: compactDelta(snapshot.financial.expense, snapshot.prevFinancial.expense)
-                )
-                KPITile(
-                    title: "อัตรากำไร",
-                    value: String(format: "%.1f%%", snapshot.marginPct),
-                    subtitle: "ช่วงก่อน \(String(format: "%.1f%%", marginPct(snapshot.prevFinancial)))",
-                    accent: AppTheme.info,
-                    systemImage: "percent",
-                    deltaText: compactDelta(snapshot.marginPct, marginPct(snapshot.prevFinancial))
-                )
+            kpiStrip
+
+            SectionCard("รายรับ · รายจ่าย", systemImage: "chart.xyaxis.line") {
+                if snapshot.dailyBreakdown.isEmpty {
+                    EmptyStateView(title: "ยังไม่มีข้อมูลรายวัน", systemImage: "chart.line.uptrend.xyaxis")
+                } else {
+                    LineChartView(
+                        labels: snapshot.dailyBreakdown.map(\.label),
+                        values: snapshot.dailyBreakdown.map(\.total),
+                        lineColor: AppTheme.expense,
+                        secondaryValues: dailyIncomeSeries,
+                        secondaryColor: AppTheme.income,
+                        primaryLabel: "รายจ่าย",
+                        secondaryLabel: "รายรับ"
+                    )
+                }
             }
 
             SectionCard("โครงสร้างต้นทุน", systemImage: "circle.grid.cross.fill") {
@@ -316,10 +443,11 @@ struct OverviewHubView: View {
                             ForEach(snapshot.costSlices) { slice in
                                 HStack {
                                     Circle().fill(Color(hex: slice.colorHex)).frame(width: 8, height: 8)
-                                    Text(slice.label).font(.caption)
+                                    Text(slice.label).font(.caption).foregroundStyle(AppTheme.ink)
                                     Spacer()
                                     Text(DashboardAggregations.formatCurrency(slice.value))
                                         .font(.caption.bold())
+                                        .foregroundStyle(AppTheme.ink)
                                 }
                             }
                         }
@@ -329,24 +457,62 @@ struct OverviewHubView: View {
         }
     }
 
-    // MARK: - Expense analytics (V.2)
-
-    private var expenseSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            SectionHeader(title: "รายจ่ายและแนวโน้ม", systemImage: "chart.bar.xaxis", subtitle: "รายวัน · รายสัปดาห์ · ต่อรถ")
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
+    private var kpiStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                KPIStripCard(
+                    title: "กำไรสุทธิ",
+                    value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
+                    accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    trend: expenseTrendSeries,
+                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
+                )
+                KPIStripCard(
+                    title: "รายรับ",
+                    value: DashboardAggregations.formatCurrency(snapshot.financial.income),
+                    accent: AppTheme.income,
+                    systemImage: "banknote",
+                    deltaText: compactDelta(snapshot.financial.income, snapshot.prevFinancial.income)
+                )
+                KPIStripCard(
+                    title: "รายจ่าย",
+                    value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
+                    accent: AppTheme.expense,
+                    systemImage: "creditcard",
+                    trend: expenseTrendSeries,
+                    deltaText: compactDelta(snapshot.financial.expense, snapshot.prevFinancial.expense)
+                )
+                KPIStripCard(
+                    title: "อัตรากำไร",
+                    value: String(format: "%.1f%%", snapshot.marginPct),
+                    accent: AppTheme.info,
+                    systemImage: "percent",
+                    deltaText: compactDelta(snapshot.marginPct, marginPct(snapshot.prevFinancial))
+                )
+                KPIStripCard(
                     title: "เฉลี่ย/วัน",
                     value: DashboardAggregations.formatCurrency(
                         snapshot.numDays > 0 ? snapshot.financial.expense / Double(snapshot.numDays) : 0
                     ),
-                    subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
-                    accent: AppTheme.info,
+                    accent: AppTheme.cyan,
                     systemImage: "calendar",
                     trend: expenseTrendSeries,
                     deltaText: dayChangeChip
                 )
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+    }
+
+    // MARK: - Expense analytics (V.2)
+
+    private var expenseSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
+            sectionEyebrow(.expense, title: "รายจ่ายและแนวโน้ม", subtitle: "รายวัน · รายสัปดาห์ · ต่อรถ")
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 KPITile(
                     title: "เฉลี่ย/สัปดาห์",
                     value: DashboardAggregations.formatCurrency(
@@ -356,9 +522,26 @@ struct OverviewHubView: View {
                     systemImage: "chart.bar",
                     trend: expenseTrendSeries
                 )
+                KPITile(
+                    title: "วันในช่วง",
+                    value: "\(snapshot.numDays)",
+                    subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
+                    accent: AppTheme.info,
+                    systemImage: "calendar",
+                    deltaText: dayChangeChip
+                )
             }
 
             SectionCard("รายจ่ายรายวัน", systemImage: "chart.bar.fill") {
+                HStack {
+                    Spacer(minLength: 0)
+                    PillBadge(
+                        text: DashboardAggregations.formatCurrency(
+                            snapshot.dailyBreakdown.map(\.total).reduce(0, +)
+                        ),
+                        color: AppTheme.expense
+                    )
+                }
                 BarChartView(
                     labels: snapshot.dailyBreakdown.map(\.label),
                     values: snapshot.dailyBreakdown.map(\.total),
@@ -374,6 +557,15 @@ struct OverviewHubView: View {
                 if snapshot.weeklyBuckets.isEmpty {
                     EmptyStateView(title: "ไม่มีข้อมูล", systemImage: "calendar")
                 } else {
+                    HStack {
+                        Spacer(minLength: 0)
+                        PillBadge(
+                            text: DashboardAggregations.formatCurrency(
+                                snapshot.weeklyBuckets.map(\.total).reduce(0, +)
+                            ),
+                            color: AppTheme.purple
+                        )
+                    }
                     BarChartView(
                         labels: snapshot.weeklyBuckets.map(\.label),
                         values: snapshot.weeklyBuckets.map(\.total),
@@ -382,13 +574,13 @@ struct OverviewHubView: View {
                     ForEach(snapshot.weeklyBuckets) { week in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(week.label).font(.subheadline.bold())
+                                Text(week.label).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
                                 Spacer()
-                                Text(DashboardAggregations.formatCurrency(week.total)).font(.subheadline.bold())
+                                Text(DashboardAggregations.formatCurrency(week.total)).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
                             }
                             Text("ค่าแรง \(DashboardAggregations.formatCurrency(week.labor)) · น้ำมัน \(DashboardAggregations.formatCurrency(week.fuel)) · รถ \(DashboardAggregations.formatCurrency(week.vehicle)) · ที่ดิน \(DashboardAggregations.formatCurrency(week.land))")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.inkMuted)
                         }
                         .padding(.vertical, 4)
                     }
@@ -401,13 +593,13 @@ struct OverviewHubView: View {
                     ForEach(snapshot.vehicleCosts) { row in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text(row.name).font(.subheadline.bold())
+                                Text(row.name).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
                                 Spacer()
-                                Text(DashboardAggregations.formatCurrency(row.total)).font(.subheadline.bold())
+                                Text(DashboardAggregations.formatCurrency(row.total)).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
                             }
                             GeometryReader { geo in
                                 Capsule()
-                                    .fill(Color(.tertiarySystemFill))
+                                    .fill(AppTheme.surfaceSoft)
                                     .overlay(alignment: .leading) {
                                         Capsule()
                                             .fill(AppTheme.vehicle)
@@ -417,7 +609,7 @@ struct OverviewHubView: View {
                             .frame(height: 6)
                             Text("น้ำมัน \(DashboardAggregations.formatCurrency(row.fuel)) · ซ่อม \(DashboardAggregations.formatCurrency(row.maintenance))")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.inkMuted)
                         }
                         .padding(.vertical, 4)
                     }
@@ -461,7 +653,7 @@ struct OverviewHubView: View {
 
     private var sandSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            SectionHeader(title: "วิเคราะห์ทราย", systemImage: "drop.fill", subtitle: "ล้าง · ขน · ถัง · สะสม")
+            sectionEyebrow(.sand, title: "วิเคราะห์ทราย", subtitle: "ล้าง · ขน · ถัง · สะสม")
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 KPITile(
@@ -578,9 +770,9 @@ struct OverviewHubView: View {
 
     private var compareSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            SectionHeader(
+            sectionEyebrow(
+                .compare,
                 title: "เปรียบเทียบช่วงก่อน",
-                systemImage: "speedometer",
                 subtitle: "\(snapshot.prevFilter.start) ถึง \(snapshot.prevFilter.end)"
             )
 
@@ -695,29 +887,58 @@ struct OverviewHubView: View {
     // MARK: - Data quality
 
     private var qualitySection: some View {
-        SectionCard("ความน่าเชื่อถือของข้อมูล", systemImage: "checkmark.shield.fill") {
-            HStack {
-                Text("สถานะคุณภาพข้อมูล")
-                    .font(.subheadline)
-                Spacer()
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.hairline, lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(max(snapshot.quality.coveragePct, 0), 100) / 100))
+                    .stroke(
+                        snapshot.quality.coveragePct >= 80 ? AppTheme.income
+                            : snapshot.quality.coveragePct >= 50 ? AppTheme.warning
+                            : AppTheme.expense,
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Text("\(Int(round(snapshot.quality.coveragePct)))%")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("คุณภาพข้อมูล")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
                 Text(snapshot.quality.statusLabel)
-                    .font(.subheadline.bold())
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(
                         snapshot.quality.coveragePct >= 80 ? AppTheme.income
                             : snapshot.quality.coveragePct >= 50 ? AppTheme.warning
                             : AppTheme.expense
                     )
             }
-            qualityRow("วันในช่วงที่เลือก", "\(snapshot.quality.totalDays)")
-            qualityRow(
-                "วันมีข้อมูลธุรกรรม",
-                "\(snapshot.quality.daysWithRecords) (\(Int(round(snapshot.quality.coveragePct)))%)"
-            )
-            qualityRow(
-                "วันมีข้อมูลทราย",
-                "\(snapshot.quality.daysWithSand) (\(Int(round(snapshot.quality.sandCoveragePct)))%)"
-            )
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(snapshot.quality.daysWithRecords)/\(snapshot.quality.totalDays) วัน")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Text("ทราย \(snapshot.quality.daysWithSand) วัน")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
     }
 
     // MARK: - Small UI helpers
@@ -736,18 +957,19 @@ struct OverviewHubView: View {
             }
             HStack(spacing: 12) {
                 ZStack {
-                    Circle().stroke(Color(.tertiarySystemFill), lineWidth: 6)
+                    Circle().stroke(AppTheme.hairline, lineWidth: 6)
                     Circle()
                         .trim(from: 0, to: CGFloat(snapshot.composite.score) / 100)
                         .stroke(AppTheme.purple, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Text("\(snapshot.composite.score)")
                         .font(.headline.bold())
+                        .foregroundStyle(AppTheme.ink)
                 }
                 .frame(width: 52, height: 52)
                 Text("/ 100")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             Capsule()
                 .fill(AppTheme.purple)
@@ -758,30 +980,25 @@ struct OverviewHubView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
     private func comparisonRow(_ title: String, _ cur: Double, _ prev: Double) -> some View {
         HStack {
-            Text(title)
+            Text(title).foregroundStyle(AppTheme.ink)
             Spacer()
-            Text(DashboardAggregations.formatNumber(cur))
+            Text(DashboardAggregations.formatNumber(cur)).foregroundStyle(AppTheme.ink)
             Text(deltaText(cur, prev))
                 .font(.caption)
                 .foregroundStyle(cur >= prev ? AppTheme.income : AppTheme.expense)
         }
         .font(.subheadline)
         .padding(.vertical, 3)
-    }
-
-    private func qualityRow(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title).font(.subheadline).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.subheadline.bold())
-        }
-        .padding(.vertical, 2)
     }
 
     private func marginPct(_ fin: FinancialSummary) -> Double {
@@ -791,6 +1008,16 @@ struct OverviewHubView: View {
 
     private var expenseTrendSeries: [Double] {
         snapshot.dailyBreakdown.map(\.total)
+    }
+
+    /// Daily income aligned to `dailyBreakdown` dates (presentation overlay for marquee chart).
+    private var dailyIncomeSeries: [Double] {
+        let byDay = Dictionary(grouping: transactions.filter { $0.type == .income }) {
+            String($0.date.prefix(10))
+        }
+        return snapshot.dailyBreakdown.map { row in
+            (byDay[row.date] ?? []).reduce(0) { $0 + $1.amount }
+        }
     }
 
     private var dayChangeChip: String? {

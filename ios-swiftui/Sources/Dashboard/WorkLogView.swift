@@ -102,17 +102,24 @@ struct WorkLogView: View {
                     heroStat(title: "รายการ", value: "\(dayTransactions.count)", tint: .white)
                 }
             }
-            .padding(18)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                LinearGradient(
-                    colors: [AppTheme.brand, AppTheme.brandMid, AppTheme.brandDark],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                ZStack(alignment: .topTrailing) {
+                    LinearGradient(
+                        colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Circle()
+                        .fill(Color.white.opacity(0.14))
+                        .frame(width: 140, height: 140)
+                        .blur(radius: 24)
+                        .offset(x: 40, y: -40)
+                }
             )
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
-            .shadow(color: AppTheme.brand.opacity(0.25), radius: 14, y: 6)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
         }
         .buttonStyle(.plain)
     }
@@ -129,9 +136,9 @@ struct WorkLogView: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.12)))
     }
 
     // MARK: - Count record summary
@@ -166,7 +173,7 @@ struct WorkLogView: View {
                                 .foregroundStyle(AppTheme.info)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(unit.vehicleId).font(.subheadline.weight(.semibold))
-                                Text(unit.driverLabel).font(.caption).foregroundStyle(.secondary)
+                                Text(unit.driverLabel).font(.caption).foregroundStyle(AppTheme.inkMuted)
                             }
                             Spacer()
                             Text("\(unit.rounds) เที่ยว")
@@ -199,7 +206,7 @@ struct WorkLogView: View {
             }
             if total != 0 {
                 HStack {
-                    Text("สุทธิหมวดนี้").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("สุทธิหมวดนี้").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.inkMuted)
                     Spacer()
                     Text(DashboardAggregations.formatCurrency(total))
                         .font(.subheadline.weight(.bold))
@@ -234,15 +241,15 @@ struct WorkLogView: View {
             }
             HStack(spacing: 6) {
                 if let sub = tx.subCategory, !sub.isEmpty {
-                    Text(sub).font(.caption).foregroundStyle(.secondary)
+                    Text(sub).font(.caption).foregroundStyle(AppTheme.inkMuted)
                 }
                 if let time = eventTimeLabel(tx) {
                     Label(time, systemImage: "clock")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkMuted)
                 }
                 if let note = tx.note, !note.isEmpty {
-                    Text(note).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(note).font(.caption2).foregroundStyle(AppTheme.inkMuted).lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }

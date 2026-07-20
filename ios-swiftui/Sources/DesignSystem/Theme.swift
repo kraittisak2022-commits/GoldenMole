@@ -311,6 +311,113 @@ struct KPITile: View {
     }
 }
 
+// MARK: - KPI strip card (horizontal snapping strip)
+
+struct KPIStripCard: View {
+    let title: String
+    let value: String
+    var accent: Color = AppTheme.brand
+    var systemImage: String = "chart.bar.fill"
+    var trend: [Double]? = nil
+    var deltaText: String? = nil
+
+    private var deltaPositive: Bool? {
+        guard let deltaText, let first = deltaText.first else { return nil }
+        if first == "+" || first == "▲" { return true }
+        if first == "-" || first == "▼" { return false }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        LinearGradient(
+                            colors: [accent, accent.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                Spacer(minLength: 0)
+                if let deltaText {
+                    Text(deltaText)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(deltaChipForeground)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(deltaChipBackground, in: Capsule())
+                }
+            }
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(1)
+
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            if let trend, trend.count >= 2 {
+                Chart {
+                    ForEach(Array(trend.enumerated()), id: \.offset) { index, point in
+                        LineMark(
+                            x: .value("i", index),
+                            y: .value("v", point)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(accent)
+                        AreaMark(
+                            x: .value("i", index),
+                            y: .value("v", point)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(accent.opacity(0.18))
+                    }
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartLegend(.hidden)
+                .frame(height: 28)
+            }
+        }
+        .padding(12)
+        .frame(width: 150, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+        .shadow(color: AppTheme.cardShadow, radius: 8, y: 3)
+    }
+
+    private var deltaChipForeground: Color {
+        switch deltaPositive {
+        case true: return AppTheme.income
+        case false: return AppTheme.expense
+        case nil: return AppTheme.inkMuted
+        }
+    }
+
+    private var deltaChipBackground: Color {
+        switch deltaPositive {
+        case true: return AppTheme.income.opacity(0.15)
+        case false: return AppTheme.expense.opacity(0.15)
+        case nil: return AppTheme.surfaceSoft
+        }
+    }
+}
+
 // MARK: - Pill badge
 
 struct PillBadge: View {
