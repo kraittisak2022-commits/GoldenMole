@@ -10833,311 +10833,491 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  Widget _attendanceBucket(_LaborWorkCategory c, Set<String> pickedPool) {
-    final ids = _attendanceAssignments[c.id] ?? <String>{};
-    final expanded =
-        (_attendanceBucketExpanded[c.id] ?? false) || ids.isNotEmpty;
-    return _LaborBucketCard(
-      category: c,
-      ids: ids,
-      expanded: expanded,
-      employeesById: _employeesById,
-      onToggleExpanded: () => setState(() {
-        _attendanceBucketExpanded[c.id] = !expanded;
-      }),
-      onMovePickedHere: pickedPool.isEmpty
-          ? null
-          : () => _attendanceMovePicked(c.id, pickedPool),
-      onDropEmployee: (empId) => _attendanceAssignEmp(c.id, empId, pickedPool),
-      onDeleteEmployee: (empId) => _attendanceRemoveEmp(c.id, empId),
-    );
-  }
-
-  Widget _attendanceOtCustomHoursField() {
+  Widget _attendanceOtCustomHoursField({bool compact = false}) {
     return TextField(
       controller: _attendanceOtCustomController,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
       style: GoogleFonts.kanit(
         fontWeight: FontWeight.w700,
-        fontSize: 14,
+        fontSize: compact ? 13 : 14,
         color: const Color(0xFF1D2A3A),
       ),
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         isDense: true,
-        labelText: 'ระบุชั่วโมง OT',
+        labelText: compact ? 'ชั่วโมง' : 'ระบุชั่วโมง OT',
         hintText: 'เช่น 4',
         suffixText: 'ชม.',
         labelStyle: GoogleFonts.kanit(
-          fontSize: 12.5,
+          fontSize: compact ? 11.5 : 12.5,
           fontWeight: FontWeight.w600,
           color: const Color(0xFF64748B),
         ),
         filled: true,
         fillColor: const Color(0xFFFFF6EE),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: compact ? 8 : 10,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFFEBC7AD)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFFEBC7AD)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFFD65A2E), width: 1.4),
         ),
       ),
     );
   }
 
-  Widget _attendancePool({
+  /// ช่องดรอปย่อยในการ์ดเช็คชื่อ (ว่าง = แสดง label, มีคน = ชิป)
+  Widget _attendanceZone(
+    _AttZoneDef z,
+    Color color,
+    Set<String> pickedPool, {
+    bool expand = false,
+  }) {
+    final ids = _attendanceAssignments[z.bucketId] ?? <String>{};
+    final canMove = pickedPool.isNotEmpty;
+    Widget body = DragTarget<String>(
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (d) =>
+          _attendanceAssignEmp(z.bucketId, d.data, pickedPool),
+      builder: (context, cand, _) {
+        final hovering = cand.isNotEmpty;
+        final child = Material(
+          color: hovering
+              ? color.withValues(alpha: 0.14)
+              : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: canMove
+                ? () => _attendanceMovePicked(z.bucketId, pickedPool)
+                : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              width: double.infinity,
+              constraints: BoxConstraints(minHeight: expand ? 0 : 56),
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hovering
+                      ? color.withValues(alpha: 0.85)
+                      : color.withValues(alpha: 0.28),
+                  width: hovering ? 1.6 : 1,
+                ),
+              ),
+              child: ids.isEmpty
+                  ? Center(
+                      child: Text(
+                        z.subLabel ?? 'วางที่นี่',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    )
+                  : Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: ids.map((empId) {
+                        final emp = _employeesById[empId];
+                        final label = emp == null
+                            ? empId
+                            : _employeeUiDisplayName(emp);
+                        return LongPressDraggable<String>(
+                          data: empId,
+                          feedback: Material(
+                            color: Colors.transparent,
+                            elevation: 6,
+                            borderRadius: BorderRadius.circular(16),
+                            child: Chip(
+                              label: Text(
+                                label,
+                                style: GoogleFonts.kanit(
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              backgroundColor: color.withValues(alpha: 0.92),
+                            ),
+                          ),
+                          childWhenDragging: Opacity(
+                            opacity: 0.35,
+                            child: InputChip(
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 2,
+                              ),
+                              label: Text(
+                                label,
+                                style: GoogleFonts.kanit(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              onDeleted: null,
+                            ),
+                          ),
+                          child: InputChip(
+                            labelPadding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 4,
+                              horizontal: 2,
+                            ),
+                            label: Text(
+                              label,
+                              style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                            onDeleted: () =>
+                                _attendanceRemoveEmp(z.bucketId, empId),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            ),
+          ),
+        );
+        if (!expand) return child;
+        return SizedBox.expand(child: child);
+      },
+    );
+    if (z.isOtCustom) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (expand) Expanded(child: body) else body,
+          const SizedBox(height: 6),
+          _attendanceOtCustomHoursField(compact: true),
+        ],
+      );
+    }
+    if (expand && !z.isOtCustom) {
+      return Expanded(child: body);
+    }
+    if (expand && z.isOtCustom) {
+      return Expanded(child: body);
+    }
+    return body;
+  }
+
+  /// การ์ดกลุ่ม (ทำงาน / ครึ่งวัน / ลางาน / OT / แม็คโคร / ดรัม)
+  Widget _attendanceGroupedCard({
+    required String title,
+    required Color color,
+    String? subheader,
+    required List<_AttZoneDef> zones,
+    required Set<String> pickedPool,
+    bool equalHeightZones = false,
+  }) {
+    final count = zones.fold<int>(
+      0,
+      (sum, z) => sum + (_attendanceAssignments[z.bucketId]?.length ?? 0),
+    );
+    final zoneWidgets = <Widget>[];
+    for (var i = 0; i < zones.length; i++) {
+      if (i > 0) zoneWidgets.add(const SizedBox(height: 8));
+      zoneWidgets.add(
+        _attendanceZone(
+          zones[i],
+          color,
+          pickedPool,
+          expand: equalHeightZones,
+        ),
+      );
+    }
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.07),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(height: 4, color: color),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                      color: const Color(0xFF0F172A),
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                if (count > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (subheader != null && subheader.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+              child: Text(
+                subheader,
+                style: GoogleFonts.kanit(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: equalHeightZones
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: zoneWidgets,
+                    )
+                  : SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: zoneWidgets,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// คอลัมน์พูลรายชื่อ (#รายชื่อพนักงาน / #รายชื่อพนักงานขับรถ)
+  Widget _attendancePoolColumn({
+    required String hashtag,
     required List<Employee> people,
     required Set<String> pickedPool,
     required Set<String> poolBucketIds,
     required String emptyText,
+    Color accent = const Color(0xFF7C4DFF),
   }) {
     final assignedHere = <String>{
       for (final id in poolBucketIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
     };
-    return DragTarget<String>(
-      onWillAcceptWithDetails: (_) => true,
-      onAcceptWithDetails: (d) {
-        final empId = d.data;
-        setState(() {
-          for (final id in poolBucketIds) {
-            _attendanceAssignments[id]?.remove(empId);
-          }
-          pickedPool.remove(empId);
-        });
-      },
-      builder: (context, cand, rej) {
-        final hovering = cand.isNotEmpty;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-          decoration: BoxDecoration(
-            color: hovering ? const Color(0xFFDDEBFA) : const Color(0xFFF8FAFD),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: hovering
-                  ? const Color(0xFF73A6E8)
-                  : const Color(0xFFE1E8F0),
-            ),
-          ),
-          child: people.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    emptyText,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                      fontSize: 13,
-                      color: Colors.black54,
-                      height: 1.3,
-                    ),
-                  ),
-                )
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 10,
-                  children: people.map((e) {
-                    final id = e.id;
-                    final selected = pickedPool.contains(id);
-                    final placed = assignedHere.contains(id);
-                    final name = _employeeUiDisplayName(e);
-                    return LongPressDraggable<String>(
-                      data: id,
-                      feedback: Material(
-                        elevation: 6,
-                        borderRadius: BorderRadius.circular(20),
-                        color: Colors.transparent,
-                        child: Chip(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 2,
-                          ),
-                          label: Text(
-                            name,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                          backgroundColor: const Color(0xFF1565C0),
-                        ),
-                      ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.35,
-                        child: FilterChip(
-                          label: Text(
-                            name,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          selected: selected,
-                          onSelected: null,
-                        ),
-                      ),
-                      child: FilterChip(
-                        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                          horizontal: 4,
-                        ),
-                        showCheckmark: true,
-                        selectedColor: const Color(0xFFBBDEFB),
-                        checkmarkColor: const Color(0xFF0D47A1),
-                        avatar: placed
-                            ? const Icon(
-                                Icons.check_circle,
-                                size: 18,
-                                color: Color(0xFF2E7D32),
-                              )
-                            : null,
-                        label: Text(
-                          name,
-                          style: GoogleFonts.kanit(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        selected: selected,
-                        onSelected: (_) => setState(() {
-                          if (selected) {
-                            pickedPool.remove(id);
-                          } else {
-                            pickedPool.add(id);
-                          }
-                        }),
-                      ),
-                    );
-                  }).toList(),
-                ),
-        );
-      },
-    );
-  }
-
-  Widget _attendanceSection({
-    required IconData icon,
-    required String title,
-    required String hashtag,
-    required List<Employee> people,
-    required Set<String> pickedPool,
-    required List<_LaborWorkCategory> buckets,
-    required Set<String> poolBucketIds,
-    required String emptyText,
-  }) {
-    final assignedCount = <String>{
-      for (final id in poolBucketIds)
-        ...(_attendanceAssignments[id] ?? const <String>{}),
-    }.length;
     return Container(
-      padding: const EdgeInsets.all(12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F6FC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFC5D9EF)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 22, color: const Color(0xFF0D47A1)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: const Color(0xFF0D47A1),
-                      ),
-                    ),
-                    Text(
-                      hashtag,
-                      style: GoogleFonts.kanit(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            color: const Color(0xFF475569),
+            child: Text(
+              hashtag,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+                color: Colors.white,
               ),
-              if (assignedCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFA5D6A7)),
-                  ),
-                  child: Text(
-                    '$assignedCount คน',
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12.5,
-                      color: const Color(0xFF1B5E20),
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
-          const SizedBox(height: 10),
-          _attendancePool(
-            people: people,
-            pickedPool: pickedPool,
-            poolBucketIds: poolBucketIds,
-            emptyText: emptyText,
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const spacing = 10.0;
-              const minCardWidth = 160.0;
-              final maxWidth = constraints.maxWidth;
-              final nCol = ((maxWidth + spacing) / (minCardWidth + spacing))
-                  .floor()
-                  .clamp(1, 4);
-              final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: buckets.map((c) {
-                  final tile = c.id == 'att_ot_custom'
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _attendanceBucket(c, pickedPool),
-                            const SizedBox(height: 6),
-                            _attendanceOtCustomHoursField(),
-                          ],
+          Expanded(
+            child: DragTarget<String>(
+              onWillAcceptWithDetails: (_) => true,
+              onAcceptWithDetails: (d) {
+                final empId = d.data;
+                setState(() {
+                  for (final id in poolBucketIds) {
+                    _attendanceAssignments[id]?.remove(empId);
+                  }
+                  pickedPool.remove(empId);
+                });
+              },
+              builder: (context, cand, _) {
+                final hovering = cand.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  color: hovering
+                      ? accent.withValues(alpha: 0.08)
+                      : const Color(0xFFF8FAFD),
+                  child: people.isEmpty
+                      ? Center(
+                          child: Text(
+                            emptyText,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.kanit(
+                              fontSize: 12.5,
+                              color: Colors.black45,
+                            ),
+                          ),
                         )
-                      : _attendanceBucket(c, pickedPool);
-                  return SizedBox(width: itemWidth, child: tile);
-                }).toList(),
-              );
-            },
+                      : SingleChildScrollView(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 8,
+                            children: people.map((e) {
+                              final id = e.id;
+                              final selected = pickedPool.contains(id);
+                              final placed = assignedHere.contains(id);
+                              final name = _employeeUiDisplayName(e);
+                              return LongPressDraggable<String>(
+                                data: id,
+                                feedback: Material(
+                                  elevation: 6,
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Colors.transparent,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1565C0),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      name,
+                                      style: GoogleFonts.kanit(
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                childWhenDragging: Opacity(
+                                  opacity: 0.35,
+                                  child: _attendanceNameChip(
+                                    name: name,
+                                    selected: selected,
+                                    placed: placed,
+                                    accent: accent,
+                                  ),
+                                ),
+                                child: _attendanceNameChip(
+                                  name: name,
+                                  selected: selected,
+                                  placed: placed,
+                                  accent: accent,
+                                  onTap: () => setState(() {
+                                    if (selected) {
+                                      pickedPool.remove(id);
+                                    } else {
+                                      pickedPool.add(id);
+                                    }
+                                  }),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                );
+              },
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _attendanceNameChip({
+    required String name,
+    required bool selected,
+    required bool placed,
+    required Color accent,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: selected
+          ? accent.withValues(alpha: 0.18)
+          : placed
+          ? const Color(0xFFE8F5E9)
+          : Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? accent
+                  : placed
+                  ? const Color(0xFF81C784)
+                  : const Color(0xFFCBD5E1),
+            ),
+          ),
+          child: Text(
+            name,
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -11157,6 +11337,220 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         (a, b) =>
             _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b)),
       );
+
+    const workColor = Color(0xFF2FB6A6);
+    const halfColor = Color(0xFF3B9AE1);
+    const leaveColor = Color(0xFFEF5D6E);
+    const otColor = Color(0xFFF08A24);
+    const macroColor = Color(0xFFEF6C00);
+    const drumColor = Color(0xFF6C6FE6);
+    const poolAccent = Color(0xFF7C4DFF);
+
+    final genPresenceIds = {
+      ..._attGeneralPresenceIds,
+      ..._attGeneralOtIds,
+    };
+
+    final workCard = _attendanceGroupedCard(
+      title: '#ทำงาน',
+      color: workColor,
+      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'ทำงานเต็มวัน')],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final halfCard = _attendanceGroupedCard(
+      title: '#ครึ่งวัน',
+      color: halfColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_half_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(bucketId: 'att_half_afternoon', subLabel: 'ช่วงบ่าย'),
+      ],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final leaveGenCard = _attendanceGroupedCard(
+      title: '#ลางาน',
+      color: leaveColor,
+      zones: const [_AttZoneDef(bucketId: 'att_leave', subLabel: 'ลางาน')],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final otCard = _attendanceGroupedCard(
+      title: 'OT',
+      color: otColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_ot_1', subLabel: '+1 ชั่วโมง'),
+        _AttZoneDef(bucketId: 'att_ot_2', subLabel: '+2 ชั่วโมง'),
+        _AttZoneDef(bucketId: 'att_ot_3', subLabel: '+3 ชั่วโมง'),
+        _AttZoneDef(
+          bucketId: 'att_ot_custom',
+          subLabel: 'ระบุชั่วโมง',
+          isOtCustom: true,
+        ),
+      ],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final macroCard = _attendanceGroupedCard(
+      title: 'ขับรถแม็คโคร',
+      color: macroColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_macro', subLabel: 'ขับรถแม็คโคร'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+    final drumCard = _attendanceGroupedCard(
+      title: 'ขับรถดรัม',
+      color: drumColor,
+      subheader: 'ขับรถดรัมช่วงเวลา',
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_drum_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(bucketId: 'att_drv_drum_afternoon', subLabel: 'ช่วงบ่าย'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+    final leaveDrvCard = _attendanceGroupedCard(
+      title: '#ลางาน',
+      color: leaveColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_leave', subLabel: 'ลางาน'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+
+    Widget poolGen({bool fill = true}) {
+      final pool = _attendancePoolColumn(
+        hashtag: '#รายชื่อพนักงาน',
+        people: generalPeople,
+        pickedPool: _attendanceGeneralPicked,
+        poolBucketIds: genPresenceIds,
+        emptyText: 'ไม่มีพนักงานทั่วไป',
+        accent: poolAccent,
+      );
+      return fill ? pool : SizedBox(height: 220, child: pool);
+    }
+
+    Widget poolDrv({bool fill = true}) {
+      final pool = _attendancePoolColumn(
+        hashtag: '#รายชื่อพนักงานขับรถ',
+        people: driverPeople,
+        pickedPool: _attendanceDriverPicked,
+        poolBucketIds: _attDriverIds,
+        emptyText: 'ไม่มีพนักงานขับรถ',
+        accent: const Color(0xFF00897B),
+      );
+      return fill ? pool : SizedBox(height: 200, child: pool);
+    }
+
+    final wide = MediaQuery.sizeOf(context).width >= 820;
+    const gap = 10.0;
+    final boardH = (MediaQuery.sizeOf(context).height * 0.62).clamp(
+      420.0,
+      720.0,
+    );
+
+    Widget board;
+    if (wide) {
+      board = SizedBox(
+        height: boardH,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 22,
+              child: Column(
+                children: [
+                  Expanded(child: poolGen()),
+                  const SizedBox(height: gap),
+                  Expanded(child: poolDrv()),
+                ],
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(
+              flex: 18,
+              child: Column(
+                children: [
+                  Expanded(child: workCard),
+                  const SizedBox(height: gap),
+                  Expanded(child: macroCard),
+                ],
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(
+              flex: 18,
+              child: Column(
+                children: [
+                  Expanded(child: halfCard),
+                  const SizedBox(height: gap),
+                  Expanded(child: drumCard),
+                ],
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(
+              flex: 16,
+              child: Column(
+                children: [
+                  Expanded(child: leaveGenCard),
+                  const SizedBox(height: gap),
+                  Expanded(child: leaveDrvCard),
+                ],
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(flex: 18, child: otCard),
+          ],
+        ),
+      );
+    } else {
+      // มือถือแคบ: ซ้อน 2 บล็อก (ทั่วไป → คนขับ)
+      board = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'พนักงานทั่วไป',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: const Color(0xFF0D47A1),
+            ),
+          ),
+          const SizedBox(height: 8),
+          poolGen(fill: false),
+          const SizedBox(height: 10),
+          SizedBox(height: 140, child: workCard),
+          const SizedBox(height: 10),
+          SizedBox(height: 200, child: halfCard),
+          const SizedBox(height: 10),
+          SizedBox(height: 140, child: leaveGenCard),
+          const SizedBox(height: 10),
+          SizedBox(height: 320, child: otCard),
+          const SizedBox(height: 18),
+          Text(
+            'พนักงานขับรถ',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: const Color(0xFF0D47A1),
+            ),
+          ),
+          const SizedBox(height: 8),
+          poolDrv(fill: false),
+          const SizedBox(height: 10),
+          SizedBox(height: 140, child: macroCard),
+          const SizedBox(height: 10),
+          SizedBox(height: 200, child: drumCard),
+          const SizedBox(height: 10),
+          SizedBox(height: 140, child: leaveDrvCard),
+        ],
+      );
+    }
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -11180,7 +11574,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'ลากรายชื่อลงกล่อง — ทำงาน / ครึ่งวัน / ลางาน / OT แล้วกดบันทึกครั้งเดียว',
+            'ลากรายชื่อจากพูลซ้าย → วางลงกล่องสถานะ · กดบันทึกครั้งเดียว',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -11190,27 +11584,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           _employeeDataLoadProgressBanner(),
           const SizedBox(height: 12),
-          _attendanceSection(
-            icon: Icons.groups_2_outlined,
-            title: 'พนักงานทั่วไป',
-            hashtag: '#รายชื่อพนักงาน',
-            people: generalPeople,
-            pickedPool: _attendanceGeneralPicked,
-            buckets: _attendanceGeneralBuckets,
-            poolBucketIds: {..._attGeneralPresenceIds, ..._attGeneralOtIds},
-            emptyText: 'ไม่มีพนักงานทั่วไป',
-          ),
-          const SizedBox(height: 14),
-          _attendanceSection(
-            icon: Icons.local_shipping_outlined,
-            title: 'พนักงานขับรถ',
-            hashtag: '#รายชื่อพนักงานขับรถ',
-            people: driverPeople,
-            pickedPool: _attendanceDriverPicked,
-            buckets: _attendanceDriverBuckets,
-            poolBucketIds: _attDriverIds,
-            emptyText: 'ไม่มีพนักงานขับรถ',
-          ),
+          board,
           const SizedBox(height: 16),
           _SmoothPressable(
             enabled: !_saving,
@@ -14914,6 +15288,19 @@ class _LaborWorkCategory {
   final String label;
   final String shortTitle;
   final Color color;
+}
+
+/// นิยามช่องดรอปย่อยในกระดานเช็คชื่อ
+class _AttZoneDef {
+  const _AttZoneDef({
+    required this.bucketId,
+    this.subLabel,
+    this.isOtCustom = false,
+  });
+
+  final String bucketId;
+  final String? subLabel;
+  final bool isOtCustom;
 }
 
 class _GeneralSubJob {
