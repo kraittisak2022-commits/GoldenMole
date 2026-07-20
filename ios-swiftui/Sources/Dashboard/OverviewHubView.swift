@@ -176,6 +176,7 @@ struct OverviewHubView: View {
                 }
                 .padding(AppTheme.spaceLG)
             }
+            .scrollContentBackground(.hidden)
             .onChange(of: jumpTarget) { _, target in
                 guard let target else { return }
                 withAnimation(.easeInOut(duration: 0.35)) {
@@ -274,27 +275,33 @@ struct OverviewHubView: View {
                     value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
                     subtitle: "รายรับ − รายจ่าย",
                     accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "chart.line.uptrend.xyaxis"
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    trend: expenseTrendSeries,
+                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
                 )
                 KPITile(
                     title: "รายรับรวม",
                     value: DashboardAggregations.formatCurrency(snapshot.financial.income),
                     accent: AppTheme.income,
-                    systemImage: "banknote"
+                    systemImage: "banknote",
+                    deltaText: compactDelta(snapshot.financial.income, snapshot.prevFinancial.income)
                 )
                 KPITile(
                     title: "รายจ่ายรวม",
                     value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
                     subtitle: "\(snapshot.numDays) วัน",
                     accent: AppTheme.expense,
-                    systemImage: "creditcard"
+                    systemImage: "creditcard",
+                    trend: expenseTrendSeries,
+                    deltaText: compactDelta(snapshot.financial.expense, snapshot.prevFinancial.expense)
                 )
                 KPITile(
                     title: "อัตรากำไร",
                     value: String(format: "%.1f%%", snapshot.marginPct),
                     subtitle: "ช่วงก่อน \(String(format: "%.1f%%", marginPct(snapshot.prevFinancial)))",
                     accent: AppTheme.info,
-                    systemImage: "percent"
+                    systemImage: "percent",
+                    deltaText: compactDelta(snapshot.marginPct, marginPct(snapshot.prevFinancial))
                 )
             }
 
@@ -336,7 +343,9 @@ struct OverviewHubView: View {
                     ),
                     subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
                     accent: AppTheme.info,
-                    systemImage: "calendar"
+                    systemImage: "calendar",
+                    trend: expenseTrendSeries,
+                    deltaText: dayChangeChip
                 )
                 KPITile(
                     title: "เฉลี่ย/สัปดาห์",
@@ -344,7 +353,8 @@ struct OverviewHubView: View {
                         snapshot.financial.expense / max(1, Double(snapshot.numDays) / 7)
                     ),
                     accent: AppTheme.warning,
-                    systemImage: "chart.bar"
+                    systemImage: "chart.bar",
+                    trend: expenseTrendSeries
                 )
             }
 
@@ -459,14 +469,18 @@ struct OverviewHubView: View {
                     value: "\(DashboardAggregations.formatNumber(snapshot.sand.washed)) คิว",
                     subtitle: "เฉลี่ย \(DashboardAggregations.formatNumber(snapshot.sand.avgWashedPerDay)) คิว/วัน",
                     accent: AppTheme.info,
-                    systemImage: "drop"
+                    systemImage: "drop",
+                    trend: snapshot.sandSeriesWashed,
+                    deltaText: compactDelta(snapshot.sandCur.washed, snapshot.sandPrev.washed)
                 )
                 KPITile(
                     title: "ขนทรายรวม",
                     value: "\(DashboardAggregations.formatNumber(snapshot.sand.transported)) คิว",
                     subtitle: "เฉลี่ย \(DashboardAggregations.formatNumber(snapshot.sand.avgTransportedPerDay)) คิว/วัน",
                     accent: AppTheme.warning,
-                    systemImage: "truck.box"
+                    systemImage: "truck.box",
+                    trend: snapshot.sandSeriesTransported,
+                    deltaText: compactDelta(snapshot.sandCur.transported, snapshot.sandPrev.transported)
                 )
                 KPITile(
                     title: "ทรายคงเหลือ",
@@ -606,7 +620,9 @@ struct OverviewHubView: View {
                     value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
                     subtitle: deltaText(snapshot.financial.profit, snapshot.prevFinancial.profit),
                     accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "chart.line.uptrend.xyaxis"
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    trend: expenseTrendSeries,
+                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
                 )
                 scoreTile
             }
@@ -771,6 +787,24 @@ struct OverviewHubView: View {
     private func marginPct(_ fin: FinancialSummary) -> Double {
         guard fin.income > 0 else { return fin.profit > 0 ? 100 : 0 }
         return (fin.profit / fin.income) * 100
+    }
+
+    private var expenseTrendSeries: [Double] {
+        snapshot.dailyBreakdown.map(\.total)
+    }
+
+    private var dayChangeChip: String? {
+        let pct = snapshot.dayChangePct
+        guard pct != 0 || !snapshot.dailyBreakdown.isEmpty else { return nil }
+        let sign = pct > 0 ? "+" : ""
+        return "\(sign)\(pct)%"
+    }
+
+    /// Compact delta for KPI chip, e.g. "+12%" / "-5%".
+    private func compactDelta(_ cur: Double, _ prev: Double) -> String? {
+        guard let pct = DashboardAggregations.pctChangeVsPrev(cur: cur, prev: prev) else { return nil }
+        let sign = pct >= 0 ? "+" : ""
+        return "\(sign)\(Int(round(pct)))%"
     }
 
     private func deltaText(_ cur: Double, _ prev: Double) -> String {

@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 enum AppTheme {
@@ -14,6 +15,7 @@ enum AppTheme {
     static let info = Color(hex: "#3b82f6")
     static let purple = Color(hex: "#8b5cf6")
     static let slate = Color(hex: "#64748b")
+    static let cyan = Color(hex: "#22D3EE")
 
     // MARK: Categories
     static let labor = Color(hex: "#10b981")
@@ -23,6 +25,18 @@ enum AppTheme {
     static let land = Color(hex: "#8b5cf6")
     static let sand = Color(hex: "#ec4899")
     static let dailyLog = Color(hex: "#06b6d4")
+
+    // MARK: Premium surfaces (adaptive light / dark)
+    static let pageTop = Color(light: Color(hex: "#F5F8FC"), dark: Color(hex: "#070B16"))
+    static let pageBottom = Color(light: Color(hex: "#EAF0F8"), dark: Color(hex: "#0B1020"))
+    static let surface = Color(light: Color.white, dark: Color(hex: "#131B2D"))
+    static let surfaceSoft = Color(light: Color(hex: "#F1F5F9"), dark: Color(hex: "#1A2438"))
+    static let hairline = Color(light: Color.black.opacity(0.06), dark: Color.white.opacity(0.08))
+    static let ink = Color(light: Color(hex: "#0F172A"), dark: Color(hex: "#F8FAFC"))
+    static let inkSecondary = Color(light: Color(hex: "#334155"), dark: Color(hex: "#CBD5E1"))
+    static let inkMuted = Color(light: Color(hex: "#64748B"), dark: Color(hex: "#94A3B8"))
+    static let cardShadow = Color(light: Color.black.opacity(0.06), dark: Color.black.opacity(0.45))
+    static let glow = Color(light: Color(hex: "#22D3EE").opacity(0.12), dark: Color(hex: "#22D3EE").opacity(0.22))
 
     // MARK: Spacing
     static let spaceXS: CGFloat = 4
@@ -86,6 +100,34 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Premium page background
+
+struct DashboardBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AppTheme.pageTop, AppTheme.pageBottom],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            // Soft top glow — stronger in dark mode (NEXUS-style).
+            RadialGradient(
+                colors: [
+                    (colorScheme == .dark ? AppTheme.cyan : AppTheme.brand).opacity(colorScheme == .dark ? 0.18 : 0.08),
+                    .clear
+                ],
+                center: .topLeading,
+                startRadius: 20,
+                endRadius: 380
+            )
+            .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 // MARK: - Section card
 
 struct SectionCard<Content: View>: View {
@@ -117,12 +159,12 @@ struct SectionCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 }
@@ -142,12 +184,12 @@ struct SectionHeader: View {
                 }
                 Text(title)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppTheme.ink)
             }
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
         }
     }
@@ -161,29 +203,78 @@ struct KPITile: View {
     var subtitle: String? = nil
     var accent: Color = AppTheme.brand
     var systemImage: String = "chart.bar.fill"
+    /// Optional sparkline series (defaults keep existing call sites working).
+    var trend: [Double]? = nil
+    /// Optional delta chip text, e.g. "+12.4%". Color inferred from leading +/- when present.
+    var deltaText: String? = nil
+
+    private var deltaPositive: Bool? {
+        guard let deltaText, let first = deltaText.first else { return nil }
+        if first == "+" || first == "▲" { return true }
+        if first == "-" || first == "▼" { return false }
+        return nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-                    .frame(width: 28, height: 28)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        LinearGradient(
+                            colors: [accent, accent.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    )
+                    .shadow(color: accent.opacity(0.35), radius: 6, y: 2)
                 Text(title)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
                     .lineLimit(2)
+                Spacer(minLength: 0)
+                if let deltaText {
+                    Text(deltaText)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(deltaChipForeground)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(deltaChipBackground))
+                }
             }
             Text(value)
                 .font(.title3.bold())
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppTheme.ink)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+
+            if let trend, trend.count >= 2 {
+                Chart(Array(trend.enumerated()), id: \.offset) { item in
+                    LineMark(
+                        x: .value("i", item.offset),
+                        y: .value("v", item.element)
+                    )
+                    .foregroundStyle(accent)
+                    .interpolationMethod(.catmullRom)
+                    AreaMark(
+                        x: .value("i", item.offset),
+                        y: .value("v", item.element)
+                    )
+                    .foregroundStyle(accent.opacity(0.18))
+                    .interpolationMethod(.catmullRom)
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .frame(height: 28)
+            }
+
             if let subtitle {
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
                     .lineLimit(2)
             }
             Capsule()
@@ -195,8 +286,28 @@ struct KPITile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(AppTheme.surfaceSoft)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private var deltaChipForeground: Color {
+        switch deltaPositive {
+        case true: return AppTheme.income
+        case false: return AppTheme.expense
+        case nil: return AppTheme.inkMuted
+        }
+    }
+
+    private var deltaChipBackground: Color {
+        switch deltaPositive {
+        case true: return AppTheme.income.opacity(0.15)
+        case false: return AppTheme.expense.opacity(0.15)
+        case nil: return AppTheme.surface.opacity(0.6)
+        }
     }
 }
 
@@ -212,7 +323,7 @@ struct PillBadge: View {
             .foregroundStyle(color)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(color.opacity(0.12), in: Capsule())
+            .background(color.opacity(0.14), in: Capsule())
     }
 }
 
@@ -227,13 +338,14 @@ struct EmptyStateView: View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 36, weight: .light))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.inkMuted)
             Text(title)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
             if let message {
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.inkMuted)
                     .multilineTextAlignment(.center)
             }
         }
@@ -267,7 +379,7 @@ struct DateFilterBar: View {
                     DatePicker("เริ่ม", selection: $customStart, displayedComponents: .date)
                         .labelsHidden()
                     Text("–")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkMuted)
                     DatePicker("สิ้นสุด", selection: $customEnd, displayedComponents: .date)
                         .labelsHidden()
                 }
@@ -276,6 +388,11 @@ struct DateFilterBar: View {
         }
         .padding(.horizontal, AppTheme.spaceLG)
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground).opacity(0.65))
+        .background(AppTheme.surfaceSoft.opacity(0.85))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.hairline)
+                .frame(height: 1)
+        }
     }
 }

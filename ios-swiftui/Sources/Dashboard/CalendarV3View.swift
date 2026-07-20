@@ -177,7 +177,7 @@ struct CalendarV3View: View {
             }
             ForEach(0..<leading, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.secondarySystemBackground).opacity(0.4))
+                    .fill(AppTheme.surfaceSoft.opacity(0.4))
                     .frame(minHeight: 66)
                     .id("blank-\(i)")
             }
@@ -320,7 +320,7 @@ private struct DayCellStyle {
                 dayNumberColor = AppTheme.warning
             }
         } else {
-            background = Color(.secondarySystemBackground)
+            background = AppTheme.surfaceSoft
             border = Color.black.opacity(0.05)
             dayNumberColor = .secondary
         }
@@ -346,7 +346,8 @@ private struct DayDetailSheet: View {
                 }
                 .padding(AppTheme.spaceLG)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(DashboardBackground())
+            .scrollContentBackground(.hidden)
             .navigationTitle("รายละเอียดวัน")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -391,7 +392,7 @@ private struct DayDetailSheet: View {
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                            .fill(Color(.secondarySystemBackground))
+                            .fill(AppTheme.surfaceSoft)
                     )
                 }
             }
@@ -467,7 +468,7 @@ private struct DayDetailSheet: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(AppTheme.surfaceSoft)
         )
     }
 
@@ -500,7 +501,7 @@ private struct DayDetailSheet: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(AppTheme.surfaceSoft)
         )
     }
 
@@ -544,7 +545,7 @@ private struct DayDetailSheet: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(AppTheme.surfaceSoft)
         )
     }
 

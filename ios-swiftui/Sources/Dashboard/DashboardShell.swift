@@ -117,10 +117,11 @@ struct DashboardShell: View {
                         .padding(AppTheme.spaceLG)
                     }
                     .refreshable { await appState.refresh() }
+                    .scrollContentBackground(.hidden)
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(DashboardBackground())
         .navigationTitle(appState.settings.appName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
@@ -242,7 +243,8 @@ struct DashboardShell: View {
             }
             .padding(AppTheme.spaceLG)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(DashboardBackground())
+        .scrollContentBackground(.hidden)
         .navigationTitle("รายงาน")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { headerToolbar }
@@ -275,7 +277,7 @@ struct DashboardShell: View {
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.25), radius: 12, y: 6)
+        .shadow(color: AppTheme.brand.opacity(0.35), radius: 14, y: 6)
     }
 
     private func reportsSection<Content: View>(
@@ -327,11 +329,11 @@ struct DashboardShell: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(AppTheme.ink)
                         .multilineTextAlignment(.leading)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.inkMuted)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
                 }
@@ -340,13 +342,13 @@ struct DashboardShell: View {
             .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .fill(Color(.systemBackground))
+                    .fill(AppTheme.surface)
+                    .shadow(color: AppTheme.cardShadow, radius: 14, y: 5)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .stroke(color.opacity(0.14), lineWidth: 1)
+                    .strokeBorder(color.opacity(0.22), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -379,8 +381,9 @@ struct DashboardShell: View {
                     .padding(AppTheme.spaceLG)
             }
             .refreshable { await appState.refresh() }
+            .scrollContentBackground(.hidden)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(DashboardBackground())
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -397,8 +400,9 @@ struct DashboardShell: View {
                 .padding(AppTheme.spaceLG)
             }
             .refreshable { await appState.refresh() }
+            .scrollContentBackground(.hidden)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(DashboardBackground())
         .navigationTitle("ปฏิทิน")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
