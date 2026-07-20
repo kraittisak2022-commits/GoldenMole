@@ -217,6 +217,260 @@ enum DashboardAggregations {
         return good ? .up : .down
     }
 
+    // MARK: - Overview hub aggregations
+
+    static func dailyExpenseBreakdown(filter: DateFilter, transactions: [Transaction]) -> [DailyExpenseBreakdown] {
+        enumerateDates(in: filter).map { date in
+            let day = transactions.filter { String($0.date.prefix(10)) == date && $0.type == .expense }
+            let labor = day.filter { $0.category == "Labor" }.reduce(0) { $0 + $1.amount }
+            let fuel = day.filter { $0.category == "Fuel" }.reduce(0) { $0 + $1.amount }
+            let vehicle = day.filter {
+                $0.category == "Vehicle" || ($0.category == "DailyLog" && $0.subCategory == "VehicleTrip")
+            }.reduce(0) { $0 + $1.amount }
+            let maintenance = day.filter { $0.category == "Maintenance" }.reduce(0) { $0 + $1.amount }
+            let land = day.filter { $0.category == "Land" }.reduce(0) { $0 + $1.amount }
+            let total = day.reduce(0) { $0 + $1.amount }
+            return DailyExpenseBreakdown(
+                date: date, label: dayLabel(date),
+                labor: labor, fuel: fuel, vehicle: vehicle,
+                maintenance: maintenance, land: land, total: total
+            )
+        }
+    }
+
+    static func weeklyExpenseBuckets(filter: DateFilter, transactions: [Transaction]) -> [WeeklyExpenseBucket] {
+        let daily = dailyExpenseBreakdown(filter: filter, transactions: transactions)
+        guard !daily.isEmpty else { return [] }
+        var buckets: [WeeklyExpenseBucket] = []
+        var i = 0
+        var week = 1
+        while i < daily.count {
+            let slice = Array(daily[i..<min(i + 7, daily.count)])
+            buckets.append(WeeklyExpenseBucket(
+                label: "สัปดาห์ \(week)",
+                total: slice.reduce(0) { $0 + $1.total },
+                labor: slice.reduce(0) { $0 + $1.labor },
+                fuel: slice.reduce(0) { $0 + $1.fuel },
+                vehicle: slice.reduce(0) { $0 + $1.vehicle },
+                land: slice.reduce(0) { $0 + $1.land }
+            ))
+            i += 7
+            week += 1
+        }
+        return buckets
+    }
+
+    /// Per-car fuel + maintenance (top 5 by total). Matches web: description contains car name.
+    static func vehicleCostBreakdown(transactions: [Transaction], cars: [String]) -> [VehicleCostRow] {
+        let expenses = transactions.filter { $0.type == .expense }
+        let rows: [VehicleCostRow] = cars.compactMap { car in
+            let fuel = expenses.filter { $0.category == "Fuel" && $0.description.contains(car) }
+                .reduce(0) { $0 + $1.amount }
+            let maintenance = expenses.filter { $0.category == "Maintenance" && $0.description.contains(car) }
+                .reduce(0) { $0 + $1.amount }
+            guard fuel + maintenance > 0 else { return nil }
+            return VehicleCostRow(name: car, fuel: fuel, maintenance: maintenance)
+        }
+        return Array(rows.sorted { $0.total > $1.total }.prefix(5))
+    }
+
+    static func cumulative(_ values: [Double]) -> [Double] {
+        var run = 0.0
+        return values.map { v in run += v; return run }
+    }
+
+    /// Per-day drums obtained (max of sand rows), home wash, and cumulative remaining.
+    static func sandDrumsSeries(filter: DateFilter, transactions: [Transaction]) -> SandDrumsSeries {
+        let dates = enumerateDates(in: filter)
+        var obtained: [Double] = []
+        var home: [Double] = []
+        var remainingCum: [Double] = []
+        var run = 0.0
+        var totalObtained = 0.0
+        var totalHome = 0.0
+        for date in dates {
+            let sand = transactions.filter {
+                String($0.date.prefix(10)) == date && $0.category == "DailyLog" && $0.subCategory == "Sand"
+            }
+            let dayObtained = sand.compactMap(\.drumsObtained).max() ?? 0
+            let dayHome = persistedSandHomeDrums(sand)
+            obtained.append(dayObtained)
+            home.append(dayHome)
+            totalObtained += dayObtained
+            totalHome += dayHome
+            run += max(0, dayObtained - dayHome)
+            remainingCum.append(run)
+        }
+        return SandDrumsSeries(
+            obtained: obtained,
+            home: home,
+            remainingCumulative: remainingCum,
+            labels: dates.map { dayLabel($0) },
+            dates: dates,
+            totalObtained: totalObtained,
+            totalHome: totalHome
+        )
+    }
+
+    static func sandOverviewKPIs(filter: DateFilter, transactions: [Transaction]) -> SandOverviewKPIs {
+        let series = buildDailySandSeries(filter: filter, transactions: transactions)
+        let drums = sandDrumsSeries(filter: filter, transactions: transactions)
+        let numDays = max(1, Double(series.washed.count))
+        let washed = series.washed.reduce(0, +)
+        let transported = series.transported.reduce(0, +)
+        let remaining = washed - transported
+        let avgW = washed / numDays
+        let avgT = transported / numDays
+        let netPerDay = avgW - avgT
+        let forecast: String
+        if netPerDay > 0 {
+            forecast = "∞ (ผลิตเกินขน)"
+        } else if abs(netPerDay) < 1e-9 {
+            forecast = "0 (สมดุล)"
+        } else {
+            let days = max(0, Int(ceil(abs(remaining) / abs(netPerDay))))
+            forecast = "\(days) วัน"
+        }
+        return SandOverviewKPIs(
+            washed: washed,
+            transported: transported,
+            remaining: remaining,
+            forecastLabel: forecast,
+            avgWashedPerDay: avgW,
+            avgTransportedPerDay: avgT,
+            drumsObtained: drums.totalObtained,
+            drumsHome: drums.totalHome,
+            drumsRemaining: drums.drumsRemaining
+        )
+    }
+
+    static func sandTotals(_ txs: [Transaction]) -> (washed: Double, transported: Double) {
+        let washed = txs.filter { $0.category == "DailyLog" && $0.subCategory == "Sand" }
+            .reduce(0.0) { $0 + sandWashedCubic($1) }
+        let dates = Set(txs.map { String($0.date.prefix(10)) })
+        let transported = dates.reduce(0.0) { $0 + sandTransportedCubic(txs, date: $1) }
+        return (washed, transported)
+    }
+
+    static func dataQuality(filter: DateFilter, transactions: [Transaction]) -> DataQualitySummary {
+        let dates = enumerateDates(in: filter)
+        let total = max(1, dates.count)
+        var withRecords = 0
+        var withSand = 0
+        for date in dates {
+            let day = transactions.filter { String($0.date.prefix(10)) == date }
+            if !day.isEmpty { withRecords += 1 }
+            if day.contains(where: { $0.category == "DailyLog" && $0.subCategory == "Sand" }) {
+                withSand += 1
+            }
+        }
+        return DataQualitySummary(
+            totalDays: dates.count,
+            daysWithRecords: withRecords,
+            coveragePct: Double(withRecords) / Double(total) * 100,
+            daysWithSand: withSand,
+            sandCoveragePct: Double(withSand) / Double(total) * 100
+        )
+    }
+
+    static func buildOverviewAlerts(
+        cur: FinancialSummary,
+        prev: FinancialSummary,
+        quality: DataQualitySummary
+    ) -> [OverviewAlert] {
+        var alerts: [OverviewAlert] = []
+        if let expDelta = pctChangeVsPrev(cur: cur.expense, prev: prev.expense), expDelta >= 15 {
+            alerts.append(OverviewAlert(id: "expense_spike", label: "รายจ่ายพุ่ง", severity: .red))
+        }
+        if let incDelta = pctChangeVsPrev(cur: cur.income, prev: prev.income), incDelta <= -12 {
+            alerts.append(OverviewAlert(id: "income_drop", label: "รายรับลด", severity: .red))
+        }
+        let sev: OverviewAlert.Severity = quality.coveragePct < 60 ? .red : (quality.coveragePct < 80 ? .amber : .green)
+        alerts.append(OverviewAlert(
+            id: "coverage",
+            label: "ความครบถ้วนข้อมูล \(Int(round(quality.coveragePct)))%",
+            severity: sev
+        ))
+        return alerts
+    }
+
+    static func buildOverviewInsights(
+        cur: FinancialSummary,
+        prev: FinancialSummary,
+        sandWashed: Double,
+        sandTransported: Double,
+        quality: DataQualitySummary
+    ) -> [String] {
+        var insights: [String] = []
+        if let expDelta = pctChangeVsPrev(cur: cur.expense, prev: prev.expense), expDelta >= 15 {
+            insights.append("รายจ่ายเพิ่มขึ้น \(Int(round(expDelta)))% เทียบช่วงก่อน — ควรตรวจหมวดน้ำมัน/ค่าแรง")
+        }
+        if let incDelta = pctChangeVsPrev(cur: cur.income, prev: prev.income), incDelta <= -12 {
+            insights.append("รายรับลดลง \(Int(round(abs(incDelta))))% เทียบช่วงก่อน")
+        }
+        let sandTotal = sandWashed + sandTransported
+        if sandTotal > 0 {
+            let imbalance = abs(sandWashed - sandTransported) / max(sandWashed, sandTransported, 1) * 100
+            if imbalance >= 25 {
+                if sandWashed > sandTransported {
+                    insights.append("ล้างทรายมากกว่าขน \(Int(round(sandWashed - sandTransported))) คิว — มีทรายค้างกอง")
+                } else {
+                    insights.append("ขนทรายมากกว่าล้าง \(Int(round(sandTransported - sandWashed))) คิว — อาจขาดทรายล้าง")
+                }
+            }
+        }
+        if quality.coveragePct < 60 {
+            insights.append("ข้อมูลไม่ครบ (\(Int(round(quality.coveragePct)))% ของวันมีธุรกรรม) — คะแนนอาจคลาดเคลื่อน")
+        }
+        if insights.isEmpty {
+            insights.append("แนวโน้มช่วงนี้ค่อนข้างเสถียรเทียบช่วงก่อน — ไม่มีสัญญาณผิดปกติชัดเจน")
+        }
+        return Array(insights.prefix(5))
+    }
+
+    static func costStructureSlices(_ transactions: [Transaction]) -> [ChartSlice] {
+        let map = expenseByCategory(transactions)
+        let defs: [(String, String, String)] = [
+            ("Labor", "ค่าแรง", "#10b981"),
+            ("Vehicle", "การใช้รถ", "#f59e0b"),
+            ("Fuel", "น้ำมัน", "#ea580c"),
+            ("Maintenance", "ซ่อมบำรุง", "#64748b"),
+            ("Land", "ที่ดิน", "#8b5cf6"),
+            ("DailyLog", "งานประจำวัน", "#0ea5e9")
+        ]
+        return defs.compactMap { key, label, color in
+            let v = map[key] ?? 0
+            guard v > 0 else { return nil }
+            return ChartSlice(label: label, value: v, colorHex: color)
+        }
+    }
+
+    static func breakEvenPoints(filter: DateFilter, transactions: [Transaction]) -> [BreakEvenPoint] {
+        enumerateDates(in: filter).map { date in
+            let day = transactions.filter { String($0.date.prefix(10)) == date }
+            let income = day.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
+            let expense = day.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
+            return BreakEvenPoint(label: dayLabel(date), income: income, expense: expense)
+        }
+    }
+
+    static func overviewCSV(
+        cur: FinancialSummary,
+        prev: FinancialSummary,
+        sandCur: (washed: Double, transported: Double),
+        sandPrev: (washed: Double, transported: Double),
+        score: Int
+    ) -> String {
+        var lines = ["metric,current,previous"]
+        lines.append("income,\(cur.income),\(prev.income)")
+        lines.append("expense,\(cur.expense),\(prev.expense)")
+        lines.append("profit,\(cur.profit),\(prev.profit)")
+        lines.append("sand_washed,\(sandCur.washed),\(sandPrev.washed)")
+        lines.append("sand_transported,\(sandCur.transported),\(sandPrev.transported)")
+        lines.append("score,\(score),")
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Count record (V4) — see CountRecordLogic
 
     static func isCountRecordVehicleRow(_ t: Transaction) -> Bool {

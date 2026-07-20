@@ -572,3 +572,86 @@ struct VehicleEfficiency: Sendable {
     let priorLabel: String
     let isCalendarYesterday: Bool
 }
+
+// MARK: - Overview hub aggregations
+
+struct DailyExpenseBreakdown: Sendable, Identifiable {
+    var id: String { date }
+    let date: String
+    let label: String
+    let labor: Double
+    let fuel: Double
+    let vehicle: Double
+    let maintenance: Double
+    let land: Double
+    let total: Double
+}
+
+struct WeeklyExpenseBucket: Sendable, Identifiable {
+    var id: String { label }
+    let label: String
+    let total: Double
+    let labor: Double
+    let fuel: Double
+    let vehicle: Double
+    let land: Double
+}
+
+struct VehicleCostRow: Sendable, Identifiable {
+    var id: String { name }
+    let name: String
+    let fuel: Double
+    let maintenance: Double
+    var total: Double { fuel + maintenance }
+}
+
+struct SandDrumsSeries: Sendable {
+    let obtained: [Double]
+    let home: [Double]
+    let remainingCumulative: [Double]
+    let labels: [String]
+    let dates: [String]
+    let totalObtained: Double
+    let totalHome: Double
+    /// Final cumulative remaining (ได้ − ล้างบ้าน)
+    var drumsRemaining: Double { remainingCumulative.last ?? 0 }
+}
+
+struct SandOverviewKPIs: Sendable {
+    let washed: Double
+    let transported: Double
+    let remaining: Double
+    let forecastLabel: String
+    let avgWashedPerDay: Double
+    let avgTransportedPerDay: Double
+    let drumsObtained: Double
+    let drumsHome: Double
+    let drumsRemaining: Double
+}
+
+struct DataQualitySummary: Sendable {
+    let totalDays: Int
+    let daysWithRecords: Int
+    let coveragePct: Double
+    let daysWithSand: Int
+    let sandCoveragePct: Double
+
+    var statusLabel: String {
+        if coveragePct >= 80 { return "ดี" }
+        if coveragePct >= 50 { return "ปานกลาง" }
+        return "ต้องระวัง"
+    }
+}
+
+struct OverviewAlert: Sendable, Identifiable {
+    let id: String
+    let label: String
+    let severity: Severity
+    enum Severity: Sendable { case red, amber, green }
+}
+
+struct BreakEvenPoint: Sendable {
+    let label: String
+    let income: Double
+    let expense: Double
+}

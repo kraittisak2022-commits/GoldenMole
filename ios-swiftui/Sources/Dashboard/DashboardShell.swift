@@ -14,12 +14,11 @@ struct DashboardShell: View {
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtime
-    @State private var homeSegment: HomeSegment = .v1
+    @State private var homeSegment: HomeSegment = .overview
     @State private var showProfile = false
 
     private enum HomeSegment: String, CaseIterable, Identifiable {
-        case v1 = "ภาพรวม V.1"
-        case v5 = "ภาพรวม V.5"
+        case overview = "ภาพรวม"
         case worklog = "บันทึกงาน"
         var id: String { rawValue }
     }
@@ -99,30 +98,26 @@ struct DashboardShell: View {
             .padding(.vertical, 10)
 
             loadingOr {
-                ScrollView {
-                    Group {
-                        switch homeSegment {
-                        case .v1:
-                            OverviewV1View(
-                                transactions: appState.filteredTransactions,
-                                dateFilter: appState.dateFilter
-                            )
-                        case .v5:
-                            CompareV5View(
-                                transactions: appState.transactions,
-                                dateFilter: appState.dateFilter
-                            )
-                        case .worklog:
-                            WorkLogView(
-                                transactions: appState.transactions,
-                                employees: appState.employees,
-                                settings: appState.settings
-                            )
-                        }
+                switch homeSegment {
+                case .overview:
+                    OverviewHubView(
+                        transactions: appState.filteredTransactions,
+                        allTransactions: appState.transactions,
+                        settings: appState.settings,
+                        dateFilter: appState.dateFilter
+                    )
+                    .refreshable { await appState.refresh() }
+                case .worklog:
+                    ScrollView {
+                        WorkLogView(
+                            transactions: appState.transactions,
+                            employees: appState.employees,
+                            settings: appState.settings
+                        )
+                        .padding(AppTheme.spaceLG)
                     }
-                    .padding(AppTheme.spaceLG)
+                    .refreshable { await appState.refresh() }
                 }
-                .refreshable { await appState.refresh() }
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -176,21 +171,6 @@ struct DashboardShell: View {
                 reportsHero
 
                 reportsSection(title: "วิเคราะห์และรายการ", systemImage: "sparkles") {
-                    reportLink(
-                        title: "วิเคราะห์ (V.2)",
-                        subtitle: "รายจ่ายและแนวโน้ม",
-                        icon: "chart.bar.xaxis",
-                        color: AppTheme.info,
-                        destination: {
-                            reportDetail(title: "วิเคราะห์ (V.2)") {
-                                AnalyticsV2View(
-                                    transactions: appState.filteredTransactions,
-                                    settings: appState.settings,
-                                    dateFilter: appState.dateFilter
-                                )
-                            }
-                        }
-                    )
                     reportLink(
                         title: "รายการบันทึก",
                         subtitle: "ค้นหาธุรกรรมทั้งหมด",

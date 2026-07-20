@@ -1,5 +1,6 @@
 import Charts
 import SwiftUI
+import UIKit
 
 struct DonutChartView: View {
     let slices: [ChartSlice]
@@ -136,6 +137,62 @@ struct BreakEvenScatterView: View {
             Text("↑ รายจ่าย").font(.caption2).foregroundStyle(.secondary)
         }
     }
+}
+
+/// Side-by-side grouped bars for comparing two series (e.g. washed vs transported).
+struct GroupedBarChartView: View {
+    let labels: [String]
+    let seriesA: [Double]
+    let seriesB: [Double]
+    var colorA: Color = AppTheme.info
+    var colorB: Color = AppTheme.warning
+    var labelA: String = "A"
+    var labelB: String = "B"
+
+    private var maxValue: Double {
+        max((seriesA + seriesB).max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Label(labelA, systemImage: "square.fill").font(.caption2).foregroundStyle(colorA)
+                Label(labelB, systemImage: "square.fill").font(.caption2).foregroundStyle(colorB)
+            }
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(Array(labels.enumerated()), id: \.offset) { i, label in
+                    let a = i < seriesA.count ? seriesA[i] : 0
+                    let b = i < seriesB.count ? seriesB[i] : 0
+                    VStack(spacing: 2) {
+                        HStack(alignment: .bottom, spacing: 2) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(colorA.opacity(0.9))
+                                .frame(height: CGFloat(a / maxValue) * 100)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(colorB.opacity(0.9))
+                                .frame(height: CGFloat(b / maxValue) * 100)
+                        }
+                        .frame(maxWidth: .infinity)
+                        Text(label)
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 130)
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 extension Color {
