@@ -47,6 +47,8 @@ export default defineConfig(({ mode }) => {
                         if (id.includes('recharts')) return 'vendor-charts';
                         if (id.includes('lucide-react')) return 'vendor-icons';
                         if (id.includes('@supabase')) return 'vendor-supabase';
+                        // Keep three.js out of the main app bundle (Knowledge page only)
+                        if (id.includes('node_modules/three')) return 'vendor-three';
                         return 'vendor-misc';
                     },
                 },
