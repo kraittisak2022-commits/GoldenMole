@@ -13,6 +13,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
+import '../widgets/fuel_sub_mode_picker.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
 import '../widgets/soft_sync_indicator.dart';
@@ -22,6 +23,7 @@ import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/fuel_stock.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
@@ -556,6 +558,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [];
   bool _fuelExtraVehiclesExpanded = false;
+
+  // ── น้ำมัน: เมนูย่อย + สต็อกถัง ──
+  /// เมนูย่อยที่เลือกอยู่ใน «น้ำมัน» (null = ยังอยู่หน้าเลือกเมนู)
+  FuelSubMode? _fuelSubMode;
+  ({double diesel, double benzine}) _fuelOpeningStock = (
+    diesel: 0.0,
+    benzine: 0.0,
+  );
+  FuelStockBalance _fuelStock = const FuelStockBalance(
+    diesel: 0,
+    benzine: 0,
+  );
+  final _fuelStockInLitersController = TextEditingController();
+  final _fuelStockInPricePerLiterController = TextEditingController();
+  final _fuelStockInAmountController = TextEditingController();
+  final _fuelStockInTimeController = TextEditingController();
+  String _fuelStockInFuelType = 'Diesel';
+  final _fuelWithdrawLitersController = TextEditingController();
+  final _fuelWithdrawTimeController = TextEditingController();
+  final _fuelWithdrawOtherController = TextEditingController();
+  String _fuelWithdrawFuelType = 'Diesel';
+  FuelWithdrawPurpose _fuelWithdrawPurpose = FuelWithdrawPurpose.machine;
   bool _macroExtraVehiclesExpanded = false;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
@@ -689,6 +713,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String? _attendanceLeaveTxId;
   final Map<String, String> _attendanceOtTxIds = {};
 
+  /// จำนวนวันที่ «มาทำงาน» ของแต่ละคนจากประวัติทั้งหมด — ใช้เรียงพูลรายชื่อ
+  Map<String, int> _attendanceDaysWorked = const {};
+  final ScrollController _attendanceGeneralPoolScroll = ScrollController();
+  final ScrollController _attendanceDriverPoolScroll = ScrollController();
+
   final List<_GeneralSubJob> _generalSubJobs = [];
   final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
@@ -805,11 +834,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : 'ค่าแรง',
     );
     _loadEmployees(forceRefresh: _isLaborMode || _isAttendanceMode);
-    _loadAppCars();
+    if (_isFuelMode) {
+      // ต้องได้ค่ายกมาก่อนคิดคงเหลือในถัง
+      unawaited(_loadAppCars().then((_) => _refreshFuelStock()));
+    } else {
+      _loadAppCars();
+    }
     _loadAppExpenseIncomeTypes();
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
+    if (_isAttendanceMode) _refreshAttendanceDaysWorked();
     _otGroups.add(_OtGroupDraft.empty());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -1887,8 +1922,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelVehicleController.dispose();
     _fuelVehicleLitersController.dispose();
     _fuelVehicleTimeController.dispose();
+    _fuelStockInLitersController.dispose();
+    _fuelStockInPricePerLiterController.dispose();
+    _fuelStockInAmountController.dispose();
+    _fuelStockInTimeController.dispose();
+    _fuelWithdrawLitersController.dispose();
+    _fuelWithdrawTimeController.dispose();
+    _fuelWithdrawOtherController.dispose();
     _laborWorkDetailsController.dispose();
     _attendanceOtCustomController.dispose();
+    _attendanceGeneralPoolScroll.dispose();
+    _attendanceDriverPoolScroll.dispose();
     for (final job in _generalSubJobs) {
       job.dispose();
     }
@@ -2082,10 +2126,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       });
     }
 
+    Future<void> applyOpeningStock(
+      ({double diesel, double benzine}) opening,
+    ) async {
+      if (!mounted) return;
+      setState(() => _fuelOpeningStock = opening);
+    }
+
     if (_isOfflineCapableCategory && !widget.serverOnlineHint) {
       await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
       await applyDefaultDrivers(
         await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
+      );
+      await applyOpeningStock(
+        await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
       );
       return;
     }
@@ -2094,7 +2148,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final client = Supabase.instance.client;
       final rows = await client
           .from('app_settings')
-          .select('cars, app_defaults')
+          .select('cars, app_defaults, fuel_opening_stock')
           .eq('id', 'default')
           .limit(1);
       if (rows.isEmpty) {
@@ -2102,7 +2156,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await CountRecordOfflineSync.instance
               .readCachedVehicleDefaultDrivers(),
         );
+        await applyOpeningStock(
+          await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
+        );
         return;
+      }
+      final openingRaw = rows.first['fuel_opening_stock'];
+      if (openingRaw is Map) {
+        final opening = CountRecordOfflineSync.parseFuelOpeningStock(openingRaw);
+        await CountRecordOfflineSync.instance.cacheFuelOpeningStock(opening);
+        await applyOpeningStock(opening);
+      } else {
+        await applyOpeningStock(
+          await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
+        );
       }
       final raw = rows.first['cars'];
       final cars = <String>[
@@ -2132,6 +2199,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
       await applyDefaultDrivers(
         await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
+      );
+      await applyOpeningStock(
+        await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
       );
     }
   }
@@ -2298,6 +2368,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _drumsWashedAtHomeController.text = _strNum(today.home);
         }
       });
+    } catch (_) {}
+  }
+
+  /// นับ «จำนวนวันที่มาทำงาน» ต่อคนจากประวัติทั้งหมด (นับวันซ้ำเพียงครั้งเดียว)
+  /// ไม่รวมแถว OT และไม่รวมลางาน — ใช้จัดอันดับพูลรายชื่อในกระดานเช็คชื่อ
+  Future<void> _refreshAttendanceDaysWorked() async {
+    try {
+      final rows = await widget.service.fetchTransactions();
+      final daysByEmp = <String, Set<String>>{};
+      for (final t in rows) {
+        if (!isLaborWorkAttendanceRow(t)) continue;
+        final day = t.date.trim();
+        if (day.isEmpty) continue;
+        for (final raw in t.employeeIds) {
+          final id = raw.trim();
+          if (id.isEmpty) continue;
+          daysByEmp.putIfAbsent(id, () => <String>{}).add(day);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _attendanceDaysWorked = {
+          for (final e in daysByEmp.entries) e.key: e.value.length,
+        };
+      });
+    } catch (_) {}
+  }
+
+  /// คงเหลือในถังน้ำมัน — รวมทุกวันจากรายการทั้งหมด + ค่ายกมาจากตั้งค่าเว็บ
+  Future<void> _refreshFuelStock() async {
+    try {
+      final rows = await widget.service.fetchTransactions();
+      if (!mounted) return;
+      final balance = computeFuelStockBalance(
+        rows,
+        openingDiesel: _fuelOpeningStock.diesel,
+        openingBenzine: _fuelOpeningStock.benzine,
+      );
+      setState(() => _fuelStock = balance);
     } catch (_) {}
   }
 
@@ -3132,6 +3241,130 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  /// เพิ่มน้ำมันเข้าถัง (รถน้ำมันมาเติม) — 1 รายการต่อการบันทึก
+  Future<void> _saveFuelStockInEntry() async {
+    final liters =
+        double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
+    final pricePerLiter =
+        double.tryParse(_fuelStockInPricePerLiterController.text.trim()) ?? 0;
+    final amount =
+        double.tryParse(_fuelStockInAmountController.text.trim()) ?? 0;
+    final time = _fuelStockInTimeController.text.trim();
+    final fuelType = _fuelStockInFuelType;
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ',
+      saveActionLabel: 'เพิ่มน้ำมันเข้าถัง',
+      saveButtonLabel: 'บันทึกเพิ่มน้ำมัน',
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        _fuelStockInLitersController.clear();
+        _fuelStockInPricePerLiterController.clear();
+        _fuelStockInAmountController.clear();
+        _fuelStockInTimeController.clear();
+      },
+      body: () async {
+        if (liters <= 0) {
+          _failSave(
+            'กรุณาระบุจำนวนลิตรให้มากกว่า 0',
+            field: 'จำนวนลิตรที่เติมเข้าถัง',
+          );
+        }
+        if (time.isEmpty) {
+          _failSave('กรุณาระบุเวลาที่เติม', field: 'เวลาที่เติม');
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final typeTh = fuelType == 'Benzine' ? 'เบนซิน' : 'ดีเซล';
+        await _persist(
+          AppTransaction(
+            id: '${DateTime.now().millisecondsSinceEpoch}_fuel_in',
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelStockInSubCategory,
+            description: _appendRecorder(
+              'เพิ่มน้ำมันเข้าถัง: ${formatFuelLiters(liters)} ลิตร ($typeTh)',
+            ),
+            amount: amount,
+            note: _activeSignatureNote,
+            quantity: liters,
+            unit: 'L',
+            unitPrice: pricePerLiter > 0 ? pricePerLiter : null,
+            fuelType: fuelType,
+            fuelMovement: 'stock_in',
+            workDetails: _appendRecorder(time),
+          ),
+        );
+        await _refreshFuelStock();
+      },
+    );
+  }
+
+  /// เบิกน้ำมันออกจากถัง — 1 รายการต่อการบันทึก
+  Future<void> _saveFuelWithdrawEntry() async {
+    final liters =
+        double.tryParse(_fuelWithdrawLitersController.text.trim()) ?? 0;
+    final time = _fuelWithdrawTimeController.text.trim();
+    final purpose = _fuelWithdrawPurpose;
+    final otherText = _fuelWithdrawOtherController.text.trim();
+    final fuelType = _fuelWithdrawFuelType;
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกเบิกน้ำมันสำเร็จ',
+      saveActionLabel: 'เบิกน้ำมันออกจากถัง',
+      saveButtonLabel: 'บันทึกเบิกน้ำมัน',
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        _fuelWithdrawLitersController.clear();
+        _fuelWithdrawTimeController.clear();
+        _fuelWithdrawOtherController.clear();
+      },
+      body: () async {
+        if (liters <= 0) {
+          _failSave(
+            'กรุณาระบุจำนวนลิตรให้มากกว่า 0',
+            field: 'จำนวนลิตรที่เบิกออก',
+          );
+        }
+        if (time.isEmpty) {
+          _failSave('กรุณาระบุเวลาที่เติม', field: 'เวลาที่เติม');
+        }
+        if (purpose == FuelWithdrawPurpose.other && otherText.isEmpty) {
+          _failSave('กรุณาระบุรายละเอียดการเบิก', field: 'ระบุรายละเอียด');
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final label = fuelWithdrawPurposeLabelOf(purpose);
+        final desc = purpose == FuelWithdrawPurpose.other
+            ? 'เบิกน้ำมัน: $label — $otherText'
+            : 'เบิกน้ำมัน: $label';
+        final typeTh = fuelType == 'Benzine' ? 'เบนซิน' : 'ดีเซล';
+        await _persist(
+          AppTransaction(
+            id: '${DateTime.now().millisecondsSinceEpoch}_fuel_wd',
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelWithdrawSubCategory,
+            description: _appendRecorder(
+              '$desc ${formatFuelLiters(liters)} ลิตร ($typeTh)',
+            ),
+            amount: 0,
+            note: _activeSignatureNote,
+            quantity: liters,
+            unit: 'L',
+            fuelType: fuelType,
+            fuelMovement: 'stock_out',
+            workType: fuelWithdrawPurposeCodeOf(purpose),
+            workDetails: _appendRecorder(time),
+          ),
+        );
+        await _refreshFuelStock();
+      },
+    );
+  }
+
   Future<void> _saveFuelVehicleUsageEntries() async {
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
@@ -3201,6 +3434,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           );
         }
+        await _refreshFuelStock();
       },
     );
   }
@@ -6197,10 +6431,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity != null &&
               details.primaryVelocity! > 550) {
-            Navigator.maybePop(context);
+            _handleQuickInputBack();
           }
         },
-        child: Scaffold(
+        child: PopScope(
+          // อยู่ในเมนูย่อยน้ำมัน — ปุ่มย้อนกลับของระบบให้กลับหน้าเลือกเมนูก่อน
+          canPop: !(_isFuelMode && _fuelSubMode != null),
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            _handleQuickInputBack();
+          },
+          child: Scaffold(
           backgroundColor: _bg,
           body: Stack(
             children: [
@@ -6233,9 +6474,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                           child: Row(
                             children: [
-                              if (canPop)
+                              if (canPop || _fuelSubMode != null)
                                 IconButton(
-                                  onPressed: () => Navigator.maybePop(context),
+                                  onPressed: _handleQuickInputBack,
                                   icon: const Icon(
                                     Icons.arrow_back_ios_new_rounded,
                                     color: Colors.white,
@@ -6425,6 +6666,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),
@@ -8951,6 +9193,612 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  /// ปุ่มย้อนกลับ — ถ้าอยู่ในเมนูย่อยน้ำมันให้กลับไปหน้าเลือกเมนูก่อน
+  void _handleQuickInputBack() {
+    if (_isFuelMode && _fuelSubMode != null) {
+      _releaseKeyboardFocus();
+      setState(() => _fuelSubMode = null);
+      return;
+    }
+    Navigator.maybePop(context);
+  }
+
+  /// เนื้อหาเมนู «น้ำมัน» — เลือกเมนูย่อยก่อน แล้วค่อยแสดงฟอร์ม
+  Widget _buildFuelModeBody() {
+    final mode = _fuelSubMode;
+    final child = mode == null
+        ? FuelSubModePicker(
+            dieselLiters: _fuelStock.diesel,
+            onSelect: (selected) => setState(() => _fuelSubMode = selected),
+          )
+        : switch (mode) {
+            FuelSubMode.stockIn => _buildFuelStockInFormCard(),
+            FuelSubMode.withdraw => _buildFuelWithdrawFormCard(),
+            FuelSubMode.macroUsage => _buildFuelFormCard(),
+          };
+    return AnimatedSwitcher(
+      duration: Duration(
+        milliseconds: DevicePerf.isConstrainedDevice ? 140 : 240,
+      ),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: KeyedSubtree(
+        key: ValueKey('fuel_sub_${mode?.name ?? 'pick'}'),
+        child: child,
+      ),
+    );
+  }
+
+  /// แบนเนอร์คงเหลือในถัง — ใช้ร่วมทุกฟอร์มย่อยของน้ำมัน
+  Widget _buildFuelStockBanner({double? pendingDelta}) {
+    final current = _fuelStock.diesel;
+    final preview = current + (pendingDelta ?? 0);
+    final over = preview > kFuelTankCapacityLiters;
+    final negative = preview < 0;
+    final warn = over || negative;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: warn ? const Color(0xFFFFF3F3) : const Color(0xFFF4F8FD),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: warn ? const Color(0xFFF5C2C2) : const Color(0xFFBFD8F4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'คงเหลือในถัง ${formatFuelLiters(current)} / '
+            '${formatFuelLiters(kFuelTankCapacityLiters)} ลิตร',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w800,
+              fontSize: 17,
+              color: const Color(0xFF0F5FAF),
+            ),
+          ),
+          if (pendingDelta != null && pendingDelta != 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'หลังบันทึกรายการนี้: ${formatFuelLiters(preview)} ลิตร',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: warn
+                    ? const Color(0xFFD14343)
+                    : const Color(0xFF37474F),
+              ),
+            ),
+          ],
+          if (over) ...[
+            const SizedBox(height: 4),
+            Text(
+              'เกินความจุถัง ${formatFuelLiters(kFuelTankCapacityLiters)} ลิตร',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: const Color(0xFFD14343),
+              ),
+            ),
+          ],
+          if (negative) ...[
+            const SizedBox(height: 4),
+            Text(
+              'เบิกมากกว่าน้ำมันที่มีในถัง',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: const Color(0xFFD14343),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickFuelTimeInto(TextEditingController controller) async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: const Color(0xFF1565C0)),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (t == null || !mounted) return;
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    setState(() => controller.text = '$hh:$mm');
+  }
+
+  Widget _fuelTypeChips({
+    required String selected,
+    required ValueChanged<String> onChanged,
+  }) {
+    Widget chip(String value, String label) {
+      final isSelected = selected == value;
+      return Expanded(
+        child: Material(
+          color: isSelected ? const Color(0xFFFFF8E1) : const Color(0xFFF8FAFD),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => onChanged(value),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected
+                      ? const Color(0xFFFFB300)
+                      : const Color(0xFFE1E8F0),
+                  width: isSelected ? 1.6 : 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.local_gas_station_outlined,
+                    size: 18,
+                    color: isSelected
+                        ? const Color(0xFF6D4C00)
+                        : const Color(0xFF90A4AE),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: GoogleFonts.kanit(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected
+                          ? const Color(0xFF6D4C00)
+                          : const Color(0xFF607D8B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        chip('Diesel', 'ดีเซล'),
+        const SizedBox(width: 10),
+        chip('Benzine', 'เบนซิน'),
+      ],
+    );
+  }
+
+  void _recalcFuelStockInAmount() {
+    final liters =
+        double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
+    final price =
+        double.tryParse(_fuelStockInPricePerLiterController.text.trim()) ?? 0;
+    if (liters <= 0 || price <= 0) return;
+    final total = liters * price;
+    _fuelStockInAmountController.text = total % 1 == 0
+        ? total.toStringAsFixed(0)
+        : total.toStringAsFixed(2);
+  }
+
+  Widget _buildFuelStockInFormCard() {
+    final liters =
+        double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'เพิ่มน้ำมันเข้าถัง',
+            style: GoogleFonts.kanit(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF2E7D32),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'รถน้ำมันมาเติมเข้าถังสต็อก — กรอกจำนวนลิตร ราคา และเวลา',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.black54,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _buildFuelStockBanner(pendingDelta: liters),
+          const SizedBox(height: 14),
+          _fuelTypeChips(
+            selected: _fuelStockInFuelType,
+            onChanged: (v) => setState(() => _fuelStockInFuelType = v),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _fuelStockInLitersController,
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _fuelStockInLitersController,
+              label: 'จำนวนลิตรที่เติมเข้าถัง',
+              allowDecimal: true,
+              maxDecimalPlaces: 2,
+              onChanged: (_) {
+                _recalcFuelStockInAmount();
+                _scheduleUiRefresh();
+              },
+            ),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'จำนวนลิตรที่เติมเข้าถัง',
+              prefixIcon: Icon(Icons.opacity_outlined),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _fuelStockInPricePerLiterController,
+                  readOnly: true,
+                  onTap: () => _openNumericPad(
+                    controller: _fuelStockInPricePerLiterController,
+                    label: 'ราคาต่อลิตร (บาท)',
+                    allowDecimal: true,
+                    maxDecimalPlaces: 2,
+                    onChanged: (_) {
+                      _recalcFuelStockInAmount();
+                      _scheduleUiRefresh();
+                    },
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'ราคาต่อลิตร',
+                    prefixIcon: Icon(Icons.price_change_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _fuelStockInTimeController,
+                  readOnly: true,
+                  onTap: () => _pickFuelTimeInto(_fuelStockInTimeController),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'เวลาที่เติม',
+                    prefixIcon: Icon(Icons.access_time_outlined),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _fuelStockInAmountController,
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _fuelStockInAmountController,
+              label: 'จำนวนเงินรวม (บาท)',
+              allowDecimal: true,
+              maxDecimalPlaces: 2,
+              onChanged: (_) => _scheduleUiRefresh(),
+            ),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'จำนวนเงินรวม (บาท)',
+              helperText: 'คำนวณจาก ลิตร x ราคาต่อลิตร — แก้ไขทับได้',
+              prefixIcon: Icon(Icons.payments_outlined),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveFuelStockInEntry,
+              icon: const Icon(Icons.add_circle_outline),
+              label: Text(
+                'บันทึกเพิ่มน้ำมัน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(62),
+                backgroundColor: const Color(0xFF2E7D32),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFuelWithdrawFormCard() {
+    final liters =
+        double.tryParse(_fuelWithdrawLitersController.text.trim()) ?? 0;
+    final dayKey = _quickYmd(_selectedDate);
+    final reconcile = fuelMachineReconcileForDay(
+      dayKey,
+      _moduleDayAllTransactions,
+    );
+
+    Widget purposeTile(FuelWithdrawPurpose purpose, IconData icon) {
+      final isSelected = _fuelWithdrawPurpose == purpose;
+      final label = purpose == FuelWithdrawPurpose.other
+          ? 'อื่นๆ (ระบุ)'
+          : fuelWithdrawPurposeLabelOf(purpose);
+      return Material(
+        color: isSelected ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFD),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _fuelWithdrawPurpose = purpose),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFFEF6C00)
+                    : const Color(0xFFE1E8F0),
+                width: isSelected ? 1.6 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isSelected
+                      ? const Color(0xFFEF6C00)
+                      : const Color(0xFF90A4AE),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.kanit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected
+                          ? const Color(0xFF8A4B00)
+                          : const Color(0xFF546E7A),
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle,
+                    size: 20,
+                    color: Color(0xFFEF6C00),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'เบิกน้ำมันออกจากถัง',
+            style: GoogleFonts.kanit(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFFEF6C00),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'ระบุจำนวนลิตรที่เอาออกจากคลังสต็อก และนำไปใช้ทำอะไร',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.black54,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _buildFuelStockBanner(pendingDelta: liters > 0 ? -liters : 0),
+          const SizedBox(height: 14),
+          _fuelTypeChips(
+            selected: _fuelWithdrawFuelType,
+            onChanged: (v) => setState(() => _fuelWithdrawFuelType = v),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextFormField(
+                  controller: _fuelWithdrawLitersController,
+                  readOnly: true,
+                  onTap: () => _openNumericPad(
+                    controller: _fuelWithdrawLitersController,
+                    label: 'จำนวนลิตรที่เบิกออก',
+                    allowDecimal: true,
+                    maxDecimalPlaces: 2,
+                    onChanged: (_) => _scheduleUiRefresh(),
+                  ),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'จำนวนลิตรที่เบิกออก',
+                    prefixIcon: Icon(Icons.opacity_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  controller: _fuelWithdrawTimeController,
+                  readOnly: true,
+                  onTap: () => _pickFuelTimeInto(_fuelWithdrawTimeController),
+                  style: GoogleFonts.kanit(
+                    color: const Color(0xFF1D2A3A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'เวลาที่เติม',
+                    prefixIcon: Icon(Icons.access_time_outlined),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'เอาไปใช้ทำอะไร',
+            style: GoogleFonts.kanit(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF334155),
+            ),
+          ),
+          const SizedBox(height: 8),
+          purposeTile(
+            FuelWithdrawPurpose.machine,
+            Icons.precision_manufacturing_outlined,
+          ),
+          const SizedBox(height: 8),
+          purposeTile(
+            FuelWithdrawPurpose.car,
+            Icons.directions_car_filled_outlined,
+          ),
+          const SizedBox(height: 8),
+          purposeTile(FuelWithdrawPurpose.generator, Icons.bolt_outlined),
+          const SizedBox(height: 8),
+          purposeTile(FuelWithdrawPurpose.other, Icons.more_horiz_rounded),
+          if (_fuelWithdrawPurpose == FuelWithdrawPurpose.other) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _fuelWithdrawOtherController,
+              readOnly: true,
+              onTap: () => _openThaiTextPad(
+                controller: _fuelWithdrawOtherController,
+                label: 'ระบุรายละเอียด',
+                onChanged: () => _scheduleUiRefresh(),
+                minLines: 2,
+                maxLines: 3,
+              ),
+              style: GoogleFonts.kanit(
+                color: const Color(0xFF1D2A3A),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'ระบุรายละเอียด',
+                prefixIcon: Icon(Icons.edit_note_rounded),
+              ),
+            ),
+          ],
+          if (_fuelWithdrawPurpose == FuelWithdrawPurpose.machine) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F8FD),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2EAF4)),
+              ),
+              child: Text(
+                'เบิกเพื่อเครื่องจักรวันนี้ '
+                '${formatFuelLiters(reconcile.machineWithdraw)} ลิตร · '
+                'ลงบันทึกแม็คโครแล้ว '
+                '${formatFuelLiters(reconcile.vehicleUsage)} ลิตร · '
+                'คงค้าง ${formatFuelLiters(reconcile.remaining)} ลิตร',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  height: 1.35,
+                  color: const Color(0xFF37474F),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveFuelWithdrawEntry,
+              icon: const Icon(Icons.output_rounded),
+              label: Text(
+                'บันทึกเบิกน้ำมัน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(62),
+                backgroundColor: const Color(0xFFEF6C00),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFuelFormCard() {
     final fuelCars = _fuelMacroCars();
     final pinnedCars = _fuelPinnedMacroCars(fuelCars);
@@ -9571,7 +10419,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               : _isMacroVehicleMode
               ? _buildMacroVehicleFormCard()
               : _isFuelMode
-              ? _buildFuelFormCard()
+              ? _buildFuelModeBody()
               : _isHomeSandMode
               ? _buildHomeSandFormCard()
               : _isLaborLeaveMode
@@ -10788,6 +11636,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool _attendanceIsDriver(Employee e) =>
       _isDriverEmployee(e) || _isMacroExcavatorDriverEmployee(e);
 
+  /// พูล «#รายชื่อพนักงาน» — เฉพาะตำแหน่ง «พนักงานท่าทราย» (รองรับสะกด ท่า/ทำ)
+  bool _isSandYardAttendanceEmployee(Employee e) {
+    const titles = {'พนักงานท่าทราย', 'พนักงานทำทราย', 'ท่าทราย'};
+    for (final p in _employeePositionTokens(e)) {
+      if (titles.contains(p.replaceAll(' ', ''))) return true;
+    }
+    return false;
+  }
+
+  /// เรียงพูล: คนที่มาทำงานบ่อยสุดขึ้นก่อน — เท่ากันเรียงตามชื่อกันลิสต์สลับที่
+  int _compareAttendancePoolOrder(Employee a, Employee b) {
+    final na = _attendanceDaysWorked[a.id] ?? 0;
+    final nb = _attendanceDaysWorked[b.id] ?? 0;
+    if (na != nb) return nb.compareTo(na);
+    return _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b));
+  }
+
   Set<String> _attendanceExclusionGroup(String bucketId) {
     if (_attGeneralPresenceIds.contains(bucketId)) return _attGeneralPresenceIds;
     if (_attGeneralOtIds.contains(bucketId)) return _attGeneralOtIds;
@@ -11142,6 +12007,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required Set<String> pickedPool,
     required Set<String> poolBucketIds,
     required String emptyText,
+    required ScrollController scrollController,
     Color accent = const Color(0xFF7C4DFF),
   }) {
     final assignedHere = <String>{
@@ -11170,7 +12036,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             color: const Color(0xFF475569),
             child: Text(
-              hashtag,
+              people.isEmpty ? hashtag : '$hashtag · ${people.length} คน',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
@@ -11211,64 +12077,73 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             ),
                           ),
                         )
-                      : SingleChildScrollView(
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 8,
-                            children: people.map((e) {
-                              final id = e.id;
-                              final selected = pickedPool.contains(id);
-                              final placed = assignedHere.contains(id);
-                              final name = _employeeUiDisplayName(e);
-                              return LongPressDraggable<String>(
-                                data: id,
-                                feedback: Material(
-                                  elevation: 6,
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Colors.transparent,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1565C0),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      name,
-                                      style: GoogleFonts.kanit(
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                        fontSize: 13,
+                      : Scrollbar(
+                          controller: scrollController,
+                          thumbVisibility: true,
+                          radius: const Radius.circular(8),
+                          child: SingleChildScrollView(
+                            controller: scrollController,
+                            // เลื่อนดูรายชื่อแบบลื่นๆ (เด้งปลายรายการเหมือนเลื่อนการ์ดในเกม)
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 8,
+                              children: people.map((e) {
+                                final id = e.id;
+                                final selected = pickedPool.contains(id);
+                                final placed = assignedHere.contains(id);
+                                final name = _employeeUiDisplayName(e);
+                                return LongPressDraggable<String>(
+                                  data: id,
+                                  feedback: Material(
+                                    elevation: 6,
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.transparent,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF1565C0),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        name,
+                                        style: GoogleFonts.kanit(
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                childWhenDragging: Opacity(
-                                  opacity: 0.35,
+                                  childWhenDragging: Opacity(
+                                    opacity: 0.35,
+                                    child: _attendanceNameChip(
+                                      name: name,
+                                      selected: selected,
+                                      placed: placed,
+                                      accent: accent,
+                                    ),
+                                  ),
                                   child: _attendanceNameChip(
                                     name: name,
                                     selected: selected,
                                     placed: placed,
                                     accent: accent,
+                                    onTap: () => setState(() {
+                                      if (selected) {
+                                        pickedPool.remove(id);
+                                      } else {
+                                        pickedPool.add(id);
+                                      }
+                                    }),
                                   ),
-                                ),
-                                child: _attendanceNameChip(
-                                  name: name,
-                                  selected: selected,
-                                  placed: placed,
-                                  accent: accent,
-                                  onTap: () => setState(() {
-                                    if (selected) {
-                                      pickedPool.remove(id);
-                                    } else {
-                                      pickedPool.add(id);
-                                    }
-                                  }),
-                                ),
-                              );
-                            }).toList(),
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ),
                 );
@@ -11323,20 +12198,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildAttendanceFormCard() {
+    // พูลซ้ายดึงตามตำแหน่งงานเท่านั้น และเรียงคนที่มาบ่อยสุดขึ้นก่อน
+    // รวมคนที่ถูก assign อยู่แล้วด้วย (กันเคส hydrate คนขับแม็คโครแล้วลากกลับพูลไม่ได้)
+    final genPresenceIds = {
+      ..._attGeneralPresenceIds,
+      ..._attGeneralOtIds,
+    };
+    final assignedGeneral = <String>{
+      for (final id in genPresenceIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    };
+    final assignedDriver = <String>{
+      for (final id in _attDriverIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    };
+
     final generalPeople = _employees
-        .where((e) => !e.inactive && !_attendanceIsDriver(e))
+        .where(
+          (e) =>
+              !e.inactive &&
+              (_isSandYardAttendanceEmployee(e) ||
+                  assignedGeneral.contains(e.id)),
+        )
         .toList()
-      ..sort(
-        (a, b) =>
-            _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b)),
-      );
+      ..sort(_compareAttendancePoolOrder);
     final driverPeople = _employees
-        .where((e) => !e.inactive && _attendanceIsDriver(e))
+        .where(
+          (e) =>
+              !e.inactive &&
+              (_isDriverEmployee(e) || assignedDriver.contains(e.id)),
+        )
         .toList()
-      ..sort(
-        (a, b) =>
-            _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b)),
-      );
+      ..sort(_compareAttendancePoolOrder);
 
     const workColor = Color(0xFF2FB6A6);
     const halfColor = Color(0xFF3B9AE1);
@@ -11345,11 +12238,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const macroColor = Color(0xFFEF6C00);
     const drumColor = Color(0xFF6C6FE6);
     const poolAccent = Color(0xFF7C4DFF);
-
-    final genPresenceIds = {
-      ..._attGeneralPresenceIds,
-      ..._attGeneralOtIds,
-    };
 
     final workCard = _attendanceGroupedCard(
       title: '#ทำงาน',
@@ -11427,10 +12315,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         people: generalPeople,
         pickedPool: _attendanceGeneralPicked,
         poolBucketIds: genPresenceIds,
-        emptyText: 'ไม่มีพนักงานทั่วไป',
+        emptyText:
+            'ไม่มีพนักงานท่าทราย — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
         accent: poolAccent,
+        scrollController: _attendanceGeneralPoolScroll,
       );
-      return fill ? pool : SizedBox(height: 220, child: pool);
+      if (fill) return pool;
+      final poolH =
+          (MediaQuery.sizeOf(context).height * 0.34).clamp(240.0, 380.0);
+      return SizedBox(height: poolH, child: pool);
     }
 
     Widget poolDrv({bool fill = true}) {
@@ -11439,10 +12332,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         people: driverPeople,
         pickedPool: _attendanceDriverPicked,
         poolBucketIds: _attDriverIds,
-        emptyText: 'ไม่มีพนักงานขับรถ',
+        emptyText:
+            'ไม่มีพนักงานตำแหน่งคนขับรถ — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
         accent: const Color(0xFF00897B),
+        scrollController: _attendanceDriverPoolScroll,
       );
-      return fill ? pool : SizedBox(height: 200, child: pool);
+      if (fill) return pool;
+      final poolH =
+          (MediaQuery.sizeOf(context).height * 0.34).clamp(240.0, 380.0);
+      return SizedBox(height: poolH, child: pool);
     }
 
     final wide = MediaQuery.sizeOf(context).width >= 820;
