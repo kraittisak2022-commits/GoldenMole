@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     classifyLaborEmployeePool,
+    collectTrueDuplicateLaborAttendanceItems,
     computeDayWizardStepStats,
     computeSandDrumStockSummary,
     countsAsWizardSandWashRecord,
@@ -9,9 +10,13 @@ import {
     isMacroExcavatorDriverEmployee,
     isSixOrTenWheelVehicleName,
     isVehicleTripDrumCarName,
+    laborAttendanceRowsAreSectionSeparated,
+    mergeAttendanceWorkAssignments,
+    mergeAttendanceWorkTypeByEmployee,
     mergeLaborCanvasAssignments,
     normalizeLaborCanvasKey,
     persistedSandHomeDrums,
+    pickLatestWithDefinedField,
     sumWizardDailySpend,
     countsTowardWizardDailySpend,
     transactionCountsAsVehicleTripMenu,
@@ -553,5 +558,102 @@ describe('classifyLaborEmployeePool (Android _laborEmpPoolKindFor)', () => {
         expect(classifyLaborEmployeePool(emp({ id: 'g1', positions: ['พนักงานทั่วไป'] }))).toBe(
             'generalLabor',
         );
+    });
+});
+
+describe('mergeAttendanceWorkAssignments / section duplicates', () => {
+    const att = (partial: Partial<Transaction> & { id: string }): Transaction =>
+        ({
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Attendance',
+            laborStatus: 'Work',
+            date: '2026-07-30',
+            amount: 0,
+            description: 'เช็คชื่อ',
+            ...partial,
+        }) as Transaction;
+
+    it('unions employee ids per assignment key across rows', () => {
+        const sandYard = att({
+            id: 'sand',
+            employeeIds: ['a', 'b'],
+            workAssignments: { work: ['a'], 'half:morning': ['b'] },
+        });
+        const drivers = att({
+            id: 'drv',
+            employeeIds: ['c', 'd'],
+            workAssignments: { macro_driver: ['c'], 'drum:morning': ['d'] },
+        });
+        expect(mergeAttendanceWorkAssignments([sandYard, drivers])).toEqual({
+            work: ['a'],
+            'half:morning': ['b'],
+            macro_driver: ['c'],
+            'drum:morning': ['d'],
+        });
+    });
+
+    it('merges workTypeByEmployee across rows', () => {
+        const sandYard = att({
+            id: 'sand',
+            workTypeByEmployee: { a: 'FullDay', b: 'HalfDay' },
+        } as any);
+        const drivers = att({
+            id: 'drv',
+            workTypeByEmployee: { c: 'FullDay', b: 'FullDay' },
+        } as any);
+        expect(mergeAttendanceWorkTypeByEmployee([sandYard, drivers])).toEqual({
+            a: 'FullDay',
+            b: 'FullDay',
+            c: 'FullDay',
+        });
+    });
+
+    it('treats sand-yard + driver rows as section-separated, not true duplicates', () => {
+        const sandYard = att({
+            id: 'sand',
+            employeeIds: ['a'],
+            workAssignments: { work: ['a'], 'half:afternoon': ['a2'] },
+        });
+        const drivers = att({
+            id: 'drv',
+            employeeIds: ['c'],
+            workAssignments: { macro_driver: ['c'], 'drum:afternoon': ['d'] },
+        });
+        expect(laborAttendanceRowsAreSectionSeparated(sandYard, drivers)).toBe(true);
+        expect(collectTrueDuplicateLaborAttendanceItems([sandYard, drivers])).toEqual([]);
+    });
+
+    it('flags overlapping-key attendance rows as true duplicates', () => {
+        const a = att({
+            id: 'a1',
+            employeeIds: ['x'],
+            workAssignments: { work: ['x'] },
+        });
+        const b = att({
+            id: 'a2',
+            employeeIds: ['y'],
+            workAssignments: { work: ['y'] },
+        });
+        expect(collectTrueDuplicateLaborAttendanceItems([a, b]).map(t => t.id).sort()).toEqual(['a1', 'a2']);
+    });
+
+    it('picks newest row that actually has drumsWashedAtHome set', () => {
+        const day = [
+            att({ id: 'older', createdAt: '2026-07-30T08:00:00.000Z', drumsWashedAtHome: 3 } as any),
+            att({ id: 'newer-no-home', createdAt: '2026-07-30T10:00:00.000Z' }),
+            att({ id: 'mid-home', createdAt: '2026-07-30T09:00:00.000Z', drumsWashedAtHome: 7 } as any),
+        ];
+        const picked = pickLatestWithDefinedField(day, day, 'drumsWashedAtHome');
+        expect(picked?.id).toBe('mid-home');
+        expect((picked as any).drumsWashedAtHome).toBe(7);
+    });
+
+    it('maps macro_driver to digHaul for web canvas', () => {
+        expect(normalizeLaborCanvasKey('macro_driver')).toBe('digHaul');
+        expect(mergeLaborCanvasAssignments({ macro_driver: ['c1'], work: ['a1'] })).toEqual({
+            digHaul: ['c1'],
+            generalWork: ['a1'],
+        });
     });
 });

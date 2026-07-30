@@ -106,20 +106,42 @@ const LaborModule = ({
     );
 
     useEffect(() => {
-        if (activeTab === 'Attendance' && dayLaborAttendance.length > 0 && !editingId) {
-            const latest = dayLaborAttendance[dayLaborAttendance.length - 1] as Transaction;
-            setSelectedIds(latest.employeeIds || []);
-            setWorkType((latest.workType as WorkType) || 'FullDay');
-            setSpecialPay(latest.specialAmount != null ? String(latest.specialAmount) : '');
-            const match = settings.jobDescriptions.find(j => latest.description?.includes(j));
-            if (match) setJobDetail(match);
+        if (editingId) return;
+
+        if (activeTab === 'Attendance') {
+            // มีหลายแถวต่อวัน (เช่น ท่าทราย + คนขับรถ) — อย่า last-wins; ให้เลือกจากรายการด้านบน
+            if (dayLaborAttendance.length > 1) {
+                setSelectedIds([]);
+                setWorkType('FullDay');
+                setSpecialPay('');
+                return;
+            }
+            if (dayLaborAttendance.length === 1) {
+                const latest = dayLaborAttendance[0] as Transaction;
+                setSelectedIds(latest.employeeIds || []);
+                setWorkType((latest.workType as WorkType) || 'FullDay');
+                setSpecialPay(latest.specialAmount != null ? String(latest.specialAmount) : '');
+                const match = settings.jobDescriptions.find(j => latest.description?.includes(j));
+                if (match) setJobDetail(match);
+            }
+            return;
         }
-        if (activeTab === 'Leave' && dayLeave.length > 0 && !editingId) {
-            const latest = dayLeave[dayLeave.length - 1] as any;
-            const kind = latest.subCategory === 'Sick' || latest.leaveType === 'Sick' ? 'Sick' : 'Personal';
-            setLeaveType(kind);
-            setLeaveReason(latest.leaveReason || '');
-            setLeaveDays(latest.leaveDays != null ? String(latest.leaveDays) : '1');
+
+        if (activeTab === 'Leave') {
+            if (dayLeave.length > 1) {
+                setSelectedIds([]);
+                setLeaveType('Personal');
+                setLeaveReason('');
+                setLeaveDays('1');
+                return;
+            }
+            if (dayLeave.length === 1) {
+                const latest = dayLeave[0] as any;
+                const kind = latest.subCategory === 'Sick' || latest.leaveType === 'Sick' ? 'Sick' : 'Personal';
+                setLeaveType(kind);
+                setLeaveReason(latest.leaveReason || '');
+                setLeaveDays(latest.leaveDays != null ? String(latest.leaveDays) : '1');
+            }
         }
     }, [formDate, activeTab, dayLaborAttendance.length, dayLeave.length, editingId, settings.jobDescriptions]);
 
@@ -372,6 +394,9 @@ const LaborModule = ({
                 {activeTab === 'Attendance' && dayLaborAttendance.length > 0 && (
                     <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
                         <p className="text-sm font-semibold text-slate-700 mb-2">รายการค่าแรงในวันนี้ ({dayLaborAttendance.length})</p>
+                        {dayLaborAttendance.length > 1 && !editingId && (
+                            <p className="text-xs text-amber-700 mb-2">มีหลายรายการในวันนี้ — กดแก้ไขจากรายการด้านล่างเพื่อโหลดพนักงานของแถวนั้น</p>
+                        )}
                         <div className="space-y-2 max-h-40 overflow-y-auto">
                             {dayLaborAttendance.map((t: Transaction) => (
                                 <div key={t.id} className={`flex items-center justify-between p-2 rounded-lg border text-sm ${editingId === t.id ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'}`}>
@@ -423,6 +448,9 @@ const LaborModule = ({
                 {activeTab === 'Leave' && dayLeave.length > 0 && (
                     <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
                         <p className="text-sm font-semibold text-slate-700 mb-2">รายการลาในวันนี้ ({dayLeave.length})</p>
+                        {dayLeave.length > 1 && !editingId && (
+                            <p className="text-xs text-amber-700 mb-2">มีหลายรายการลาในวันนี้ — กดแก้ไขจากรายการด้านล่างเพื่อโหลดข้อมูลของแถวนั้น</p>
+                        )}
                         <div className="space-y-2 max-h-40 overflow-y-auto">
                             {dayLeave.map((t: Transaction) => (
                                 <div key={t.id} className={`flex items-center justify-between p-2 rounded-lg border text-sm ${editingId === t.id ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'}`}>

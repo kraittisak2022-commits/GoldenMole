@@ -295,6 +295,7 @@ export const normalizeLaborCanvasKey = (key: string): string => {
         case 'digHaul':
         case 'dig_haul':
         case 'excavator_control':
+        case 'macro_driver':
             return 'digHaul';
         case 'generalWork':
         case 'general':
@@ -350,6 +351,152 @@ export const pickLatestByDayOrder = <T extends Transaction>(items: T[], dayItems
         if (currentScore === latestScore) return currentIdx >= latestIdx ? current : latest;
         return currentScore > latestScore ? current : latest;
     });
+};
+
+/** คีย์เช็คชื่อท่าทรายจากมือถือ (แถวแยกจากคนขับรถ) */
+export const SAND_YARD_ATTENDANCE_ASSIGNMENT_KEYS = new Set([
+    'work',
+    'half:morning',
+    'half:afternoon',
+]);
+
+/** คีย์เช็คชื่อคนขับรถจากมือถือ (แถวแยกจากท่าทราย) */
+export const DRIVER_ATTENDANCE_ASSIGNMENT_KEYS = new Set([
+    'macro_driver',
+    'drum:morning',
+    'drum:afternoon',
+]);
+
+const pushUniqueIds = (target: string[], ids: string[]) => {
+    const seen = new Set(target);
+    for (const raw of ids) {
+        const id = String(raw || '').trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        target.push(id);
+    }
+};
+
+/** รวม workAssignments จากหลายแถว Labor Attendance/Work — union รายชื่อต่อคีย์ */
+export const mergeAttendanceWorkAssignments = (
+    rows: Array<Pick<Transaction, 'workAssignments'> | Transaction>,
+): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const row of rows) {
+        const wa = row.workAssignments;
+        if (!wa || typeof wa !== 'object') continue;
+        for (const [key, ids] of Object.entries(wa)) {
+            const k = String(key || '').trim();
+            if (!k || !Array.isArray(ids) || ids.length === 0) continue;
+            if (!out[k]) out[k] = [];
+            pushUniqueIds(out[k], ids);
+        }
+    }
+    return out;
+};
+
+/** รวม workTypeByEmployee จากหลายแถว — ค่าจากแถวหลังทับของเดิมเมื่อซ้ำ */
+export const mergeAttendanceWorkTypeByEmployee = (
+    rows: Array<{ workTypeByEmployee?: Record<string, string> } | Transaction>,
+): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const row of rows) {
+        const wte = (row as { workTypeByEmployee?: Record<string, string> }).workTypeByEmployee;
+        if (!wte || typeof wte !== 'object') continue;
+        for (const [id, wt] of Object.entries(wte)) {
+            const empId = String(id || '').trim();
+            if (!empId || wt == null) continue;
+            out[empId] = String(wt);
+        }
+    }
+    return out;
+};
+
+const transactionHasOwnField = (tx: Transaction, field: string): boolean => {
+    const rec = tx as unknown as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(rec, field)) return false;
+    return rec[field] !== undefined && rec[field] !== null;
+};
+
+/** เลือกแถวล่าสุดที่มีฟิลด์นั้นตั้งค่าจริง (เช่น drumsWashedAtHome) — ไม่ใช้แค่ Attendance ล่าสุด */
+export const pickLatestWithDefinedField = <T extends Transaction>(
+    items: T[],
+    dayItems: Transaction[],
+    field: string,
+): T | null => {
+    const withField = items.filter(t => transactionHasOwnField(t, field));
+    if (withField.length === 0) return null;
+    return pickLatestByDayOrder(withField, dayItems);
+};
+
+const laborAttendanceAssignmentKeys = (t: Transaction): Set<string> => {
+    const keys = new Set<string>();
+    const wa = t.workAssignments;
+    if (!wa || typeof wa !== 'object') return keys;
+    for (const [key, ids] of Object.entries(wa)) {
+        const k = String(key || '').trim();
+        if (!k || !Array.isArray(ids) || ids.length === 0) continue;
+        keys.add(k);
+    }
+    return keys;
+};
+
+export type LaborAttendanceSection = 'sandYard' | 'driver' | 'other';
+
+/** จัดประเภทแถว Attendance ตามคีย์ workAssignments ของมือถือ (ท่าทราย vs คนขับรถ) */
+export const classifyLaborAttendanceSection = (t: Transaction): LaborAttendanceSection => {
+    const keys = laborAttendanceAssignmentKeys(t);
+    if (keys.size === 0) return 'other';
+    let sand = 0;
+    let driver = 0;
+    let other = 0;
+    keys.forEach((k) => {
+        if (SAND_YARD_ATTENDANCE_ASSIGNMENT_KEYS.has(k)) sand += 1;
+        else if (DRIVER_ATTENDANCE_ASSIGNMENT_KEYS.has(k)) driver += 1;
+        else other += 1;
+    });
+    if (sand > 0 && driver === 0 && other === 0) return 'sandYard';
+    if (driver > 0 && sand === 0 && other === 0) return 'driver';
+    return 'other';
+};
+
+/** สองแถวเป็นคู่ intentional จากมือถือ (ท่าทราย + คนขับรถ) — คีย์ไม่ทับกัน */
+export const laborAttendanceRowsAreSectionSeparated = (a: Transaction, b: Transaction): boolean => {
+    const sa = classifyLaborAttendanceSection(a);
+    const sb = classifyLaborAttendanceSection(b);
+    return (sa === 'sandYard' && sb === 'driver') || (sa === 'driver' && sb === 'sandYard');
+};
+
+const sortedEmployeeIdSignature = (t: Transaction): string =>
+    [...(t.employeeIds || [])].map(id => String(id).trim()).filter(Boolean).sort().join(',');
+
+/** ซ้ำจริง: คีย์ทับกัน หรือชุดพนักงานเหมือนกันโดยไม่ใช่คู่แยก section */
+export const areLaborAttendanceRowsTrueDuplicates = (a: Transaction, b: Transaction): boolean => {
+    if (a.id === b.id) return false;
+    if (laborAttendanceRowsAreSectionSeparated(a, b)) return false;
+    const keysA = laborAttendanceAssignmentKeys(a);
+    const keysB = laborAttendanceAssignmentKeys(b);
+    for (const k of keysA) {
+        if (keysB.has(k)) return true;
+    }
+    const empA = sortedEmployeeIdSignature(a);
+    const empB = sortedEmployeeIdSignature(b);
+    if (empA && empB && empA === empB) return true;
+    return false;
+};
+
+/** รายการ Attendance ที่ซ้ำจริงในวันเดียวกัน (ไม่รวมคู่ท่าทราย+คนขับรถ) */
+export const collectTrueDuplicateLaborAttendanceItems = (items: Transaction[]): Transaction[] => {
+    if (items.length <= 1) return [];
+    const flagged = new Set<string>();
+    for (let i = 0; i < items.length; i += 1) {
+        for (let j = i + 1; j < items.length; j += 1) {
+            if (!areLaborAttendanceRowsTrueDuplicates(items[i], items[j])) continue;
+            flagged.add(items[i].id);
+            flagged.add(items[j].id);
+        }
+    }
+    return items.filter(t => flagged.has(t.id));
 };
 
 /** รถหกล้อ / สิบล้อ */

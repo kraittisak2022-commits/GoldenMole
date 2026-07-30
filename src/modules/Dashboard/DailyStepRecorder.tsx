@@ -19,8 +19,12 @@ import {
     getTransactionRecencyScore,
     classifyLaborEmployeePool,
     LABOR_POOL_FIXED_CANVAS_IDS,
+    collectTrueDuplicateLaborAttendanceItems,
+    mergeAttendanceWorkAssignments,
+    mergeAttendanceWorkTypeByEmployee,
     mergeLaborCanvasAssignments,
     pickLatestByDayOrder,
+    pickLatestWithDefinedField,
     persistedSandHomeDrums,
     sumWizardDailySpend,
     transactionCountsAsVehicleTripMenu,
@@ -618,33 +622,37 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             .sort()
             .join('|');
     }, [dayTransactions]);
-    /** สรุป Labor Attendance (canvas) ที่บันทึกแล้ว — กันไม่ให้รีเซ็ต workAssignments เมื่อ transactions reference เปลี่ยน */
+    /** สรุป Labor Attendance (canvas) ที่บันทึกแล้ว — รวมหลายแถว (ท่าทราย+คนขับรถ) กันไม่ให้รีเซ็ตเมื่อ transactions reference เปลี่ยน */
     const laborCanvasPersistedPrefillSignature = useMemo(() => {
         const laborAttendance = dayTransactions.filter(
             (t) => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work'
         );
         if (laborAttendance.length === 0) return '';
-        const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
-        if (!latest?.id) return '';
-        const wa =
-            latest.workAssignments && typeof latest.workAssignments === 'object'
-                ? mergeUnknownLaborCanvasAssignments(latest.workAssignments as Record<string, string[]>)
-                : ({} as Record<string, string[]>);
+        const wa = mergeUnknownLaborCanvasAssignments(mergeAttendanceWorkAssignments(laborAttendance));
         const waSig = Object.keys(wa)
             .sort()
             .map((k) => `${k}:${(wa[k] || []).slice().sort().join(',')}`)
             .join(';');
-        const wte = (latest.workTypeByEmployee || {}) as Record<string, string>;
+        const wte = mergeAttendanceWorkTypeByEmployee(laborAttendance);
         const halfSig = Object.keys(wte)
             .sort()
             .filter((id) => wte[id] === 'HalfDay')
             .join(',');
+        const notesRow = [...laborAttendance]
+            .reverse()
+            .find(t => String((t as any).laborGeneralWorkNotes ?? '').trim());
+        const homeRow = pickLatestWithDefinedField(laborAttendance as any[], dayTransactions, 'drumsWashedAtHome') as any;
+        const idsSig = laborAttendance
+            .map(t => t.id)
+            .slice()
+            .sort()
+            .join(',');
         return [
-            String(latest.id),
+            idsSig,
             waSig,
-            String(latest.laborGeneralWorkNotes ?? '').trim(),
+            String((notesRow as any)?.laborGeneralWorkNotes ?? '').trim(),
             halfSig,
-            String(latest.drumsWashedAtHome ?? ''),
+            String(homeRow?.drumsWashedAtHome ?? ''),
         ].join('#');
     }, [dayTransactions]);
     const washHomeDrumsAlertMessage = useMemo(() => getWashHomeDrumsMismatchMessage(dayTransactions), [dayTransactions]);
@@ -677,11 +685,33 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         [dayTransactions],
     );
     const hasExistingWizardData = useMemo(() => Object.values(dayStepStats).some(count => count > 0), [dayStepStats]);
-    const latestLaborAttendance = useMemo(() => {
-        const laborAttendance = dayTransactions
-            .filter(t => t.category === 'Labor' && t.subCategory === 'Attendance') as any[];
-        return pickLatestByDayOrder(laborAttendance, dayTransactions);
-    }, [dayTransactions]);
+    const laborAttendanceRowsToday = useMemo(
+        () =>
+            dayTransactions.filter(
+                t => t.category === 'Labor' && t.subCategory === 'Attendance'
+            ) as Transaction[],
+        [dayTransactions]
+    );
+    const mergedLaborAttendanceAssignments = useMemo(
+        () =>
+            mergeUnknownLaborCanvasAssignments(
+                mergeAttendanceWorkAssignments(
+                    laborAttendanceRowsToday.filter(t => t.laborStatus === 'Work' || !t.laborStatus)
+                )
+            ),
+        [laborAttendanceRowsToday]
+    );
+    const laborAttendanceHomeDrumsRow = useMemo(
+        () =>
+            pickLatestWithDefinedField(
+                laborAttendanceRowsToday.filter(
+                    t => t.laborStatus === 'Work' || t.subCategory === 'Attendance'
+                ) as any[],
+                dayTransactions,
+                'drumsWashedAtHome'
+            ),
+        [laborAttendanceRowsToday, dayTransactions]
+    );
     const resumeStep = useMemo(() => {
         if (dayStepStats.eventCount > 0) return 7;
         if (dayStepStats.incomeCount > 0) return 6;
@@ -693,7 +723,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         return 1;
     }, [dayStepStats]);
     const mobileLaborCanvasPreview = useMemo(() => {
-        const assignments = mergeUnknownLaborCanvasAssignments(latestLaborAttendance?.workAssignments as Record<string, string[]> | undefined);
+        const assignments = mergedLaborAttendanceAssignments;
         if (Object.keys(assignments).length === 0) return [];
         const knownLabels = new Map<string, string>();
         DEFAULT_WORK_CATEGORIES.forEach(c => knownLabels.set(c.id, c.label));
@@ -709,14 +739,21 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             })
             .sort((a, b) => b.names.length - a.names.length);
         return rows;
-    }, [latestLaborAttendance, employees]);
+    }, [mergedLaborAttendanceAssignments, employees]);
     const hasLaborAttendanceToday = dayTransactions.some(t => t.category === 'Labor' && t.subCategory === 'Attendance');
     /** สรุปวันนี้ (คอลัมน์ขวา) — คำนวณครั้งเดียว */
     const atAGlanceStats = useMemo(() => {
         const wizard = computeDayWizardStepStats(dayTransactions);
-        const laborCount = dayTransactions
+        const laborEmpIds = new Set<string>();
+        dayTransactions
             .filter(t => t.category === 'Labor' && t.laborStatus === 'Work')
-            .reduce((acc, t) => acc + (t.employeeIds?.length || 0), 0);
+            .forEach((t) => {
+                (t.employeeIds || []).forEach(id => {
+                    const eid = String(id || '').trim();
+                    if (eid) laborEmpIds.add(eid);
+                });
+            });
+        const laborCount = laborEmpIds.size;
         const fuelBaht = dayTransactions.filter(t => t.category === 'Fuel').reduce((acc, t) => acc + (t.amount || 0), 0);
         return {
             laborCount,
@@ -773,9 +810,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         const duplicateGroups: Array<{ date: string; items: Transaction[] }> = [];
         let duplicateRecordCount = 0;
         byDate.forEach((items, date) => {
-            if (items.length > 1) {
-                duplicateGroups.push({ date, items });
-                duplicateRecordCount += items.length;
+            // คู่ intentional ท่าทราย+คนขับรถ (คีย์ไม่ทับ) ไม่ถือว่าซ้ำ
+            const trueDupes = collectTrueDuplicateLaborAttendanceItems(items);
+            if (trueDupes.length > 1) {
+                duplicateGroups.push({ date, items: trueDupes });
+                duplicateRecordCount += trueDupes.length;
             }
         });
         return {
@@ -965,9 +1004,9 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         });
     }, []);
     const latestLaborDrumsWashedAtHome = useMemo(() => {
-        if (!latestLaborAttendance) return 0;
-        return Number((latestLaborAttendance as any).drumsWashedAtHome || 0);
-    }, [latestLaborAttendance]);
+        if (!laborAttendanceHomeDrumsRow) return 0;
+        return Number((laborAttendanceHomeDrumsRow as any).drumsWashedAtHome || 0);
+    }, [laborAttendanceHomeDrumsRow]);
     const totalAssignedWorkers = useMemo(
         () => Object.values(workAssignments).reduce((sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0), 0),
         [workAssignments]
@@ -1346,21 +1385,25 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         }
     }, [date, dayTransactions, editingVehicleTxId]);
 
-    // Prefill canvas ค่าแรงจาก Attendance ที่บันทึกแล้ว — แยกจาก effect หลักเพื่อไม่รีเซ็ตเมื่อ parent ส่ง transactions array ใหม่โดยเนื้อหาเดิม
+    // Prefill canvas ค่าแรงจาก Attendance ที่บันทึกแล้ว — รวมหลายแถว (ท่าทราย+คนขับรถ)
     useEffect(() => {
         const laborAttendance = dayTransactions.filter(
             (t) => t.category === 'Labor' && t.subCategory === 'Attendance' && t.laborStatus === 'Work'
         );
         if (laborAttendance.length > 0) {
             const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
-            if (!latest) return;
-            const mergedWa =
-                latest.workAssignments && typeof latest.workAssignments === 'object'
-                    ? mergeUnknownLaborCanvasAssignments(latest.workAssignments as Record<string, string[]>)
-                    : ({} as Record<string, string[]>);
-            const legacyNote = String(latest.laborGeneralWorkNotes || '').trim();
-            const customCats = Array.isArray((latest as any).customWorkCategories)
-                ? ((latest as any).customWorkCategories as Array<{ id?: string; label?: string }>)
+            const mergedWa = mergeUnknownLaborCanvasAssignments(mergeAttendanceWorkAssignments(laborAttendance));
+            const notesRow =
+                [...laborAttendance].reverse().find(t => String((t as any).laborGeneralWorkNotes ?? '').trim()) ||
+                latest;
+            const legacyNote = String((notesRow as any)?.laborGeneralWorkNotes || '').trim();
+            const catsSource =
+                [...laborAttendance]
+                    .reverse()
+                    .find(t => Array.isArray((t as any).customWorkCategories) && (t as any).customWorkCategories.length > 0) ||
+                latest;
+            const customCats = Array.isArray((catsSource as any)?.customWorkCategories)
+                ? ((catsSource as any).customWorkCategories as Array<{ id?: string; label?: string }>)
                 : [];
             const subJobs = buildGeneralSubJobsFromAssignments(mergedWa, customCats, legacyNote);
             setGeneralSubJobs(subJobs);
@@ -1368,9 +1411,10 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             const hasAssignedWorkers = Object.values(remappedWa).some(ids => Array.isArray(ids) && ids.length > 0);
             setWorkAssignments(hasAssignedWorkers ? remappedWa : {});
             setLaborGeneralWorkNotes(legacyNote);
-            if (latest.workTypeByEmployee) {
+            const wte = mergeAttendanceWorkTypeByEmployee(laborAttendance);
+            if (Object.keys(wte).length > 0) {
                 const half = new Set<string>();
-                Object.entries(latest.workTypeByEmployee as Record<string, 'FullDay' | 'HalfDay'>).forEach(([id, wt]) => {
+                Object.entries(wte).forEach(([id, wt]) => {
                     if (wt === 'HalfDay') half.add(id);
                 });
                 setHalfDayEmpIds(half);
@@ -1392,8 +1436,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         );
         let homeFromLabor = 0;
         if (laborWorkHome.length > 0) {
-            const latestLab = pickLatestByDayOrder(laborWorkHome as any[], dayTransactions) as any;
-            homeFromLabor = Number(latestLab?.drumsWashedAtHome || 0);
+            const homeLab = pickLatestWithDefinedField(
+                laborWorkHome as any[],
+                dayTransactions,
+                'drumsWashedAtHome'
+            ) as any;
+            homeFromLabor = Number(homeLab?.drumsWashedAtHome || 0);
         }
 
         const sandTx = dayTransactions.filter(t => t.category === 'DailyLog' && t.subCategory === 'Sand') as any[];
@@ -1789,8 +1837,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 : 0;
                             const sandHomeDrums = persistedSandHomeDrums(sand);
                             const laborAttendance = labor.filter(t => t.subCategory === 'Attendance') as any[];
-                            const latestAttendance = pickLatestByDayOrder(laborAttendance, txs);
-                            const homeDrums = Math.max(0, sandHomeDrums || Number(latestAttendance?.drumsWashedAtHome || 0));
+                            const homeAttendance = pickLatestWithDefinedField(
+                                laborAttendance,
+                                txs,
+                                'drumsWashedAtHome'
+                            );
+                            const homeDrums = Math.max(
+                                0,
+                                sandHomeDrums || Number((homeAttendance as any)?.drumsWashedAtHome || 0)
+                            );
                             const sandDrums = Math.max(0, sandDrumsTotal - homeDrums);
                             const fuelSum = fuel.reduce((s, t) => s + t.amount, 0);
                             const incomeSum = income.reduce((s, t) => s + t.amount, 0);
@@ -1803,23 +1858,18 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                             });
                             const washHomeDrumsReportAlert = getWashHomeDrumsMismatchMessage(txs);
 
-                            // กลุ่มประเภทงานจาก Attendance (canvas) ถ้ามี
-                            const attendance = laborAttendance;
+                            // กลุ่มประเภทงานจาก Attendance (canvas) — รวมทุกแถวของวัน
                             let workGroups: { label: string; count: number }[] = [];
-                            if (attendance.length > 0) {
-                                const latest = pickLatestByDayOrder(attendance as any[], txs) as any;
-                                    if (latest) {
-                                        const waRaw: Record<string, string[]> | undefined = latest.workAssignments;
-                                        if (waRaw) {
-                                            const mergedWa = mergeUnknownLaborCanvasAssignments(waRaw);
-                                            workGroups = Object.entries(mergedWa)
-                                                .map(([catId, empIds]) => ({
-                                                    label: DEFAULT_WORK_CATEGORIES.find(c => c.id === catId)?.label || catId,
-                                                    count: (empIds || []).length,
-                                                }))
-                                                .filter(g => g.count > 0);
-                                        }
-                                    }
+                            if (laborAttendance.length > 0) {
+                                const mergedWa = mergeUnknownLaborCanvasAssignments(
+                                    mergeAttendanceWorkAssignments(laborAttendance)
+                                );
+                                workGroups = Object.entries(mergedWa)
+                                    .map(([catId, empIds]) => ({
+                                        label: DEFAULT_WORK_CATEGORIES.find(c => c.id === catId)?.label || catId,
+                                        count: (empIds || []).length,
+                                    }))
+                                    .filter(g => g.count > 0);
                             }
 
                             return (
