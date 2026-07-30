@@ -13,6 +13,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
+import '../widgets/attendance_sub_mode_picker.dart';
 import '../widgets/fuel_sub_mode_picker.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
@@ -711,12 +712,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       TextEditingController();
   String? _attendanceLaborTxId;
   String? _attendanceLeaveTxId;
+  String? _attendanceDriverLaborTxId;
+  String? _attendanceDriverLeaveTxId;
+  String? _attendanceLegacyLaborTxId;
+  String? _attendanceLegacyLeaveTxId;
   final Map<String, String> _attendanceOtTxIds = {};
+
+  /// เมนูย่อยเช็คชื่อ (null = หน้าเลือกเมนู)
+  AttendanceSection? _attendanceSection;
+
+  static const Set<String> _attSandWaKeys = {
+    'work',
+    'half:morning',
+    'half:afternoon',
+  };
+  static const Set<String> _attDriverWaKeys = {
+    'macro_driver',
+    'drum:morning',
+    'drum:afternoon',
+  };
+  static const String _attLeaveReasonSand =
+      'เช็คชื่อ: ลางาน (พนักงานท่าทราย)';
+  static const String _attLeaveReasonDriver = 'เช็คชื่อ: ลางาน (คนขับรถ)';
+  static const String _attLeaveReasonLegacy = 'เช็คชื่อ: ลางาน';
 
   /// จำนวนวันที่ «มาทำงาน» ของแต่ละคนจากประวัติทั้งหมด — ใช้เรียงพูลรายชื่อ
   Map<String, int> _attendanceDaysWorked = const {};
   final ScrollController _attendanceGeneralPoolScroll = ScrollController();
   final ScrollController _attendanceDriverPoolScroll = ScrollController();
+  /// ชิปที่เพิ่งวาง — ใช้เด้ง AnimatedScale ชั่วคราว
+  final Set<String> _attendanceJustDroppedIds = <String>{};
 
   final List<_GeneralSubJob> _generalSubJobs = [];
   final List<_OtGroupDraft> _otGroups = [];
@@ -1549,12 +1574,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (candidates.isEmpty) {
       return (oldNames: const [], newNames: const []);
     }
+    bool hasWashKeys(AppTransaction t) {
+      final wa = t.workAssignments;
+      if (wa == null || wa.isEmpty) return false;
+      return (wa['wash1']?.isNotEmpty ?? false) ||
+          (wa['wash2']?.isNotEmpty ?? false) ||
+          (wa['wash_old']?.isNotEmpty ?? false) ||
+          (wa['wash_new']?.isNotEmpty ?? false);
+    }
+
     candidates.sort((a, b) {
       final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return tb.compareTo(ta);
     });
-    final latest = candidates.first;
+    final withWash = candidates.where(hasWashKeys).toList(growable: false);
+    final latest = withWash.isNotEmpty ? withWash.first : candidates.first;
     final wa = latest.workAssignments;
     if (wa == null || wa.isEmpty) {
       return (oldNames: const [], newNames: const []);
@@ -1677,12 +1712,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _attendanceDriverPicked.clear();
     _attendanceLaborTxId = null;
     _attendanceLeaveTxId = null;
+    _attendanceDriverLaborTxId = null;
+    _attendanceDriverLeaveTxId = null;
+    _attendanceLegacyLaborTxId = null;
+    _attendanceLegacyLeaveTxId = null;
     _attendanceOtTxIds.clear();
     _attendanceOtCustomController.clear();
+    _attendanceJustDroppedIds.clear();
 
     void assign(String bucketId, String empId) {
       _attendanceAssignments[bucketId]?.add(empId);
       _attendanceBucketExpanded[bucketId] = true;
+    }
+
+    ({bool sand, bool driver}) classifyWa(Map<String, List<String>>? wa) {
+      if (wa == null || wa.isEmpty) {
+        return (sand: false, driver: false);
+      }
+      var sand = false;
+      var driver = false;
+      for (final key in wa.keys) {
+        final list = wa[key];
+        if (list == null || list.isEmpty) continue;
+        if (_attSandWaKeys.contains(key)) sand = true;
+        if (_attDriverWaKeys.contains(key)) driver = true;
+      }
+      return (sand: sand, driver: driver);
     }
 
     for (final t in txs) {
@@ -1699,8 +1754,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           (sc == 'attendance' || ls == 'work' || (!isLeave && sc != 'advance'));
 
       if (isLeave) {
-        _attendanceLeaveTxId = t.id;
+        final reason = (t.leaveReason ?? '').trim();
+        final isSandLeave = reason.contains('พนักงานท่าทราย');
+        final isDriverLeave = reason.contains('คนขับรถ');
+        final isLegacyLeave = reason == _attLeaveReasonLegacy ||
+            reason == 'เช็คชื่อ: ลางาน' ||
+            (!isSandLeave && !isDriverLeave && reason.contains('เช็คชื่อ'));
+
+        if (isLegacyLeave && !isSandLeave && !isDriverLeave) {
+          _attendanceLegacyLeaveTxId = t.id;
+        } else if (isDriverLeave && !isSandLeave) {
+          _attendanceDriverLeaveTxId = t.id;
+        } else if (isSandLeave && !isDriverLeave) {
+          _attendanceLeaveTxId = t.id;
+        } else {
+          // ไม่มี leaveReason ชัด — กระจายตามตำแหน่งพนักงาน
+          _attendanceLegacyLeaveTxId ??= t.id;
+        }
+
         for (final id in t.employeeIds) {
+          if (isSandLeave && !isDriverLeave) {
+            assign('att_leave', id);
+            continue;
+          }
+          if (isDriverLeave && !isSandLeave) {
+            assign('att_drv_leave', id);
+            continue;
+          }
           final e = _employeesById[id];
           if (e != null && _attendanceIsDriver(e)) {
             assign('att_drv_leave', id);
@@ -1737,9 +1817,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
 
       if (isAttendance) {
-        _attendanceLaborTxId = t.id;
-        final assigned = <String>{};
         final wa = t.workAssignments;
+        final kind = classifyWa(wa);
+        final hasWa = wa != null && wa.isNotEmpty;
+        final isSandOnly = hasWa && kind.sand && !kind.driver;
+        final isDriverOnly = hasWa && kind.driver && !kind.sand;
+        final isLegacy = !hasWa || (kind.sand && kind.driver);
+
+        if (isLegacy) {
+          _attendanceLegacyLaborTxId = t.id;
+        } else if (isSandOnly) {
+          _attendanceLaborTxId = t.id;
+        } else if (isDriverOnly) {
+          _attendanceDriverLaborTxId = t.id;
+        }
+
+        final assigned = <String>{};
         void takeRole(String role, String bucketId) {
           final list = wa?[role];
           if (list == null) return;
@@ -1762,9 +1855,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         for (final id in t.employeeIds) {
           if (assigned.contains(id)) continue;
           final wt = (wtByEmp[id] ?? '').toLowerCase();
-          final isDriver =
-              _employeesById[id] != null && _attendanceIsDriver(_employeesById[id]!);
-          if (wt == 'halfday') {
+          final isDriver = _employeesById[id] != null &&
+              _attendanceIsDriver(_employeesById[id]!);
+          if (isSandOnly) {
+            assign(wt == 'halfday' ? 'att_half_morning' : 'att_work', id);
+          } else if (isDriverOnly) {
+            assign(
+              wt == 'halfday' ? 'att_drv_drum_morning' : 'att_drv_macro',
+              id,
+            );
+          } else if (wt == 'halfday') {
             assign(isDriver ? 'att_drv_drum_morning' : 'att_half_morning', id);
           } else if (isDriver) {
             assign('att_drv_macro', id);
@@ -2603,7 +2703,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return;
     }
     if (_isAttendanceMode) {
-      await _saveAttendanceEntry();
+      switch (_attendanceSection) {
+        case AttendanceSection.sandYard:
+          await _saveAttendanceSandYardEntry();
+          break;
+        case AttendanceSection.driver:
+          await _saveAttendanceDriverEntry();
+          break;
+        case null:
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'เลือกเมนูย่อยเช็คชื่อก่อนบันทึก',
+                style: GoogleFonts.kanit(),
+              ),
+            ),
+          );
+          break;
+      }
       return;
     }
     if (_isLaborLeaveMode) {
@@ -3523,16 +3641,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Future<void> _saveAttendanceEntry() async {
-    // เก็บค่าจาก state ก่อน async — เผื่อ setState เคลียร์ระหว่างบันทึก
+  Future<void> _saveAttendanceSandYardEntry() async {
     final work = _attendanceAssignments['att_work']!.toSet();
     final halfM = _attendanceAssignments['att_half_morning']!.toSet();
     final halfA = _attendanceAssignments['att_half_afternoon']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
-    final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
-    final drvDrumM = _attendanceAssignments['att_drv_drum_morning']!.toSet();
-    final drvDrumA = _attendanceAssignments['att_drv_drum_afternoon']!.toSet();
-    final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
     final ot1 = _attendanceAssignments['att_ot_1']!.toSet();
     final ot2 = _attendanceAssignments['att_ot_2']!.toSet();
     final ot3 = _attendanceAssignments['att_ot_3']!.toSet();
@@ -3540,26 +3653,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final otCustomHours =
         double.tryParse(_attendanceOtCustomController.text.trim()) ?? 0;
 
+    // snapshot คนขับไว้เผื่อต้องแยกแถวรวมเก่า
+    final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
+    final drvDrumM = _attendanceAssignments['att_drv_drum_morning']!.toSet();
+    final drvDrumA = _attendanceAssignments['att_drv_drum_afternoon']!.toSet();
+    final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
+
     await _runSaveWithPopups(
-      successMessage: 'บันทึกเช็คชื่อสำเร็จ',
-      saveActionLabel: 'บันทึกเช็คชื่อ',
+      successMessage: 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ',
+      saveActionLabel: 'บันทึกเช็คชื่อพนักงานท่าทราย',
       saveButtonLabel: 'บันทึกเช็คชื่อ',
       requireSignature: false,
+      stayOnPage: true,
       body: () async {
-        final present = <String>{
-          ...work,
-          ...halfM,
-          ...halfA,
-          ...drvMacro,
-          ...drvDrumM,
-          ...drvDrumA,
-        };
-        final leaveIds = <String>{...genLeave, ...drvLeave};
+        if (_employeesLoading) {
+          _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
+        }
+        final present = <String>{...work, ...halfM, ...halfA};
         final anyOt = ot1.isNotEmpty ||
             ot2.isNotEmpty ||
             ot3.isNotEmpty ||
             otCustom.isNotEmpty;
-        if (present.isEmpty && leaveIds.isEmpty && !anyOt) {
+        if (present.isEmpty && genLeave.isEmpty && !anyOt) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
         if (otCustom.isNotEmpty && otCustomHours <= 0) {
@@ -3571,25 +3686,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final date = '$y-$m-$d';
         final baseTs = DateTime.now().millisecondsSinceEpoch;
 
-        // 1) มาทำงาน → Labor Attendance (1 รายการ)
+        await _attendanceMigrateLegacyIfNeeded(
+          date: date,
+          baseTs: baseTs,
+          savingSand: true,
+          sandPresent: present,
+          sandLeave: genLeave,
+          drvMacro: drvMacro,
+          drvDrumM: drvDrumM,
+          drvDrumA: drvDrumA,
+          drvLeave: drvLeave,
+        );
+
         if (present.isNotEmpty) {
           final workType = <String, String>{};
           for (final id in work) {
-            workType[id] = 'FullDay';
-          }
-          for (final id in drvMacro) {
             workType[id] = 'FullDay';
           }
           for (final id in halfM) {
             workType[id] = 'HalfDay';
           }
           for (final id in halfA) {
-            workType[id] = 'HalfDay';
-          }
-          for (final id in drvDrumM) {
-            workType[id] = 'HalfDay';
-          }
-          for (final id in drvDrumA) {
             workType[id] = 'HalfDay';
           }
           final assignments = <String, List<String>>{};
@@ -3600,14 +3717,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           put('work', work);
           put('half:morning', halfM);
           put('half:afternoon', halfA);
-          put('macro_driver', drvMacro);
-          put('drum:morning', drvDrumM);
-          put('drum:afternoon', drvDrumA);
-          final id = _attendanceLaborTxId ?? '${baseTs}_att_work';
-          if (_attendanceLaborTxId != null) {
+          final id = _attendanceLaborTxId ??
+              _attendanceLegacyLaborTxId ??
+              '${baseTs}_att_sand';
+          if (_attendanceLaborTxId != null || _attendanceLegacyLaborTxId == id) {
             _persistOmitCreatedSessionIds.add(id);
           }
           _attendanceLaborTxId = id;
+          if (_attendanceLegacyLaborTxId == id) {
+            _attendanceLegacyLaborTxId = null;
+          }
           await _persist(
             AppTransaction(
               id: id,
@@ -3620,21 +3739,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               amount: 0,
               note: _activeSignatureNote,
               description: _appendRecorder(
-                'เช็คชื่อ: มาทำงาน ${present.length} คน',
+                'เช็คชื่อพนักงานท่าทราย: มาทำงาน ${present.length} คน',
               ),
               workAssignments: assignments.isEmpty ? null : assignments,
               workTypeByEmployee: workType.isEmpty ? null : workType,
             ),
           );
+        } else {
+          await _attendanceDeleteRowIfAny(_attendanceLaborTxId);
+          _attendanceLaborTxId = null;
         }
 
-        // 2) ลางาน → Leave (เต็มวัน)
-        if (leaveIds.isNotEmpty) {
-          final id = _attendanceLeaveTxId ?? '${baseTs}_att_leave';
-          if (_attendanceLeaveTxId != null) {
+        if (genLeave.isNotEmpty) {
+          final id = _attendanceLeaveTxId ??
+              _attendanceLegacyLeaveTxId ??
+              '${baseTs}_att_sand_leave';
+          if (_attendanceLeaveTxId != null ||
+              _attendanceLegacyLeaveTxId == id) {
             _persistOmitCreatedSessionIds.add(id);
           }
           _attendanceLeaveTxId = id;
+          if (_attendanceLegacyLeaveTxId == id) {
+            _attendanceLegacyLeaveTxId = null;
+          }
           await _persist(
             AppTransaction(
               id: id,
@@ -3643,19 +3770,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               category: 'Leave',
               subCategory: 'Personal',
               laborStatus: 'Leave',
-              employeeIds: leaveIds.toList(),
+              employeeIds: genLeave.toList(),
               amount: 0,
               note: _activeSignatureNote,
               description: _appendRecorder(
-                'เช็คชื่อ: ลางาน ${leaveIds.length} คน',
+                'เช็คชื่อพนักงานท่าทราย: ลางาน ${genLeave.length} คน',
               ),
-              leaveReason: 'เช็คชื่อ: ลางาน',
+              leaveReason: _attLeaveReasonSand,
               leaveDays: 1,
             ),
           );
+        } else {
+          await _attendanceDeleteRowIfAny(_attendanceLeaveTxId);
+          _attendanceLeaveTxId = null;
         }
 
-        // 3) OT → 1 รายการต่อกลุ่มชั่วโมง (กันคนขับ/เฝ้าคืน/รายวันออกจาก OT)
         Future<void> saveOtGroup(
           String key,
           Set<String> ids,
@@ -3665,7 +3794,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             final e = _employeesById[id];
             return e == null || !isExcludedFromOtEmployeePicker(e);
           }).toList();
-          if (filtered.isEmpty || hours <= 0) return;
+          if (filtered.isEmpty || hours <= 0) {
+            final existing = _attendanceOtTxIds[key];
+            if (existing != null) {
+              await _attendanceDeleteRowIfAny(existing);
+              _attendanceOtTxIds.remove(key);
+            }
+            return;
+          }
           final txId = _attendanceOtTxIds[key] ?? '${baseTs}_$key';
           if (_attendanceOtTxIds.containsKey(key)) {
             _persistOmitCreatedSessionIds.add(txId);
@@ -3699,8 +3835,308 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await saveOtGroup('att_ot_2', ot2, 2);
         await saveOtGroup('att_ot_3', ot3, 3);
         await saveOtGroup('att_ot_custom', otCustom, otCustomHours);
+        await _refreshAttendanceDaysWorked();
       },
     );
+  }
+
+  Future<void> _saveAttendanceDriverEntry() async {
+    final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
+    final drvDrumM = _attendanceAssignments['att_drv_drum_morning']!.toSet();
+    final drvDrumA = _attendanceAssignments['att_drv_drum_afternoon']!.toSet();
+    final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
+
+    final work = _attendanceAssignments['att_work']!.toSet();
+    final halfM = _attendanceAssignments['att_half_morning']!.toSet();
+    final halfA = _attendanceAssignments['att_half_afternoon']!.toSet();
+    final genLeave = _attendanceAssignments['att_leave']!.toSet();
+
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกเช็คชื่อคนขับรถสำเร็จ',
+      saveActionLabel: 'บันทึกเช็คชื่อคนขับรถ',
+      saveButtonLabel: 'บันทึกเช็คชื่อ',
+      requireSignature: false,
+      stayOnPage: true,
+      body: () async {
+        if (_employeesLoading) {
+          _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
+        }
+        final present = <String>{...drvMacro, ...drvDrumM, ...drvDrumA};
+        if (present.isEmpty && drvLeave.isEmpty) {
+          _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final baseTs = DateTime.now().millisecondsSinceEpoch;
+
+        await _attendanceMigrateLegacyIfNeeded(
+          date: date,
+          baseTs: baseTs,
+          savingSand: false,
+          sandPresent: {...work, ...halfM, ...halfA},
+          sandLeave: genLeave,
+          sandWork: work,
+          sandHalfM: halfM,
+          sandHalfA: halfA,
+          drvMacro: drvMacro,
+          drvDrumM: drvDrumM,
+          drvDrumA: drvDrumA,
+          drvLeave: drvLeave,
+        );
+
+        if (present.isNotEmpty) {
+          final workType = <String, String>{};
+          for (final id in drvMacro) {
+            workType[id] = 'FullDay';
+          }
+          for (final id in drvDrumM) {
+            workType[id] = 'HalfDay';
+          }
+          for (final id in drvDrumA) {
+            workType[id] = 'HalfDay';
+          }
+          final assignments = <String, List<String>>{};
+          void put(String key, Set<String> s) {
+            if (s.isNotEmpty) assignments[key] = s.toList();
+          }
+
+          put('macro_driver', drvMacro);
+          put('drum:morning', drvDrumM);
+          put('drum:afternoon', drvDrumA);
+          final id = _attendanceDriverLaborTxId ??
+              _attendanceLegacyLaborTxId ??
+              '${baseTs}_att_drv';
+          if (_attendanceDriverLaborTxId != null ||
+              _attendanceLegacyLaborTxId == id) {
+            _persistOmitCreatedSessionIds.add(id);
+          }
+          _attendanceDriverLaborTxId = id;
+          if (_attendanceLegacyLaborTxId == id) {
+            _attendanceLegacyLaborTxId = null;
+          }
+          await _persist(
+            AppTransaction(
+              id: id,
+              date: date,
+              type: 'Expense',
+              category: 'Labor',
+              subCategory: 'Attendance',
+              laborStatus: 'Work',
+              employeeIds: present.toList(),
+              amount: 0,
+              note: _activeSignatureNote,
+              description: _appendRecorder(
+                'เช็คชื่อคนขับรถ: มาทำงาน ${present.length} คน',
+              ),
+              workAssignments: assignments.isEmpty ? null : assignments,
+              workTypeByEmployee: workType.isEmpty ? null : workType,
+            ),
+          );
+        } else {
+          await _attendanceDeleteRowIfAny(_attendanceDriverLaborTxId);
+          _attendanceDriverLaborTxId = null;
+        }
+
+        if (drvLeave.isNotEmpty) {
+          final id = _attendanceDriverLeaveTxId ??
+              _attendanceLegacyLeaveTxId ??
+              '${baseTs}_att_drv_leave';
+          if (_attendanceDriverLeaveTxId != null ||
+              _attendanceLegacyLeaveTxId == id) {
+            _persistOmitCreatedSessionIds.add(id);
+          }
+          _attendanceDriverLeaveTxId = id;
+          if (_attendanceLegacyLeaveTxId == id) {
+            _attendanceLegacyLeaveTxId = null;
+          }
+          await _persist(
+            AppTransaction(
+              id: id,
+              date: date,
+              type: 'Leave',
+              category: 'Leave',
+              subCategory: 'Personal',
+              laborStatus: 'Leave',
+              employeeIds: drvLeave.toList(),
+              amount: 0,
+              note: _activeSignatureNote,
+              description: _appendRecorder(
+                'เช็คชื่อคนขับรถ: ลางาน ${drvLeave.length} คน',
+              ),
+              leaveReason: _attLeaveReasonDriver,
+              leaveDays: 1,
+            ),
+          );
+        } else {
+          await _attendanceDeleteRowIfAny(_attendanceDriverLeaveTxId);
+          _attendanceDriverLeaveTxId = null;
+        }
+        await _refreshAttendanceDaysWorked();
+      },
+    );
+  }
+
+  Future<void> _attendanceDeleteRowIfAny(String? id) async {
+    final rowId = id?.trim();
+    if (rowId == null || rowId.isEmpty) return;
+    await _deleteTransactionOfflineAware(rowId);
+  }
+
+  /// แยกแถวรวมเก่าเป็น 2 แถวครั้งเดียวเมื่อบันทึกกลุ่มใดกลุ่มหนึ่ง
+  Future<void> _attendanceMigrateLegacyIfNeeded({
+    required String date,
+    required int baseTs,
+    required bool savingSand,
+    required Set<String> sandPresent,
+    required Set<String> sandLeave,
+    Set<String> sandWork = const {},
+    Set<String> sandHalfM = const {},
+    Set<String> sandHalfA = const {},
+    required Set<String> drvMacro,
+    required Set<String> drvDrumM,
+    required Set<String> drvDrumA,
+    required Set<String> drvLeave,
+  }) async {
+    final legacyLabor = _attendanceLegacyLaborTxId;
+    final legacyLeave = _attendanceLegacyLeaveTxId;
+    if (legacyLabor == null && legacyLeave == null) return;
+
+    if (savingSand) {
+      final otherPresent = <String>{...drvMacro, ...drvDrumM, ...drvDrumA};
+      if (_attendanceDriverLaborTxId == null && otherPresent.isNotEmpty) {
+        final workType = <String, String>{};
+        for (final id in drvMacro) {
+          workType[id] = 'FullDay';
+        }
+        for (final id in drvDrumM) {
+          workType[id] = 'HalfDay';
+        }
+        for (final id in drvDrumA) {
+          workType[id] = 'HalfDay';
+        }
+        final assignments = <String, List<String>>{};
+        if (drvMacro.isNotEmpty) assignments['macro_driver'] = drvMacro.toList();
+        if (drvDrumM.isNotEmpty) {
+          assignments['drum:morning'] = drvDrumM.toList();
+        }
+        if (drvDrumA.isNotEmpty) {
+          assignments['drum:afternoon'] = drvDrumA.toList();
+        }
+        final id = '${baseTs}_att_drv_mig';
+        _attendanceDriverLaborTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Attendance',
+            laborStatus: 'Work',
+            employeeIds: otherPresent.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'เช็คชื่อคนขับรถ: มาทำงาน ${otherPresent.length} คน',
+            ),
+            workAssignments: assignments.isEmpty ? null : assignments,
+            workTypeByEmployee: workType.isEmpty ? null : workType,
+          ),
+        );
+      }
+      if (_attendanceDriverLeaveTxId == null && drvLeave.isNotEmpty) {
+        final id = '${baseTs}_att_drv_leave_mig';
+        _attendanceDriverLeaveTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Leave',
+            category: 'Leave',
+            subCategory: 'Personal',
+            laborStatus: 'Leave',
+            employeeIds: drvLeave.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'เช็คชื่อคนขับรถ: ลางาน ${drvLeave.length} คน',
+            ),
+            leaveReason: _attLeaveReasonDriver,
+            leaveDays: 1,
+          ),
+        );
+      }
+    } else {
+      final otherPresent = sandPresent;
+      if (_attendanceLaborTxId == null && otherPresent.isNotEmpty) {
+        final work = sandWork.isNotEmpty
+            ? sandWork
+            : _attendanceAssignments['att_work']!.toSet();
+        final halfM = sandHalfM.isNotEmpty
+            ? sandHalfM
+            : _attendanceAssignments['att_half_morning']!.toSet();
+        final halfA = sandHalfA.isNotEmpty
+            ? sandHalfA
+            : _attendanceAssignments['att_half_afternoon']!.toSet();
+        final workType = <String, String>{};
+        for (final id in work) {
+          workType[id] = 'FullDay';
+        }
+        for (final id in halfM) {
+          workType[id] = 'HalfDay';
+        }
+        for (final id in halfA) {
+          workType[id] = 'HalfDay';
+        }
+        final assignments = <String, List<String>>{};
+        if (work.isNotEmpty) assignments['work'] = work.toList();
+        if (halfM.isNotEmpty) assignments['half:morning'] = halfM.toList();
+        if (halfA.isNotEmpty) assignments['half:afternoon'] = halfA.toList();
+        final id = '${baseTs}_att_sand_mig';
+        _attendanceLaborTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Expense',
+            category: 'Labor',
+            subCategory: 'Attendance',
+            laborStatus: 'Work',
+            employeeIds: otherPresent.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'เช็คชื่อพนักงานท่าทราย: มาทำงาน ${otherPresent.length} คน',
+            ),
+            workAssignments: assignments.isEmpty ? null : assignments,
+            workTypeByEmployee: workType.isEmpty ? null : workType,
+          ),
+        );
+      }
+      if (_attendanceLeaveTxId == null && sandLeave.isNotEmpty) {
+        final id = '${baseTs}_att_sand_leave_mig';
+        _attendanceLeaveTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Leave',
+            category: 'Leave',
+            subCategory: 'Personal',
+            laborStatus: 'Leave',
+            employeeIds: sandLeave.toList(),
+            amount: 0,
+            note: _activeSignatureNote,
+            description: _appendRecorder(
+              'เช็คชื่อพนักงานท่าทราย: ลางาน ${sandLeave.length} คน',
+            ),
+            leaveReason: _attLeaveReasonSand,
+            leaveDays: 1,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _saveLaborLeaveEntry() async {
@@ -6419,6 +6855,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_isAttendanceMode && _attendanceSection != null) {
+      return Theme(
+        data: _quickFormTheme(context),
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if (details.primaryVelocity != null &&
+                details.primaryVelocity! > 550) {
+              _handleQuickInputBack();
+            }
+          },
+          child: PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) return;
+              _handleQuickInputBack();
+            },
+            child: _buildAttendanceFullscreenShell(),
+          ),
+        ),
+      );
+    }
     final heading = widget.appBarTitle ?? 'คีย์ข้อมูลง่าย';
     final canPop = Navigator.of(context).canPop();
     // Use sizeOf / viewInsets in narrow scopes so keyboard animation does not
@@ -6435,8 +6892,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
         },
         child: PopScope(
-          // อยู่ในเมนูย่อยน้ำมัน — ปุ่มย้อนกลับของระบบให้กลับหน้าเลือกเมนูก่อน
-          canPop: !(_isFuelMode && _fuelSubMode != null),
+          // เมนูย่อยน้ำมัน/เช็คชื่อ — ปุ่มย้อนกลับของระบบให้กลับหน้าเลือกเมนูก่อน
+          canPop: !(
+            (_isFuelMode && _fuelSubMode != null) ||
+            (_isAttendanceMode && _attendanceSection != null)
+          ),
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) return;
             _handleQuickInputBack();
@@ -6474,7 +6934,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                           child: Row(
                             children: [
-                              if (canPop || _fuelSubMode != null)
+                              if (canPop ||
+                                  _fuelSubMode != null ||
+                                  _attendanceSection != null)
                                 IconButton(
                                   onPressed: _handleQuickInputBack,
                                   icon: const Icon(
@@ -9193,11 +9655,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// ปุ่มย้อนกลับ — ถ้าอยู่ในเมนูย่อยน้ำมันให้กลับไปหน้าเลือกเมนูก่อน
+  /// ปุ่มย้อนกลับ — เมนูย่อยน้ำมัน/เช็คชื่อกลับหน้าเลือกก่อน
   void _handleQuickInputBack() {
     if (_isFuelMode && _fuelSubMode != null) {
       _releaseKeyboardFocus();
       setState(() => _fuelSubMode = null);
+      return;
+    }
+    if (_isAttendanceMode && _attendanceSection != null) {
+      _releaseKeyboardFocus();
+      setState(() => _attendanceSection = null);
       return;
     }
     Navigator.maybePop(context);
@@ -11664,6 +12131,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     String empId,
     Set<String> pickedPool,
   ) {
+    AppHaptics.success();
     setState(() {
       for (final id in _attendanceExclusionGroup(bucketId)) {
         _attendanceAssignments[id]?.remove(empId);
@@ -11671,10 +12139,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _attendanceAssignments[bucketId]?.add(empId);
       _attendanceBucketExpanded[bucketId] = true;
       pickedPool.remove(empId);
+      _attendanceJustDroppedIds.add(empId);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 420), () {
+      if (!mounted) return;
+      setState(() => _attendanceJustDroppedIds.remove(empId));
     });
   }
 
   void _attendanceRemoveEmp(String bucketId, String empId) {
+    AppHaptics.tap();
     setState(() {
       _attendanceAssignments[bucketId]?.remove(empId);
       if (_attendanceAssignments[bucketId]?.isEmpty ?? true) {
@@ -11685,16 +12159,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _attendanceMovePicked(String bucketId, Set<String> pickedPool) {
     if (pickedPool.isEmpty) return;
+    AppHaptics.success();
+    final moved = pickedPool.toList();
     setState(() {
       final group = _attendanceExclusionGroup(bucketId);
-      for (final empId in pickedPool.toList()) {
+      for (final empId in moved) {
         for (final id in group) {
           _attendanceAssignments[id]?.remove(empId);
         }
         _attendanceAssignments[bucketId]?.add(empId);
+        _attendanceJustDroppedIds.add(empId);
       }
       _attendanceBucketExpanded[bucketId] = true;
       pickedPool.clear();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 420), () {
+      if (!mounted) return;
+      setState(() {
+        for (final id in moved) {
+          _attendanceJustDroppedIds.remove(id);
+        }
+      });
     });
   }
 
@@ -11802,6 +12287,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             : _employeeUiDisplayName(emp);
                         return LongPressDraggable<String>(
                           data: empId,
+                          onDragStarted: () => AppHaptics.tap(),
                           feedback: Material(
                             color: Colors.transparent,
                             elevation: 6,
@@ -11838,23 +12324,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               onDeleted: null,
                             ),
                           ),
-                          child: InputChip(
-                            labelPadding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 4,
-                              horizontal: 2,
-                            ),
-                            label: Text(
-                              label,
-                              style: GoogleFonts.kanit(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12.5,
+                          child: AnimatedScale(
+                            scale: _attendanceJustDroppedIds.contains(empId)
+                                ? 1.08
+                                : 1.0,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutBack,
+                            child: InputChip(
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 4,
                               ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 2,
+                              ),
+                              label: Text(
+                                label,
+                                style: GoogleFonts.kanit(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              onDeleted: () =>
+                                  _attendanceRemoveEmp(z.bucketId, empId),
                             ),
-                            onDeleted: () =>
-                                _attendanceRemoveEmp(z.bucketId, empId),
                           ),
                         );
                       }).toList(),
@@ -12198,256 +12691,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildAttendanceFormCard() {
-    // พูลซ้ายดึงตามตำแหน่งงานเท่านั้น และเรียงคนที่มาบ่อยสุดขึ้นก่อน
-    // รวมคนที่ถูก assign อยู่แล้วด้วย (กันเคส hydrate คนขับแม็คโครแล้วลากกลับพูลไม่ได้)
-    final genPresenceIds = {
-      ..._attGeneralPresenceIds,
-      ..._attGeneralOtIds,
-    };
-    final assignedGeneral = <String>{
-      for (final id in genPresenceIds)
-        ...(_attendanceAssignments[id] ?? const <String>{}),
-    };
-    final assignedDriver = <String>{
-      for (final id in _attDriverIds)
-        ...(_attendanceAssignments[id] ?? const <String>{}),
-    };
+    // หน้าเลือกเมนูย่อย — กระดานเต็มจออยู่ที่ _buildAttendanceFullscreenShell
+    final workN = _attendanceAssignments['att_work']?.length ?? 0;
+    final halfN = (_attendanceAssignments['att_half_morning']?.length ?? 0) +
+        (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
+    final leaveN = _attendanceAssignments['att_leave']?.length ?? 0;
+    final otN = (_attendanceAssignments['att_ot_1']?.length ?? 0) +
+        (_attendanceAssignments['att_ot_2']?.length ?? 0) +
+        (_attendanceAssignments['att_ot_3']?.length ?? 0) +
+        (_attendanceAssignments['att_ot_custom']?.length ?? 0);
+    final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
+    final drumN = (_attendanceAssignments['att_drv_drum_morning']?.length ?? 0) +
+        (_attendanceAssignments['att_drv_drum_afternoon']?.length ?? 0);
+    final drvLeaveN = _attendanceAssignments['att_drv_leave']?.length ?? 0;
 
-    final generalPeople = _employees
-        .where(
-          (e) =>
-              !e.inactive &&
-              (_isSandYardAttendanceEmployee(e) ||
-                  assignedGeneral.contains(e.id)),
-        )
-        .toList()
-      ..sort(_compareAttendancePoolOrder);
-    final driverPeople = _employees
-        .where(
-          (e) =>
-              !e.inactive &&
-              (_isDriverEmployee(e) || assignedDriver.contains(e.id)),
-        )
-        .toList()
-      ..sort(_compareAttendancePoolOrder);
-
-    const workColor = Color(0xFF2FB6A6);
-    const halfColor = Color(0xFF3B9AE1);
-    const leaveColor = Color(0xFFEF5D6E);
-    const otColor = Color(0xFFF08A24);
-    const macroColor = Color(0xFFEF6C00);
-    const drumColor = Color(0xFF6C6FE6);
-    const poolAccent = Color(0xFF7C4DFF);
-
-    final workCard = _attendanceGroupedCard(
-      title: '#ทำงาน',
-      color: workColor,
-      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'ทำงานเต็มวัน')],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-    final halfCard = _attendanceGroupedCard(
-      title: '#ครึ่งวัน',
-      color: halfColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_half_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(bucketId: 'att_half_afternoon', subLabel: 'ช่วงบ่าย'),
-      ],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-    final leaveGenCard = _attendanceGroupedCard(
-      title: '#ลางาน',
-      color: leaveColor,
-      zones: const [_AttZoneDef(bucketId: 'att_leave', subLabel: 'ลางาน')],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-    final otCard = _attendanceGroupedCard(
-      title: 'OT',
-      color: otColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_ot_1', subLabel: '+1 ชั่วโมง'),
-        _AttZoneDef(bucketId: 'att_ot_2', subLabel: '+2 ชั่วโมง'),
-        _AttZoneDef(bucketId: 'att_ot_3', subLabel: '+3 ชั่วโมง'),
-        _AttZoneDef(
-          bucketId: 'att_ot_custom',
-          subLabel: 'ระบุชั่วโมง',
-          isOtCustom: true,
-        ),
-      ],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-    final macroCard = _attendanceGroupedCard(
-      title: 'ขับรถแม็คโคร',
-      color: macroColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_macro', subLabel: 'ขับรถแม็คโคร'),
-      ],
-      pickedPool: _attendanceDriverPicked,
-      equalHeightZones: true,
-    );
-    final drumCard = _attendanceGroupedCard(
-      title: 'ขับรถดรัม',
-      color: drumColor,
-      subheader: 'ขับรถดรัมช่วงเวลา',
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_drum_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(bucketId: 'att_drv_drum_afternoon', subLabel: 'ช่วงบ่าย'),
-      ],
-      pickedPool: _attendanceDriverPicked,
-      equalHeightZones: true,
-    );
-    final leaveDrvCard = _attendanceGroupedCard(
-      title: '#ลางาน',
-      color: leaveColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_leave', subLabel: 'ลางาน'),
-      ],
-      pickedPool: _attendanceDriverPicked,
-      equalHeightZones: true,
-    );
-
-    Widget poolGen({bool fill = true}) {
-      final pool = _attendancePoolColumn(
-        hashtag: '#รายชื่อพนักงาน',
-        people: generalPeople,
-        pickedPool: _attendanceGeneralPicked,
-        poolBucketIds: genPresenceIds,
-        emptyText:
-            'ไม่มีพนักงานท่าทราย — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
-        accent: poolAccent,
-        scrollController: _attendanceGeneralPoolScroll,
-      );
-      if (fill) return pool;
-      final poolH =
-          (MediaQuery.sizeOf(context).height * 0.34).clamp(240.0, 380.0);
-      return SizedBox(height: poolH, child: pool);
-    }
-
-    Widget poolDrv({bool fill = true}) {
-      final pool = _attendancePoolColumn(
-        hashtag: '#รายชื่อพนักงานขับรถ',
-        people: driverPeople,
-        pickedPool: _attendanceDriverPicked,
-        poolBucketIds: _attDriverIds,
-        emptyText:
-            'ไม่มีพนักงานตำแหน่งคนขับรถ — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
-        accent: const Color(0xFF00897B),
-        scrollController: _attendanceDriverPoolScroll,
-      );
-      if (fill) return pool;
-      final poolH =
-          (MediaQuery.sizeOf(context).height * 0.34).clamp(240.0, 380.0);
-      return SizedBox(height: poolH, child: pool);
-    }
-
-    final wide = MediaQuery.sizeOf(context).width >= 820;
-    const gap = 10.0;
-    final boardH = (MediaQuery.sizeOf(context).height * 0.62).clamp(
-      420.0,
-      720.0,
-    );
-
-    Widget board;
-    if (wide) {
-      board = SizedBox(
-        height: boardH,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 22,
-              child: Column(
-                children: [
-                  Expanded(child: poolGen()),
-                  const SizedBox(height: gap),
-                  Expanded(child: poolDrv()),
-                ],
-              ),
-            ),
-            const SizedBox(width: gap),
-            Expanded(
-              flex: 18,
-              child: Column(
-                children: [
-                  Expanded(child: workCard),
-                  const SizedBox(height: gap),
-                  Expanded(child: macroCard),
-                ],
-              ),
-            ),
-            const SizedBox(width: gap),
-            Expanded(
-              flex: 18,
-              child: Column(
-                children: [
-                  Expanded(child: halfCard),
-                  const SizedBox(height: gap),
-                  Expanded(child: drumCard),
-                ],
-              ),
-            ),
-            const SizedBox(width: gap),
-            Expanded(
-              flex: 16,
-              child: Column(
-                children: [
-                  Expanded(child: leaveGenCard),
-                  const SizedBox(height: gap),
-                  Expanded(child: leaveDrvCard),
-                ],
-              ),
-            ),
-            const SizedBox(width: gap),
-            Expanded(flex: 18, child: otCard),
-          ],
-        ),
-      );
-    } else {
-      // มือถือแคบ: ซ้อน 2 บล็อก (ทั่วไป → คนขับ)
-      board = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'พนักงานทั่วไป',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: const Color(0xFF0D47A1),
-            ),
-          ),
-          const SizedBox(height: 8),
-          poolGen(fill: false),
-          const SizedBox(height: 10),
-          SizedBox(height: 140, child: workCard),
-          const SizedBox(height: 10),
-          SizedBox(height: 200, child: halfCard),
-          const SizedBox(height: 10),
-          SizedBox(height: 140, child: leaveGenCard),
-          const SizedBox(height: 10),
-          SizedBox(height: 320, child: otCard),
-          const SizedBox(height: 18),
-          Text(
-            'พนักงานขับรถ',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: const Color(0xFF0D47A1),
-            ),
-          ),
-          const SizedBox(height: 8),
-          poolDrv(fill: false),
-          const SizedBox(height: 10),
-          SizedBox(height: 140, child: macroCard),
-          const SizedBox(height: 10),
-          SizedBox(height: 200, child: drumCard),
-          const SizedBox(height: 10),
-          SizedBox(height: 140, child: leaveDrvCard),
-        ],
-      );
-    }
+    final sandSummary = workN + halfN + leaveN + otN == 0
+        ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
+        : 'ทำงาน $workN · ครึ่งวัน $halfN · ลา $leaveN · OT $otN';
+    final driverSummary = macroN + drumN + drvLeaveN == 0
+        ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
+        : 'แม็คโคร $macroN · ดรัม $drumN · ลา $drvLeaveN';
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -12472,7 +12735,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'ลากรายชื่อจากพูลซ้าย → วางลงกล่องสถานะ · กดบันทึกครั้งเดียว',
+            'เลือกกลุ่มเพื่อเปิดกระดานเต็มจอ · ลากวางรายชื่อเหมือนเกม',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -12481,22 +12744,363 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 12),
-          board,
-          const SizedBox(height: 16),
-          _SmoothPressable(
-            enabled: !_saving,
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _saveQuickEntry,
-              icon: const Icon(Icons.how_to_reg_outlined),
-              label: Text('บันทึกเช็คชื่อ', style: GoogleFonts.kanit()),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
+          const SizedBox(height: 14),
+          AttendanceSubModePicker(
+            sandYardSummary: sandSummary,
+            driverSummary: driverSummary,
+            onSelect: (section) {
+              AppHaptics.confirm();
+              setState(() => _attendanceSection = section);
+            },
           ),
         ],
       ),
+    );
+  }
+
+  String _attendanceSectionTitle(AttendanceSection section) {
+    return switch (section) {
+      AttendanceSection.sandYard => 'เช็คชื่อพนักงานท่าทราย',
+      AttendanceSection.driver => 'เช็คชื่อคนขับรถ',
+    };
+  }
+
+  String _attendanceSectionSaveLabel(AttendanceSection section) {
+    return switch (section) {
+      AttendanceSection.sandYard => 'บันทึกเช็คชื่อพนักงานท่าทราย',
+      AttendanceSection.driver => 'บันทึกเช็คชื่อคนขับรถ',
+    };
+  }
+
+  String _attendanceBoardSummary(AttendanceSection section) {
+    if (section == AttendanceSection.sandYard) {
+      final work = _attendanceAssignments['att_work']?.length ?? 0;
+      final half =
+          (_attendanceAssignments['att_half_morning']?.length ?? 0) +
+          (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
+      final leave = _attendanceAssignments['att_leave']?.length ?? 0;
+      final ot = (_attendanceAssignments['att_ot_1']?.length ?? 0) +
+          (_attendanceAssignments['att_ot_2']?.length ?? 0) +
+          (_attendanceAssignments['att_ot_3']?.length ?? 0) +
+          (_attendanceAssignments['att_ot_custom']?.length ?? 0);
+      return 'ทำงาน $work · ครึ่งวัน $half · ลา $leave · OT $ot';
+    }
+    final macro = _attendanceAssignments['att_drv_macro']?.length ?? 0;
+    final drum =
+        (_attendanceAssignments['att_drv_drum_morning']?.length ?? 0) +
+        (_attendanceAssignments['att_drv_drum_afternoon']?.length ?? 0);
+    final leave = _attendanceAssignments['att_drv_leave']?.length ?? 0;
+    return 'แม็คโคร $macro · ดรัม $drum · ลา $leave';
+  }
+
+  Widget _buildAttendanceFullscreenShell() {
+    final section = _attendanceSection!;
+    final y = _selectedDate.year + 543;
+    final dateLabel =
+        '${_selectedDate.day}/${_selectedDate.month}/$y';
+    final canSave = !_saving && !_employeesLoading;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF3F7FB),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 16, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: _handleQuickInputBack,
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    color: const Color(0xFF0F5FAF),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          _attendanceSectionTitle(section),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.kanit(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0F5FAF),
+                          ),
+                        ),
+                        Text(
+                          dateLabel,
+                          style: GoogleFonts.kanit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 44),
+                ],
+              ),
+            ),
+            if (_employeesLoading)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _employeeDataLoadProgressBanner(),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: section == AttendanceSection.sandYard
+                    ? _buildAttendanceSandYardBoard()
+                    : _buildAttendanceDriverBoard(),
+              ),
+            ),
+            Material(
+              elevation: 8,
+              color: Colors.white,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        _attendanceBoardSummary(section),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF475569),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _SmoothPressable(
+                        enabled: canSave,
+                        child: FilledButton.icon(
+                          onPressed: canSave ? _saveQuickEntry : null,
+                          icon: const Icon(Icons.how_to_reg_outlined),
+                          label: Text(
+                            _saving
+                                ? 'กำลังบันทึก...'
+                                : _attendanceSectionSaveLabel(section),
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 17,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceSandYardBoard() {
+    final genPresenceIds = {
+      ..._attGeneralPresenceIds,
+      ..._attGeneralOtIds,
+    };
+    final assignedGeneral = <String>{
+      for (final id in genPresenceIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    };
+    final generalPeople = _employees
+        .where(
+          (e) =>
+              !e.inactive &&
+              (_isSandYardAttendanceEmployee(e) ||
+                  assignedGeneral.contains(e.id)),
+        )
+        .toList()
+      ..sort(_compareAttendancePoolOrder);
+
+    const workColor = Color(0xFF2FB6A6);
+    const halfColor = Color(0xFF3B9AE1);
+    const leaveColor = Color(0xFFEF5D6E);
+    const otColor = Color(0xFFF08A24);
+    const poolAccent = Color(0xFF7C4DFF);
+
+    final workCard = _attendanceGroupedCard(
+      title: '#ทำงาน',
+      color: workColor,
+      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'ทำงานเต็มวัน')],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final halfCard = _attendanceGroupedCard(
+      title: '#ครึ่งวัน',
+      color: halfColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_half_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(bucketId: 'att_half_afternoon', subLabel: 'ช่วงบ่าย'),
+      ],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final leaveCard = _attendanceGroupedCard(
+      title: '#ลางาน',
+      color: leaveColor,
+      zones: const [_AttZoneDef(bucketId: 'att_leave', subLabel: 'ลางาน')],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+    final otCard = _attendanceGroupedCard(
+      title: 'OT',
+      color: otColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_ot_1', subLabel: '+1 ชั่วโมง'),
+        _AttZoneDef(bucketId: 'att_ot_2', subLabel: '+2 ชั่วโมง'),
+        _AttZoneDef(bucketId: 'att_ot_3', subLabel: '+3 ชั่วโมง'),
+        _AttZoneDef(
+          bucketId: 'att_ot_custom',
+          subLabel: 'ระบุชั่วโมง',
+          isOtCustom: true,
+        ),
+      ],
+      pickedPool: _attendanceGeneralPicked,
+      equalHeightZones: true,
+    );
+
+    final pool = _attendancePoolColumn(
+      hashtag: '#รายชื่อพนักงานท่าทราย',
+      people: generalPeople,
+      pickedPool: _attendanceGeneralPicked,
+      poolBucketIds: genPresenceIds,
+      emptyText:
+          'ไม่มีพนักงานท่าทราย — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+      accent: poolAccent,
+      scrollController: _attendanceGeneralPoolScroll,
+    );
+
+    return _attendanceFullscreenBoardLayout(
+      pool: pool,
+      cards: [workCard, halfCard, leaveCard, otCard],
+    );
+  }
+
+  Widget _buildAttendanceDriverBoard() {
+    final assignedDriver = <String>{
+      for (final id in _attDriverIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    };
+    final driverPeople = _employees
+        .where(
+          (e) =>
+              !e.inactive &&
+              (_isDriverEmployee(e) || assignedDriver.contains(e.id)),
+        )
+        .toList()
+      ..sort(_compareAttendancePoolOrder);
+
+    const macroColor = Color(0xFFEF6C00);
+    const drumColor = Color(0xFF6C6FE6);
+    const leaveColor = Color(0xFFEF5D6E);
+
+    final macroCard = _attendanceGroupedCard(
+      title: 'ขับรถแม็คโคร',
+      color: macroColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_macro', subLabel: 'ขับรถแม็คโคร'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+    final drumCard = _attendanceGroupedCard(
+      title: 'ขับรถดรัม',
+      color: drumColor,
+      subheader: 'ขับรถดรัมช่วงเวลา',
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_drum_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(bucketId: 'att_drv_drum_afternoon', subLabel: 'ช่วงบ่าย'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+    final leaveCard = _attendanceGroupedCard(
+      title: '#ลางาน',
+      color: leaveColor,
+      zones: const [
+        _AttZoneDef(bucketId: 'att_drv_leave', subLabel: 'ลางาน'),
+      ],
+      pickedPool: _attendanceDriverPicked,
+      equalHeightZones: true,
+    );
+
+    final pool = _attendancePoolColumn(
+      hashtag: '#รายชื่อพนักงานขับรถ',
+      people: driverPeople,
+      pickedPool: _attendanceDriverPicked,
+      poolBucketIds: _attDriverIds,
+      emptyText:
+          'ไม่มีพนักงานตำแหน่งคนขับรถ — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+      accent: const Color(0xFF00897B),
+      scrollController: _attendanceDriverPoolScroll,
+    );
+
+    return _attendanceFullscreenBoardLayout(
+      pool: pool,
+      cards: [macroCard, drumCard, leaveCard],
+    );
+  }
+
+  Widget _attendanceFullscreenBoardLayout({
+    required Widget pool,
+    required List<Widget> cards,
+  }) {
+    final size = MediaQuery.sizeOf(context);
+    final wide = size.width >= 820 || size.width > size.height;
+    const gap = 10.0;
+
+    if (wide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(flex: 34, child: pool),
+          const SizedBox(width: gap),
+          Expanded(
+            flex: 66,
+            child: Column(
+              children: [
+                for (var i = 0; i < cards.length; i++) ...[
+                  if (i > 0) const SizedBox(height: gap),
+                  Expanded(child: cards[i]),
+                ],
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final poolH = (size.height * 0.34).clamp(240.0, 380.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(height: poolH, child: pool),
+        const SizedBox(height: gap),
+        Expanded(
+          child: ListView.separated(
+            physics: const BouncingScrollPhysics(),
+            itemCount: cards.length,
+            separatorBuilder: (context, index) => const SizedBox(height: gap),
+            itemBuilder: (context, i) {
+              final h = i == cards.length - 1 && cards.length >= 4
+                  ? 320.0
+                  : (i == 1 ? 200.0 : 150.0);
+              return SizedBox(height: h, child: cards[i]);
+            },
+          ),
+        ),
+      ],
     );
   }
 
