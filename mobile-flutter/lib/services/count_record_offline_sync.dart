@@ -29,6 +29,7 @@ class CountRecordOfflineSync {
   static const _kFailedQueue = 'v1_count_record_failed_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
   static const _kVehicleDefaultDrivers = 'v1_count_record_vehicle_default_drivers_json';
+  static const _kFuelOpeningStock = 'v1_count_record_fuel_opening_stock_json';
   static const _kEmployees = 'v1_count_record_employees_json';
   static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
 
@@ -529,6 +530,38 @@ class CountRecordOfflineSync {
     } catch (_) {
       return const {};
     }
+  }
+
+  /// สต็อกน้ำมันยกมาจากตั้งค่าเว็บ (`app_settings.fuel_opening_stock`)
+  Future<void> cacheFuelOpeningStock(
+    ({double diesel, double benzine}) opening,
+  ) async {
+    final p = await _prefs();
+    await p.setString(
+      _kFuelOpeningStock,
+      jsonEncode({'Diesel': opening.diesel, 'Benzine': opening.benzine}),
+    );
+  }
+
+  Future<({double diesel, double benzine})> readCachedFuelOpeningStock() async {
+    final p = await _prefs();
+    final raw = p.getString(_kFuelOpeningStock);
+    if (raw == null || raw.isEmpty) return (diesel: 0.0, benzine: 0.0);
+    try {
+      return parseFuelOpeningStock(jsonDecode(raw));
+    } catch (_) {
+      return (diesel: 0.0, benzine: 0.0);
+    }
+  }
+
+  static ({double diesel, double benzine}) parseFuelOpeningStock(dynamic raw) {
+    if (raw is! Map) return (diesel: 0.0, benzine: 0.0);
+    double num0(dynamic v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v') ?? 0;
+    }
+
+    return (diesel: num0(raw['Diesel']), benzine: num0(raw['Benzine']));
   }
 
   static Map<String, String> parseVehicleDefaultDrivers(dynamic raw) {

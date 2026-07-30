@@ -18,20 +18,58 @@ export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
     return t.vehicleId ? 'stock_out' : 'stock_in';
 }
 
+/** `subCategory` ของแถวเบิกน้ำมันออกจากถัง (แอปมือถือ เมนู «เบิกน้ำมัน») */
+export const FUEL_WITHDRAW_SUB_CATEGORY = 'Withdraw';
+
+type FuelDayBucket = { stockIn: number; withdraw: number; machineWithdraw: number; vehicleUsage: number };
+
+/**
+ * คงเหลือในถัง = ยกมา + รับเข้า − เบิกออก − ส่วนที่เติมรถเกินโควตา «เติมเครื่องจักร» ของวันนั้น
+ *
+ * น้ำมันที่ลงบันทึกการใช้รถถือว่าเบิกไปแล้วในกล่อง «เติมเครื่องจักร» จึงหักกลบกันรายวัน
+ * เพื่อไม่ให้ตัดสต็อกซ้ำ ส่วนที่เกินโควตายังตัดสต็อกตามจริง
+ * (ข้อมูลเก่าที่ไม่มีแถว Withdraw จะได้ผลเท่าสูตรเดิม)
+ */
 export function computeFuelStockBalances(
     transactions: Transaction[],
     opening?: { Diesel?: number; Benzine?: number }
 ): { Diesel: number; Benzine: number } {
-    let d = opening?.Diesel ?? 0;
-    let b = opening?.Benzine ?? 0;
+    const buckets = new Map<string, FuelDayBucket>();
+    const bucketFor = (date: string, ft: 'Diesel' | 'Benzine') => {
+        const key = `${date}|${ft}`;
+        let bucket = buckets.get(key);
+        if (!bucket) {
+            bucket = { stockIn: 0, withdraw: 0, machineWithdraw: 0, vehicleUsage: 0 };
+            buckets.set(key, bucket);
+        }
+        return bucket;
+    };
+
     for (const t of transactions) {
         if (t.category !== 'Fuel' || t.type !== 'Expense') continue;
-        const ft = t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
         const liters = fuelTxToLiters(t);
         if (!liters) continue;
-        const mov = inferFuelMovement(t);
-        const delta = mov === 'stock_in' ? liters : -liters;
-        if (ft === 'Benzine') b += delta;
+        const ft = t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
+        const bucket = bucketFor(normalizeDate(t.date), ft);
+        if (inferFuelMovement(t) === 'stock_in') {
+            bucket.stockIn += liters;
+            continue;
+        }
+        if (t.subCategory === FUEL_WITHDRAW_SUB_CATEGORY) {
+            bucket.withdraw += liters;
+            // แถวเบิกน้ำมันเก็บรหัสวัตถุประสงค์ไว้ใน work_type (machine | car | generator | other)
+            if (String(t.workType ?? '').trim().toLowerCase() === 'machine') bucket.machineWithdraw += liters;
+            continue;
+        }
+        if (t.vehicleId) bucket.vehicleUsage += liters;
+    }
+
+    let d = opening?.Diesel ?? 0;
+    let b = opening?.Benzine ?? 0;
+    for (const [key, bucket] of buckets) {
+        const excess = Math.max(0, bucket.vehicleUsage - bucket.machineWithdraw);
+        const delta = bucket.stockIn - bucket.withdraw - excess;
+        if (key.endsWith('|Benzine')) b += delta;
         else d += delta;
     }
     return { Diesel: d, Benzine: b };
