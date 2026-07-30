@@ -63,6 +63,13 @@ class _DailyModuleDef {
 
 const List<_DailyModuleDef> _kDailyModules = [
   _DailyModuleDef(
+    title: 'เช็คชื่อ',
+    icon: Icons.how_to_reg_outlined,
+    category: 'เช็คชื่อ',
+    quickInputTitle: 'เช็คชื่อประจำวัน',
+    color: Color(0xFF2FB6A6),
+  ),
+  _DailyModuleDef(
     title: 'บันทึกการร่อนทราย',
     icon: Icons.water_drop_outlined,
     category: 'บันทึกการร่อนทราย',
@@ -103,13 +110,6 @@ const List<_DailyModuleDef> _kDailyModules = [
     category: 'ค่าแรง',
     quickInputTitle: 'บันทึกการทำงาน',
     color: Color(0xFF9145FF),
-  ),
-  _DailyModuleDef(
-    title: 'เช็คชื่อ',
-    icon: Icons.how_to_reg_outlined,
-    category: 'เช็คชื่อ',
-    quickInputTitle: 'เช็คชื่อประจำวัน',
-    color: Color(0xFF2FB6A6),
   ),
   _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
