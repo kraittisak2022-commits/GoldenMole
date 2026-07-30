@@ -198,10 +198,12 @@ enum CountRecordLogic {
     static func menuStatusLabel(
         dayKey: String,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        tripUnits: [CountRecordTripUnit]? = nil,
+        sandUnit: CountRecordSandUnit? = nil
     ) -> String? {
-        let trips = buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
-        let sand = buildSandUnit(dayKey: dayKey, transactions: transactions)
+        let trips = tripUnits ?? buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        let sand = sandUnit ?? buildSandUnit(dayKey: dayKey, transactions: transactions)
         let tripTotal = trips.reduce(0) { $0 + $1.rounds }
         var parts: [String] = []
         if tripTotal > 0 || !trips.isEmpty {

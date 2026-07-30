@@ -44,11 +44,19 @@ struct RealtimeV4Snapshot: Sendable {
     var sandRounds: Int { sandUnit?.rounds ?? 0 }
 
     nonisolated static func build(dayKey: String, transactions: [Transaction], employees: [Employee]) -> RealtimeV4Snapshot {
+        // Single pass for trip/sand units — analytics/activity reuse them instead of rebuilding.
         let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
         return RealtimeV4Snapshot(
             tripUnits: units,
-            sandUnit: CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions),
-            statusLabel: CountRecordLogic.menuStatusLabel(dayKey: dayKey, transactions: transactions, employees: employees),
+            sandUnit: sand,
+            statusLabel: CountRecordLogic.menuStatusLabel(
+                dayKey: dayKey,
+                transactions: transactions,
+                employees: employees,
+                tripUnits: units,
+                sandUnit: sand
+            ),
             efficiency: CountRecordLogic.vehicleEfficiency(
                 dayKey: dayKey,
                 tripUnits: units,
@@ -56,13 +64,23 @@ struct RealtimeV4Snapshot: Sendable {
                 employees: employees
             ),
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
-            tripAnalytics: CountRecordAnalytics.buildTripAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
-            sandAnalytics: CountRecordAnalytics.buildSandAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
-            activityEvents: CountRecordAnalytics.buildActivityFeed(
+            tripAnalytics: CountRecordAnalytics.buildTripAnalytics(
                 dayKey: dayKey,
                 transactions: transactions,
                 employees: employees,
-                limit: 200
+                tripUnits: units
+            ),
+            sandAnalytics: CountRecordAnalytics.buildSandAnalytics(
+                dayKey: dayKey,
+                transactions: transactions,
+                employees: employees,
+                sandUnit: sand
+            ),
+            activityEvents: CountRecordAnalytics.buildActivityFeed(
+                dayKey: dayKey,
+                tripUnits: units,
+                sandUnit: sand,
+                limit: 40
             )
         )
     }
@@ -106,10 +124,9 @@ struct RealtimeV4View: View {
         .onAppear {
             scheduleRebuild()
             lastRefresh = Date()
+            // Soft pulse only — avoid repeatForever scale animations that invalidate layout every frame while scrolling.
             if !reduceMotion {
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    livePing = true
-                }
+                livePing = true
             }
         }
         .onDisappear {
@@ -150,7 +167,7 @@ struct RealtimeV4View: View {
         let txs = transactions
         let emps = employees
         rebuildTask = Task {
-            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms debounce
+            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms debounce — coalesce live bursts
             guard !Task.isCancelled else { return }
             let built = await Task.detached(priority: .userInitiated) {
                 RealtimeV4Snapshot.build(dayKey: dayKey, transactions: txs, employees: emps)
@@ -162,9 +179,10 @@ struct RealtimeV4View: View {
 
     private func triggerPulse() {
         guard !reduceMotion else { return }
-        withAnimation(.easeOut(duration: 0.25)) { boardPulse = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            withAnimation(.easeOut(duration: 0.35)) { boardPulse = false }
+        // Pulse only the header badge — animating the whole board border/shadow during scroll caused freezes.
+        withAnimation(.easeOut(duration: 0.2)) { boardPulse = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.easeOut(duration: 0.25)) { boardPulse = false }
         }
     }
 
@@ -178,9 +196,8 @@ struct RealtimeV4View: View {
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color(hex: "#6366F1").opacity(0.28))
+                .fill(Color(hex: "#6366F1").opacity(0.22))
                 .frame(width: 160, height: 160)
-                .blur(radius: 26)
                 .offset(x: 220, y: -40)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -329,10 +346,9 @@ struct RealtimeV4View: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(boardPulse ? Color(hex: "#A5B4FC").opacity(0.8) : RealtimeV4Palette.border, lineWidth: boardPulse ? 2 : 1)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
-        .shadow(color: boardPulse ? Color(hex: "#6366F1").opacity(0.25) : .black.opacity(0.06), radius: boardPulse ? 18 : 10, y: 6)
-        .animation(.easeOut(duration: 0.35), value: boardPulse)
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 6)
     }
 
     private var liveBoardHeader: some View {
@@ -346,15 +362,9 @@ struct RealtimeV4View: View {
                 HStack(spacing: 8) {
                     liveBadge
                     if boardPulse {
-                        Group {
-                            if #available(iOS 17.0, *) {
-                                Image(systemName: "bolt.fill")
-                                    .symbolEffect(.pulse, options: .repeating)
-                            } else {
-                                Image(systemName: "bolt.fill")
-                            }
-                        }
-                        .foregroundStyle(Color(hex: "#F59E0B"))
+                        Image(systemName: "bolt.fill")
+                            .foregroundStyle(Color(hex: "#F59E0B"))
+                            .transition(.opacity)
                     }
                     Spacer(minLength: 0)
                 }
@@ -394,10 +404,12 @@ struct RealtimeV4View: View {
     private var liveBadge: some View {
         HStack(spacing: 6) {
             ZStack {
-                Circle()
-                    .fill(Color.emerald.opacity(livePing ? 0.55 : 0.15))
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(livePing ? 1.6 : 1)
+                if !reduceMotion && livePing {
+                    Circle()
+                        .fill(Color.emerald.opacity(0.35))
+                        .frame(width: 10, height: 10)
+                        .opacity(0.8)
+                }
                 Circle()
                     .fill(Color.emerald)
                     .frame(width: 8, height: 8)
@@ -471,9 +483,8 @@ struct RealtimeV4View: View {
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color.white.opacity(0.12))
+                .fill(Color.white.opacity(0.14))
                 .frame(width: 110, height: 110)
-                .blur(radius: 16)
                 .offset(x: 240, y: -30)
 
             VStack(alignment: .leading, spacing: 10) {
@@ -582,7 +593,12 @@ struct RealtimeV4View: View {
     }
 
     private var tripLeaderboard: some View {
-        let ranked = tripUnits.filter { !$0.lapTimes.isEmpty }.sorted { $0.rounds > $1.rounds }
+        let ranked = Array(
+            tripUnits
+                .filter { !$0.lapTimes.isEmpty }
+                .sorted { $0.rounds > $1.rounds }
+                .prefix(5)
+        )
         return VStack(alignment: .leading, spacing: 8) {
             Text("บันทึกล่าสุด")
                 .font(.system(size: 11, weight: .bold))
@@ -1026,9 +1042,8 @@ private struct TripVehicleCard: View {
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color.white.opacity(0.12))
+                .fill(Color.white.opacity(0.14))
                 .frame(width: 80, height: 80)
-                .blur(radius: 12)
                 .offset(x: 90, y: -20)
 
             VStack(spacing: 8) {
@@ -1055,8 +1070,7 @@ private struct TripVehicleCard: View {
                         .font(.system(size: 40, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: unit.rounds)
-                        .modifier(ScoreFloatOverlay(value: unit.rounds, dayKey: dayKey))
+                        .animation(.easeOut(duration: 0.2), value: unit.rounds)
                     Text("เที่ยว")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(1.6)
@@ -1403,6 +1417,17 @@ struct DetailStatRow: View {
 struct LapTimeList: View {
     let title: String
     let lapTimes: [String]
+    /// Cap visible stamps to avoid laying out hundreds of cells in detail sheets.
+    var visibleLimit: Int = 60
+
+    private var visible: [(offset: Int, element: String)] {
+        let total = lapTimes.count
+        if total <= visibleLimit {
+            return Array(lapTimes.enumerated())
+        }
+        let start = total - visibleLimit
+        return Array(lapTimes.enumerated()).filter { $0.offset >= start }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1413,13 +1438,18 @@ struct LapTimeList: View {
             if lapTimes.isEmpty {
                 Text("ยังไม่มีเวลาประทับ").font(.caption).foregroundStyle(RealtimeV4Palette.inkFaint)
             } else {
+                if lapTimes.count > visibleLimit {
+                    Text("แสดง \(visibleLimit) รอบล่าสุด จาก \(lapTimes.count)")
+                        .font(.caption2)
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
+                }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
-                    ForEach(Array(lapTimes.enumerated()), id: \.offset) { idx, stamp in
+                    ForEach(visible, id: \.offset) { item in
                         HStack(spacing: 6) {
-                            Text("\(idx + 1)")
+                            Text("\(item.offset + 1)")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(RealtimeV4Palette.inkMuted)
-                            Text(CountRecordLogic.formatLapClock(stamp) ?? stamp)
+                            Text(CountRecordLogic.formatLapClock(item.element) ?? item.element)
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(RealtimeV4Palette.ink)
                         }

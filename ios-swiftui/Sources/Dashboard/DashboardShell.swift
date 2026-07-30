@@ -171,11 +171,13 @@ struct DashboardShell: View {
     private var realtimeTab: some View {
         loadingOr {
             ScrollView {
-                RealtimeV4View(
-                    transactions: appState.transactions,
-                    employees: appState.employees,
-                    settings: appState.settings
-                )
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    RealtimeV4View(
+                        transactions: appState.transactions,
+                        employees: appState.employees,
+                        settings: appState.settings
+                    )
+                }
                 .padding(AppTheme.spaceLG)
             }
             .refreshable { await appState.refresh() }

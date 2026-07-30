@@ -5,6 +5,8 @@ struct RealtimeV4AnalyticsPanel: View {
     let analytics: CountRecordAnalytics.ModeAnalytics
     var accent: Color = AppTheme.info
     @State private var showDetail = false
+    /// Charts stay off-screen by default — mounting 6–8 Chart views while scrolling caused freezes.
+    @State private var showCharts = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -41,7 +43,31 @@ struct RealtimeV4AnalyticsPanel: View {
                     .padding(.vertical, 12)
             } else {
                 statTiles
-                bentoGrid
+                // Charts are expensive during scroll — keep collapsed until the user expands
+                // or opens the detail sheet (full charts live there via PaceDetailSheet).
+                if showCharts {
+                    bentoGrid
+                }
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        showCharts.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showCharts ? "chevron.up" : "chart.xyaxis.line")
+                            .font(.caption.weight(.bold))
+                        Text(showCharts ? "ซ่อนกราฟวิเคราะห์" : "แสดงกราฟวิเคราะห์")
+                            .font(.caption.weight(.bold))
+                    }
+                    .foregroundStyle(accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(accent.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(14)
@@ -217,16 +243,20 @@ struct RealtimeV4AnalyticsPanel: View {
     @ViewBuilder
     private var sparkline: some View {
         if analytics.sparkline.count >= 2 {
-            Chart(Array(analytics.sparkline.enumerated()), id: \.offset) { item in
-                LineMark(
-                    x: .value("i", item.offset),
-                    y: .value("sec", item.element)
-                )
-                .foregroundStyle(Color(hex: "#FDE047"))
-                .interpolationMethod(.catmullRom)
+            // Lightweight bars — avoid Swift Charts on the scroll path (Charts caused scroll freezes).
+            GeometryReader { geo in
+                let values = analytics.sparkline
+                let maxV = max(values.max() ?? 1, 1)
+                let barW = max(2, (geo.size.width - CGFloat(values.count - 1) * 2) / CGFloat(values.count))
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { _, v in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color(hex: "#FDE047").opacity(0.85))
+                            .frame(width: barW, height: max(2, geo.size.height * CGFloat(v / maxV)))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
             .frame(height: 26)
         } else {
             RoundedRectangle(cornerRadius: 6)

@@ -380,9 +380,10 @@ enum CountRecordAnalytics {
     static func buildTripAnalytics(
         dayKey: String,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        tripUnits: [CountRecordTripUnit]? = nil
     ) -> ModeAnalytics {
-        let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        let units = tripUnits ?? CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
         let lapTimes = units.flatMap(\.lapTimes).sorted { a, b in
             (CountRecordLogic.parseLapStamp(a, dayKey: dayKey) ?? 0) < (CountRecordLogic.parseLapStamp(b, dayKey: dayKey) ?? 0)
         }
@@ -432,9 +433,10 @@ enum CountRecordAnalytics {
     static func buildSandAnalytics(
         dayKey: String,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        sandUnit: CountRecordSandUnit? = nil
     ) -> ModeAnalytics {
-        let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
+        let sand = sandUnit ?? CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
         let lapTimes = sand?.lapTimes ?? []
         let rounds = sand?.rounds ?? 0
         let intervals = computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey)
@@ -475,12 +477,14 @@ enum CountRecordAnalytics {
 
     static func buildActivityFeed(
         dayKey: String,
-        transactions: [Transaction],
-        employees: [Employee],
+        transactions: [Transaction] = [],
+        employees: [Employee] = [],
+        tripUnits: [CountRecordTripUnit]? = nil,
+        sandUnit: CountRecordSandUnit? = nil,
         limit: Int = 20
     ) -> [ActivityEvent] {
         var events: [ActivityEvent] = []
-        let trips = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        let trips = tripUnits ?? CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
         for u in trips {
             for (i, stamp) in u.lapTimes.enumerated() {
                 guard let ms = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) else { continue }
@@ -495,7 +499,8 @@ enum CountRecordAnalytics {
                 )
             }
         }
-        if let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions) {
+        let sand = sandUnit ?? CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
+        if let sand {
             for (i, stamp) in sand.lapTimes.enumerated() {
                 guard let ms = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) else { continue }
                 events.append(
@@ -508,6 +513,10 @@ enum CountRecordAnalytics {
                     )
                 )
             }
+        }
+        // Partial top-N: sort only when needed; keep memory bounded for live updates.
+        if events.count <= limit {
+            return events.sorted { $0.timeMs > $1.timeMs }
         }
         return events.sorted { $0.timeMs > $1.timeMs }.prefix(limit).map { $0 }
     }
