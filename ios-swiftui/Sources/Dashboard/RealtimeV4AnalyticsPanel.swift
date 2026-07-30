@@ -4,21 +4,34 @@ import SwiftUI
 struct RealtimeV4AnalyticsPanel: View {
     let analytics: CountRecordAnalytics.ModeAnalytics
     var accent: Color = AppTheme.info
+    @State private var showDetail = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("วิเคราะห์จังหวะ")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(RealtimeV4Palette.ink)
-                    Text("หักพักเที่ยง 12:00–13:00 น.")
-                        .font(.caption2)
-                        .foregroundStyle(RealtimeV4Palette.inkMuted)
+            Button {
+                guard analytics.rounds > 0 else { return }
+                showDetail = true
+            } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("วิเคราะห์จังหวะ")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(RealtimeV4Palette.ink)
+                        Text("หักพักเที่ยง 12:00–13:00 น.")
+                            .font(.caption2)
+                            .foregroundStyle(RealtimeV4Palette.inkMuted)
+                    }
+                    Spacer()
+                    PillBadge(text: analytics.unitLabel, color: accent)
+                    if analytics.rounds > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(RealtimeV4Palette.inkFaint)
+                    }
                 }
-                Spacer()
-                PillBadge(text: analytics.unitLabel, color: accent)
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(analytics.rounds > 0 ? "แตะเพื่อดูรายละเอียดจังหวะ" : "")
 
             if analytics.rounds == 0 {
                 Text("ยังไม่มีข้อมูลวิเคราะห์")
@@ -40,6 +53,9 @@ struct RealtimeV4AnalyticsPanel: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(RealtimeV4Palette.border)
         )
+        .sheet(isPresented: $showDetail) {
+            PaceDetailSheet(analytics: analytics, accent: accent)
+        }
     }
 
     // MARK: - Stat tiles
@@ -641,6 +657,11 @@ private struct CompareBarsView: View {
 
 struct RealtimeV4ActivityFeed: View {
     let events: [CountRecordAnalytics.ActivityEvent]
+    @State private var showAll = false
+
+    private var previewEvents: [CountRecordAnalytics.ActivityEvent] {
+        Array(events.prefix(4))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -662,25 +683,28 @@ struct RealtimeV4ActivityFeed: View {
                     .foregroundStyle(RealtimeV4Palette.inkMuted)
                     .padding(.vertical, 8)
             } else {
-                ForEach(events) { event in
-                    HStack(spacing: 10) {
-                        Circle()
-                            .fill(event.kind == .trip ? AppTheme.info : AppTheme.sand)
-                            .frame(width: 8, height: 8)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(event.label)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(RealtimeV4Palette.ink)
-                            Text(event.stamp)
-                                .font(.caption2)
-                                .foregroundStyle(RealtimeV4Palette.inkFaint)
+                ForEach(previewEvents) { event in
+                    activityRow(event)
+                }
+                if events.count > 4 {
+                    Button {
+                        showAll = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("ดูเพิ่มเติม (\(events.count - 4))")
+                                .font(.caption.weight(.bold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
                         }
-                        Spacer()
-                        Text(event.kind == .trip ? "เที่ยว" : "ทราย")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(event.kind == .trip ? AppTheme.info : AppTheme.sand)
+                        .foregroundStyle(AppTheme.brand)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(AppTheme.brand.opacity(0.1))
+                        )
                     }
-                    .padding(.vertical, 4)
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -693,5 +717,192 @@ struct RealtimeV4ActivityFeed: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(RealtimeV4Palette.border)
         )
+        .sheet(isPresented: $showAll) {
+            ActivityFeedSheet(events: events)
+        }
+    }
+
+    @ViewBuilder
+    private func activityRow(_ event: CountRecordAnalytics.ActivityEvent) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(event.kind == .trip ? AppTheme.info : AppTheme.sand)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(RealtimeV4Palette.ink)
+                Text(event.stamp)
+                    .font(.caption2)
+                    .foregroundStyle(RealtimeV4Palette.inkFaint)
+            }
+            Spacer()
+            Text(event.kind == .trip ? "เที่ยว" : "ทราย")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(event.kind == .trip ? AppTheme.info : AppTheme.sand)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct ActivityFeedSheet: View {
+    let events: [CountRecordAnalytics.ActivityEvent]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(events) { event in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(event.kind == .trip ? AppTheme.info : AppTheme.sand)
+                                .frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.label)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(RealtimeV4Palette.ink)
+                                Text(event.stamp)
+                                    .font(.caption)
+                                    .foregroundStyle(RealtimeV4Palette.inkFaint)
+                            }
+                            Spacer()
+                            Text(event.kind == .trip ? "เที่ยว" : "ทราย")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(event.kind == .trip ? AppTheme.info : AppTheme.sand)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 4)
+                        Divider().overlay(RealtimeV4Palette.border)
+                    }
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("อัปเดตล่าสุดจากมือถือ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Pace detail sheet
+
+private struct PaceDetailSheet: View {
+    let analytics: CountRecordAnalytics.ModeAnalytics
+    var accent: Color = AppTheme.info
+    @Environment(\.dismiss) private var dismiss
+
+    private var priorLabel: String {
+        analytics.comparison.priorLabel.isEmpty ? "วันก่อน" : analytics.comparison.priorLabel
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(analytics.rounds)")
+                            .font(.system(size: 48, weight: .black, design: .rounded))
+                            .foregroundStyle(RealtimeV4Palette.ink)
+                        Text(analytics.unitLabel)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                        Spacer()
+                        PillBadge(text: analytics.mode == .trip ? "เที่ยวรถ" : "ร่อนทราย", color: accent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionTitle("สถิติจังหวะ")
+                        DetailStatRow(items: [
+                            ("เฉลี่ย", CountRecordAnalytics.formatPace(analytics.stats.avg)),
+                            ("มัธยฐาน", CountRecordAnalytics.formatPace(analytics.stats.median)),
+                            ("ล่าสุด", CountRecordAnalytics.formatPace(analytics.stats.last))
+                        ])
+                        DetailStatRow(items: [
+                            ("เร็วสุด", CountRecordAnalytics.formatPace(analytics.stats.min)),
+                            ("ช้าสุด", CountRecordAnalytics.formatPace(analytics.stats.max)),
+                            ("รอบ", "\(analytics.rounds)")
+                        ])
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionTitle("เทียบ\(priorLabel)")
+                        DetailStatRow(items: [
+                            ("วันนี้", "\(analytics.comparison.todayRounds)"),
+                            (priorLabel, "\(analytics.comparison.yesterdayRounds)"),
+                            ("ยอด", CountRecordAnalytics.formatDeltaPct(analytics.comparison.roundsDeltaPct))
+                        ])
+                        DetailStatRow(items: [
+                            ("จังหวะวันนี้", CountRecordAnalytics.formatPace(analytics.comparison.todayAvgSec)),
+                            ("จังหวะ\(priorLabel)", CountRecordAnalytics.formatPace(analytics.comparison.yesterdayAvgSec)),
+                            ("Pace", CountRecordAnalytics.formatDeltaPct(analytics.comparison.paceDeltaPct))
+                        ])
+                    }
+
+                    if let work = analytics.workDuration {
+                        VStack(alignment: .leading, spacing: 8) {
+                            sectionTitle("เวลาทำงาน")
+                            DetailStatRow(items: [
+                                ("เริ่ม", work.startClock ?? "—"),
+                                ("เลิก", work.endClock ?? "—"),
+                                ("สุทธิ", CountRecordAnalytics.formatDurationHours(work.totalActiveHours))
+                            ])
+                            if work.lunchDeductedHours > 0 {
+                                Text("หักพักเที่ยง \(CountRecordAnalytics.formatDurationHours(work.lunchDeductedHours))")
+                                    .font(.caption)
+                                    .foregroundStyle(RealtimeV4Palette.inkMuted)
+                            }
+                        }
+                    }
+
+                    if let consistency = analytics.consistency {
+                        VStack(alignment: .leading, spacing: 8) {
+                            sectionTitle("ความสม่ำเสมอ")
+                            DetailStatRow(items: [
+                                ("ในแบนด์", String(format: "%.0f%%", consistency.pctInBand)),
+                                ("มัธยฐาน", CountRecordAnalytics.formatPace(consistency.medianSec)),
+                                ("ตัวอย่าง", "\(consistency.sampleSize)")
+                            ])
+                        }
+                    }
+
+                    if let peak = analytics.peak {
+                        VStack(alignment: .leading, spacing: 8) {
+                            sectionTitle("ช่วงพีค")
+                            DetailStatRow(items: [
+                                ("ชั่วโมง", peak.label),
+                                ("จำนวน", "\(peak.count)"),
+                                ("หน่วย", analytics.unitLabel)
+                            ])
+                        }
+                    }
+
+                    LapTimeList(title: "เวลาประทับทุกรอบ", lapTimes: analytics.lapTimes)
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("รายละเอียดจังหวะ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold))
+            .tracking(1.2)
+            .foregroundStyle(RealtimeV4Palette.inkMuted)
     }
 }

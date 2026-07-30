@@ -58,7 +58,12 @@ struct RealtimeV4Snapshot: Sendable {
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
             tripAnalytics: CountRecordAnalytics.buildTripAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
             sandAnalytics: CountRecordAnalytics.buildSandAnalytics(dayKey: dayKey, transactions: transactions, employees: employees),
-            activityEvents: CountRecordAnalytics.buildActivityFeed(dayKey: dayKey, transactions: transactions, employees: employees)
+            activityEvents: CountRecordAnalytics.buildActivityFeed(
+                dayKey: dayKey,
+                transactions: transactions,
+                employees: employees,
+                limit: 200
+            )
         )
     }
 }
@@ -77,6 +82,7 @@ struct RealtimeV4View: View {
     @State private var livePing = false
     @State private var selectedVehicle: CountRecordTripUnit?
     @State private var showSandDetail = false
+    @State private var showFleetDetail = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var focusDateStr: String { DashboardAggregations.formatYMD(focusDate) }
@@ -125,6 +131,15 @@ struct RealtimeV4View: View {
             if let sand = sandUnit {
                 SandDetailSheet(sand: sand, dayKey: focusDateStr, analytics: sandAnalytics)
             }
+        }
+        .sheet(isPresented: $showFleetDetail) {
+            FleetTripDetailSheet(
+                tripUnits: tripUnits,
+                tripTotal: tripTotal,
+                fleetWorkSpan: fleetWorkSpan,
+                efficiency: efficiency,
+                dayKey: focusDateStr
+            )
         }
     }
 
@@ -422,6 +437,10 @@ struct RealtimeV4View: View {
                 VStack(spacing: 12) {
                     if tripTotal > 0 {
                         tripSummaryHero
+                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .onTapGesture { showFleetDetail = true }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityHint("แตะเพื่อดูรายละเอียดรวมเที่ยวรถ")
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(Array(tripUnits.enumerated()), id: \.element.id) { index, unit in
@@ -546,6 +565,16 @@ struct RealtimeV4View: View {
                 .overlay(alignment: .top) {
                     Divider().background(Color.white.opacity(0.15))
                 }
+
+                HStack(spacing: 4) {
+                    Spacer(minLength: 0)
+                    Text("แตะเพื่อดูรายละเอียด")
+                        .font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(.white.opacity(0.7))
+                .padding(.top, 4)
             }
             .padding(16)
         }
@@ -1077,10 +1106,9 @@ private struct TripVehicleCard: View {
 
 // MARK: - Detail sheets (tap to inspect)
 
-private struct VehicleDetailSheet: View {
+struct VehicleDetailContent: View {
     let unit: CountRecordTripUnit
     let dayKey: String
-    @Environment(\.dismiss) private var dismiss
 
     private var workSpan: String? {
         CountRecordLogic.formatWorkSpanLabel(
@@ -1089,51 +1117,201 @@ private struct VehicleDetailSheet: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(unit.vehicleId)
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(RealtimeV4Palette.ink)
+                Label(unit.driverLabel, systemImage: "person.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(unit.rounds)")
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .foregroundStyle(RealtimeV4Palette.ink)
+                Text("เที่ยว").font(.title3.weight(.bold)).foregroundStyle(RealtimeV4Palette.inkSecondary)
+                Spacer()
+                if unit.broken {
+                    Label("รถเสีย", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color(hex: "#451A03"))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill(Color(hex: "#FCD34D")))
+                }
+            }
+
+            DetailStatRow(items: [
+                ("เช้า", "\(unit.morning)"),
+                ("บ่าย", "\(max(0, unit.afternoon - unit.ot))"),
+                ("OT", "\(unit.ot)")
+            ])
+
+            if let workSpan {
+                Label(workSpan, systemImage: "clock")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+            }
+
+            LapTimeList(title: "เวลาประทับทุกเที่ยว", lapTimes: unit.lapTimes)
+        }
+    }
+}
+
+private struct VehicleDetailSheet: View {
+    let unit: CountRecordTripUnit
+    let dayKey: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VehicleDetailContent(unit: unit, dayKey: dayKey)
+                    .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("รายละเอียดรถ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private struct FleetTripDetailSheet: View {
+    let tripUnits: [CountRecordTripUnit]
+    let tripTotal: Int
+    let fleetWorkSpan: String?
+    let efficiency: VehicleEfficiency
+    let dayKey: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var morningTotal: Int { tripUnits.reduce(0) { $0 + $1.morning } }
+    private var afternoonTotal: Int { tripUnits.reduce(0) { $0 + max(0, $1.afternoon - $1.ot) } }
+    private var otTotal: Int { tripUnits.reduce(0) { $0 + $1.ot } }
+    private var queueTotal: Int { tripTotal * CountRecordLogic.queuePerTrip }
+    private var targetPct: Double {
+        CountRecordLogic.tripTarget > 0
+            ? min(Double(tripTotal) / Double(CountRecordLogic.tripTarget) * 100, 100)
+            : 0
+    }
+    private var ranked: [CountRecordTripUnit] {
+        tripUnits.sorted { $0.rounds > $1.rounds }
+    }
+
+    var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(unit.vehicleId)
-                            .font(.title2.weight(.black))
-                            .foregroundStyle(RealtimeV4Palette.ink)
-                        Label(unit.driverLabel, systemImage: "person.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
-                    }
-
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(unit.rounds)")
+                        Text(CountRecordLogic.formatMetric(tripTotal))
                             .font(.system(size: 56, weight: .black, design: .rounded))
                             .foregroundStyle(RealtimeV4Palette.ink)
-                        Text("เที่ยว").font(.title3.weight(.bold)).foregroundStyle(RealtimeV4Palette.inkSecondary)
+                        Text("เที่ยว")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
                         Spacer()
-                        if unit.broken {
-                            Label("รถเสีย", systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Color(hex: "#451A03"))
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(Capsule().fill(Color(hex: "#FCD34D")))
-                        }
                     }
 
                     DetailStatRow(items: [
-                        ("เช้า", "\(unit.morning)"),
-                        ("บ่าย", "\(max(0, unit.afternoon - unit.ot))"),
-                        ("OT", "\(unit.ot)")
+                        ("คิว", CountRecordLogic.formatMetric(queueTotal)),
+                        ("เป้าหมาย", CountRecordLogic.formatMetric(CountRecordLogic.tripTarget)),
+                        ("คืบหน้า", "\(Int(targetPct.rounded()))%")
                     ])
 
-                    if let workSpan {
-                        Label(workSpan, systemImage: "clock")
+                    DetailStatRow(items: [
+                        ("เช้า", "\(morningTotal)"),
+                        ("บ่าย", "\(afternoonTotal)"),
+                        ("OT", "\(otTotal)")
+                    ])
+
+                    if let fleetWorkSpan {
+                        Label(fleetWorkSpan, systemImage: "clock")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(RealtimeV4Palette.inkSecondary)
                     }
 
-                    LapTimeList(title: "เวลาประทับทุกเที่ยว", lapTimes: unit.lapTimes)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ประสิทธิภาพ")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(RealtimeV4Palette.inkMuted)
+                        HStack {
+                            Text(String(format: "%.1f เที่ยว/คัน", efficiency.perVehToday))
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(RealtimeV4Palette.ink)
+                            Spacer()
+                            EfficiencyBadge(efficiency: efficiency)
+                        }
+                        Text("\(efficiency.countToday) คันที่นับ")
+                            .font(.caption)
+                            .foregroundStyle(RealtimeV4Palette.inkMuted)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(RealtimeV4Palette.cardSoft))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("แยกรายคัน")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(RealtimeV4Palette.inkMuted)
+
+                        if ranked.isEmpty {
+                            Text("ยังไม่มีรถที่นับวันนี้")
+                                .font(.caption)
+                                .foregroundStyle(RealtimeV4Palette.inkFaint)
+                        } else {
+                            ForEach(ranked) { unit in
+                                NavigationLink {
+                                    ScrollView {
+                                        VehicleDetailContent(unit: unit, dayKey: dayKey)
+                                            .padding(20)
+                                    }
+                                    .background(RealtimeV4Palette.page.ignoresSafeArea())
+                                    .navigationTitle(unit.vehicleId)
+                                    .navigationBarTitleDisplayMode(.inline)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(unit.vehicleId)
+                                                .font(.subheadline.weight(.bold))
+                                                .foregroundStyle(RealtimeV4Palette.ink)
+                                            Text(unit.driverLabel)
+                                                .font(.caption)
+                                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                                        }
+                                        Spacer()
+                                        Text("\(unit.rounds) เที่ยว")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Capsule().fill(Color(hex: "#2563EB")))
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(RealtimeV4Palette.inkFaint)
+                                    }
+                                    .padding(12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(RealtimeV4Palette.cardSoft)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
                 .padding(20)
             }
             .background(RealtimeV4Palette.page.ignoresSafeArea())
-            .navigationTitle("รายละเอียดรถ")
+            .navigationTitle("รวมเที่ยวรถวันนี้")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -1205,7 +1383,7 @@ private struct SandDetailSheet: View {
     }
 }
 
-private struct DetailStatRow: View {
+struct DetailStatRow: View {
     let items: [(String, String)]
     var body: some View {
         HStack(spacing: 10) {
@@ -1222,7 +1400,7 @@ private struct DetailStatRow: View {
     }
 }
 
-private struct LapTimeList: View {
+struct LapTimeList: View {
     let title: String
     let lapTimes: [String]
 
