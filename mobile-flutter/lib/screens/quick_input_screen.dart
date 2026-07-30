@@ -12996,7 +12996,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         .where(
           (e) =>
               !e.inactive &&
-              (_isDriverEmployee(e) || assignedDriver.contains(e.id)),
+              (_isMacroExcavatorDriverEmployee(e) ||
+                  assignedDriver.contains(e.id)),
         )
         .toList()
       ..sort(_compareAttendancePoolOrder);
@@ -13036,12 +13037,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
 
     final pool = _attendancePoolColumn(
-      hashtag: '#รายชื่อพนักงานขับรถ',
+      hashtag: '#รายชื่อคนขับรถแม็คโคร',
       people: driverPeople,
       pickedPool: _attendanceDriverPicked,
       poolBucketIds: _attDriverIds,
       emptyText:
-          'ไม่มีพนักงานตำแหน่งคนขับรถ — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+          'ไม่มีพนักงานตำแหน่งคนขับรถแม็คโคร — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
       accent: const Color(0xFF00897B),
       scrollController: _attendanceDriverPoolScroll,
     );
