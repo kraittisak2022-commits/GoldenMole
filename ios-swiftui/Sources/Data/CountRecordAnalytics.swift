@@ -148,13 +148,31 @@ enum CountRecordAnalytics {
     }
 
     static func computeLapIntervals(lapTimes: [String], dayKey: String) -> [Double] {
+        let parsed = parseLaps(lapTimes, dayKey: dayKey)
+        return computeLapIntervals(parsed: parsed)
+    }
+
+    /// Parsed stamp + epoch (already sorted by time when built via `parseAndSortLaps`).
+    static func parseLaps(_ lapTimes: [String], dayKey: String) -> [(stamp: String, ms: Double)] {
+        var out: [(stamp: String, ms: Double)] = []
+        out.reserveCapacity(lapTimes.count)
+        for stamp in lapTimes {
+            if let ms = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) {
+                out.append((stamp, ms))
+            }
+        }
+        return out
+    }
+
+    static func parseAndSortLaps(_ lapTimes: [String], dayKey: String) -> [(stamp: String, ms: Double)] {
+        parseLaps(lapTimes, dayKey: dayKey).sorted { $0.ms < $1.ms }
+    }
+
+    static func computeLapIntervals(parsed: [(stamp: String, ms: Double)]) -> [Double] {
         var intervals: [Double] = []
-        guard lapTimes.count > 1 else { return intervals }
-        for i in 1..<lapTimes.count {
-            guard let prev = CountRecordLogic.parseLapStamp(lapTimes[i - 1], dayKey: dayKey),
-                  let curr = CountRecordLogic.parseLapStamp(lapTimes[i], dayKey: dayKey)
-            else { continue }
-            let sec = activeDurationSec(startMs: prev, endMs: curr)
+        guard parsed.count > 1 else { return intervals }
+        for i in 1..<parsed.count {
+            let sec = activeDurationSec(startMs: parsed[i - 1].ms, endMs: parsed[i].ms)
             if sec > 0 { intervals.append(sec) }
         }
         return intervals
@@ -180,10 +198,13 @@ enum CountRecordAnalytics {
     }
 
     static func computeHourlyBuckets(lapTimes: [String], dayKey: String) -> [HourlyBucket] {
+        computeHourlyBuckets(parsed: parseLaps(lapTimes, dayKey: dayKey))
+    }
+
+    static func computeHourlyBuckets(parsed: [(stamp: String, ms: Double)]) -> [HourlyBucket] {
         var counts = Array(repeating: 0, count: 24)
-        for lap in lapTimes {
-            guard let ms = CountRecordLogic.parseLapStamp(lap, dayKey: dayKey) else { continue }
-            let h = bangkokHour(ms)
+        for item in parsed {
+            let h = bangkokHour(item.ms)
             if h >= 0 && h < 24 && !isLunchHour(h) {
                 counts[h] += 1
             }
@@ -195,27 +216,27 @@ enum CountRecordAnalytics {
     }
 
     static func computeCumulativeSeries(lapTimes: [String], dayKey: String) -> [CumulativePoint] {
-        var points: [CumulativePoint] = []
-        for (i, lap) in lapTimes.enumerated() {
-            guard let ms = CountRecordLogic.parseLapStamp(lap, dayKey: dayKey) else { continue }
-            let h = bangkokHour(ms)
-            let m = bangkokMinute(ms)
-            points.append(
-                CumulativePoint(
-                    label: String(format: "%02d:%02d", h, m),
-                    value: i + 1,
-                    timeMs: ms
-                )
+        computeCumulativeSeries(parsed: parseAndSortLaps(lapTimes, dayKey: dayKey))
+    }
+
+    static func computeCumulativeSeries(parsed: [(stamp: String, ms: Double)]) -> [CumulativePoint] {
+        parsed.enumerated().map { i, item in
+            CumulativePoint(
+                label: String(format: "%02d:%02d", bangkokHour(item.ms), bangkokMinute(item.ms)),
+                value: i + 1,
+                timeMs: item.ms
             )
         }
-        return points
     }
 
     static func computeHourlyHeatmap(lapTimes: [String], dayKey: String) -> [HourlyHeatmapCell] {
+        computeHourlyHeatmap(parsed: parseLaps(lapTimes, dayKey: dayKey))
+    }
+
+    static func computeHourlyHeatmap(parsed: [(stamp: String, ms: Double)]) -> [HourlyHeatmapCell] {
         var counts = Array(repeating: 0, count: 24)
-        for lap in lapTimes {
-            guard let ms = CountRecordLogic.parseLapStamp(lap, dayKey: dayKey) else { continue }
-            let h = bangkokHour(ms)
+        for item in parsed {
+            let h = bangkokHour(item.ms)
             if h >= 0 && h < 24 && !isLunchHour(h) {
                 counts[h] += 1
             }
@@ -251,36 +272,41 @@ enum CountRecordAnalytics {
     }
 
     static func computeWorkDuration(lapTimes: [String], dayKey: String) -> WorkDurationSummary? {
-        let span = CountRecordLogic.computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
-        guard let startStamp = span.startStamp, let endStamp = span.endStamp,
-              let startMs = CountRecordLogic.parseLapStamp(startStamp, dayKey: dayKey),
-              let endMs = CountRecordLogic.parseLapStamp(endStamp, dayKey: dayKey)
-        else { return nil }
-        let rawSec = max(0, endMs - startMs)
-        let activeSec = activeDurationSec(startMs: startMs, endMs: endMs)
+        computeWorkDuration(parsed: parseAndSortLaps(lapTimes, dayKey: dayKey))
+    }
+
+    static func computeWorkDuration(parsed: [(stamp: String, ms: Double)]) -> WorkDurationSummary? {
+        guard let first = parsed.first, let last = parsed.last else { return nil }
+        let rawSec = max(0, last.ms - first.ms)
+        let activeSec = activeDurationSec(startMs: first.ms, endMs: last.ms)
         return WorkDurationSummary(
             totalActiveHours: activeSec / 3600,
             lunchDeductedHours: max(0, (rawSec - activeSec) / 3600),
-            startClock: span.startClock,
-            endClock: span.endClock
+            startClock: CountRecordLogic.formatLapClock(first.stamp),
+            endClock: CountRecordLogic.formatLapClock(last.stamp)
         )
     }
 
-    static func computeSandTargetEta(lapTimes: [String], dayKey: String, target: Int = CountRecordLogic.sandTarget) -> SandTargetEta {
+    static func computeSandTargetEta(
+        lapTimes: [String],
+        dayKey: String,
+        target: Int = CountRecordLogic.sandTarget,
+        parsed: [(stamp: String, ms: Double)]? = nil,
+        intervals: [Double]? = nil
+    ) -> SandTargetEta {
         let rounds = lapTimes.count
         let remaining = max(0, target - rounds)
         let progressPct = target > 0 ? min(Double(rounds) / Double(target) * 100, 100) : 0
         if remaining == 0 {
             return SandTargetEta(rounds: rounds, target: target, remaining: 0, reached: true, progressPct: progressPct, etaClock: nil, hoursLeft: 0)
         }
-        let stats = computeIntervalStats(computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey))
+        let resolvedIntervals = intervals ?? computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey)
+        let stats = computeIntervalStats(resolvedIntervals)
         guard let avg = stats.avg, avg > 0 else {
             return SandTargetEta(rounds: rounds, target: target, remaining: remaining, reached: false, progressPct: progressPct, etaClock: nil, hoursLeft: nil)
         }
-        let span = CountRecordLogic.computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
-        guard let endStamp = span.endStamp,
-              let lastMs = CountRecordLogic.parseLapStamp(endStamp, dayKey: dayKey)
-        else {
+        let resolved = parsed ?? parseAndSortLaps(lapTimes, dayKey: dayKey)
+        guard let lastMs = resolved.last?.ms else {
             return SandTargetEta(rounds: rounds, target: target, remaining: remaining, reached: false, progressPct: progressPct, etaClock: nil, hoursLeft: nil)
         }
         let hoursLeft = (Double(remaining) * avg) / 3600
@@ -313,12 +339,15 @@ enum CountRecordAnalytics {
     }
 
     static func computeMinuteSpeed(lapTimes: [String], dayKey: String) -> [(label: String, count: Int)] {
+        computeMinuteSpeed(parsed: parseLaps(lapTimes, dayKey: dayKey))
+    }
+
+    static func computeMinuteSpeed(parsed: [(stamp: String, ms: Double)]) -> [(label: String, count: Int)] {
         var counts: [String: Int] = [:]
-        for lap in lapTimes {
-            guard let ms = CountRecordLogic.parseLapStamp(lap, dayKey: dayKey) else { continue }
-            let h = bangkokHour(ms)
+        for item in parsed {
+            let h = bangkokHour(item.ms)
             if isLunchHour(h) { continue }
-            let key = String(format: "%02d:%02d", h, bangkokMinute(ms))
+            let key = String(format: "%02d:%02d", h, bangkokMinute(item.ms))
             counts[key, default: 0] += 1
         }
         return counts.keys.sorted().map { (label: $0, count: counts[$0] ?? 0) }
@@ -328,17 +357,19 @@ enum CountRecordAnalytics {
         from dayKey: String,
         mode: ModeAnalytics.Mode,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        byDay: [String: [Transaction]]? = nil
     ) -> String? {
         for offset in 1...CountRecordLogic.priorDayLookback {
             let key = CountRecordLogic.addDays(to: dayKey, delta: -offset)
+            let dayTx = byDay?[key] ?? transactions
             switch mode {
             case .sand:
-                if (CountRecordLogic.buildSandUnit(dayKey: key, transactions: transactions)?.rounds ?? 0) > 0 {
+                if (CountRecordLogic.buildSandUnit(dayKey: key, transactions: dayTx)?.rounds ?? 0) > 0 {
                     return key
                 }
             case .trip:
-                let trips = CountRecordLogic.buildTripUnits(dayKey: key, transactions: transactions, employees: employees)
+                let trips = CountRecordLogic.buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
                 if trips.reduce(0, { $0 + $1.rounds }) > 0 { return key }
             }
         }
@@ -381,28 +412,39 @@ enum CountRecordAnalytics {
         dayKey: String,
         transactions: [Transaction],
         employees: [Employee],
-        tripUnits: [CountRecordTripUnit]? = nil
+        tripUnits: [CountRecordTripUnit]? = nil,
+        priorKey: String? = nil,
+        byDay: [String: [Transaction]]? = nil,
+        light: Bool = false
     ) -> ModeAnalytics {
-        let units = tripUnits ?? CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
-        let lapTimes = units.flatMap(\.lapTimes).sorted { a, b in
-            (CountRecordLogic.parseLapStamp(a, dayKey: dayKey) ?? 0) < (CountRecordLogic.parseLapStamp(b, dayKey: dayKey) ?? 0)
-        }
+        let units = tripUnits ?? CountRecordLogic.buildTripUnits(
+            dayKey: dayKey,
+            transactions: byDay?[dayKey] ?? transactions,
+            employees: employees
+        )
+        let rawLaps = units.flatMap(\.lapTimes)
+        let parsed = parseAndSortLaps(rawLaps, dayKey: dayKey)
+        let lapTimes = parsed.map(\.stamp)
         let rounds = units.reduce(0) { $0 + $1.rounds }
         let morning = units.reduce(0) { $0 + $1.morning }
         let afternoon = units.reduce(0) { $0 + $1.afternoon }
-        let intervals = computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey)
+        let intervals = computeLapIntervals(parsed: parsed)
         let stats = computeIntervalStats(intervals)
-        let heatmap = computeHourlyHeatmap(lapTimes: lapTimes, dayKey: dayKey)
-        let ref = findPriorDay(from: dayKey, mode: .trip, transactions: transactions, employees: employees)
-        let comparison = buildModeComparison(
-            todayLaps: lapTimes,
-            todayRounds: rounds,
-            todayKey: dayKey,
-            priorKey: ref,
-            transactions: transactions,
-            employees: employees,
-            mode: .trip
-        )
+        let heatmap = light ? [] : computeHourlyHeatmap(parsed: parsed)
+        let ref = priorKey
+            ?? findPriorDay(from: dayKey, mode: .trip, transactions: transactions, employees: employees, byDay: byDay)
+        let comparison = light
+            ? emptyComparison(todayRounds: rounds)
+            : buildModeComparison(
+                todayLaps: lapTimes,
+                todayRounds: rounds,
+                todayKey: dayKey,
+                priorKey: ref,
+                transactions: transactions,
+                employees: employees,
+                mode: .trip,
+                byDay: byDay
+            )
         let vehicleRows = units
             .filter { $0.rounds > 0 }
             .sorted { $0.rounds > $1.rounds }
@@ -419,10 +461,10 @@ enum CountRecordAnalytics {
             comparison: comparison,
             periodSplit: periodSplit(morning: morning, afternoon: afternoon),
             heatmap: heatmap,
-            peak: computePeakHour(heatmap),
-            cumulative: computeCumulativeSeries(lapTimes: lapTimes, dayKey: dayKey),
-            hourly: computeHourlyBuckets(lapTimes: lapTimes, dayKey: dayKey),
-            workDuration: computeWorkDuration(lapTimes: lapTimes, dayKey: dayKey),
+            peak: light ? nil : computePeakHour(heatmap),
+            cumulative: light ? [] : computeCumulativeSeries(parsed: parsed),
+            hourly: light ? [] : computeHourlyBuckets(parsed: parsed),
+            workDuration: computeWorkDuration(parsed: parsed),
             vehicleComparison: vehicleRows,
             eta: nil,
             consistency: computePaceConsistency(intervals),
@@ -434,24 +476,36 @@ enum CountRecordAnalytics {
         dayKey: String,
         transactions: [Transaction],
         employees: [Employee],
-        sandUnit: CountRecordSandUnit? = nil
+        sandUnit: CountRecordSandUnit? = nil,
+        priorKey: String? = nil,
+        byDay: [String: [Transaction]]? = nil,
+        light: Bool = false
     ) -> ModeAnalytics {
-        let sand = sandUnit ?? CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
-        let lapTimes = sand?.lapTimes ?? []
-        let rounds = sand?.rounds ?? 0
-        let intervals = computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey)
-        let stats = computeIntervalStats(intervals)
-        let heatmap = computeHourlyHeatmap(lapTimes: lapTimes, dayKey: dayKey)
-        let ref = findPriorDay(from: dayKey, mode: .sand, transactions: transactions, employees: employees)
-        let comparison = buildModeComparison(
-            todayLaps: lapTimes,
-            todayRounds: rounds,
-            todayKey: dayKey,
-            priorKey: ref,
-            transactions: transactions,
-            employees: employees,
-            mode: .sand
+        let sand = sandUnit ?? CountRecordLogic.buildSandUnit(
+            dayKey: dayKey,
+            transactions: byDay?[dayKey] ?? transactions
         )
+        let rawLaps = sand?.lapTimes ?? []
+        let parsed = parseAndSortLaps(rawLaps, dayKey: dayKey)
+        let lapTimes = parsed.map(\.stamp)
+        let rounds = sand?.rounds ?? 0
+        let intervals = computeLapIntervals(parsed: parsed)
+        let stats = computeIntervalStats(intervals)
+        let heatmap = light ? [] : computeHourlyHeatmap(parsed: parsed)
+        let ref = priorKey
+            ?? findPriorDay(from: dayKey, mode: .sand, transactions: transactions, employees: employees, byDay: byDay)
+        let comparison = light
+            ? emptyComparison(todayRounds: rounds)
+            : buildModeComparison(
+                todayLaps: lapTimes,
+                todayRounds: rounds,
+                todayKey: dayKey,
+                priorKey: ref,
+                transactions: transactions,
+                employees: employees,
+                mode: .sand,
+                byDay: byDay
+            )
 
         return ModeAnalytics(
             mode: .sand,
@@ -464,14 +518,29 @@ enum CountRecordAnalytics {
             comparison: comparison,
             periodSplit: periodSplit(morning: sand?.morning ?? 0, afternoon: sand?.afternoon ?? 0),
             heatmap: heatmap,
-            peak: computePeakHour(heatmap),
-            cumulative: computeCumulativeSeries(lapTimes: lapTimes, dayKey: dayKey),
-            hourly: computeHourlyBuckets(lapTimes: lapTimes, dayKey: dayKey),
-            workDuration: computeWorkDuration(lapTimes: lapTimes, dayKey: dayKey),
+            peak: light ? nil : computePeakHour(heatmap),
+            cumulative: light ? [] : computeCumulativeSeries(parsed: parsed),
+            hourly: light ? [] : computeHourlyBuckets(parsed: parsed),
+            workDuration: computeWorkDuration(parsed: parsed),
             vehicleComparison: [],
-            eta: computeSandTargetEta(lapTimes: lapTimes, dayKey: dayKey),
+            eta: computeSandTargetEta(lapTimes: lapTimes, dayKey: dayKey, parsed: parsed, intervals: intervals),
             consistency: computePaceConsistency(intervals),
-            minuteSpeed: computeMinuteSpeed(lapTimes: lapTimes, dayKey: dayKey)
+            minuteSpeed: light ? [] : computeMinuteSpeed(parsed: parsed)
+        )
+    }
+
+    private static func emptyComparison(todayRounds: Int) -> DayModeComparison {
+        DayModeComparison(
+            todayRounds: todayRounds,
+            yesterdayRounds: 0,
+            roundsDeltaPct: nil,
+            todayAvgSec: nil,
+            yesterdayAvgSec: nil,
+            paceDeltaPct: nil,
+            hasYesterdayData: false,
+            referenceDayKey: nil,
+            isCalendarYesterday: false,
+            priorLabel: ""
         )
     }
 
@@ -530,21 +599,23 @@ enum CountRecordAnalytics {
         priorKey: String?,
         transactions: [Transaction],
         employees: [Employee],
-        mode: ModeAnalytics.Mode
+        mode: ModeAnalytics.Mode,
+        byDay: [String: [Transaction]]? = nil
     ) -> DayModeComparison {
         let calendarYesterday = CountRecordLogic.addDays(to: todayKey, delta: -1)
         let refKey = priorKey
         let compareKey = refKey ?? calendarYesterday
+        let dayTx = byDay?[compareKey] ?? transactions
 
         let priorLaps: [String]
         let priorRounds: Int
         switch mode {
         case .trip:
-            let units = CountRecordLogic.buildTripUnits(dayKey: compareKey, transactions: transactions, employees: employees)
+            let units = CountRecordLogic.buildTripUnits(dayKey: compareKey, transactions: dayTx, employees: employees)
             priorLaps = units.flatMap(\.lapTimes)
             priorRounds = units.reduce(0) { $0 + $1.rounds }
         case .sand:
-            let sand = CountRecordLogic.buildSandUnit(dayKey: compareKey, transactions: transactions)
+            let sand = CountRecordLogic.buildSandUnit(dayKey: compareKey, transactions: dayTx)
             priorLaps = sand?.lapTimes ?? []
             priorRounds = sand?.rounds ?? 0
         }
@@ -575,18 +646,11 @@ enum CountRecordAnalytics {
         )
     }
 
-    private static func bangkokCalendar() -> Calendar {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Bangkok")
-            ?? TimeZone(secondsFromGMT: Int(CountRecordLogic.bangkokOffsetMs))!
-        return cal
-    }
-
     private static func bangkokHour(_ ms: Double) -> Int {
-        bangkokCalendar().component(.hour, from: Date(timeIntervalSince1970: ms))
+        CountRecordLogic.bangkokHourFromEpoch(ms)
     }
 
     private static func bangkokMinute(_ ms: Double) -> Int {
-        bangkokCalendar().component(.minute, from: Date(timeIntervalSince1970: ms))
+        CountRecordLogic.bangkokMinuteFromEpoch(ms)
     }
 }

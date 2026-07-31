@@ -39,14 +39,88 @@ struct RealtimeV4Snapshot: Sendable {
     let tripAnalytics: CountRecordAnalytics.ModeAnalytics
     let sandAnalytics: CountRecordAnalytics.ModeAnalytics
     let activityEvents: [CountRecordAnalytics.ActivityEvent]
+    /// Precomputed so view bodies never call parseLapStamp / computeWorkSpan.
+    let sandWorkSpan: String?
+    let sandHours: Double?
+    let tripHours: Double?
+    let vehicleWorkSpans: [String: String]
+    let leaderboard: [CountRecordTripUnit]
+    let isLight: Bool
 
     var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
     var sandRounds: Int { sandUnit?.rounds ?? 0 }
 
-    nonisolated static func build(dayKey: String, transactions: [Transaction], employees: [Employee]) -> RealtimeV4Snapshot {
-        // Single pass for trip/sand units — analytics/activity reuse them instead of rebuilding.
-        let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
-        let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)
+    nonisolated static func build(
+        dayKey: String,
+        transactions: [Transaction],
+        employees: [Employee],
+        light: Bool = false
+    ) -> RealtimeV4Snapshot {
+        let byDay = Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
+        let dayTx = byDay[dayKey] ?? []
+        let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: dayTx, employees: employees)
+        let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: dayTx)
+
+        let priorTripKey = light
+            ? nil
+            : CountRecordLogic.findPriorDayWithTripData(
+                from: dayKey,
+                transactions: transactions,
+                employees: employees,
+                byDay: byDay
+            )
+        let priorSandKey = light
+            ? nil
+            : CountRecordAnalytics.findPriorDay(
+                from: dayKey,
+                mode: .sand,
+                transactions: transactions,
+                employees: employees,
+                byDay: byDay
+            )
+
+        let tripAnalytics = CountRecordAnalytics.buildTripAnalytics(
+            dayKey: dayKey,
+            transactions: transactions,
+            employees: employees,
+            tripUnits: units,
+            priorKey: priorTripKey,
+            byDay: byDay,
+            light: light
+        )
+        let sandAnalytics = CountRecordAnalytics.buildSandAnalytics(
+            dayKey: dayKey,
+            transactions: transactions,
+            employees: employees,
+            sandUnit: sand,
+            priorKey: priorSandKey,
+            byDay: byDay,
+            light: light
+        )
+
+        var vehicleWorkSpans: [String: String] = [:]
+        vehicleWorkSpans.reserveCapacity(units.count)
+        for unit in units {
+            if let label = CountRecordLogic.formatWorkSpanLabel(
+                CountRecordLogic.computeWorkSpan(lapTimes: unit.lapTimes, dayKey: dayKey)
+            ) {
+                vehicleWorkSpans[unit.id] = label
+            }
+        }
+
+        let sandLaps = sand?.lapTimes ?? []
+        let sandWorkSpan = CountRecordLogic.formatWorkSpanLabel(
+            CountRecordLogic.computeWorkSpan(lapTimes: sandLaps, dayKey: dayKey)
+        )
+        let sandHours = CountRecordLogic.activeDurationHours(lapTimes: sandLaps, dayKey: dayKey)
+        let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripAnalytics.lapTimes, dayKey: dayKey)
+        let leaderboard = Array(
+            units
+                .filter { !$0.lapTimes.isEmpty }
+                .sorted { $0.rounds > $1.rounds }
+                .prefix(5)
+        )
+
         return RealtimeV4Snapshot(
             tripUnits: units,
             sandUnit: sand,
@@ -61,28 +135,38 @@ struct RealtimeV4Snapshot: Sendable {
                 dayKey: dayKey,
                 tripUnits: units,
                 transactions: transactions,
-                employees: employees
+                employees: employees,
+                priorKey: priorTripKey,
+                byDay: byDay
             ),
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
-            tripAnalytics: CountRecordAnalytics.buildTripAnalytics(
-                dayKey: dayKey,
-                transactions: transactions,
-                employees: employees,
-                tripUnits: units
-            ),
-            sandAnalytics: CountRecordAnalytics.buildSandAnalytics(
-                dayKey: dayKey,
-                transactions: transactions,
-                employees: employees,
-                sandUnit: sand
-            ),
+            tripAnalytics: tripAnalytics,
+            sandAnalytics: sandAnalytics,
             activityEvents: CountRecordAnalytics.buildActivityFeed(
                 dayKey: dayKey,
                 tripUnits: units,
                 sandUnit: sand,
                 limit: 40
-            )
+            ),
+            sandWorkSpan: sandWorkSpan,
+            sandHours: sandHours,
+            tripHours: tripHours,
+            vehicleWorkSpans: vehicleWorkSpans,
+            leaderboard: leaderboard,
+            isLight: light
         )
+    }
+
+    nonisolated static func buildLight(
+        dayKey: String,
+        transactions: [Transaction],
+        employees: [Employee]
+    ) -> RealtimeV4Snapshot {
+        build(dayKey: dayKey, transactions: transactions, employees: employees, light: true)
+    }
+
+    nonisolated static func empty() -> RealtimeV4Snapshot {
+        build(dayKey: "", transactions: [], employees: [], light: true)
     }
 }
 
@@ -90,9 +174,11 @@ struct RealtimeV4View: View {
     let transactions: [Transaction]
     let employees: [Employee]
     let settings: AppSettings
+    var transactionsRevision: Int = 0
+    var selectedTab: DashboardTab = .realtimeV4
 
     @State private var focusDate = Date()
-    @State private var snapshot = RealtimeV4Snapshot.build(dayKey: "", transactions: [], employees: [])
+    @State private var snapshot = RealtimeV4Snapshot.empty()
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showDatePicker = false
     @State private var lastRefresh = Date()
@@ -102,7 +188,13 @@ struct RealtimeV4View: View {
     @State private var showSandDetail = false
     @State private var showSandRounds = false
     @State private var showFleetDetail = false
+    @State private var pendingRebuild = false
+    @State private var recentEventTimes: [Date] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var buildSupervisor: RealtimeBuildSupervisor { RealtimeBuildSupervisor.shared }
+    private var hangWatchdog: MainThreadWatchdog { MainThreadWatchdog.shared }
 
     private var focusDateStr: String { DashboardAggregations.formatYMD(focusDate) }
     private var todayStr: String { DashboardAggregations.formatYMD(Date()) }
@@ -123,6 +215,7 @@ struct RealtimeV4View: View {
             liveBoard
         }
         .onAppear {
+            hangWatchdog.start()
             scheduleRebuild()
             lastRefresh = Date()
             // Soft pulse only — avoid repeatForever scale animations that invalidate layout every frame while scrolling.
@@ -131,17 +224,32 @@ struct RealtimeV4View: View {
             }
         }
         .onDisappear {
+            hangWatchdog.stop()
             rebuildTask?.cancel()
             rebuildTask = nil
         }
         .onChange(of: focusDateStr) { _, _ in scheduleRebuild() }
-        .onChange(of: transactions) { _, _ in
+        .onChange(of: transactionsRevision) { _, _ in
+            noteIncomingEvent()
             scheduleRebuild()
             lastRefresh = Date()
         }
         .onChange(of: employees) { _, _ in scheduleRebuild() }
         .onChange(of: tripTotal) { _, _ in triggerPulse() }
         .onChange(of: sandRounds) { _, _ in triggerPulse() }
+        .onChange(of: selectedTab) { _, tab in
+            if tab == .realtimeV4 {
+                if pendingRebuild { scheduleRebuild(force: true) }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                hangWatchdog.start()
+                if pendingRebuild { scheduleRebuild(force: true) }
+            } else {
+                hangWatchdog.stop()
+            }
+        }
         .sheet(item: $selectedVehicle) { unit in
             VehicleDetailSheet(unit: unit, dayKey: focusDateStr)
         }
@@ -167,20 +275,54 @@ struct RealtimeV4View: View {
     }
 
     /// Coalesces rapid realtime/delta updates into one off-main snapshot build.
-    private func scheduleRebuild() {
+    private func scheduleRebuild(force: Bool = false) {
+        let canBuild = force
+            || (selectedTab == .realtimeV4 && scenePhase == .active)
+        guard canBuild else {
+            pendingRebuild = true
+            return
+        }
+        pendingRebuild = false
         rebuildTask?.cancel()
         let dayKey = focusDateStr
         let txs = transactions
         let emps = employees
+        let light = buildSupervisor.isEconomyMode
+        let debounceNs = adaptiveDebounceNs()
         rebuildTask = Task {
-            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms debounce — coalesce live bursts
+            try? await Task.sleep(nanoseconds: debounceNs)
             guard !Task.isCancelled else { return }
-            let built = await Task.detached(priority: .userInitiated) {
-                RealtimeV4Snapshot.build(dayKey: dayKey, transactions: txs, employees: emps)
+            await MainActor.run { buildSupervisor.beginBuild() }
+            let (built, ms) = await Task.detached(priority: .userInitiated) {
+                RealtimeBuildSupervisor.measureBuild {
+                    RealtimeV4Snapshot.build(
+                        dayKey: dayKey,
+                        transactions: txs,
+                        employees: emps,
+                        light: light
+                    )
+                }
             }.value
-            guard !Task.isCancelled else { return }
-            snapshot = built
+            await MainActor.run {
+                buildSupervisor.endBuild(durationMs: ms, light: light)
+                guard !Task.isCancelled else { return }
+                snapshot = built
+            }
         }
+    }
+
+    private func noteIncomingEvent() {
+        let now = Date()
+        recentEventTimes.append(now)
+        recentEventTimes.removeAll { now.timeIntervalSince($0) > 2 }
+    }
+
+    private func adaptiveDebounceNs() -> UInt64 {
+        // More events in the last 2s → longer debounce (250ms … 800ms).
+        let n = recentEventTimes.count
+        if n >= 8 { return 800_000_000 }
+        if n >= 4 { return 500_000_000 }
+        return 250_000_000
     }
 
     private func triggerPulse() {
@@ -238,6 +380,8 @@ struct RealtimeV4View: View {
                     }
                 }
 
+                healthStatusRow
+
                 if let statusLabel {
                     Text(statusLabel)
                         .font(.subheadline.weight(.medium))
@@ -247,10 +391,57 @@ struct RealtimeV4View: View {
             .padding(20)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 16, y: 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        )
         .sheet(isPresented: $showDatePicker) {
             focusDatePickerSheet
         }
+    }
+
+    @ViewBuilder
+    private var healthStatusRow: some View {
+        let showBuilding = buildSupervisor.showBuildingChip
+        let economy = buildSupervisor.isEconomyMode
+        let hadHang = hangWatchdog.hangCount > 0
+        if showBuilding || economy || hadHang {
+            HStack(spacing: 8) {
+                if showBuilding {
+                    healthChip(icon: "hourglass", text: "กำลังคำนวณ…", action: nil)
+                }
+                if economy {
+                    healthChip(icon: "bolt.slash.fill", text: "โหมดประหยัด") {
+                        buildSupervisor.exitEconomyMode()
+                        scheduleRebuild(force: true)
+                    }
+                }
+                if hadHang {
+                    healthChip(icon: "arrow.clockwise", text: "คำนวณใหม่") {
+                        scheduleRebuild(force: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func healthChip(icon: String, text: String, action: (() -> Void)?) -> some View {
+        Button {
+            action?()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                Text(text)
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color(hex: "#FEF3C7"))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color(hex: "#92400E").opacity(0.85)))
+        }
+        .buttonStyle(.plain)
+        .disabled(action == nil)
     }
 
     private var dateChip: some View {
@@ -468,7 +659,11 @@ struct RealtimeV4View: View {
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(Array(tripUnits.enumerated()), id: \.element.id) { index, unit in
-                            TripVehicleCard(unit: unit, index: index, dayKey: focusDateStr)
+                            TripVehicleCard(
+                                unit: unit,
+                                index: index,
+                                workSpan: snapshot.vehicleWorkSpans[unit.id]
+                            )
                                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                 .onTapGesture { selectedVehicle = unit }
                         }
@@ -607,7 +802,7 @@ struct RealtimeV4View: View {
     private var tripKPI: some View {
         let queueTotal = tripTotal * CountRecordLogic.queuePerTrip
         let queueTarget = CountRecordLogic.tripTarget * CountRecordLogic.queuePerTrip
-        let hours = CountRecordLogic.activeDurationHours(lapTimes: tripAnalytics.lapTimes, dayKey: focusDateStr)
+        let hours = snapshot.tripHours
         let perHour = hours.flatMap { $0 > 0 ? Double(queueTotal) / $0 : nil }
         let perMin = hours.flatMap { $0 > 0 ? Double(queueTotal) / ($0 * 60) : nil }
         let pct = queueTarget > 0
@@ -683,12 +878,7 @@ struct RealtimeV4View: View {
     }
 
     private var tripLeaderboard: some View {
-        let ranked = Array(
-            tripUnits
-                .filter { !$0.lapTimes.isEmpty }
-                .sorted { $0.rounds > $1.rounds }
-                .prefix(5)
-        )
+        let ranked = snapshot.leaderboard
         return VStack(alignment: .leading, spacing: 8) {
             Text("บันทึกล่าสุด")
                 .font(.system(size: 11, weight: .bold))
@@ -775,9 +965,7 @@ struct RealtimeV4View: View {
     }
 
     private func sandHero(_ sand: CountRecordSandUnit) -> some View {
-        let span = CountRecordLogic.formatWorkSpanLabel(
-            CountRecordLogic.computeWorkSpan(lapTimes: sand.lapTimes, dayKey: focusDateStr)
-        )
+        let span = snapshot.sandWorkSpan
         return ZStack {
             LinearGradient(
                 colors: [Color(hex: "#DB2777"), Color(hex: "#E11D48"), Color(hex: "#A21CAF")],
@@ -815,7 +1003,7 @@ struct RealtimeV4View: View {
     }
 
     private func sandKPI(_ sand: CountRecordSandUnit) -> some View {
-        let hours = CountRecordLogic.activeDurationHours(lapTimes: sand.lapTimes, dayKey: focusDateStr)
+        let hours = snapshot.sandHours
         let perHour = hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil }
         let perMin = hours.flatMap { $0 > 0 ? Double(sand.rounds) / ($0 * 60) : nil }
         let pct = CountRecordLogic.sandTarget > 0
@@ -1136,16 +1324,10 @@ private struct ScoreFloatOverlay: ViewModifier {
 private struct TripVehicleCard: View {
     let unit: CountRecordTripUnit
     let index: Int
-    let dayKey: String
+    var workSpan: String? = nil
 
     private var accent: Color {
         Color(hex: CountRecordLogic.vehicleColors[index % CountRecordLogic.vehicleColors.count])
-    }
-
-    private var workSpan: String? {
-        CountRecordLogic.formatWorkSpanLabel(
-            CountRecordLogic.computeWorkSpan(lapTimes: unit.lapTimes, dayKey: dayKey)
-        )
     }
 
     var body: some View {
@@ -1220,7 +1402,7 @@ private struct TripVehicleCard: View {
         }
         .frame(minHeight: 168)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
         .overlay(alignment: .topTrailing) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
                 .font(.system(size: 9, weight: .bold))

@@ -175,7 +175,9 @@ struct DashboardShell: View {
                     RealtimeV4View(
                         transactions: appState.transactions,
                         employees: appState.employees,
-                        settings: appState.settings
+                        settings: appState.settings,
+                        transactionsRevision: appState.transactionsRevision,
+                        selectedTab: appState.selectedTab
                     )
                 }
                 .padding(AppTheme.spaceLG)

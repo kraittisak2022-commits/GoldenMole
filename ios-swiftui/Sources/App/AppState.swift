@@ -34,6 +34,9 @@ final class AppState {
         transactions.compactMap(\.updatedAt).max()
     }
 
+    /// Bumped on every transactions mutation so views can avoid Equatable-diffing the full array.
+    private(set) var transactionsRevision = 0
+
     var dateFilter: DateFilter {
         DashboardAggregations.dateFilter(preset: datePreset, customStart: customStart, customEnd: customEnd)
     }
@@ -66,12 +69,16 @@ final class AppState {
     /// New rows use sorted insertion (O(n)) instead of re-sorting the whole array.
     func upsertTransaction(_ tx: Transaction) {
         if let idx = transactions.firstIndex(where: { $0.id == tx.id }) {
-            if transactions[idx] != tx { transactions[idx] = tx }
+            if transactions[idx] != tx {
+                transactions[idx] = tx
+                transactionsRevision += 1
+            }
         } else {
             let key = tx.createdAt ?? ""
             // List is newest-first; insert before the first older row.
             let insertAt = transactions.firstIndex { ($0.createdAt ?? "") < key } ?? transactions.count
             transactions.insert(tx, at: insertAt)
+            transactionsRevision += 1
         }
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
@@ -80,6 +87,7 @@ final class AppState {
     func removeTransaction(id: String) {
         guard let idx = transactions.firstIndex(where: { $0.id == id }) else { return }
         transactions.remove(at: idx)
+        transactionsRevision += 1
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
     }
@@ -99,6 +107,7 @@ final class AppState {
             // re-render the whole dashboard when nothing is new.
             if transactions != fetchResult.transactions {
                 transactions = fetchResult.transactions
+                transactionsRevision += 1
             }
             lastFetchTransactionCount = fetchResult.transactions.count
             lastSkippedTransactionCount = fetchResult.skippedCount

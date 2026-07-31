@@ -4,6 +4,7 @@ import UIKit
 
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(AppState.self) private var appState
 
     // Profile edit state
     @State private var displayName = ""
@@ -36,6 +37,7 @@ struct ProfileView: View {
                 profileCard
                 editCard
                 passwordCard
+                realtimeDiagnosticsCard
                 aboutCard
             }
             .padding(AppTheme.spaceLG)
@@ -185,6 +187,34 @@ struct ProfileView: View {
     }
 
     // MARK: - About / logout
+
+    private var realtimeDiagnosticsCard: some View {
+        let supervisor = RealtimeBuildSupervisor.shared
+        let watchdog = MainThreadWatchdog.shared
+        return SectionCard("Real-time diagnostics", systemImage: "gauge.with.dots.needle.67percent") {
+            row(icon: "tray.full", title: "ธุรกรรมในเครื่อง", value: "\(appState.lastFetchTransactionCount)")
+            Divider()
+            row(icon: "arrow.triangle.2.circlepath", title: "transactionsRevision", value: "\(appState.transactionsRevision)")
+            Divider()
+            row(
+                icon: "timer",
+                title: "lastBuildMs",
+                value: supervisor.lastBuildMs > 0 ? "\(Int(supervisor.lastBuildMs.rounded())) ms" : "—"
+            )
+            Divider()
+            row(
+                icon: "bolt.slash",
+                title: "โหมดประหยัด",
+                value: supervisor.isEconomyMode ? "เปิด" : "ปิด"
+            )
+            Divider()
+            row(icon: "exclamationmark.triangle", title: "hangCount", value: "\(watchdog.hangCount)")
+            if watchdog.lastHangMs > 0 {
+                Divider()
+                row(icon: "clock.badge.exclamationmark", title: "lastHangMs", value: "\(Int(watchdog.lastHangMs.rounded())) ms")
+            }
+        }
+    }
 
     private var aboutCard: some View {
         SectionCard("เกี่ยวกับ", systemImage: "info.circle.fill") {

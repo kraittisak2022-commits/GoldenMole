@@ -220,21 +220,68 @@ enum CountRecordLogic {
     }
 
     // MARK: - Dates / work span
+    // Integer civil-date math (Howard Hinnant) — no Calendar / TimeZone allocations.
+
+    /// Days since Unix epoch for Gregorian Y-M-D (proleptic).
+    static func daysFromCivil(year: Int, month: Int, day: Int) -> Int {
+        var y = year
+        let m = month
+        let d = day
+        y -= m <= 2 ? 1 : 0
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146_097 + doe - 719_468
+    }
+
+    /// Inverse of `daysFromCivil`.
+    static func civilFromDays(_ zIn: Int) -> (year: Int, month: Int, day: Int) {
+        let z = zIn + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let doe = z - era * 146_097
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365
+        var y = yoe + era * 400
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        let mp = (5 * doy + 2) / 153
+        let d = doy - (153 * mp + 2) / 5 + 1
+        let m = mp < 10 ? mp + 3 : mp - 9
+        y += m <= 2 ? 1 : 0
+        return (y, m, d)
+    }
+
+    /// Bangkok wall-clock → UTC epoch seconds (no Foundation date objects).
+    static func bangkokEpochSeconds(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> TimeInterval {
+        let days = daysFromCivil(year: year, month: month, day: day)
+        let localSec = days * 86_400 + hour * 3_600 + minute * 60 + second
+        return TimeInterval(localSec) - bangkokOffsetMs
+    }
+
+    static func bangkokHourFromEpoch(_ epoch: TimeInterval) -> Int {
+        let local = Int((epoch + bangkokOffsetMs).rounded(.towardZero))
+        let sod = ((local % 86_400) + 86_400) % 86_400
+        return sod / 3_600
+    }
+
+    static func bangkokMinuteFromEpoch(_ epoch: TimeInterval) -> Int {
+        let local = Int((epoch + bangkokOffsetMs).rounded(.towardZero))
+        let sod = ((local % 86_400) + 86_400) % 86_400
+        return (sod % 3_600) / 60
+    }
+
+    /// UTC epoch of Bangkok midnight for the civil day containing `epoch`.
+    static func bangkokMidnightUTC(containing epoch: TimeInterval) -> TimeInterval {
+        let local = epoch + bangkokOffsetMs
+        let dayStartLocal = floor(local / 86_400) * 86_400
+        return dayStartLocal - bangkokOffsetMs
+    }
 
     static func addDays(to ymd: String, delta: Int) -> String {
         let parts = ymd.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return ymd }
-        var comps = DateComponents()
-        comps.year = parts[0]
-        comps.month = parts[1]
-        comps.day = parts[2] + delta
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        guard let date = cal.date(from: comps) else { return ymd }
-        let y = cal.component(.year, from: date)
-        let m = cal.component(.month, from: date)
-        let d = cal.component(.day, from: date)
-        return String(format: "%04d-%02d-%02d", y, m, d)
+        let days = daysFromCivil(year: parts[0], month: parts[1], day: parts[2]) + delta
+        let c = civilFromDays(days)
+        return String(format: "%04d-%02d-%02d", c.year, c.month, c.day)
     }
 
     /// Lap stamp `dd/MM HH:mm:ss` + year from dayKey → epoch seconds (Bangkok)
@@ -248,16 +295,15 @@ enum CountRecordLogic {
         guard dm.count >= 2, hms.count >= 1 else { return nil }
         let yy = Int(dayKey.prefix(4)) ?? 0
         guard yy > 0 else { return nil }
-        var comps = DateComponents()
-        comps.year = yy
-        comps.month = dm[1]
-        comps.day = dm[0]
-        comps.hour = hms[0]
-        comps.minute = hms.count > 1 ? hms[1] : 0
-        comps.second = hms.count > 2 ? hms[2] : 0
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Bangkok") ?? TimeZone(secondsFromGMT: Int(bangkokOffsetMs))!
-        return cal.date(from: comps)?.timeIntervalSince1970
+        let month = dm[1]
+        let day = dm[0]
+        let hour = hms[0]
+        let minute = hms.count > 1 ? hms[1] : 0
+        let second = hms.count > 2 ? hms[2] : 0
+        guard month >= 1, month <= 12, day >= 1, day <= 31,
+              hour >= 0, hour < 24, minute >= 0, minute < 60, second >= 0, second < 60
+        else { return nil }
+        return bangkokEpochSeconds(year: yy, month: month, day: day, hour: hour, minute: minute, second: second)
     }
 
     static func formatLapClock(_ stamp: String) -> String? {
@@ -312,15 +358,12 @@ enum CountRecordLogic {
 
     static func lunchOverlapSeconds(start: TimeInterval, end: TimeInterval) -> TimeInterval {
         guard end > start else { return 0 }
-        let tz = TimeZone(identifier: "Asia/Bangkok") ?? .current
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = tz
-        let startDate = Date(timeIntervalSince1970: start)
-        guard let lunchStart = cal.date(bySettingHour: lunchStartHour, minute: 0, second: 0, of: startDate),
-              let lunchEnd = cal.date(bySettingHour: lunchEndHour, minute: 0, second: 0, of: startDate)
-        else { return 0 }
-        let oStart = max(start, lunchStart.timeIntervalSince1970)
-        let oEnd = min(end, lunchEnd.timeIntervalSince1970)
+        // Lunch window is local to the Bangkok civil day of `start` (same as Calendar-based path).
+        let midnight = bangkokMidnightUTC(containing: start)
+        let lunchStart = midnight + TimeInterval(lunchStartHour * 3_600)
+        let lunchEnd = midnight + TimeInterval(lunchEndHour * 3_600)
+        let oStart = max(start, lunchStart)
+        let oEnd = min(end, lunchEnd)
         return max(0, oEnd - oStart)
     }
 
@@ -338,11 +381,13 @@ enum CountRecordLogic {
     static func findPriorDayWithTripData(
         from dayKey: String,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        byDay: [String: [Transaction]]? = nil
     ) -> String? {
         for offset in 1...priorDayLookback {
             let key = addDays(to: dayKey, delta: -offset)
-            let rounds = buildTripUnits(dayKey: key, transactions: transactions, employees: employees)
+            let dayTx = byDay?[key] ?? transactions
+            let rounds = buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
                 .reduce(0) { $0 + $1.rounds }
             if rounds > 0 { return key }
         }
@@ -361,15 +406,24 @@ enum CountRecordLogic {
         dayKey: String,
         tripUnits: [CountRecordTripUnit],
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        priorKey: String? = nil,
+        byDay: [String: [Transaction]]? = nil
     ) -> VehicleEfficiency {
         let tripTotal = tripUnits.reduce(0) { $0 + $1.rounds }
         let activeToday = tripUnits.filter { $0.rounds > 0 }
         let countToday = activeToday.isEmpty ? tripUnits.count : activeToday.count
         let perVehToday = countToday > 0 ? Double(tripTotal) / Double(countToday) : 0
 
-        let priorKey = findPriorDayWithTripData(from: dayKey, transactions: transactions, employees: employees)
-        let yesterday = priorKey.map { buildTripUnits(dayKey: $0, transactions: transactions, employees: employees) } ?? []
+        let resolvedPrior = priorKey
+            ?? findPriorDayWithTripData(from: dayKey, transactions: transactions, employees: employees, byDay: byDay)
+        let yesterday: [CountRecordTripUnit]
+        if let resolvedPrior {
+            let dayTx = byDay?[resolvedPrior] ?? transactions
+            yesterday = buildTripUnits(dayKey: resolvedPrior, transactions: dayTx, employees: employees)
+        } else {
+            yesterday = []
+        }
         let yTotal = yesterday.reduce(0) { $0 + $1.rounds }
         let activeYest = yesterday.filter { $0.rounds > 0 }
         let countYest = activeYest.isEmpty ? yesterday.count : activeYest.count
@@ -383,8 +437,8 @@ enum CountRecordLogic {
             perVehToday: perVehToday,
             countToday: countToday,
             deltaPct: delta,
-            priorLabel: comparisonDayLabel(prior: priorKey, focus: dayKey),
-            isCalendarYesterday: priorKey == addDays(to: dayKey, delta: -1)
+            priorLabel: comparisonDayLabel(prior: resolvedPrior, focus: dayKey),
+            isCalendarYesterday: resolvedPrior == addDays(to: dayKey, delta: -1)
         )
     }
 }
