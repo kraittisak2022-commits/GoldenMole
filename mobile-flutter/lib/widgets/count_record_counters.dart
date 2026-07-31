@@ -152,9 +152,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   static const _recordTapCooldown = Duration(seconds: 3);
   static const _sandRecentLapsVisible = 4;
   static const _kTripGoalPrefKey = 'count_record_trip_goal_v1';
+  static const _kTripCubicPrefKey = 'count_record_trip_cubic_per_trip_v1';
 
   /// เป้าหมายเที่ยวต่อคันต่อวัน (0 = ปิด)
   int _tripGoal = 0;
+
+  /// คิวต่อเที่ยว (ค่าเดียวทั้งแผง) — ค่าเริ่มต้น 3
+  double _cubicPerTrip = 3;
+
+  /// true เมื่อยึดค่าคิวจากแถวของวันนั้นแล้ว — กัน prefs/merge ทับ
+  bool _cubicAdoptedFromDayRows = false;
+
   final GlobalKey _shareCardKey = GlobalKey();
 
   final List<_CounterUnit> _units = [];
@@ -190,6 +198,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _syncOfflinePollTimer();
     if (widget.mode == CounterMode.trip) {
       unawaited(_loadTripGoal());
+      unawaited(_loadCubicPerTrip());
     }
   }
 
@@ -206,6 +215,52 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       final p = await SharedPreferences.getInstance();
       await p.setInt(_kTripGoalPrefKey, value);
     } catch (_) {}
+  }
+
+  Future<void> _loadCubicPerTrip() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getDouble(_kTripCubicPrefKey) ?? 3;
+      if (!mounted) return;
+      // ถ้าวันนั้นมีค่าจากแถวอยู่แล้ว อย่าทับด้วย prefs
+      if (_cubicAdoptedFromDayRows) return;
+      final next = _clampCubicPerTrip(v);
+      if (next != _cubicPerTrip) setState(() => _cubicPerTrip = next);
+    } catch (_) {}
+  }
+
+  Future<void> _saveCubicPerTrip(double value) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_kTripCubicPrefKey, value);
+    } catch (_) {}
+  }
+
+  static double _clampCubicPerTrip(double v) {
+    if (v < 0.5) return 0.5;
+    if (v > 99) return 99;
+    return (v * 2).round() / 2.0;
+  }
+
+  static String _formatCubic(double v) {
+    if (v == v.roundToDouble()) return '${v.toInt()}';
+    return v.toStringAsFixed(1);
+  }
+
+  /// ยึดค่าคิวจากแถวของวันนั้น (เปิดย้อนดูวันเก่า) — ไม่เรียกตอน merge ทับค่าที่ผู้ใช้ตั้ง
+  void _adoptCubicPerTripFromTransactions(List<AppTransaction> dayTx) {
+    for (final t in dayTx) {
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
+        continue;
+      }
+      final c = t.cubicPerTrip;
+      if (c != null && c > 0) {
+        _cubicPerTrip = _clampCubicPerTrip(c);
+        _cubicAdoptedFromDayRows = true;
+        return;
+      }
+    }
   }
 
   void _syncErrorTrackerStep() {
@@ -229,7 +284,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (oldWidget.dateYmd != widget.dateYmd) {
       _units.clear();
       _hiddenDayTxIds.clear();
+      _cubicAdoptedFromDayRows = false;
       unawaited(_initPanel());
+      if (widget.mode == CounterMode.trip) {
+        unawaited(_loadCubicPerTrip());
+      }
       return;
     }
     if (_skipExternalDayTxReload > 0) {
@@ -362,6 +421,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         if (vid.isEmpty || isMacroVehicleId(vid)) continue;
         _units.add(_unitFromTx(t, title: vid, vehicleId: vid));
       }
+      // ยึดค่าคิวจากแถวของวันนั้นก่อน prefs (เปิดย้อนดูวันเก่า)
+      _adoptCubicPerTripFromTransactions(dayTx);
     } else {
       AppTransaction? sandRow;
       for (final t in dayTx) {
@@ -793,13 +854,16 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         : <String, List<String>>{'lapTimes': laps};
     if (widget.mode == CounterMode.trip) {
       final r = u.rounds.toDouble();
+      final cubic = _cubicPerTrip;
+      final totalCubic = r * cubic;
+      final cubicLabel = _formatCubic(cubic);
       return AppTransaction(
         id: u.txId,
         date: widget.dateYmd,
         type: 'Expense',
         category: 'DailyLog',
         subCategory: 'VehicleTrip',
-        description: '${u.vehicleId}: ${u.rounds} เที่ยว',
+        description: '${u.vehicleId}: ${u.rounds} เที่ยว × $cubicLabel คิว',
         amount: 0,
         note: 'นับเที่ยวโดย ${widget.currentAdmin.displayName}',
         vehicleId: u.vehicleId,
@@ -808,6 +872,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         tripBillingMode: 'PerTrip',
         tripCount: r,
         perCarTrips: r,
+        cubicPerTrip: cubic,
+        perCarCubic: totalCubic,
+        totalCubic: totalCubic,
         workAssignments: assignments,
       );
     }
@@ -1589,6 +1656,110 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     unawaited(_saveTripGoal(result));
   }
 
+  Future<void> _openCubicPerTripDialog() async {
+    var draft = _cubicPerTrip;
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          void setDraft(double next) {
+            setDialogState(() => draft = _clampCubicPerTrip(next));
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            title: const Text('คิวต่อเที่ยว'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton.filledTonal(
+                      onPressed: draft > 0.5
+                          ? () => setDraft(draft - 0.5)
+                          : null,
+                      icon: const Icon(Icons.remove_rounded),
+                    ),
+                    SizedBox(
+                      width: 96,
+                      child: Text(
+                        _formatCubic(draft),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF1565C0),
+                        ),
+                      ),
+                    ),
+                    IconButton.filledTonal(
+                      onPressed: draft < 99
+                          ? () => setDraft(draft + 0.5)
+                          : null,
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'ใช้ค่านี้กับทุกคันในแผง',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Color(0xFF78909C)),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final preset in const [2.0, 3.0, 4.0, 7.0])
+                      ChoiceChip(
+                        label: Text('${_formatCubic(preset)} คิว'),
+                        selected: draft == preset,
+                        onSelected: (_) => setDraft(preset),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('ยกเลิก'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, draft),
+                child: const Text('บันทึก'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result == null || !mounted) return;
+    final next = _clampCubicPerTrip(result);
+    if (next == _cubicPerTrip) return;
+    setState(() {
+      _cubicPerTrip = next;
+      _cubicAdoptedFromDayRows = true;
+    });
+    unawaited(_saveCubicPerTrip(next));
+    await _resyncTripRowsCubic();
+  }
+
+  /// เขียนคิวใหม่ลงแถวที่นับไว้แล้วของวันนี้ แล้วแจ้ง parent ครั้งเดียว
+  Future<void> _resyncTripRowsCubic() async {
+    if (widget.mode != CounterMode.trip) return;
+    final toSave = _units.where((u) => u.rounds > 0).toList();
+    if (toSave.isEmpty) return;
+    for (final u in toSave) {
+      await _save(u, notifyParent: false);
+      if (!mounted) return;
+    }
+    _notifyParentDataChanged(shieldPanelReload: true);
+  }
+
   /// แชร์สรุปประจำวันเป็นรูปภาพ — เปิด sheet พรีวิวการ์ดแล้วกดแชร์
   Future<void> _openShareSummarySheet() async {
     AppHaptics.tap();
@@ -1696,6 +1867,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         index: index,
         compact: compact,
         goal: _tripGoal,
+        cubicPerTrip: _cubicPerTrip,
         interactionsEnabled: interactionsEnabled,
         setHoldLock: setHoldLock,
         onTap: () => _recordTap(unit),
@@ -1816,7 +1988,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               isTrip: true,
               totals: totals,
               goal: _tripGoal,
+              cubicPerTrip: _cubicPerTrip,
               onGoalTap: _openTripGoalDialog,
+              onCubicTap: _openCubicPerTripDialog,
               onShareTap: _openShareSummarySheet,
             ),
             const SizedBox(height: 8),
@@ -3330,6 +3504,7 @@ class _VehicleRecordButton extends StatefulWidget {
     required this.onHoldToUndo,
     this.compact = false,
     this.goal = 0,
+    this.cubicPerTrip = 3,
     this.interactionsEnabled = true,
     required this.setHoldLock,
   });
@@ -3342,6 +3517,9 @@ class _VehicleRecordButton extends StatefulWidget {
 
   /// เป้าหมายเที่ยวต่อวัน (0 = ไม่แสดง)
   final int goal;
+
+  /// คิวต่อเที่ยว (ค่าเดียวทั้งแผง) — แสดงอ่านอย่างเดียวบนการ์ด
+  final double cubicPerTrip;
   final bool interactionsEnabled;
   final void Function(bool locked) setHoldLock;
 
@@ -3605,6 +3783,15 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                           height: 1.12,
                         ),
                       ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white.withValues(alpha: 0.88),
+                        ),
+                      ),
                       if (unit.lapTimes.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -3712,6 +3899,18 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white.withValues(alpha: 0.88),
                   ),
                 ),
                 if (widget.goal > 0) ...[
@@ -5024,14 +5223,18 @@ class _CountStatsStrip extends StatelessWidget {
     required this.isTrip,
     required this.totals,
     required this.goal,
+    this.cubicPerTrip = 3,
     this.onGoalTap,
+    this.onCubicTap,
     required this.onShareTap,
   });
 
   final bool isTrip;
   final ({int total, int morning, int afternoon}) totals;
   final int goal;
+  final double cubicPerTrip;
   final VoidCallback? onGoalTap;
+  final VoidCallback? onCubicTap;
   final VoidCallback onShareTap;
 
   @override
@@ -5039,6 +5242,14 @@ class _CountStatsStrip extends StatelessWidget {
     final unitLabel = isTrip ? 'เที่ยว' : 'รอบ';
     final accent =
         isTrip ? const Color(0xFF1565C0) : const Color(0xFFAD1457);
+    final cubicLabel =
+        _CountRecordCounterPanelState._formatCubic(cubicPerTrip);
+    final totalCubic = totals.total * cubicPerTrip;
+    final totalCubicLabel =
+        _CountRecordCounterPanelState._formatCubic(totalCubic);
+    final periodText = isTrip
+        ? 'เช้า ${totals.morning} · บ่าย ${totals.afternoon} · รวม $totalCubicLabel คิว'
+        : 'เช้า ${totals.morning} · บ่าย ${totals.afternoon}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -5085,7 +5296,7 @@ class _CountStatsStrip extends StatelessWidget {
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                'เช้า ${totals.morning} · บ่าย ${totals.afternoon}',
+                periodText,
                 style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
@@ -5095,6 +5306,36 @@ class _CountStatsStrip extends StatelessWidget {
             ),
           ),
           const _ShiftBadge(),
+          if (isTrip && onCubicTap != null) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'ตั้งค่าคิวต่อเที่ยว',
+              child: SoftPressButton(
+                size: SoftPressSize.small,
+                borderRadius: 10,
+                isDarkSurface: false,
+                onTap: onCubicTap!,
+                child: Material(
+                  color: const Color(0xFF1565C0).withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      '×$cubicLabel คิว/เที่ยว',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1565C0),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (isTrip && onGoalTap != null) ...[
             const SizedBox(width: 6),
             _StatsStripIconButton(
