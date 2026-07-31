@@ -687,6 +687,9 @@ private struct CompareBarsView: View {
 
 struct RealtimeV4ActivityFeed: View {
     let events: [CountRecordAnalytics.ActivityEvent]
+    let dayKey: String
+    let tripUnits: [CountRecordTripUnit]
+    let sandUnit: CountRecordSandUnit?
     @State private var showAll = false
 
     private var previewEvents: [CountRecordAnalytics.ActivityEvent] {
@@ -721,7 +724,7 @@ struct RealtimeV4ActivityFeed: View {
                         showAll = true
                     } label: {
                         HStack(spacing: 6) {
-                            Text("ดูเพิ่มเติม (\(events.count - 4))")
+                            Text("ดูทั้งหมด")
                                 .font(.caption.weight(.bold))
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 10, weight: .bold))
@@ -748,7 +751,12 @@ struct RealtimeV4ActivityFeed: View {
                 .strokeBorder(RealtimeV4Palette.border)
         )
         .sheet(isPresented: $showAll) {
-            ActivityFeedSheet(events: events)
+            ActivityFeedSheet(
+                events: events,
+                dayKey: dayKey,
+                tripUnits: tripUnits,
+                sandUnit: sandUnit
+            )
         }
     }
 
@@ -777,13 +785,21 @@ struct RealtimeV4ActivityFeed: View {
 
 private struct ActivityFeedSheet: View {
     let events: [CountRecordAnalytics.ActivityEvent]
+    let dayKey: String
+    let tripUnits: [CountRecordTripUnit]
+    let sandUnit: CountRecordSandUnit?
     @Environment(\.dismiss) private var dismiss
+    @State private var fullEvents: [CountRecordAnalytics.ActivityEvent] = []
+
+    private var displayEvents: [CountRecordAnalytics.ActivityEvent] {
+        fullEvents.isEmpty ? events : fullEvents
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(events) { event in
+                    ForEach(displayEvents) { event in
                         HStack(spacing: 10) {
                             Circle()
                                 .fill(event.kind == .trip ? AppTheme.info : AppTheme.sand)
@@ -809,12 +825,26 @@ private struct ActivityFeedSheet: View {
                 .padding(20)
             }
             .background(RealtimeV4Palette.page.ignoresSafeArea())
-            .navigationTitle("อัปเดตล่าสุดจากมือถือ")
+            .navigationTitle("อัปเดตล่าสุด · \(displayEvents.count)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("ปิด") { dismiss() }.fontWeight(.semibold)
                 }
+            }
+            .task {
+                let key = dayKey
+                let trips = tripUnits
+                let sand = sandUnit
+                let built = await Task.detached(priority: .userInitiated) {
+                    CountRecordAnalytics.buildActivityFeed(
+                        dayKey: key,
+                        tripUnits: trips,
+                        sandUnit: sand,
+                        limit: Int.max
+                    )
+                }.value
+                fullEvents = built
             }
         }
         .presentationDetents([.medium, .large])

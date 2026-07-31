@@ -100,6 +100,7 @@ struct RealtimeV4View: View {
     @State private var livePing = false
     @State private var selectedVehicle: CountRecordTripUnit?
     @State private var showSandDetail = false
+    @State private var showSandRounds = false
     @State private var showFleetDetail = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -157,6 +158,11 @@ struct RealtimeV4View: View {
                 efficiency: efficiency,
                 dayKey: focusDateStr
             )
+        }
+        .sheet(isPresented: $showSandRounds) {
+            if let sand = sandUnit {
+                SandRoundsSheet(sand: sand, dayKey: focusDateStr)
+            }
         }
     }
 
@@ -332,7 +338,12 @@ struct RealtimeV4View: View {
             VStack(spacing: 16) {
                 tripPanel
                 sandPanel
-                RealtimeV4ActivityFeed(events: activityEvents)
+                RealtimeV4ActivityFeed(
+                    events: activityEvents,
+                    dayKey: focusDateStr,
+                    tripUnits: tripUnits,
+                    sandUnit: sandUnit
+                )
             }
             .padding(16)
             .background(
@@ -453,6 +464,7 @@ struct RealtimeV4View: View {
                             .onTapGesture { showFleetDetail = true }
                             .accessibilityAddTraits(.isButton)
                             .accessibilityHint("แตะเพื่อดูรายละเอียดรวมเที่ยวรถ")
+                        tripKPI
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(Array(tripUnits.enumerated()), id: \.element.id) { index, unit in
@@ -590,6 +602,84 @@ struct RealtimeV4View: View {
             .padding(16)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var tripKPI: some View {
+        let queueTotal = tripTotal * CountRecordLogic.queuePerTrip
+        let queueTarget = CountRecordLogic.tripTarget * CountRecordLogic.queuePerTrip
+        let hours = CountRecordLogic.activeDurationHours(lapTimes: tripAnalytics.lapTimes, dayKey: focusDateStr)
+        let perHour = hours.flatMap { $0 > 0 ? Double(queueTotal) / $0 : nil }
+        let perMin = hours.flatMap { $0 > 0 ? Double(queueTotal) / ($0 * 60) : nil }
+        let pct = queueTarget > 0
+            ? min(Double(queueTotal) / Double(queueTarget) * 100, 100)
+            : 0
+        let tripBlue = Color(hex: "#2563EB")
+        let tripBlueSoft = Color(hex: "#DBEAFE")
+        let tripBlueLabel = Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#93C5FD"))
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("ตัวชี้วัดการขน")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(tripBlueLabel)
+
+            HStack(spacing: 8) {
+                kpiCell(
+                    title: "คิว / ชม.",
+                    value: perHour.map { String(format: "%.1f", $0) } ?? "—",
+                    labelColor: tripBlueLabel,
+                    fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
+                )
+                kpiCell(
+                    title: "คิว / นาที",
+                    value: perMin.map { String(format: "%.2f", $0) } ?? "—",
+                    labelColor: tripBlueLabel,
+                    fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
+                )
+            }
+
+            VStack(spacing: 4) {
+                HStack {
+                    Text("เป้าหมาย (คิว)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                    Spacer()
+                    Text("\(CountRecordLogic.formatMetric(queueTotal)) / \(CountRecordLogic.formatMetric(queueTarget)) · \(Int(pct.rounded()))%")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(RealtimeV4Palette.ink)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color(light: tripBlueSoft, dark: tripBlue.opacity(0.2)))
+                        Capsule()
+                            .fill(tripBlue)
+                            .frame(width: geo.size.width * CGFloat(pct / 100))
+                    }
+                }
+                .frame(height: 8)
+                Text("\(CountRecordLogic.queuePerTrip) คิว / 1 เที่ยว")
+                    .font(.system(size: 9))
+                    .foregroundStyle(RealtimeV4Palette.inkMuted)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(light: Color(hex: "#EFF6FF"), dark: Color(hex: "#0B1220")),
+                            Color(light: Color(hex: "#DBEAFE"), dark: Color(hex: "#111827"))
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(tripBlue.opacity(0.3), lineWidth: 1)
+        )
     }
 
     private var tripLeaderboard: some View {
@@ -787,28 +877,45 @@ struct RealtimeV4View: View {
         )
     }
 
-    private func kpiCell(title: String, value: String) -> some View {
+    private func kpiCell(
+        title: String,
+        value: String,
+        labelColor: Color = RealtimeV4Palette.sandLabel,
+        fill: Color = RealtimeV4Palette.sandCellFill
+    ) -> some View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(RealtimeV4Palette.sandLabel)
+                .foregroundStyle(labelColor)
             Text(value)
                 .font(.title3.weight(.black))
                 .foregroundStyle(RealtimeV4Palette.ink)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(RealtimeV4Palette.sandCellFill))
+        .background(RoundedRectangle(cornerRadius: 12).fill(fill))
     }
 
     private func sandRecentLaps(_ sand: CountRecordSandUnit) -> some View {
         let start = max(0, sand.lapTimes.count - CountRecordLogic.sandRecentLaps)
         let recent = Array(sand.lapTimes.enumerated()).filter { $0.offset >= start }
         return VStack(alignment: .leading, spacing: 8) {
-            Text("รอบล่าสุด")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(RealtimeV4Palette.textMuted)
+            HStack {
+                Text("รอบล่าสุด")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundStyle(RealtimeV4Palette.textMuted)
+                Spacer()
+                if !sand.lapTimes.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("ดูทั้งหมด")
+                            .font(.system(size: 11, weight: .bold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(RealtimeV4Palette.sandLabel)
+                }
+            }
             if recent.isEmpty {
                 Text("ยังไม่มีเวลาประทับ")
                     .font(.caption)
@@ -850,6 +957,13 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            guard !sand.lapTimes.isEmpty else { return }
+            showSandRounds = true
+        }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("แตะเพื่อดูรอบทั้งหมด")
     }
 
     // MARK: - Shared shells
@@ -1204,6 +1318,14 @@ private struct FleetTripDetailSheet: View {
     let efficiency: VehicleEfficiency
     let dayKey: String
     @Environment(\.dismiss) private var dismiss
+    @State private var allRounds: [FleetRoundRow] = []
+
+    private struct FleetRoundRow: Identifiable, Sendable {
+        let id: Int
+        let vehicleId: String
+        let stamp: String
+        let gapSec: Double?
+    }
 
     private var morningTotal: Int { tripUnits.reduce(0) { $0 + $1.morning } }
     private var afternoonTotal: Int { tripUnits.reduce(0) { $0 + max(0, $1.afternoon - $1.ot) } }
@@ -1321,6 +1443,59 @@ private struct FleetTripDetailSheet: View {
                             }
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("รอบทั้งหมด")
+                                .font(.system(size: 11, weight: .bold))
+                                .tracking(1.2)
+                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                            Spacer()
+                            Text("\(allRounds.count) รอบ")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(RealtimeV4Palette.inkFaint)
+                        }
+
+                        if allRounds.isEmpty {
+                            Text("ยังไม่มีเวลาประทับ")
+                                .font(.caption)
+                                .foregroundStyle(RealtimeV4Palette.inkFaint)
+                        } else {
+                            LazyVStack(spacing: 8) {
+                                ForEach(allRounds) { row in
+                                    HStack(spacing: 10) {
+                                        Text("#\(row.id)")
+                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(RealtimeV4Palette.inkMuted)
+                                            .frame(width: 36, alignment: .leading)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(row.vehicleId)
+                                                .font(.subheadline.weight(.bold))
+                                                .foregroundStyle(RealtimeV4Palette.ink)
+                                            Text(CountRecordLogic.formatLapClock(row.stamp) ?? row.stamp)
+                                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                                        }
+                                        Spacer()
+                                        if let gap = row.gapSec {
+                                            Text(CountRecordAnalytics.formatPace(gap))
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(Color(hex: "#2563EB"))
+                                        } else {
+                                            Text("—")
+                                                .font(.caption)
+                                                .foregroundStyle(RealtimeV4Palette.inkFaint)
+                                        }
+                                    }
+                                    .padding(12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(RealtimeV4Palette.cardSoft)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 .padding(20)
             }
@@ -1332,8 +1507,177 @@ private struct FleetTripDetailSheet: View {
                     Button("ปิด") { dismiss() }.fontWeight(.semibold)
                 }
             }
+            .task {
+                let units = tripUnits
+                let key = dayKey
+                let built = await Task.detached(priority: .userInitiated) {
+                    Self.buildAllRounds(units: units, dayKey: key)
+                }.value
+                allRounds = built
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    nonisolated private static func buildAllRounds(units: [CountRecordTripUnit], dayKey: String) -> [FleetRoundRow] {
+        struct StampItem {
+            let vehicleId: String
+            let stamp: String
+            let ms: Double
+        }
+        var items: [StampItem] = []
+        for unit in units {
+            for stamp in unit.lapTimes {
+                guard let ms = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) else { continue }
+                items.append(StampItem(vehicleId: unit.vehicleId, stamp: stamp, ms: ms))
+            }
+        }
+        items.sort { $0.ms < $1.ms }
+        var rows: [FleetRoundRow] = []
+        rows.reserveCapacity(items.count)
+        for (index, item) in items.enumerated() {
+            var gap: Double?
+            if index > 0 {
+                let sec = CountRecordAnalytics.activeDurationSec(startMs: items[index - 1].ms, endMs: item.ms)
+                if sec > 0 { gap = sec }
+            }
+            rows.append(
+                FleetRoundRow(
+                    id: index + 1,
+                    vehicleId: item.vehicleId,
+                    stamp: item.stamp,
+                    gapSec: gap
+                )
+            )
+        }
+        return rows
+    }
+}
+
+private struct SandRoundsSheet: View {
+    let sand: CountRecordSandUnit
+    let dayKey: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var rows: [RoundRow] = []
+
+    private struct RoundRow: Identifiable, Sendable {
+        let id: Int
+        let stamp: String
+        let gapSec: Double?
+        let isLatest: Bool
+    }
+
+    private var workSpan: String? {
+        CountRecordLogic.formatWorkSpanLabel(
+            CountRecordLogic.computeWorkSpan(lapTimes: sand.lapTimes, dayKey: dayKey)
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(CountRecordLogic.formatMetric(sand.lapTimes.count))
+                            .font(.system(size: 48, weight: .black, design: .rounded))
+                            .foregroundStyle(RealtimeV4Palette.ink)
+                        Text("รอบ")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                        Spacer()
+                    }
+
+                    PeriodPill(morning: sand.morning, afternoon: sand.afternoon, ot: sand.ot)
+
+                    if let workSpan {
+                        Label(workSpan, systemImage: "clock")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                    }
+
+                    if rows.isEmpty {
+                        Text("ยังไม่มีเวลาประทับ")
+                            .font(.caption)
+                            .foregroundStyle(RealtimeV4Palette.inkFaint)
+                    } else {
+                        LazyVStack(spacing: 8) {
+                            ForEach(rows) { row in
+                                HStack(spacing: 10) {
+                                    Text("รอบ \(row.id)")
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(row.isLatest ? Color(hex: "#FCE7F3") : RealtimeV4Palette.sandLabel)
+                                    Text(CountRecordLogic.formatLapClock(row.stamp) ?? row.stamp)
+                                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(row.isLatest ? .white.opacity(0.95) : RealtimeV4Palette.ink)
+                                    Spacer()
+                                    if let gap = row.gapSec {
+                                        Text(CountRecordAnalytics.formatPace(gap))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(row.isLatest ? Color(hex: "#FCE7F3") : RealtimeV4Palette.inkMuted)
+                                    } else {
+                                        Text("—")
+                                            .font(.caption)
+                                            .foregroundStyle(row.isLatest ? .white.opacity(0.55) : RealtimeV4Palette.inkFaint)
+                                    }
+                                }
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(row.isLatest ? Color(hex: "#DB2777") : RealtimeV4Palette.cardSoft)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(row.isLatest ? Color.clear : Color(hex: "#EC4899").opacity(0.25), lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("รอบทั้งหมด · ร่อนทราย")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+            .task {
+                let laps = sand.lapTimes
+                let key = dayKey
+                let built = await Task.detached(priority: .userInitiated) {
+                    Self.buildRows(lapTimes: laps, dayKey: key)
+                }.value
+                rows = built
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    nonisolated private static func buildRows(lapTimes: [String], dayKey: String) -> [RoundRow] {
+        let intervals = CountRecordAnalytics.computeLapIntervals(lapTimes: lapTimes, dayKey: dayKey)
+        let aligned = intervals.count == max(0, lapTimes.count - 1)
+        return lapTimes.enumerated().map { index, stamp in
+            let gap: Double?
+            if index == 0 {
+                gap = nil
+            } else if aligned {
+                gap = intervals[index - 1]
+            } else if let prev = CountRecordLogic.parseLapStamp(lapTimes[index - 1], dayKey: dayKey),
+                      let curr = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) {
+                let sec = CountRecordAnalytics.activeDurationSec(startMs: prev, endMs: curr)
+                gap = sec > 0 ? sec : nil
+            } else {
+                gap = nil
+            }
+            return RoundRow(
+                id: index + 1,
+                stamp: stamp,
+                gapSec: gap,
+                isLatest: index == lapTimes.count - 1
+            )
+        }
     }
 }
 
