@@ -50,6 +50,34 @@ String _lapClockOf(String stamp) {
   return lastColon > 0 ? timePart.substring(0, lastColon) : timePart;
 }
 
+/// ประเภทงานของรถในแผงนับเที่ยว — เก็บเป็นแท็กใน work_details
+enum _WorkKind { sand, support }
+
+const _kWorkKindSandTag = 'งาน: ขนทราย';
+const _kWorkKindSupportTag = 'งาน: ชัพพอต';
+
+String _workKindLabel(_WorkKind kind) =>
+    kind == _WorkKind.support ? 'ชัพพอต' : 'ขนทราย';
+
+String _workKindTag(_WorkKind kind) =>
+    kind == _WorkKind.support ? _kWorkKindSupportTag : _kWorkKindSandTag;
+
+/// อ่านประเภทงานจาก work_details — ตัวท้ายสุดชนะ; ไม่มีแท็ก = ขนทราย
+_WorkKind _workKindFromDetails(String details) {
+  final lastSupport = details.lastIndexOf(_kWorkKindSupportTag);
+  final lastSand = details.lastIndexOf(_kWorkKindSandTag);
+  if (lastSupport < 0 && lastSand < 0) return _WorkKind.sand;
+  return lastSupport > lastSand ? _WorkKind.support : _WorkKind.sand;
+}
+
+String _appendWorkKindTag(String details, _WorkKind kind) {
+  final tag = _workKindTag(kind);
+  final trimmed = details.trim();
+  if (trimmed.isEmpty) return tag;
+  if (_workKindFromDetails(trimmed) == kind) return trimmed;
+  return '$trimmed, $tag';
+}
+
 /// 1 หน่วยนับ = 1 ธุรกรรมที่บันทึกสดลงฐานข้อมูล
 class _CounterUnit {
   _CounterUnit({
@@ -95,6 +123,10 @@ class _CounterUnit {
 
   bool get isBrokenReported => isWorkDetailsBroken(workDetails);
 
+  _WorkKind get workKind => _workKindFromDetails(workDetails);
+
+  bool get isSupportWork => workKind == _WorkKind.support;
+
   static bool isWorkDetailsBroken(String details) {
     final lastBroken = details.lastIndexOf('รถเสีย');
     if (lastBroken < 0) return false;
@@ -106,9 +138,15 @@ class _CounterUnit {
 class _Pick {
   String vehicleId = '';
   String driverId = '';
+  _WorkKind workKind = _WorkKind.sand;
 }
 
-enum _UnitEditAction { changeDriver, reportBroken, restoreNormal }
+enum _UnitEditAction {
+  changeDriver,
+  changeWorkType,
+  reportBroken,
+  restoreNormal,
+}
 
 /// แผงนับเที่ยว/รอบแบบฝังในการ์ด — กดปุ่มแล้วบันทึกวันเวลา + เพิ่มจำนวน 1
 class CountRecordCounterPanel extends StatefulWidget {
@@ -699,7 +737,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     return _units.any(
       (u) =>
           (u.vehicleId ?? '').trim().isNotEmpty &&
-          (!u.persisted || _unitIsEmpty(u)),
+          (!u.persisted || (_unitIsEmpty(u) && !u.isSupportWork)),
     );
   }
 
@@ -853,6 +891,26 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         ? null
         : <String, List<String>>{'lapTimes': laps};
     if (widget.mode == CounterMode.trip) {
+      if (u.isSupportWork) {
+        return AppTransaction(
+          id: u.txId,
+          date: widget.dateYmd,
+          type: 'Expense',
+          category: 'DailyLog',
+          subCategory: 'VehicleTrip',
+          description: '${u.vehicleId}: ชัพพอต',
+          amount: 0,
+          note: 'นับเที่ยวโดย ${widget.currentAdmin.displayName}',
+          vehicleId: u.vehicleId,
+          driverId: u.driverId,
+          workDetails:
+              u.workDetails.trim().isEmpty ? null : u.workDetails.trim(),
+          tripBillingMode: 'PerTrip',
+          tripCount: 0,
+          perCarTrips: 0,
+          workAssignments: assignments,
+        );
+      }
       final r = u.rounds.toDouble();
       final cubic = _cubicPerTrip;
       final totalCubic = r * cubic;
@@ -896,7 +954,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _CounterUnit u, {
     bool notifyParent = true,
   }) async {
-    if (_unitIsEmpty(u)) {
+    // ชัพพอต 0 เที่ยวต้องเก็บแถวไว้ — ไม่ถือว่าเป็นแถวว่างแล้วลบ
+    if (_unitIsEmpty(u) && !u.isSupportWork) {
       await _deleteUnitRecord(u, notifyParent: notifyParent);
       return false;
     }
@@ -968,6 +1027,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (u.busy) return;
     if (u.isOnRecordCooldown) return;
     if (widget.mode == CounterMode.trip && u.isBrokenReported) return;
+    if (widget.mode == CounterMode.trip && u.isSupportWork) return;
     // บังคับนับเฉพาะวันปัจจุบัน — กันลืมเปลี่ยนวันแล้วนับซ้ำวันเก่า
     if (widget.dateYmd != _todayYmd()) {
       _toast(
@@ -1246,9 +1306,20 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         subtitle: 'คนขับ: ${_driverLabel(p.driverId.trim())}',
         vehicleId: vid,
         driverId: p.driverId.trim().isEmpty ? null : p.driverId.trim(),
+        workDetails: _appendWorkKindTag('', p.workKind),
       );
       if (!mounted) continue;
       setState(() => _units.add(unit));
+      // ชัพพอต: บันทึกแถว 0 เที่ยวทันที เพื่อให้การ์ดอยู่หลังรีโหลด
+      if (unit.isSupportWork) {
+        try {
+          await _save(unit, notifyParent: true);
+        } catch (e) {
+          if (mounted) {
+            _toast('บันทึกชัพพอตไม่สำเร็จ: $e', error: true);
+          }
+        }
+      }
     }
   }
 
@@ -1275,6 +1346,26 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               ),
               onTap: () =>
                   Navigator.pop(ctx, _UnitEditAction.changeDriver),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                u.isSupportWork
+                    ? Icons.handyman_outlined
+                    : Icons.local_shipping_outlined,
+                color: const Color(0xFF455A64),
+              ),
+              title: const Text(
+                'เปลี่ยนงาน',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                'ปัจจุบัน: ${_workKindLabel(u.workKind)}',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              onTap: () =>
+                  Navigator.pop(ctx, _UnitEditAction.changeWorkType),
             ),
             const Divider(height: 1),
             if (u.isBrokenReported)
@@ -1327,6 +1418,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     switch (action) {
       case _UnitEditAction.changeDriver:
         await _openChangeDriverDialog(u);
+      case _UnitEditAction.changeWorkType:
+        await _openChangeWorkKindDialog(u);
       case _UnitEditAction.reportBroken:
         await _confirmReportBrokenVehicle(u);
       case _UnitEditAction.restoreNormal:
@@ -1374,6 +1467,65 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           u.subtitle = prevSubtitle;
         });
         _toast('แก้ไขไม่สำเร็จ: $e', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => u.busy = false);
+    }
+  }
+
+  Future<void> _openChangeWorkKindDialog(_CounterUnit u) async {
+    final current = u.workKind;
+    final next = current == _WorkKind.support
+        ? _WorkKind.sand
+        : _WorkKind.support;
+    final hasTrips = u.rounds > 0 || u.lapTimes.isNotEmpty;
+    final warnTrips = next == _WorkKind.support && hasTrips;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('เปลี่ยนงาน?'),
+        content: Text(
+          warnTrips
+              ? 'เปลี่ยน "${u.title}" จาก ${_workKindLabel(current)} '
+                  'เป็น ${_workKindLabel(next)} ใช่หรือไม่?\n\n'
+                  'จะปิดปุ่มบันทึกเที่ยว (ยอดเที่ยวที่บันทึกไว้ยังอยู่ในแถว)'
+              : 'เปลี่ยน "${u.title}" จาก ${_workKindLabel(current)} '
+                  'เป็น ${_workKindLabel(next)} ใช่หรือไม่?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยัน'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final prevDetails = u.workDetails;
+    setState(() {
+      u.busy = true;
+      u.workDetails = _appendWorkKindTag(prevDetails, next);
+    });
+    try {
+      await _save(u);
+      if (mounted) {
+        _toast(
+          next == _WorkKind.support
+              ? 'เปลี่ยนเป็นชัพพอตแล้ว — ปิดบันทึกเที่ยว'
+              : 'เปลี่ยนเป็นขนทรายแล้ว — พร้อมบันทึกเที่ยว',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => u.workDetails = prevDetails);
+        _toast('บันทึกไม่สำเร็จ: $e', error: true);
       }
     } finally {
       if (mounted) setState(() => u.busy = false);
@@ -3574,7 +3726,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
       !widget.unit.isOnRecordCooldown;
 
   bool get _canRecordTrip =>
-      _canPress && !widget.unit.isBrokenReported;
+      _canPress && !widget.unit.isBrokenReported && !widget.unit.isSupportWork;
 
   @override
   _CounterUnit get cooldownUnit => widget.unit;
@@ -3637,7 +3789,8 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
     }
     _pointerDownAt = DateTime.now();
     _holdTriggered = false;
-    if (widget.unit.rounds > 0) {
+    // ชัพพอตปิดทั้งนับและ hold-to-undo; รถเสียยัง hold ลบเที่ยวได้
+    if (widget.unit.rounds > 0 && !widget.unit.isSupportWork) {
       setState(() => _holdProgress = 0);
       widget.setHoldLock(true);
       _startHoldTimer();
@@ -3715,7 +3868,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
           burstTick: unit.burstTick,
           onCooldown: onCooldown,
           cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
-          recordingEnabled: !unit.isBrokenReported,
+          recordingEnabled: !unit.isBrokenReported && !unit.isSupportWork,
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -3740,9 +3893,11 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          unit.isBrokenReported
-                              ? 'คันที่ $carNo • หยุดบันทึกเที่ยว'
-                              : 'คันที่ $carNo • บันทึกเที่ยว',
+                          unit.isSupportWork
+                              ? 'คันที่ $carNo • ชัพพอต'
+                              : unit.isBrokenReported
+                                  ? 'คันที่ $carNo • หยุดบันทึกเที่ยว'
+                                  : 'คันที่ $carNo • บันทึกเที่ยว',
                           style: const TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.w800,
@@ -3750,7 +3905,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                           ),
                         ),
                       ),
-                      if (unit.isBrokenReported) ...[
+                      if (unit.isSupportWork) ...[
+                        const SizedBox(height: 5),
+                        const _SupportWorkBadge(compact: false),
+                      ] else if (unit.isBrokenReported) ...[
                         const SizedBox(height: 5),
                         const _BrokenVehicleBadge(compact: false),
                       ],
@@ -3783,15 +3941,17 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                           height: 1.12,
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white.withValues(alpha: 0.88),
+                      if (!unit.isSupportWork) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
                         ),
-                      ),
+                      ],
                       if (unit.lapTimes.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -3802,7 +3962,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                           ),
                         ),
                       ],
-                      if (widget.goal > 0) ...[
+                      if (!unit.isSupportWork && widget.goal > 0) ...[
                         const SizedBox(height: 4),
                         _GoalProgressBar(
                           rounds: unit.rounds,
@@ -3851,7 +4011,9 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        'คันที่ $carNo',
+                        unit.isSupportWork
+                            ? 'คันที่ $carNo • ชัพพอต'
+                            : 'คันที่ $carNo',
                         style: const TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
@@ -3859,7 +4021,10 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                         ),
                       ),
                     ),
-                    if (unit.isBrokenReported) ...[
+                    if (unit.isSupportWork) ...[
+                      const SizedBox(width: 4),
+                      const _SupportWorkBadge(compact: true),
+                    ] else if (unit.isBrokenReported) ...[
                       const SizedBox(width: 4),
                       const _BrokenVehicleBadge(compact: true),
                     ],
@@ -3873,7 +4038,8 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                     burstTick: unit.burstTick,
                     onCooldown: onCooldown,
                     cooldownSecondsLeft: unit.recordCooldownSecondsLeft,
-                    recordingEnabled: !unit.isBrokenReported,
+                    recordingEnabled:
+                        !unit.isBrokenReported && !unit.isSupportWork,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -3901,19 +4067,21 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
                     color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white.withValues(alpha: 0.88),
+                if (!unit.isSupportWork) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '× ${_CountRecordCounterPanelState._formatCubic(widget.cubicPerTrip)} คิว',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white.withValues(alpha: 0.88),
+                    ),
                   ),
-                ),
-                if (widget.goal > 0) ...[
+                ],
+                if (!unit.isSupportWork && widget.goal > 0) ...[
                   const SizedBox(height: 4),
                   _GoalProgressBar(
                     rounds: unit.rounds,
@@ -3935,8 +4103,11 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
     final unit = widget.unit;
     final busy = unit.busy;
     final broken = unit.isBrokenReported;
+    final support = unit.isSupportWork;
     final onCooldown = unit.isOnRecordCooldown && !busy;
-    final bg = _vehicleButtonColor(widget.index);
+    final bg = support
+        ? const Color(0xFF52616B)
+        : _vehicleButtonColor(widget.index);
     final carNo = widget.index + 1;
     return _withRecordBurst(
       unit: unit,
@@ -3945,7 +4116,7 @@ class _VehicleRecordButtonState extends State<_VehicleRecordButton>
       bgColor: bg,
       shadowColor: bg,
       busy: busy,
-      dimmed: onCooldown || broken,
+      dimmed: onCooldown || broken || support,
       pressed: _isPressed,
       shimmer: false,
       onPointerDown: _onPointerDown,
@@ -4277,6 +4448,45 @@ class _BrokenVehicleBadge extends StatelessWidget {
               fontSize: compact ? 8.5 : 10,
               fontWeight: FontWeight.w800,
               color: const Color(0xFFE65100),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportWorkBadge extends StatelessWidget {
+  const _SupportWorkBadge({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFCFD8DC),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.handyman_outlined,
+            size: compact ? 10 : 12,
+            color: const Color(0xFF37474F),
+          ),
+          SizedBox(width: compact ? 2 : 4),
+          Text(
+            'ชัพพอต',
+            style: TextStyle(
+              fontSize: compact ? 8.5 : 10,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF37474F),
             ),
           ),
         ],
@@ -5211,6 +5421,39 @@ class _SelectRow extends StatelessWidget {
                     onChanged();
                   },
           ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'งาน',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SegmentedButton<_WorkKind>(
+            segments: const [
+              ButtonSegment<_WorkKind>(
+                value: _WorkKind.sand,
+                label: Text('ขนทราย'),
+                icon: Icon(Icons.local_shipping_outlined, size: 16),
+              ),
+              ButtonSegment<_WorkKind>(
+                value: _WorkKind.support,
+                label: Text('ชัพพอต'),
+                icon: Icon(Icons.handyman_outlined, size: 16),
+              ),
+            ],
+            selected: {row.workKind},
+            onSelectionChanged: (s) {
+              if (s.isEmpty) return;
+              row.workKind = s.first;
+              onChanged();
+            },
+          ),
         ],
       ),
     );
@@ -5542,8 +5785,9 @@ class _DailyShareCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = isTrip ? const Color(0xFF1565C0) : const Color(0xFFAD1457);
     final unitLabel = isTrip ? 'เที่ยว' : 'รอบ';
-    final withData =
-        units.where((u) => u.rounds > 0).toList(growable: false);
+    final withData = units
+        .where((u) => u.rounds > 0 || u.isSupportWork)
+        .toList(growable: false);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
@@ -5648,7 +5892,9 @@ class _DailyShareCard extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: _vehicleButtonColor(units.indexOf(u)),
+                        color: u.isSupportWork
+                            ? const Color(0xFF52616B)
+                            : _vehicleButtonColor(units.indexOf(u)),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -5666,7 +5912,7 @@ class _DailyShareCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${u.rounds} เที่ยว',
+                      u.isSupportWork ? 'ชัพพอต' : '${u.rounds} เที่ยว',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w900,
