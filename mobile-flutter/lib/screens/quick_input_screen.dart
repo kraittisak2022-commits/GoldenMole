@@ -741,6 +741,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ชิปที่เพิ่งวาง — ใช้เด้ง AnimatedScale ชั่วคราว
   final Set<String> _attendanceJustDroppedIds = <String>{};
 
+  /// หน่วงก่อนเริ่มลากชื่อ — สั้นพอให้รู้สึกเหมือนแตะแล้วลากได้ทันที
+  /// แต่ยังเหลือช่วงให้เลื่อนดูรายชื่อในพูลได้ตามปกติ
+  static const _attDragDelay = Duration(milliseconds: 120);
+
   final List<_GeneralSubJob> _generalSubJobs = [];
   final List<_OtGroupDraft> _otGroups = [];
   List<String> _vehicleWorkSuggestions = const [];
@@ -12258,15 +12262,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         z.subLabel ?? 'วางที่นี่',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: 15.5,
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFF94A3B8),
                         ),
                       ),
                     )
                   : Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: ids.map((empId) {
                         final emp = _employeesById[empId];
                         final label = emp == null
@@ -12274,6 +12278,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             : _employeeUiDisplayName(emp);
                         return LongPressDraggable<String>(
                           data: empId,
+                          delay: _attDragDelay,
                           onDragStarted: () => AppHaptics.tap(),
                           feedback: Material(
                             color: Colors.transparent,
@@ -12285,7 +12290,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 style: GoogleFonts.kanit(
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
-                                  fontSize: 13,
+                                  fontSize: 18,
                                 ),
                               ),
                               backgroundColor: color.withValues(alpha: 0.92),
@@ -12295,17 +12300,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             opacity: 0.35,
                             child: InputChip(
                               labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 4,
+                                horizontal: 8,
                               ),
                               padding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                                horizontal: 2,
+                                vertical: 9,
+                                horizontal: 6,
                               ),
                               label: Text(
                                 label,
                                 style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 17,
                                 ),
                               ),
                               onDeleted: null,
@@ -12319,18 +12324,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             curve: Curves.easeOutBack,
                             child: InputChip(
                               labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 4,
+                                horizontal: 8,
                               ),
                               padding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                                horizontal: 2,
+                                vertical: 9,
+                                horizontal: 6,
                               ),
                               label: Text(
                                 label,
                                 style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 17,
                                 ),
+                              ),
+                              deleteIcon: const Icon(
+                                Icons.cancel_rounded,
+                                size: 20,
                               ),
                               onDeleted: () =>
                                   _attendanceRemoveEmp(z.bucketId, empId),
@@ -12419,7 +12428,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
-                      fontSize: 14.5,
+                      fontSize: 17,
                       color: const Color(0xFF0F172A),
                       height: 1.2,
                     ),
@@ -12428,8 +12437,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 if (count > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
+                      horizontal: 10,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.12),
@@ -12438,7 +12447,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     child: Text(
                       '$count',
                       style: GoogleFonts.kanit(
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                         color: color,
                       ),
@@ -12453,7 +12462,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Text(
                 subheader,
                 style: GoogleFonts.kanit(
-                  fontSize: 11.5,
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   color: const Color(0xFF64748B),
                 ),
@@ -12520,7 +12529,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
-                fontSize: 13.5,
+                fontSize: 16,
                 color: Colors.white,
               ),
             ),
@@ -12552,7 +12561,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             emptyText,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.kanit(
-                              fontSize: 12.5,
+                              fontSize: 14.5,
                               color: Colors.black45,
                             ),
                           ),
@@ -12566,35 +12575,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             // เลื่อนดูรายชื่อแบบลื่นๆ (เด้งปลายรายการเหมือนเลื่อนการ์ดในเกม)
                             physics: const BouncingScrollPhysics(),
                             padding: const EdgeInsets.only(right: 8),
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 8,
-                              children: people.map((e) {
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 10,
+                            children: people.map((e) {
                                 final id = e.id;
                                 final selected = pickedPool.contains(id);
                                 final placed = assignedHere.contains(id);
                                 final name = _employeeUiDisplayName(e);
                                 return LongPressDraggable<String>(
                                   data: id,
+                                  delay: _attDragDelay,
+                                  onDragStarted: () => AppHaptics.tap(),
                                   feedback: Material(
                                     elevation: 6,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(14),
                                     color: Colors.transparent,
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
+                                        horizontal: 16,
+                                        vertical: 12,
                                       ),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF1565C0),
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                       child: Text(
                                         name,
                                         style: GoogleFonts.kanit(
                                           fontWeight: FontWeight.w700,
                                           color: Colors.white,
-                                          fontSize: 13,
+                                          fontSize: 18,
                                         ),
                                       ),
                                     ),
@@ -12648,27 +12659,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : placed
           ? const Color(0xFFE8F5E9)
           : Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: selected
                   ? accent
                   : placed
                   ? const Color(0xFF81C784)
                   : const Color(0xFFCBD5E1),
+              width: selected || placed ? 1.6 : 1,
             ),
           ),
           child: Text(
             name,
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 18,
               color: const Color(0xFF1E293B),
             ),
           ),
@@ -12808,7 +12820,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           _attendanceSectionTitle(section),
                           textAlign: TextAlign.center,
                           style: GoogleFonts.kanit(
-                            fontSize: 20,
+                            fontSize: 23,
                             fontWeight: FontWeight.w800,
                             color: const Color(0xFF0F5FAF),
                           ),
@@ -12816,7 +12828,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         Text(
                           dateLabel,
                           style: GoogleFonts.kanit(
-                            fontSize: 13,
+                            fontSize: 14.5,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF64748B),
                           ),
@@ -12855,7 +12867,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         _attendanceBoardSummary(section),
                         textAlign: TextAlign.center,
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: const Color(0xFF475569),
                         ),
@@ -12872,7 +12884,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 : _attendanceSectionSaveLabel(section),
                             style: GoogleFonts.kanit(
                               fontWeight: FontWeight.w800,
-                              fontSize: 17,
+                              fontSize: 19,
                             ),
                           ),
                           style: FilledButton.styleFrom(
@@ -13069,7 +13081,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
-    final poolH = (size.height * 0.34).clamp(240.0, 380.0);
+    // ชิปชื่อใหญ่ขึ้น — เผื่อความสูงพูลและการ์ดตามไปด้วย
+    final poolH = (size.height * 0.38).clamp(300.0, 460.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -13082,8 +13095,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             separatorBuilder: (context, index) => const SizedBox(height: gap),
             itemBuilder: (context, i) {
               final h = i == cards.length - 1 && cards.length >= 4
-                  ? 320.0
-                  : (i == 1 ? 200.0 : 150.0);
+                  ? 400.0
+                  : (i == 1 ? 260.0 : 200.0);
               return SizedBox(height: h, child: cards[i]);
             },
           ),
