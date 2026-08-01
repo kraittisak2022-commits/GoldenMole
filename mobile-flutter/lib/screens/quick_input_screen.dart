@@ -171,10 +171,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
   late final TextEditingController _categoryController;
-  final _sand1MorningController = TextEditingController();
-  final _sand1AfternoonController = TextEditingController();
-  final _sand2MorningController = TextEditingController();
-  final _sand2AfternoonController = TextEditingController();
+  /// จำนวนคิวที่ร่อน — รวมเครื่องใหม่/เก่าเป็นค่าเดียวต่อช่วงเวลา
+  final _sandQtyMorningController = TextEditingController();
+  final _sandQtyAfternoonController = TextEditingController();
   final _sandDrumsObtainedController = TextEditingController();
   final _drumsWashedAtHomeController = TextEditingController();
   final _sandMorningStartController = TextEditingController();
@@ -292,8 +291,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// แถวที่บันทึกในวงจรนี้แล้ว — อย่ายิง created_at ซ้ำ
   final Set<String> _persistOmitCreatedSessionIds = {};
   final Map<String, String> _sandRowIdsByKey = {};
-  List<String> _sand1OperatorNames = const [];
-  List<String> _sand2OperatorNames = const [];
+  List<String> _sandOperatorNames = const [];
   String? _laborTxId;
   String? _homeSandTxId;
   String? _homeSandRoundTxId;
@@ -1084,15 +1082,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ล้างฟอร์มก่อนโหลดวันใหม่ เพื่อไม่ให้เหลือค่าจากวันก่อนหน้า
   void _clearModuleFormFields() {
     if (_isSandWashMode) {
-      _sand1MorningController.clear();
-      _sand1AfternoonController.clear();
-      _sand2MorningController.clear();
-      _sand2AfternoonController.clear();
+      _sandQtyMorningController.clear();
+      _sandQtyAfternoonController.clear();
       _sandDrumsObtainedController.clear();
       _sandMorningStartController.clear();
       _sandEveningEndController.clear();
-      _sand1OperatorNames = const [];
-      _sand2OperatorNames = const [];
+      _sandOperatorNames = const [];
     } else if (_isHomeSandMode) {
       _sandDrumsObtainedController.clear();
       _drumsWashedAtHomeController.clear();
@@ -1627,8 +1622,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     List<AppTransaction> sandMatched,
     List<AppTransaction> allDay,
   ) {
-    List<String> oldMachineNames = const [];
-    List<String> newMachineNames = const [];
+    final operatorNames = <String>[];
+    void addOperators(Iterable<String> names) {
+      for (final n in names) {
+        if (n.trim().isEmpty || operatorNames.contains(n)) continue;
+        operatorNames.add(n);
+      }
+    }
+
+    // รวมค่าของทั้งสองเครื่องเป็นช่องเดียว — แถวเก่าที่แยกไว้ยังอ่านมารวมได้
+    var morningTotal = 0.0;
+    var afternoonTotal = 0.0;
+    var hasMachineRow = false;
     for (final t in sandMatched) {
       final mt = (t.sandMachineType ?? '').toLowerCase();
       final desc = t.description;
@@ -1639,23 +1644,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final isNewMachine =
           mt == 'new' ||
           desc.contains('เครื่องร่อน (ใหม่)') ||
-          desc.contains('เครื่องร่อน 2');
-      if (isOldMachine) {
-        _sandRowIdsByKey.putIfAbsent('Old', () => t.id);
-        _sand1MorningController.text = _strNum(t.sandMorning);
-        _sand1AfternoonController.text = _strNum(t.sandAfternoon);
-        final names = _operatorNamesFromTransaction(t);
-        if (oldMachineNames.isEmpty && names.isNotEmpty) {
-          oldMachineNames = names;
-        }
-      } else if (isNewMachine) {
-        _sandRowIdsByKey.putIfAbsent('New', () => t.id);
-        _sand2MorningController.text = _strNum(t.sandMorning);
-        _sand2AfternoonController.text = _strNum(t.sandAfternoon);
-        final names = _operatorNamesFromTransaction(t);
-        if (newMachineNames.isEmpty && names.isNotEmpty) {
-          newMachineNames = names;
-        }
+          desc.contains('เครื่องร่อน 2') ||
+          (mt.isEmpty && desc.contains('เครื่องร่อน'));
+      if (isOldMachine || isNewMachine) {
+        _sandRowIdsByKey.putIfAbsent(isOldMachine ? 'Old' : 'New', () => t.id);
+        morningTotal += (t.sandMorning ?? 0);
+        afternoonTotal += (t.sandAfternoon ?? 0);
+        hasMachineRow = true;
+        addOperators(_operatorNamesFromTransaction(t));
       } else if (t.description.contains('จำนวนถัง')) {
         _sandRowIdsByKey.putIfAbsent('drums', () => t.id);
         _sandDrumsObtainedController.text = _strNum(t.drumsObtained);
@@ -1667,37 +1663,34 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _sandEveningEndController.text = t.sandEveningEnd!;
       }
     }
+    if (hasMachineRow) {
+      _sandQtyMorningController.text = _strNum(morningTotal);
+      _sandQtyAfternoonController.text = _strNum(afternoonTotal);
+    }
     _prefillSandWashFromCountRecord(allDay);
 
     final laborWash = _operatorNamesFromLatestLaborWash(allDay);
-    if (laborWash.oldNames.isNotEmpty) {
-      oldMachineNames = laborWash.oldNames;
-    }
-    if (laborWash.newNames.isNotEmpty) {
-      newMachineNames = laborWash.newNames;
+    if (laborWash.oldNames.isNotEmpty || laborWash.newNames.isNotEmpty) {
+      operatorNames.clear();
+      addOperators(laborWash.newNames);
+      addOperators(laborWash.oldNames);
     }
 
-    _sand1OperatorNames = oldMachineNames;
-    _sand2OperatorNames = newMachineNames;
+    _sandOperatorNames = List.unmodifiable(operatorNames);
   }
 
-  /// เติมช่องเครื่องร่อนใหม่/เก่า จากจำนวนที่นับใน «บันทึกและนับจำนวน → การร่อนทราย»
-  /// แบ่งตามช่วงเช้า/บ่าย (เศษให้เครื่องใหม่ก่อน) — ผู้ใช้แก้ไขทับได้ก่อนบันทึก
+  /// เติมช่องจำนวนคิว จากจำนวนที่นับใน «บันทึกและนับจำนวน → การร่อนทราย»
+  /// แยกตามช่วงเช้า/บ่าย — ผู้ใช้แก้ไขทับได้ก่อนบันทึก
   void _prefillSandWashFromCountRecord(List<AppTransaction> allDay) {
     final ymd = _quickYmd(_selectedDate);
     final periods = countRecordSandPeriodTotals(ymd, allDay);
     if (periods.morning <= 0 && periods.afternoon <= 0) return;
 
-    final morning = splitSandRoundsNewFirst(periods.morning);
-    final afternoon = splitSandRoundsNewFirst(periods.afternoon);
-
     if (periods.morning > 0) {
-      _sand2MorningController.text = _strNum(morning.newer.toDouble());
-      _sand1MorningController.text = _strNum(morning.older.toDouble());
+      _sandQtyMorningController.text = _strNum(periods.morning.toDouble());
     }
     if (periods.afternoon > 0) {
-      _sand2AfternoonController.text = _strNum(afternoon.newer.toDouble());
-      _sand1AfternoonController.text = _strNum(afternoon.older.toDouble());
+      _sandQtyAfternoonController.text = _strNum(periods.afternoon.toDouble());
     }
   }
 
@@ -2003,10 +1996,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _amountController.dispose();
     _descriptionController.dispose();
     _categoryController.dispose();
-    _sand1MorningController.dispose();
-    _sand1AfternoonController.dispose();
-    _sand2MorningController.dispose();
-    _sand2AfternoonController.dispose();
+    _sandQtyMorningController.dispose();
+    _sandQtyAfternoonController.dispose();
     _sandDrumsObtainedController.dispose();
     _drumsWashedAtHomeController.dispose();
     _sandMorningStartController.dispose();
@@ -2792,13 +2783,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'บันทึกการร่อนทราย / ล้างทราย',
       saveButtonLabel: 'บันทึก',
       body: () async {
-        final s1m = double.tryParse(_sand1MorningController.text.trim()) ?? 0;
-        final s1a = double.tryParse(_sand1AfternoonController.text.trim()) ?? 0;
-        final s2m = double.tryParse(_sand2MorningController.text.trim()) ?? 0;
-        final s2a = double.tryParse(_sand2AfternoonController.text.trim()) ?? 0;
+        final qtyMorning =
+            double.tryParse(_sandQtyMorningController.text.trim()) ?? 0;
+        final qtyAfternoon =
+            double.tryParse(_sandQtyAfternoonController.text.trim()) ?? 0;
         final drums =
             double.tryParse(_sandDrumsObtainedController.text.trim()) ?? 0;
-        final total = s1m + s1a + s2m + s2a;
+        final total = qtyMorning + qtyAfternoon;
         final hadPriorSandRows = _sandRowIdsByKey.isNotEmpty;
         if (total <= 0 && drums <= 0 && !hadPriorSandRows) {
           _failSave('กรุณากรอกอย่างน้อยจำนวนคิวทรายหรือจำนวนถัง');
@@ -2847,19 +2838,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await _persist(tx);
         }
 
+        // รวมเป็นแถวเดียว — แถวเครื่องเก่าที่เคยบันทึกไว้ถูกเคลียร์เป็น 0
+        // เพื่อไม่ให้ยอดรวมนับซ้ำ
         await saveMachine(
           suffix: 's1',
           machineType: 'Old',
           description: 'ล้างทราย เครื่องร่อน (เก่า)',
-          morning: s1m,
-          afternoon: s1a,
+          morning: 0,
+          afternoon: 0,
         );
         await saveMachine(
           suffix: 's2',
           machineType: 'New',
-          description: 'ล้างทราย เครื่องร่อน (ใหม่)',
-          morning: s2m,
-          afternoon: s2a,
+          description: 'ล้างทราย เครื่องร่อน',
+          morning: qtyMorning,
+          afternoon: qtyAfternoon,
         );
 
         final hasDrumsRow = _sandRowIdsByKey.containsKey('drums');
@@ -2889,10 +2882,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
         }
 
-        _sand1MorningController.clear();
-        _sand1AfternoonController.clear();
-        _sand2MorningController.clear();
-        _sand2AfternoonController.clear();
+        _sandQtyMorningController.clear();
+        _sandQtyAfternoonController.clear();
         _sandDrumsObtainedController.clear();
         _sandMorningStartController.clear();
         _sandEveningEndController.clear();
@@ -8008,27 +7999,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (_sandEveningEndController.text.trim().isEmpty) {
       _sandEveningEndController.text = '16.20';
     }
-    final s1 =
-        (double.tryParse(_sand1MorningController.text) ?? 0) +
-        (double.tryParse(_sand1AfternoonController.text) ?? 0);
-    final s2 =
-        (double.tryParse(_sand2MorningController.text) ?? 0) +
-        (double.tryParse(_sand2AfternoonController.text) ?? 0);
-    final total = s1 + s2;
+    final total =
+        (double.tryParse(_sandQtyMorningController.text) ?? 0) +
+        (double.tryParse(_sandQtyAfternoonController.text) ?? 0);
     final drums = double.tryParse(_sandDrumsObtainedController.text) ?? 0;
-    const Color sandM1Border = Color(0xFF1D4ED8);
-    const Color sandM1Fill = Color(0xFFEFF6FF);
-    const Color sandM1Label = Color(0xFF1E3A8A);
-    const Color sandM1ChipFg = Color(0xFF1E40AF);
-    const Color sandM1ChipBg = Color(0xFFDBEAFE);
-    const Color sandM1ChipSide = Color(0xFF93C5FD);
-
-    const Color sandM2Border = Color(0xFFD97706);
-    const Color sandM2Fill = Color(0xFFFFF7ED);
-    const Color sandM2Label = Color(0xFF9A3412);
-    const Color sandM2ChipFg = Color(0xFFC2410C);
-    const Color sandM2ChipBg = Color(0xFFFFEDD5);
-    const Color sandM2ChipSide = Color(0xFFFDBA74);
+    const Color sandBorder = Color(0xFF1D4ED8);
+    const Color sandFill = Color(0xFFEFF6FF);
+    const Color sandLabel = Color(0xFF1E3A8A);
+    const Color sandChipFg = Color(0xFF1E40AF);
+    const Color sandChipBg = Color(0xFFDBEAFE);
+    const Color sandChipSide = Color(0xFF93C5FD);
 
     InputDecoration sandMachineDeco({
       required String label,
@@ -8155,8 +8135,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       required String title,
       required IconData icon,
       required Color iconColor,
-      required TextEditingController machine1Controller,
-      required TextEditingController machine2Controller,
+      required TextEditingController controller,
     }) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -8183,37 +8162,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ],
             ),
             const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: sandMachineColumn(
-                    controller: machine2Controller,
-                    label: 'เครื่องร่อน (ใหม่)',
-                    operatorNames: _sand2OperatorNames,
-                    accent: sandM2Border,
-                    fill: sandM2Fill,
-                    labelTint: sandM2Label,
-                    chipFg: sandM2ChipFg,
-                    chipBg: sandM2ChipBg,
-                    chipSide: sandM2ChipSide,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: sandMachineColumn(
-                    controller: machine1Controller,
-                    label: 'เครื่องร่อน (เก่า)',
-                    operatorNames: _sand1OperatorNames,
-                    accent: sandM1Border,
-                    fill: sandM1Fill,
-                    labelTint: sandM1Label,
-                    chipFg: sandM1ChipFg,
-                    chipBg: sandM1ChipBg,
-                    chipSide: sandM1ChipSide,
-                  ),
-                ),
-              ],
+            sandMachineColumn(
+              controller: controller,
+              label: 'จำนวนคิวที่ร่อน',
+              operatorNames: _sandOperatorNames,
+              accent: sandBorder,
+              fill: sandFill,
+              labelTint: sandLabel,
+              chipFg: sandChipFg,
+              chipBg: sandChipBg,
+              chipSide: sandChipSide,
             ),
           ],
         ),
@@ -8300,16 +8258,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             title: 'ช่วงเช้า',
             icon: Icons.wb_sunny_outlined,
             iconColor: const Color(0xFF1F9CF0),
-            machine1Controller: _sand1MorningController,
-            machine2Controller: _sand2MorningController,
+            controller: _sandQtyMorningController,
           ),
           const SizedBox(height: 12),
           periodRow(
             title: 'ช่วงบ่าย',
             icon: Icons.wb_twilight_outlined,
             iconColor: const Color(0xFF2FB6B0),
-            machine1Controller: _sand1AfternoonController,
-            machine2Controller: _sand2AfternoonController,
+            controller: _sandQtyAfternoonController,
           ),
           const SizedBox(height: 12),
           Container(
