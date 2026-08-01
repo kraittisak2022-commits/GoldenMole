@@ -152,46 +152,6 @@ struct LineChartView: View {
     }
 }
 
-struct BreakEvenScatterView: View {
-    let points: [(income: Double, expense: Double, label: String)]
-
-    private var maxVal: Double {
-        let vals = points.flatMap { [$0.income, $0.expense] }
-        return max(vals.max() ?? 1, 1)
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let pad: CGFloat = 28
-            ZStack {
-                Path { p in
-                    p.move(to: CGPoint(x: pad, y: h - pad))
-                    p.addLine(to: CGPoint(x: w - pad, y: pad))
-                }
-                .stroke(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-                ForEach(Array(points.enumerated()), id: \.offset) { _, pt in
-                    let x = pad + CGFloat(pt.income / maxVal) * (w - pad * 2)
-                    let y = h - pad - CGFloat(pt.expense / maxVal) * (h - pad * 2)
-                    Circle()
-                        .fill(pt.income >= pt.expense ? Color.green : Color.red)
-                        .frame(width: 8, height: 8)
-                        .position(x: x, y: y)
-                }
-            }
-        }
-        .frame(height: 220)
-        .overlay(alignment: .bottomLeading) {
-            Text("รายรับ →").font(.caption2).foregroundStyle(.secondary)
-        }
-        .overlay(alignment: .topTrailing) {
-            Text("↑ รายจ่าย").font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-}
-
 /// Side-by-side grouped bars for comparing two series (e.g. washed vs transported).
 struct GroupedBarChartView: View {
     let labels: [String]

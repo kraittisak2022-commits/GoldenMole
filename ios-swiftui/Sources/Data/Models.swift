@@ -517,24 +517,6 @@ struct FinancialSummary: Sendable {
     var profit: Double { income - expense }
 }
 
-struct CompositeScoreResult: Sendable {
-    let score: Int
-    let breakdown: [ScoreBreakdownItem]
-}
-
-struct ScoreBreakdownItem: Identifiable, Sendable {
-    let id = UUID()
-    let label: String
-    let weight: String
-    let scorePart: Int
-    let changeLabel: String
-    let trend: ScoreTrend
-}
-
-enum ScoreTrend: Sendable {
-    case up, down, flat, neutral
-}
-
 struct CountRecordTripUnit: Identifiable, Sendable {
     let id: String
     let vehicleId: String
@@ -648,10 +630,4 @@ struct OverviewAlert: Sendable, Identifiable {
     let label: String
     let severity: Severity
     enum Severity: Sendable { case red, amber, green }
-}
-
-struct BreakEvenPoint: Sendable {
-    let label: String
-    let income: Double
-    let expense: Double
 }

@@ -102,16 +102,18 @@ struct TodayOpsSnapshot: Sendable {
             }
         }
 
-        for t in transactions where CalendarV3Logic.leaveRecordCoversDay(t, day: dayKey) {
-            for id in (t.employeeIds ?? []) where !id.isEmpty {
-                leaveIds.insert(id)
-                workingIds.remove(id)
-            }
-        }
+        let attendance = DashboardAggregations.attendanceCounts(
+            dayTx: dayTx,
+            allTransactions: transactions,
+            employees: employees,
+            dayKey: dayKey,
+            workingIdsSeed: workingIds
+        )
+        workingIds = attendance.workingIds
+        leaveIds = attendance.leaveIds
+        let absentIds = attendance.absentIds
 
         let empById = Dictionary(uniqueKeysWithValues: employees.map { ($0.id, $0) })
-        let allIds = Set(employees.map(\.id))
-        let absentIds = allIds.subtracting(workingIds).subtracting(leaveIds)
 
         var rows: [StaffRow] = []
         for id in workingIds.sorted() {
@@ -165,6 +167,56 @@ extension DashboardAggregations {
     struct FuelBalances: Sendable {
         var diesel: Double
         var benzine: Double
+    }
+
+    struct AttendanceCounts: Sendable {
+        var present: Int
+        var leave: Int
+        var absent: Int
+        var workingIds: Set<String>
+        var leaveIds: Set<String>
+        var absentIds: Set<String>
+    }
+
+    static func isMacroUsageRow(_ t: Transaction) -> Bool {
+        t.category == "Vehicle" && CountRecordLogic.isMacroVehicleId(t.vehicleId)
+    }
+
+    /// Shared attendance headcounts for a single day (used by TodayOps + MobileOps).
+    static func attendanceCounts(
+        dayTx: [Transaction],
+        allTransactions: [Transaction],
+        employees: [Employee],
+        dayKey: String,
+        workingIdsSeed: Set<String>? = nil
+    ) -> AttendanceCounts {
+        var workingIds = workingIdsSeed ?? Set<String>()
+        if workingIdsSeed == nil {
+            for t in dayTx where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
+                for id in (t.employeeIds ?? []) where !id.isEmpty {
+                    workingIds.insert(id)
+                }
+            }
+        }
+
+        var leaveIds = Set<String>()
+        for t in allTransactions where CalendarV3Logic.leaveRecordCoversDay(t, day: dayKey) {
+            for id in (t.employeeIds ?? []) where !id.isEmpty {
+                leaveIds.insert(id)
+                workingIds.remove(id)
+            }
+        }
+
+        let allIds = Set(employees.map(\.id))
+        let absentIds = allIds.subtracting(workingIds).subtracting(leaveIds)
+        return AttendanceCounts(
+            present: workingIds.count,
+            leave: leaveIds.count,
+            absent: absentIds.count,
+            workingIds: workingIds,
+            leaveIds: leaveIds,
+            absentIds: absentIds
+        )
     }
 
     static func fuelTxToLiters(_ t: Transaction) -> Double {

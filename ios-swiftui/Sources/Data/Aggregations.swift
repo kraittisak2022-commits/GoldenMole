@@ -83,10 +83,8 @@ enum DashboardAggregations {
 
     // MARK: - Financial
 
-    static func aggregateFinancial(_ transactions: [Transaction]) -> FinancialSummary {
-        let income = transactions.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
-        let expense = transactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
-        return FinancialSummary(income: income, expense: expense)
+    static func totalExpense(_ transactions: [Transaction]) -> Double {
+        transactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
     }
 
     static func expenseByCategory(_ transactions: [Transaction]) -> [String: Double] {
@@ -151,70 +149,12 @@ enum DashboardAggregations {
         return (washed, transported, labels, dates)
     }
 
-    // MARK: - V5 composite score
+    // MARK: - V5 period compare helpers
 
     static func pctChangeVsPrev(cur: Double, prev: Double) -> Double? {
         if prev == 0 && cur == 0 { return 0 }
         if prev == 0 { return nil }
         return ((cur - prev) / abs(prev)) * 100
-    }
-
-    static func computeCompositeScore(
-        cur: FinancialSummary,
-        prev: FinancialSummary,
-        sandWashed: Double,
-        sandTransported: Double,
-        prevSandWashed: Double,
-        prevSandTransported: Double
-    ) -> CompositeScoreResult {
-        let marginScore: Double = cur.income > 0
-            ? max(0, min(100, (cur.profit / cur.income) * 100))
-            : (cur.profit > 0 ? 100 : 0)
-
-        var growthScore = 50.0
-        if prev.profit != 0 {
-            growthScore = max(0, min(100, 50 + ((cur.profit - prev.profit) / abs(prev.profit)) * 50))
-        } else if cur.profit > 0 {
-            growthScore = 85
-        }
-
-        let expenseRatio = cur.income > 0 ? (cur.expense / cur.income) * 100 : (cur.expense > 0 ? 100 : 0)
-        let costControlScore = max(0, min(100, 100 - expenseRatio * 0.6))
-
-        let sandTotal = sandWashed + sandTransported
-        let sandScore = sandTotal <= 0 ? 70 : max(0, min(100, (sandWashed / max(sandWashed, sandTransported)) * 100))
-
-        let score = Int(round(marginScore * 0.35 + growthScore * 0.25 + costControlScore * 0.25 + sandScore * 0.15))
-
-        let profitDelta = pctChangeVsPrev(cur: cur.profit, prev: prev.profit)
-        let costDelta = pctChangeVsPrev(
-            cur: cur.income > 0 ? (cur.expense / cur.income) * 100 : (cur.expense > 0 ? 100 : 0),
-            prev: prev.income > 0 ? (prev.expense / prev.income) * 100 : (prev.expense > 0 ? 100 : 0)
-        )
-
-        return CompositeScoreResult(
-            score: max(0, min(100, score)),
-            breakdown: [
-                ScoreBreakdownItem(label: "ความคุ้มทุน", weight: "35%", scorePart: Int(marginScore), changeLabel: fmtSignedPct(profitDelta), trend: trendFrom(profitDelta)),
-                ScoreBreakdownItem(label: "การเติบโตกำไร", weight: "25%", scorePart: Int(growthScore), changeLabel: fmtSignedPct(profitDelta), trend: trendFrom(profitDelta)),
-                ScoreBreakdownItem(label: "ควบคุมต้นทุน", weight: "25%", scorePart: Int(costControlScore), changeLabel: fmtSignedPct(costDelta, invert: true), trend: trendFrom(costDelta, invert: true)),
-                ScoreBreakdownItem(label: "สมดุลทราย", weight: "15%", scorePart: Int(sandScore), changeLabel: "ล้าง \(Int(sandWashed)) / ขน \(Int(sandTransported))", trend: .neutral)
-            ]
-        )
-    }
-
-    private static func fmtSignedPct(_ n: Double?, invert: Bool = false) -> String {
-        guard let n else { return "ไม่มีฐานเทียบ" }
-        let rounded = abs(n) >= 10 ? round(n) : (round(n * 10) / 10)
-        let sign = rounded > 0 ? "+" : rounded < 0 ? "−" : ""
-        return "\(sign)\(abs(rounded))% เทียบช่วงก่อน"
-    }
-
-    private static func trendFrom(_ n: Double?, invert: Bool = false) -> ScoreTrend {
-        guard let n else { return .neutral }
-        if n == 0 { return .flat }
-        let good = invert ? n < 0 : n > 0
-        return good ? .up : .down
     }
 
     // MARK: - Overview hub aggregations
@@ -374,16 +314,13 @@ enum DashboardAggregations {
     }
 
     static func buildOverviewAlerts(
-        cur: FinancialSummary,
-        prev: FinancialSummary,
+        curExpense: Double,
+        prevExpense: Double,
         quality: DataQualitySummary
     ) -> [OverviewAlert] {
         var alerts: [OverviewAlert] = []
-        if let expDelta = pctChangeVsPrev(cur: cur.expense, prev: prev.expense), expDelta >= 15 {
+        if let expDelta = pctChangeVsPrev(cur: curExpense, prev: prevExpense), expDelta >= 15 {
             alerts.append(OverviewAlert(id: "expense_spike", label: "รายจ่ายพุ่ง", severity: .red))
-        }
-        if let incDelta = pctChangeVsPrev(cur: cur.income, prev: prev.income), incDelta <= -12 {
-            alerts.append(OverviewAlert(id: "income_drop", label: "รายรับลด", severity: .red))
         }
         let sev: OverviewAlert.Severity = quality.coveragePct < 60 ? .red : (quality.coveragePct < 80 ? .amber : .green)
         alerts.append(OverviewAlert(
@@ -395,18 +332,25 @@ enum DashboardAggregations {
     }
 
     static func buildOverviewInsights(
-        cur: FinancialSummary,
-        prev: FinancialSummary,
+        curExpense: Double,
+        prevExpense: Double,
         sandWashed: Double,
         sandTransported: Double,
-        quality: DataQualitySummary
+        quality: DataQualitySummary,
+        mobileCur: MobileOpsMetrics = .empty,
+        mobilePrev: MobileOpsMetrics = .empty
     ) -> [String] {
         var insights: [String] = []
-        if let expDelta = pctChangeVsPrev(cur: cur.expense, prev: prev.expense), expDelta >= 15 {
+        if let expDelta = pctChangeVsPrev(cur: curExpense, prev: prevExpense), expDelta >= 15 {
             insights.append("รายจ่ายเพิ่มขึ้น \(Int(round(expDelta)))% เทียบช่วงก่อน — ควรตรวจหมวดน้ำมัน/ค่าแรง")
         }
-        if let incDelta = pctChangeVsPrev(cur: cur.income, prev: prev.income), incDelta <= -12 {
-            insights.append("รายรับลดลง \(Int(round(abs(incDelta))))% เทียบช่วงก่อน")
+        if let tripDelta = pctChangeVsPrev(cur: Double(mobileCur.tripRounds), prev: Double(mobilePrev.tripRounds)),
+           tripDelta <= -15, mobilePrev.tripRounds > 0 {
+            insights.append("เที่ยวรถลดลง \(Int(round(abs(tripDelta))))% เทียบช่วงก่อน (\(mobileCur.tripRounds) vs \(mobilePrev.tripRounds) เที่ยว)")
+        }
+        if let sandDelta = pctChangeVsPrev(cur: Double(mobileCur.sandRounds), prev: Double(mobilePrev.sandRounds)),
+           sandDelta <= -15, mobilePrev.sandRounds > 0 {
+            insights.append("รอบร่อนทรายลดลง \(Int(round(abs(sandDelta))))% เทียบช่วงก่อน")
         }
         let sandTotal = sandWashed + sandTransported
         if sandTotal > 0 {
@@ -420,7 +364,7 @@ enum DashboardAggregations {
             }
         }
         if quality.coveragePct < 60 {
-            insights.append("ข้อมูลไม่ครบ (\(Int(round(quality.coveragePct)))% ของวันมีธุรกรรม) — คะแนนอาจคลาดเคลื่อน")
+            insights.append("ข้อมูลไม่ครบ (\(Int(round(quality.coveragePct)))% ของวันมีธุรกรรม) — สรุปอาจคลาดเคลื่อน")
         }
         if insights.isEmpty {
             insights.append("แนวโน้มช่วงนี้ค่อนข้างเสถียรเทียบช่วงก่อน — ไม่มีสัญญาณผิดปกติชัดเจน")
@@ -445,29 +389,22 @@ enum DashboardAggregations {
         }
     }
 
-    static func breakEvenPoints(filter: DateFilter, transactions: [Transaction]) -> [BreakEvenPoint] {
-        enumerateDates(in: filter).map { date in
-            let day = transactions.filter { String($0.date.prefix(10)) == date }
-            let income = day.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
-            let expense = day.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
-            return BreakEvenPoint(label: dayLabel(date), income: income, expense: expense)
-        }
-    }
-
     static func overviewCSV(
-        cur: FinancialSummary,
-        prev: FinancialSummary,
+        curExpense: Double,
+        prevExpense: Double,
         sandCur: (washed: Double, transported: Double),
         sandPrev: (washed: Double, transported: Double),
-        score: Int
+        mobileCur: MobileOpsMetrics,
+        mobilePrev: MobileOpsMetrics
     ) -> String {
         var lines = ["metric,current,previous"]
-        lines.append("income,\(cur.income),\(prev.income)")
-        lines.append("expense,\(cur.expense),\(prev.expense)")
-        lines.append("profit,\(cur.profit),\(prev.profit)")
+        lines.append("expense,\(curExpense),\(prevExpense)")
         lines.append("sand_washed,\(sandCur.washed),\(sandPrev.washed)")
         lines.append("sand_transported,\(sandCur.transported),\(sandPrev.transported)")
-        lines.append("score,\(score),")
+        lines.append("trip_rounds,\(mobileCur.tripRounds),\(mobilePrev.tripRounds)")
+        lines.append("sand_rounds,\(mobileCur.sandRounds),\(mobilePrev.sandRounds)")
+        lines.append("fuel_out,\(mobileCur.fuelOutLiters),\(mobilePrev.fuelOutLiters)")
+        lines.append("attendance_days,\(mobileCur.attendanceDays),\(mobilePrev.attendanceDays)")
         return lines.joined(separator: "\n")
     }
 

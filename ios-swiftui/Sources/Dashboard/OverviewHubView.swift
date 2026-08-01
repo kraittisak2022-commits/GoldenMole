@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// Memoized bundle of all Overview (V.1 + V.2 + V.5) analytics — built off the main thread.
+/// Memoized bundle of Overview analytics (expense-focused + mobile ops) — built off the main thread.
 struct OverviewSnapshot: Sendable {
-    let financial: FinancialSummary
-    let prevFinancial: FinancialSummary
+    let expenseTotal: Double
+    let prevExpenseTotal: Double
     let prevFilter: DateFilter
     let numDays: Int
-    let marginPct: Double
     let costSlices: [ChartSlice]
     let dailyBreakdown: [DailyExpenseBreakdown]
     let weeklyBuckets: [WeeklyExpenseBucket]
@@ -20,8 +19,9 @@ struct OverviewSnapshot: Sendable {
     let drums: SandDrumsSeries
     let sandCur: (washed: Double, transported: Double)
     let sandPrev: (washed: Double, transported: Double)
-    let composite: CompositeScoreResult
-    let breakEven: [BreakEvenPoint]
+    let mobileToday: MobileOpsMetrics
+    let mobileRange: MobileOpsMetrics
+    let mobilePrev: MobileOpsMetrics
     let quality: DataQualitySummary
     let alerts: [OverviewAlert]
     let insights: [String]
@@ -29,8 +29,6 @@ struct OverviewSnapshot: Sendable {
     let txCount: Int
 
     nonisolated static func empty(filter: DateFilter) -> OverviewSnapshot {
-        let emptyFin = FinancialSummary(income: 0, expense: 0)
-        let emptyScore = CompositeScoreResult(score: 0, breakdown: [])
         let emptySand = SandOverviewKPIs(
             washed: 0, transported: 0, remaining: 0, forecastLabel: "0 (สมดุล)",
             avgWashedPerDay: 0, avgTransportedPerDay: 0,
@@ -45,13 +43,14 @@ struct OverviewSnapshot: Sendable {
             daysWithSand: 0, sandCoveragePct: 0
         )
         return OverviewSnapshot(
-            financial: emptyFin, prevFinancial: emptyFin, prevFilter: filter,
-            numDays: 1, marginPct: 0, costSlices: [], dailyBreakdown: [],
+            expenseTotal: 0, prevExpenseTotal: 0, prevFilter: filter,
+            numDays: 1, costSlices: [], dailyBreakdown: [],
             weeklyBuckets: [], vehicleCosts: [], dayChangePct: 0,
             sand: emptySand, sandSeriesWashed: [], sandSeriesTransported: [],
             sandSeriesLabels: [], sandCumulative: [], drums: emptyDrums,
-            sandCur: (0, 0), sandPrev: (0, 0), composite: emptyScore,
-            breakEven: [], quality: quality, alerts: [], insights: [],
+            sandCur: (0, 0), sandPrev: (0, 0),
+            mobileToday: .empty, mobileRange: .empty, mobilePrev: .empty,
+            quality: quality, alerts: [], insights: [],
             csvText: "", txCount: 0
         )
     }
@@ -60,17 +59,15 @@ struct OverviewSnapshot: Sendable {
         filter: DateFilter,
         transactions: [Transaction],
         allTransactions: [Transaction],
-        settings: AppSettings
+        settings: AppSettings,
+        employees: [Employee]
     ) -> OverviewSnapshot {
         let curTx = transactions
         let prevFilter = DashboardAggregations.previousPeriodFilter(filter)
         let prevTx = DashboardAggregations.filterByRange(allTransactions, range: prevFilter)
-        let financial = DashboardAggregations.aggregateFinancial(curTx)
-        let prevFinancial = DashboardAggregations.aggregateFinancial(prevTx)
+        let expenseTotal = DashboardAggregations.totalExpense(curTx)
+        let prevExpenseTotal = DashboardAggregations.totalExpense(prevTx)
         let numDays = DashboardAggregations.countInclusiveDays(filter.start, filter.end)
-        let marginPct: Double = financial.income > 0
-            ? (financial.profit / financial.income) * 100
-            : (financial.profit > 0 ? 100 : 0)
 
         let daily = DashboardAggregations.dailyExpenseBreakdown(filter: filter, transactions: curTx)
         var dayChange = 0
@@ -90,31 +87,38 @@ struct OverviewSnapshot: Sendable {
         )
         let sandCur = DashboardAggregations.sandTotals(curTx)
         let sandPrev = DashboardAggregations.sandTotals(prevTx)
-        let composite = DashboardAggregations.computeCompositeScore(
-            cur: financial, prev: prevFinancial,
-            sandWashed: sandCur.washed, sandTransported: sandCur.transported,
-            prevSandWashed: sandPrev.washed, prevSandTransported: sandPrev.transported
+        let mobile = MobileOpsSnapshot.build(
+            filter: filter,
+            allTransactions: allTransactions,
+            employees: employees
         )
         let quality = DashboardAggregations.dataQuality(filter: filter, transactions: curTx)
         let alerts = DashboardAggregations.buildOverviewAlerts(
-            cur: financial, prev: prevFinancial, quality: quality
+            curExpense: expenseTotal, prevExpense: prevExpenseTotal, quality: quality
         )
         let insights = DashboardAggregations.buildOverviewInsights(
-            cur: financial, prev: prevFinancial,
-            sandWashed: sandCur.washed, sandTransported: sandCur.transported,
-            quality: quality
+            curExpense: expenseTotal,
+            prevExpense: prevExpenseTotal,
+            sandWashed: sandCur.washed,
+            sandTransported: sandCur.transported,
+            quality: quality,
+            mobileCur: mobile.range,
+            mobilePrev: mobile.prevRange
         )
         let csv = DashboardAggregations.overviewCSV(
-            cur: financial, prev: prevFinancial,
-            sandCur: sandCur, sandPrev: sandPrev, score: composite.score
+            curExpense: expenseTotal,
+            prevExpense: prevExpenseTotal,
+            sandCur: sandCur,
+            sandPrev: sandPrev,
+            mobileCur: mobile.range,
+            mobilePrev: mobile.prevRange
         )
 
         return OverviewSnapshot(
-            financial: financial,
-            prevFinancial: prevFinancial,
+            expenseTotal: expenseTotal,
+            prevExpenseTotal: prevExpenseTotal,
             prevFilter: prevFilter,
             numDays: numDays,
-            marginPct: marginPct,
             costSlices: DashboardAggregations.costStructureSlices(curTx),
             dailyBreakdown: daily,
             weeklyBuckets: DashboardAggregations.weeklyExpenseBuckets(filter: filter, transactions: curTx),
@@ -128,8 +132,9 @@ struct OverviewSnapshot: Sendable {
             drums: drums,
             sandCur: sandCur,
             sandPrev: sandPrev,
-            composite: composite,
-            breakEven: DashboardAggregations.breakEvenPoints(filter: filter, transactions: curTx),
+            mobileToday: mobile.today,
+            mobileRange: mobile.range,
+            mobilePrev: mobile.prevRange,
             quality: quality,
             alerts: alerts,
             insights: insights,
@@ -158,7 +163,7 @@ struct OverviewHubView: View {
 
     private enum OverviewSection: String, CaseIterable, Identifiable, Hashable {
         case today = "วันนี้"
-        case finance = "การเงิน"
+        case mobileOps = "งานจากแอพ"
         case expense = "รายจ่าย"
         case sand = "ทราย"
         case compare = "เปรียบเทียบ"
@@ -168,7 +173,7 @@ struct OverviewHubView: View {
         var eyebrow: String {
             switch self {
             case .today: return "TODAY"
-            case .finance: return "FINANCE"
+            case .mobileOps: return "MOBILE"
             case .expense: return "EXPENSE"
             case .sand: return "SAND"
             case .compare: return "COMPARE"
@@ -185,7 +190,7 @@ struct OverviewHubView: View {
                     jumpChips(proxy: proxy)
 
                     todayOpsSection.id(OverviewSection.today)
-                    financeSection.id(OverviewSection.finance)
+                    mobileOpsSection.id(OverviewSection.mobileOps)
                     expenseSection.id(OverviewSection.expense)
                     sandSection.id(OverviewSection.sand)
                     compareSection.id(OverviewSection.compare)
@@ -234,7 +239,8 @@ struct OverviewHubView: View {
                         filter: filter,
                         transactions: txs,
                         allTransactions: all,
-                        settings: settingsCopy
+                        settings: settingsCopy,
+                        employees: emps
                     ),
                     TodayOpsSnapshot.build(
                         transactions: all,
@@ -310,12 +316,12 @@ struct OverviewHubView: View {
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(DashboardAggregations.formatCurrency(snapshot.financial.profit))
+                    Text(DashboardAggregations.formatCurrency(snapshot.expenseTotal))
                         .font(.system(size: 34, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
-                    if let delta = compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit) {
+                    if let delta = compactDelta(snapshot.expenseTotal, snapshot.prevExpenseTotal) {
                         Text(delta)
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.white)
@@ -323,27 +329,29 @@ struct OverviewHubView: View {
                             .padding(.vertical, 4)
                             .background(
                                 Capsule().fill(
-                                    (snapshot.financial.profit >= snapshot.prevFinancial.profit
-                                     ? AppTheme.income : AppTheme.expense).opacity(0.35)
+                                    (snapshot.expenseTotal >= snapshot.prevExpenseTotal
+                                     ? AppTheme.expense : AppTheme.income).opacity(0.35)
                                 )
                             )
                     }
                 }
 
-                Text("กำไรสุทธิช่วงนี้")
+                Text("รายจ่ายรวมช่วงนี้")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.75))
 
                 HStack(spacing: 10) {
                     heroMiniStat(
-                        title: "รายรับ",
-                        value: DashboardAggregations.formatCurrency(snapshot.financial.income),
-                        tint: Color(hex: "#A7F3D0")
+                        title: "เฉลี่ย/วัน",
+                        value: DashboardAggregations.formatCurrency(
+                            snapshot.numDays > 0 ? snapshot.expenseTotal / Double(snapshot.numDays) : 0
+                        ),
+                        tint: Color(hex: "#FECACA")
                     )
                     heroMiniStat(
-                        title: "รายจ่าย",
-                        value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
-                        tint: Color(hex: "#FECACA")
+                        title: "บันทึกจากแอพ",
+                        value: "\(snapshot.mobileRange.recordCount)",
+                        tint: Color(hex: "#A7F3D0")
                     )
                 }
             }
@@ -628,28 +636,143 @@ struct OverviewHubView: View {
         }
     }
 
-    // MARK: - Finance (V.1)
+    // MARK: - Mobile ops summary
 
-    private var financeSection: some View {
+    private var mobileOpsSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(.finance, title: "การเงิน", subtitle: "KPI · โครงสร้างต้นทุน · แนวโน้ม")
+            sectionEyebrow(
+                .mobileOps,
+                title: "สรุปงานจากแอพมือถือ",
+                subtitle: "วันนี้เป็นหลัก · รวมช่วงที่เลือกด้านล่าง"
+            )
 
-            kpiStrip
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                KPITile(
+                    title: "เที่ยวรถ",
+                    value: "\(snapshot.mobileToday.tripRounds) เที่ยว",
+                    subtitle: "\(snapshot.mobileToday.tripVehicles) คัน · \(DashboardAggregations.formatNumber(snapshot.mobileToday.tripCubic)) คิว",
+                    accent: AppTheme.vehicle,
+                    systemImage: "truck.box.fill"
+                )
+                KPITile(
+                    title: "ร่อนทราย",
+                    value: "\(snapshot.mobileToday.sandRounds) รอบ",
+                    subtitle: "ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileToday.sandWashedCubic)) คิว",
+                    accent: AppTheme.sand,
+                    systemImage: "drop.fill"
+                )
+                KPITile(
+                    title: "เช็คชื่อ",
+                    value: "\(snapshot.mobileToday.presentCount) คน",
+                    subtitle: "ลา \(snapshot.mobileToday.leaveCount) · ขาด \(snapshot.mobileToday.absentCount)",
+                    accent: AppTheme.labor,
+                    systemImage: "person.3.fill"
+                )
+                KPITile(
+                    title: "รถดรัม",
+                    value: "เช้า \(snapshot.mobileToday.tripMorning)",
+                    subtitle: "บ่าย \(snapshot.mobileToday.tripAfternoon) · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileToday.drumsHome))",
+                    accent: AppTheme.warning,
+                    systemImage: "cylinder.split.1x2"
+                )
+                KPITile(
+                    title: "แม็คโคร",
+                    value: "\(snapshot.mobileToday.macroUsageCount) ครั้ง",
+                    subtitle: "\(snapshot.mobileToday.macroVehicles) คัน",
+                    accent: AppTheme.purple,
+                    systemImage: "hammer.fill"
+                )
+                KPITile(
+                    title: "น้ำมัน",
+                    value: "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters)) L",
+                    subtitle: "ออก \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelOutLiters)) L",
+                    accent: AppTheme.fuel,
+                    systemImage: "fuelpump.fill"
+                )
+                KPITile(
+                    title: "ลางาน",
+                    value: "\(snapshot.mobileToday.leaveCount) คน",
+                    subtitle: "วันนี้",
+                    accent: AppTheme.warning,
+                    systemImage: "calendar.badge.minus"
+                )
+            }
 
-            SectionCard("รายรับ · รายจ่าย", systemImage: "chart.xyaxis.line") {
-                if snapshot.dailyBreakdown.isEmpty {
-                    EmptyStateView(title: "ยังไม่มีข้อมูลรายวัน", systemImage: "chart.line.uptrend.xyaxis")
-                } else {
-                    LineChartView(
-                        labels: snapshot.dailyBreakdown.map(\.label),
-                        values: snapshot.dailyBreakdown.map(\.total),
-                        lineColor: AppTheme.expense,
-                        secondaryValues: dailyIncomeSeries,
-                        secondaryColor: AppTheme.income,
-                        primaryLabel: "รายจ่าย",
-                        secondaryLabel: "รายรับ"
-                    )
-                }
+            SectionCard("รวมช่วง \(periodLabel)", systemImage: "app.badge.fill", subtitle: "ยอดรวมจากแอพมือถือ") {
+                mobileRangeBullet(
+                    "เที่ยวรถ",
+                    "\(snapshot.mobileRange.tripRounds) เที่ยว · \(snapshot.mobileRange.tripVehicles) คัน · \(DashboardAggregations.formatNumber(snapshot.mobileRange.tripCubic)) คิว"
+                )
+                mobileRangeBullet(
+                    "ร่อนทราย",
+                    "\(snapshot.mobileRange.sandRounds) รอบ · ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileRange.sandWashedCubic)) คิว"
+                )
+                mobileRangeBullet(
+                    "เช็คชื่อ",
+                    "เฉลี่ย \(snapshot.mobileRange.presentCount) คน/วัน · \(snapshot.mobileRange.attendanceDays) วันที่มีเช็คชื่อ"
+                )
+                mobileRangeBullet(
+                    "รถดรัม",
+                    "เช้า \(snapshot.mobileRange.tripMorning) · บ่าย \(snapshot.mobileRange.tripAfternoon) · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileRange.drumsHome))"
+                )
+                mobileRangeBullet(
+                    "แม็คโคร",
+                    "\(snapshot.mobileRange.macroUsageCount) ครั้ง · \(snapshot.mobileRange.macroVehicles) คัน"
+                )
+                mobileRangeBullet(
+                    "น้ำมัน",
+                    "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelInLiters)) L · ออก \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelOutLiters)) L"
+                )
+                mobileRangeBullet(
+                    "ลางาน",
+                    "\(snapshot.mobileRange.leaveCount) คน-วัน · บันทึก \(snapshot.mobileRange.recordCount) รายการ"
+                )
+            }
+        }
+    }
+
+    private func mobileRangeBullet(_ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 6))
+                .foregroundStyle(AppTheme.brand)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    // MARK: - Expense analytics
+
+    private var expenseSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
+            sectionEyebrow(.expense, title: "รายจ่ายและแนวโน้ม", subtitle: "โครงสร้าง · รายวัน · รายสัปดาห์ · ต่อรถ")
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                KPITile(
+                    title: "เฉลี่ย/สัปดาห์",
+                    value: DashboardAggregations.formatCurrency(
+                        snapshot.expenseTotal / max(1, Double(snapshot.numDays) / 7)
+                    ),
+                    accent: AppTheme.warning,
+                    systemImage: "chart.bar",
+                    trend: expenseTrendSeries
+                )
+                KPITile(
+                    title: "วันในช่วง",
+                    value: "\(snapshot.numDays)",
+                    subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
+                    accent: AppTheme.info,
+                    systemImage: "calendar",
+                    deltaText: dayChangeChip
+                )
             }
 
             SectionCard("โครงสร้างต้นทุน", systemImage: "circle.grid.cross.fill") {
@@ -673,83 +796,6 @@ struct OverviewHubView: View {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    private var kpiStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                KPIStripCard(
-                    title: "กำไรสุทธิ",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
-                    accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "chart.line.uptrend.xyaxis",
-                    trend: expenseTrendSeries,
-                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
-                )
-                KPIStripCard(
-                    title: "รายรับ",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.income),
-                    accent: AppTheme.income,
-                    systemImage: "banknote",
-                    deltaText: compactDelta(snapshot.financial.income, snapshot.prevFinancial.income)
-                )
-                KPIStripCard(
-                    title: "รายจ่าย",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
-                    accent: AppTheme.expense,
-                    systemImage: "creditcard",
-                    trend: expenseTrendSeries,
-                    deltaText: compactDelta(snapshot.financial.expense, snapshot.prevFinancial.expense)
-                )
-                KPIStripCard(
-                    title: "อัตรากำไร",
-                    value: String(format: "%.1f%%", snapshot.marginPct),
-                    accent: AppTheme.info,
-                    systemImage: "percent",
-                    deltaText: compactDelta(snapshot.marginPct, marginPct(snapshot.prevFinancial))
-                )
-                KPIStripCard(
-                    title: "เฉลี่ย/วัน",
-                    value: DashboardAggregations.formatCurrency(
-                        snapshot.numDays > 0 ? snapshot.financial.expense / Double(snapshot.numDays) : 0
-                    ),
-                    accent: AppTheme.cyan,
-                    systemImage: "calendar",
-                    trend: expenseTrendSeries,
-                    deltaText: dayChangeChip
-                )
-            }
-            .scrollTargetLayout()
-        }
-        .scrollTargetBehavior(.viewAligned)
-    }
-
-    // MARK: - Expense analytics (V.2)
-
-    private var expenseSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(.expense, title: "รายจ่ายและแนวโน้ม", subtitle: "รายวัน · รายสัปดาห์ · ต่อรถ")
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "เฉลี่ย/สัปดาห์",
-                    value: DashboardAggregations.formatCurrency(
-                        snapshot.financial.expense / max(1, Double(snapshot.numDays) / 7)
-                    ),
-                    accent: AppTheme.warning,
-                    systemImage: "chart.bar",
-                    trend: expenseTrendSeries
-                )
-                KPITile(
-                    title: "วันในช่วง",
-                    value: "\(snapshot.numDays)",
-                    subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
-                    accent: AppTheme.info,
-                    systemImage: "calendar",
-                    deltaText: dayChangeChip
-                )
             }
 
             SectionCard("รายจ่ายรายวัน", systemImage: "chart.bar.fill") {
@@ -837,11 +883,15 @@ struct OverviewHubView: View {
             }
 
             SectionCard("แนวโน้มรายจ่าย", systemImage: "chart.line.uptrend.xyaxis") {
-                LineChartView(
-                    labels: snapshot.dailyBreakdown.map(\.label),
-                    values: snapshot.dailyBreakdown.map(\.total),
-                    lineColor: AppTheme.expense
-                )
+                if snapshot.dailyBreakdown.isEmpty {
+                    EmptyStateView(title: "ยังไม่มีข้อมูลรายวัน", systemImage: "chart.line.uptrend.xyaxis")
+                } else {
+                    LineChartView(
+                        labels: snapshot.dailyBreakdown.map(\.label),
+                        values: snapshot.dailyBreakdown.map(\.total),
+                        lineColor: AppTheme.expense
+                    )
+                }
             }
         }
     }
@@ -986,7 +1036,7 @@ struct OverviewHubView: View {
         }
     }
 
-    // MARK: - Compare / score (V.5)
+    // MARK: - Compare (period vs previous)
 
     private var compareSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
@@ -1026,80 +1076,13 @@ struct OverviewHubView: View {
                 }
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "กำไรสุทธิ (ช่วงนี้)",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
-                    subtitle: deltaText(snapshot.financial.profit, snapshot.prevFinancial.profit),
-                    accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "chart.line.uptrend.xyaxis",
-                    trend: expenseTrendSeries,
-                    deltaText: compactDelta(snapshot.financial.profit, snapshot.prevFinancial.profit)
-                )
-                scoreTile
-            }
-
             SectionCard("เทียบตัวเลขหลัก", systemImage: "arrow.left.arrow.right") {
-                comparisonRow("รายรับรวม", snapshot.financial.income, snapshot.prevFinancial.income)
-                comparisonRow("รายจ่ายรวม", snapshot.financial.expense, snapshot.prevFinancial.expense)
-                comparisonRow("กำไรขาดทุน", snapshot.financial.profit, snapshot.prevFinancial.profit)
+                comparisonRow("รายจ่ายรวม", snapshot.expenseTotal, snapshot.prevExpenseTotal, higherIsBetter: false)
                 comparisonRow("ทรายล้าง (คิว)", snapshot.sandCur.washed, snapshot.sandPrev.washed)
                 comparisonRow("ทรายขน (คิว)", snapshot.sandCur.transported, snapshot.sandPrev.transported)
-            }
-
-            SectionCard("รายละเอียดคะแนน", systemImage: "star.fill") {
-                if snapshot.composite.breakdown.isEmpty {
-                    EmptyStateView(title: "ยังไม่มีคะแนน", systemImage: "star")
-                } else {
-                    ForEach(snapshot.composite.breakdown) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(item.label).font(.subheadline.bold())
-                                Spacer()
-                                Text("\(item.scorePart)").font(.subheadline)
-                                Text("(\(item.weight))").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Text(item.changeLabel).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-
-            SectionCard("จุดคุ้มทุนรายวัน", systemImage: "chart.dots.scatter", subtitle: "รายรับ vs รายจ่าย") {
-                BreakEvenScatterView(
-                    points: snapshot.breakEven.map { ($0.income, $0.expense, $0.label) }
-                )
-                HStack(spacing: 12) {
-                    Label("วันกำไร", systemImage: "circle.fill").font(.caption2).foregroundStyle(.green)
-                    Label("วันขาดทุน", systemImage: "circle.fill").font(.caption2).foregroundStyle(.red)
-                }
-            }
-
-            SectionCard("วิเคราะห์กำไรขาดทุน (สรุป)", systemImage: "doc.text.fill") {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    KPITile(
-                        title: "รายรับ",
-                        value: DashboardAggregations.formatCurrency(snapshot.financial.income),
-                        accent: AppTheme.income,
-                        systemImage: "arrow.up.circle"
-                    )
-                    KPITile(
-                        title: "รายจ่าย / ต้นทุน",
-                        value: DashboardAggregations.formatCurrency(snapshot.financial.expense),
-                        accent: AppTheme.expense,
-                        systemImage: "arrow.down.circle"
-                    )
-                }
-                KPITile(
-                    title: "กำไรสุทธิ (P&L)",
-                    value: DashboardAggregations.formatCurrency(snapshot.financial.profit),
-                    subtitle: snapshot.financial.income > 0
-                        ? "อัตราส่วนรายจ่ายต่อรายรับ: \(String(format: "%.1f%%", (snapshot.financial.expense / snapshot.financial.income) * 100))"
-                        : nil,
-                    accent: snapshot.financial.profit >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "scalemass.fill"
-                )
+                comparisonRow("เที่ยวรถ", Double(snapshot.mobileRange.tripRounds), Double(snapshot.mobilePrev.tripRounds))
+                comparisonRow("ร่อนทราย (รอบ)", Double(snapshot.mobileRange.sandRounds), Double(snapshot.mobilePrev.sandRounds))
+                comparisonRow("วันที่เช็คชื่อ", Double(snapshot.mobileRange.attendanceDays), Double(snapshot.mobilePrev.attendanceDays))
             }
         }
     }
@@ -1163,81 +1146,27 @@ struct OverviewHubView: View {
 
     // MARK: - Small UI helpers
 
-    private var scoreTile: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "star.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.purple)
-                    .frame(width: 28, height: 28)
-                    .background(AppTheme.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                Text("คะแนนรวม")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().stroke(AppTheme.hairline, lineWidth: 6)
-                    Circle()
-                        .trim(from: 0, to: CGFloat(snapshot.composite.score) / 100)
-                        .stroke(AppTheme.purple, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Text("\(snapshot.composite.score)")
-                        .font(.headline.bold())
-                        .foregroundStyle(AppTheme.ink)
-                }
-                .frame(width: 52, height: 52)
-                Text("/ 100")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-            Capsule()
-                .fill(AppTheme.purple)
-                .frame(height: 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
-    }
-
-    private func comparisonRow(_ title: String, _ cur: Double, _ prev: Double) -> some View {
-        HStack {
+    private func comparisonRow(
+        _ title: String,
+        _ cur: Double,
+        _ prev: Double,
+        higherIsBetter: Bool = true
+    ) -> some View {
+        let improving = higherIsBetter ? (cur >= prev) : (cur <= prev)
+        return HStack {
             Text(title).foregroundStyle(AppTheme.ink)
             Spacer()
             Text(DashboardAggregations.formatNumber(cur)).foregroundStyle(AppTheme.ink)
             Text(deltaText(cur, prev))
                 .font(.caption)
-                .foregroundStyle(cur >= prev ? AppTheme.income : AppTheme.expense)
+                .foregroundStyle(improving ? AppTheme.income : AppTheme.expense)
         }
         .font(.subheadline)
         .padding(.vertical, 3)
     }
 
-    private func marginPct(_ fin: FinancialSummary) -> Double {
-        guard fin.income > 0 else { return fin.profit > 0 ? 100 : 0 }
-        return (fin.profit / fin.income) * 100
-    }
-
     private var expenseTrendSeries: [Double] {
         snapshot.dailyBreakdown.map(\.total)
-    }
-
-    /// Daily income aligned to `dailyBreakdown` dates (presentation overlay for marquee chart).
-    private var dailyIncomeSeries: [Double] {
-        let byDay = Dictionary(grouping: transactions.filter { $0.type == .income }) {
-            String($0.date.prefix(10))
-        }
-        return snapshot.dailyBreakdown.map { row in
-            (byDay[row.date] ?? []).reduce(0) { $0 + $1.amount }
-        }
     }
 
     private var dayChangeChip: String? {
