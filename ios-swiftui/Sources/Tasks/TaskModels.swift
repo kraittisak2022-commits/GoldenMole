@@ -278,9 +278,25 @@ enum TaskDates {
         iso.string(from: date)
     }
 
-    /// Postgres returns fractional seconds for `timestamptz`; plain ISO is the fallback.
     static func parseISO(_ value: String) -> Date? {
-        isoFractional.date(from: value) ?? iso.date(from: value)
+        if let date = iso.date(from: value) { return date }
+        if let date = isoFractional.date(from: value) { return date }
+        guard let clamped = clampingFractionalSeconds(value) else { return nil }
+        return isoFractional.date(from: clamped) ?? iso.date(from: clamped)
+    }
+
+    /// Postgres serializes `timestamptz` with microseconds (`...:46.825648+00:00`) but
+    /// `ISO8601DateFormatter` only accepts milliseconds, so trim the extra digits.
+    private static func clampingFractionalSeconds(_ value: String) -> String? {
+        guard let dot = value.firstIndex(of: ".") else { return nil }
+        let firstDigit = value.index(after: dot)
+        var afterDigits = firstDigit
+        while afterDigits < value.endIndex, value[afterDigits].isNumber {
+            afterDigits = value.index(after: afterDigits)
+        }
+        guard value.distance(from: firstDigit, to: afterDigits) > 3 else { return nil }
+        let keepEnd = value.index(dot, offsetBy: 4)
+        return String(value[value.startIndex..<keepEnd]) + String(value[afterDigits...])
     }
 
     /// Midday on the given `yyyy-MM-dd`, used as the default reminder time for a new task.
