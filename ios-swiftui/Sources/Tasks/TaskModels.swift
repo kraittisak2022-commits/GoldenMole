@@ -177,12 +177,14 @@ struct WorkTask: Codable, Identifiable, Equatable, Sendable {
     var priority: TaskPriority
     var isFocus: Bool
     var focusOrder: Int?
+    /// Optional hard deadline (`timestamptz`); independent of the soft `due_date` scope window.
+    var deadline: String?
     var completedAt: String?
     var createdAt: String?
     var updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, note, visibility, scope, status, priority
+        case id, title, note, visibility, scope, status, priority, deadline
         case ownerAdminId = "owner_admin_id"
         case ownerName = "owner_name"
         case assigneeAdminId = "assignee_admin_id"
@@ -217,6 +219,7 @@ struct WorkTask: Codable, Identifiable, Equatable, Sendable {
             priority: .normal,
             isFocus: false,
             focusOrder: nil,
+            deadline: nil,
             completedAt: nil,
             createdAt: TaskDates.nowISO(),
             updatedAt: TaskDates.nowISO()
@@ -248,9 +251,25 @@ extension WorkTask {
         !isDone && scopeEndDate < today
     }
 
+    /// How many calendar days since `scopeEndDate` ended, for the carry-over badge.
+    func carryOverDays(to day: String = DashboardAggregations.todayYMD()) -> Int? {
+        guard isOverdue(today: day) else { return nil }
+        return max(1, DashboardAggregations.countInclusiveDays(scopeEndDate, day) - 1)
+    }
+
     var remindDate: Date? {
         guard let remindAt else { return nil }
         return TaskDates.parseISO(remindAt)
+    }
+
+    var deadlineDate: Date? {
+        deadline.flatMap(TaskDates.parseISO)
+    }
+
+    /// Past the deadline and still unfinished.
+    func isPastDeadline(now: Date = Date()) -> Bool {
+        guard !isDone, let d = deadlineDate else { return false }
+        return d < now
     }
 }
 
@@ -301,6 +320,15 @@ enum TaskDates {
 
     /// Midday on the given `yyyy-MM-dd`, used as the default reminder time for a new task.
     static func middayOf(_ ymd: String) -> Date {
+        wallClockOf(ymd, hour: 12)
+    }
+
+    /// 17:00 on the given `yyyy-MM-dd`, used as the default deadline for a new task.
+    static func eveningOf(_ ymd: String) -> Date {
+        wallClockOf(ymd, hour: 17)
+    }
+
+    private static func wallClockOf(_ ymd: String, hour: Int) -> Date {
         let cal = DashboardAggregations.gregorian
         let parts = ymd.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return Date() }
@@ -308,7 +336,7 @@ enum TaskDates {
         comps.year = parts[0]
         comps.month = parts[1]
         comps.day = parts[2]
-        comps.hour = 12
+        comps.hour = hour
         return cal.date(from: comps) ?? Date()
     }
 
@@ -317,6 +345,15 @@ enum TaskDates {
         f.locale = Locale(identifier: "th_TH")
         f.timeZone = TimeZone(identifier: "Asia/Bangkok")
         f.dateFormat = "d MMM HH:mm น."
+        return f.string(from: date)
+    }
+
+    /// Clock-only label for deadline chips, e.g. "15:00".
+    static func clockTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "th_TH")
+        f.timeZone = TimeZone(identifier: "Asia/Bangkok")
+        f.dateFormat = "HH:mm"
         return f.string(from: date)
     }
 }

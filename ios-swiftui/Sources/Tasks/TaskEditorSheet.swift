@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Create or edit one task. Reminder time defaults to midday on the chosen due date.
+/// Create or edit one or more tasks. Reminder time defaults to midday on the chosen due date;
+/// deadline defaults to 17:00 on that same day when enabled.
 struct TaskEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let admins: [AdminUser]
-    let onSave: (WorkTask) -> Void
+    let onSave: ([WorkTask]) -> Void
     var onDelete: ((WorkTask) -> Void)?
 
     private let original: WorkTask
@@ -22,13 +23,15 @@ struct TaskEditorSheet: View {
     @State private var isFocus: Bool
     @State private var remindEnabled: Bool
     @State private var remindDate: Date
+    @State private var deadlineEnabled: Bool
+    @State private var deadlineDate: Date
     @State private var showDeleteConfirm = false
 
     init(
         task: WorkTask,
         isNew: Bool,
         admins: [AdminUser],
-        onSave: @escaping (WorkTask) -> Void,
+        onSave: @escaping ([WorkTask]) -> Void,
         onDelete: ((WorkTask) -> Void)? = nil
     ) {
         self.original = task
@@ -48,10 +51,36 @@ struct TaskEditorSheet: View {
         _isFocus = State(initialValue: task.isFocus)
         _remindEnabled = State(initialValue: task.remindDate != nil)
         _remindDate = State(initialValue: task.remindDate ?? TaskDates.middayOf(task.dueDate))
+        _deadlineEnabled = State(initialValue: task.deadlineDate != nil)
+        _deadlineDate = State(initialValue: task.deadlineDate ?? TaskDates.eveningOf(task.dueDate))
     }
 
-    private var canSave: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// Non-empty title lines when creating; a single trimmed title when editing.
+    private var titleLines: [String] {
+        if isNew {
+            return title
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? [] : [trimmed]
+    }
+
+    private var canSave: Bool { !titleLines.isEmpty }
+
+    private var deadlineBeforeStart: Bool {
+        guard deadlineEnabled else { return false }
+        let startDay = DashboardAggregations.formatYMD(dueDate)
+        let deadlineDay = DashboardAggregations.formatYMD(deadlineDate)
+        return deadlineDay < startDay
+    }
+
+    private var saveButtonTitle: String {
+        if isNew, titleLines.count > 1 {
+            return "บันทึก \(titleLines.count) งาน"
+        }
+        return "บันทึก"
     }
 
     var body: some View {
@@ -73,7 +102,7 @@ struct TaskEditorSheet: View {
                     Button("ยกเลิก") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("บันทึก") { submit() }
+                    Button(saveButtonTitle) { submit() }
                         .fontWeight(.semibold)
                         .disabled(!canSave)
                 }
@@ -96,9 +125,23 @@ struct TaskEditorSheet: View {
 
     private var detailSection: some View {
         Section("รายละเอียด") {
-            TextField("สิ่งที่ต้องทำ", text: $title, axis: .vertical)
-                .lineLimit(1...3)
-                .font(.body.weight(.medium))
+            if isNew {
+                TextField("สิ่งที่ต้องทำ (ขึ้นบรรทัดใหม่ = อีก 1 งาน)", text: $title, axis: .vertical)
+                    .lineLimit(3...10)
+                    .font(.body.weight(.medium))
+                if titleLines.count > 1 {
+                    Text("จะสร้าง \(titleLines.count) งาน")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(AppTheme.brand.opacity(0.12)))
+                }
+            } else {
+                TextField("สิ่งที่ต้องทำ", text: $title, axis: .vertical)
+                    .lineLimit(1...3)
+                    .font(.body.weight(.medium))
+            }
             TextField("โน้ตเพิ่มเติม (ไม่บังคับ)", text: $note, axis: .vertical)
                 .lineLimit(2...5)
         }
@@ -113,6 +156,22 @@ struct TaskEditorSheet: View {
             }
             DatePicker("วันที่เริ่ม", selection: $dueDate, displayedComponents: .date)
                 .environment(\.locale, Locale(identifier: "th_TH"))
+
+            Toggle("กำหนดเดดไลน์", isOn: $deadlineEnabled.animation(.snappy(duration: 0.2)))
+                .tint(AppTheme.brand)
+            if deadlineEnabled {
+                DatePicker(
+                    "เดดไลน์",
+                    selection: $deadlineDate,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .environment(\.locale, Locale(identifier: "th_TH"))
+                if deadlineBeforeStart {
+                    Text("เดดไลน์อยู่ก่อนวันที่เริ่ม — ปรับให้อยู่วันเดียวกันหรือหลังจากนั้น")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.expense)
+                }
+            }
 
             Toggle("ตั้งเตือนความจำ", isOn: $remindEnabled.animation(.snappy(duration: 0.2)))
                 .tint(AppTheme.brand)
@@ -192,28 +251,41 @@ struct TaskEditorSheet: View {
     // MARK: - Save
 
     private func submit() {
-        var task = original
-        task.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        task.note = trimmedNote.isEmpty ? nil : trimmedNote
-        task.scope = scope
-        task.dueDate = DashboardAggregations.formatYMD(dueDate)
-        task.priority = priority
-        task.status = status
-        task.visibility = visibility
-        task.isFocus = isFocus
+        let lines = titleLines
+        guard !lines.isEmpty else { return }
 
-        if assigneeId.isEmpty {
-            task.assigneeAdminId = nil
-            task.assigneeName = nil
-        } else {
-            task.assigneeAdminId = assigneeId
-            task.assigneeName = admins.first { $0.id == assigneeId }?.displayName
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dueYMD = DashboardAggregations.formatYMD(dueDate)
+        let remindISO = remindEnabled ? TaskDates.toISO(remindDate) : nil
+        let deadlineISO = deadlineEnabled ? TaskDates.toISO(deadlineDate) : nil
+
+        let assignee: (id: String?, name: String?) = {
+            if assigneeId.isEmpty { return (nil, nil) }
+            return (assigneeId, admins.first { $0.id == assigneeId }?.displayName)
+        }()
+
+        let tasks: [WorkTask] = lines.enumerated().map { index, line in
+            var task = original
+            if isNew, index > 0 {
+                task.id = UUID().uuidString
+                task.createdAt = TaskDates.nowISO()
+            }
+            task.title = line
+            task.note = trimmedNote.isEmpty ? nil : trimmedNote
+            task.scope = scope
+            task.dueDate = dueYMD
+            task.priority = priority
+            task.status = status
+            task.visibility = visibility
+            task.isFocus = isFocus
+            task.assigneeAdminId = assignee.id
+            task.assigneeName = assignee.name
+            task.remindAt = remindISO
+            task.deadline = deadlineISO
+            return task
         }
 
-        task.remindAt = remindEnabled ? TaskDates.toISO(remindDate) : nil
-
-        onSave(task)
+        onSave(tasks)
         dismiss()
     }
 }

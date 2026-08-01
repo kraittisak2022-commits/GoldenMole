@@ -81,28 +81,43 @@ struct TasksHubView: View {
         }
     }
 
+    /// True when the active window covers today — only then do we surface carry-overs.
+    private var windowIncludesToday: Bool {
+        window.start <= today && window.end >= today
+    }
+
+    private var carryOverTasks: [WorkTask] {
+        guard windowIncludesToday else { return [] }
+        let carriedIds = Set(store.carryOverTasks(to: today, adminId: adminId).map(\.id))
+        return scopedTasks.filter { carriedIds.contains($0.id) }
+    }
+
     private var listedTasks: [WorkTask] {
         let range = window
-        return TaskStore.sorted(
-            scopedTasks.filter { $0.dueDate >= range.start && $0.dueDate <= range.end }
-        )
+        var items = scopedTasks.filter { $0.dueDate >= range.start && $0.dueDate <= range.end }
+        if windowIncludesToday {
+            let existing = Set(items.map(\.id))
+            items.append(contentsOf: carryOverTasks.filter { !existing.contains($0.id) })
+        }
+        return TaskStore.sorted(items)
     }
 
     private var focusTasks: [WorkTask] {
         store.focusTasks(on: today, adminId: adminId)
     }
 
-    private var overdueTasks: [WorkTask] {
-        store.overdueTasks(adminId: adminId, today: today)
-    }
-
+    /// Today's scope tasks plus unfinished carry-overs — what the hero card counts.
     private var todayTasks: [WorkTask] {
-        store.dayTasks(on: today, adminId: adminId)
+        let day = store.dayTasks(on: today, adminId: adminId)
+        let carried = store.carryOverTasks(to: today, adminId: adminId)
+        let existing = Set(day.map(\.id))
+        return TaskStore.sorted(day + carried.filter { !existing.contains($0.id) })
     }
 
     private var doneToday: Int { todayTasks.filter(\.isDone).count }
     private var inProgressToday: Int { todayTasks.filter { $0.status == .inProgress }.count }
     private var openToday: Int { todayTasks.filter { $0.status == .todo }.count }
+    private var carryOverCount: Int { store.carryOverTasks(to: today, adminId: adminId).count }
 
     private var todayProgress: Double {
         guard !todayTasks.isEmpty else { return 0 }
@@ -123,9 +138,6 @@ struct TasksHubView: View {
 
                 if segment == .today {
                     focusSection
-                    if !overdueTasks.isEmpty {
-                        overdueSection
-                    }
                 }
 
                 if segment == .calendar {
@@ -151,7 +163,7 @@ struct TasksHubView: View {
                 task: target.task,
                 isNew: target.isNew,
                 admins: store.admins,
-                onSave: { saved in Task { await store.save(saved) } },
+                onSave: { saved in Task { await store.saveAll(saved, adminId: adminId) } },
                 onDelete: { removed in Task { await store.delete(removed) } }
             )
             .presentationDetents([.medium, .large])
@@ -208,6 +220,9 @@ struct TasksHubView: View {
                     heroChip(title: "เสร็จแล้ว", value: "\(doneToday)", tint: Color(hex: "#A7F3D0"))
                     heroChip(title: "กำลังทำ", value: "\(inProgressToday)", tint: Color(hex: "#FDE68A"))
                     heroChip(title: "ยังไม่ทำ", value: "\(openToday)", tint: Color(hex: "#CFFAFE"))
+                    if carryOverCount > 0 {
+                        heroChip(title: "ยกมา", value: "\(carryOverCount)", tint: Color(hex: "#FDBA74"))
+                    }
                 }
             }
             .padding(20)
@@ -386,22 +401,6 @@ struct TasksHubView: View {
         .onTapGesture { editorTarget = EditorTarget(id: task.id, task: task, isNew: false) }
     }
 
-    // MARK: - Overdue
-
-    private var overdueSection: some View {
-        SectionCard(
-            "เลยกำหนด",
-            systemImage: "clock.badge.exclamationmark",
-            subtitle: "\(overdueTasks.count) งานที่ยังไม่เสร็จและเลยช่วงเวลาแล้ว"
-        ) {
-            VStack(spacing: 8) {
-                ForEach(overdueTasks.prefix(5)) { task in
-                    taskRow(task, tint: AppTheme.expense)
-                }
-            }
-        }
-    }
-
     // MARK: - List
 
     private var listSection: some View {
@@ -457,6 +456,13 @@ struct TasksHubView: View {
                 }
 
                 HStack(spacing: 6) {
+                    if let days = task.carryOverDays(to: today) {
+                        metaChip(
+                            text: "ยกมา \(days) วัน",
+                            systemImage: "arrow.uturn.forward",
+                            color: AppTheme.warning
+                        )
+                    }
                     metaChip(
                         text: task.priority.label,
                         systemImage: task.priority.systemImage,
@@ -467,6 +473,13 @@ struct TasksHubView: View {
                         systemImage: task.scope.systemImage,
                         color: tint ?? AppTheme.slate
                     )
+                    if let deadline = task.deadlineDate {
+                        metaChip(
+                            text: "ถึง \(TaskDates.clockTime(deadline))",
+                            systemImage: "clock.fill",
+                            color: task.isPastDeadline() ? AppTheme.expense : AppTheme.info
+                        )
+                    }
                     if task.visibility == .personal {
                         metaChip(text: "ส่วนตัว", systemImage: "lock.fill", color: AppTheme.purple)
                     }

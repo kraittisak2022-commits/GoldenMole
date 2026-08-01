@@ -79,6 +79,11 @@ final class TaskStore {
         Self.sorted(visible(to: adminId).filter { $0.isOverdue(today: today) })
     }
 
+    /// Unfinished tasks whose own scope ended before `day` — shown as carry-overs without rewriting `due_date`.
+    func carryOverTasks(to day: String, adminId: String) -> [WorkTask] {
+        Self.sorted(visible(to: adminId).filter { !$0.isDone && $0.scopeEndDate < day })
+    }
+
     static func sorted(_ items: [WorkTask]) -> [WorkTask] {
         items.sorted { a, b in
             if a.isDone != b.isDone { return !a.isDone }
@@ -87,6 +92,13 @@ final class TaskStore {
                 return (a.focusOrder ?? Int.max) < (b.focusOrder ?? Int.max)
             }
             if a.priority != b.priority { return a.priority.sortRank < b.priority.sortRank }
+            // Earlier deadlines first; past-deadline work floats above open-ended tasks.
+            switch (a.deadlineDate, b.deadlineDate) {
+            case let (da?, db?) where da != db: return da < db
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: break
+            }
             if a.dueDate != b.dueDate { return a.dueDate < b.dueDate }
             return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
         }
@@ -105,6 +117,72 @@ final class TaskStore {
         applyLocally(updated)
         await TaskReminderScheduler.shared.sync(updated)
         await write(updated)
+    }
+
+    /// Saves many tasks, respecting the per-day focus quota. Surplus focus pins become normal tasks
+    /// and `noticeMessage` explains how many were pinned.
+    func saveAll(_ tasks: [WorkTask], adminId: String) async {
+        guard !tasks.isEmpty else { return }
+
+        var prepared = tasks.map { task -> WorkTask in
+            var t = task
+            t.title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            t.updatedAt = TaskDates.nowISO()
+            if t.createdAt == nil { t.createdAt = t.updatedAt }
+            t.completedAt = t.status == .done ? (task.completedAt ?? TaskDates.nowISO()) : nil
+            if !t.isFocus { t.focusOrder = nil }
+            return t
+        }
+
+        let focusCandidates = prepared.filter(\.isFocus)
+        if !focusCandidates.isEmpty {
+            // Batch create usually shares one due date; allocate slots per distinct day.
+            var slotsByDay: [String: Int] = [:]
+            var nextOrderByDay: [String: Int] = [:]
+            for day in Set(prepared.map(\.dueDate)) {
+                let current = focusTasks(on: day, adminId: adminId)
+                // Exclude tasks we are about to overwrite so re-saving an already-focused row
+                // does not consume an extra slot against itself.
+                let rewriting = Set(prepared.filter { $0.dueDate == day }.map(\.id))
+                let occupied = current.filter { !rewriting.contains($0.id) }.count
+                slotsByDay[day] = max(0, Self.focusLimit - occupied)
+                nextOrderByDay[day] = (current
+                    .filter { !rewriting.contains($0.id) }
+                    .compactMap(\.focusOrder)
+                    .max() ?? 0) + 1
+            }
+
+            var pinned = 0
+            prepared = prepared.map { task in
+                guard task.isFocus else { return task }
+                var t = task
+                let day = t.dueDate
+                let slots = slotsByDay[day, default: 0]
+                if slots > 0 {
+                    t.focusOrder = nextOrderByDay[day, default: 1]
+                    nextOrderByDay[day, default: 1] += 1
+                    slotsByDay[day] = slots - 1
+                    pinned += 1
+                } else {
+                    t.isFocus = false
+                    t.focusOrder = nil
+                }
+                return t
+            }
+
+            let requested = focusCandidates.count
+            if pinned < requested {
+                noticeMessage = pinned == 0
+                    ? "โฟกัสเต็มแล้ว (\(Self.focusLimit) งาน) — บันทึกเป็นงานปกติทั้งหมด"
+                    : "ปักโฟกัสได้ \(pinned) จาก \(requested) งาน (เพดาน \(Self.focusLimit)/วัน)"
+            }
+        }
+
+        for task in prepared {
+            applyLocally(task)
+            await TaskReminderScheduler.shared.sync(task)
+            await write(task)
+        }
     }
 
     func advanceStatus(_ task: WorkTask) async {
