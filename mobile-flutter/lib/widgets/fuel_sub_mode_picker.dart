@@ -156,7 +156,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
 
     final stockIn = _FuelModeOption(
       title: 'เพิ่มน้ำมัน',
-      subtitle: 'รถน้ำมันมาเติมเข้าถังสต็อก',
+      subtitle: 'เติมดีเซลเข้าถังสต็อก',
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF2E7D32),
       iconTileColor: const Color(0xFFE8F5E9),

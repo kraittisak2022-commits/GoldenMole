@@ -575,7 +575,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelStockInPricePerLiterController = TextEditingController();
   final _fuelStockInAmountController = TextEditingController();
   final _fuelStockInTimeController = TextEditingController();
-  String _fuelStockInFuelType = 'Diesel';
   final _fuelWithdrawLitersController = TextEditingController();
   final _fuelWithdrawTimeController = TextEditingController();
   final _fuelWithdrawOtherController = TextEditingController();
@@ -3368,7 +3367,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final amount =
         double.tryParse(_fuelStockInAmountController.text.trim()) ?? 0;
     final time = _fuelStockInTimeController.text.trim();
-    final fuelType = _fuelStockInFuelType;
+    // เพิ่มเข้าถัง = ดีเซลอย่างเดียว — ราคา/ยอดเงินกรอกทีหลังได้
+    const fuelType = 'Diesel';
     await _runSaveWithPopups(
       successMessage: 'บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ',
       saveActionLabel: 'เพิ่มน้ำมันเข้าถัง',
@@ -3393,7 +3393,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
-        final typeTh = fuelType == 'Benzine' ? 'เบนซิน' : 'ดีเซล';
         await _persist(
           AppTransaction(
             id: '${DateTime.now().millisecondsSinceEpoch}_fuel_in',
@@ -3402,7 +3401,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             category: 'Fuel',
             subCategory: kFuelStockInSubCategory,
             description: _appendRecorder(
-              'เพิ่มน้ำมันเข้าถัง: ${formatFuelLiters(liters)} ลิตร ($typeTh)',
+              'เพิ่มน้ำมันเข้าถัง: ${formatFuelLiters(liters)} ลิตร (ดีเซล)',
             ),
             amount: amount,
             note: _activeSignatureNote,
@@ -9888,7 +9887,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'รถน้ำมันมาเติมเข้าถังสต็อก — กรอกจำนวนลิตร ราคา และเวลา',
+            'รถน้ำมันมาเติมดีเซลเข้าถังสต็อก — กรอกจำนวนลิตรและเวลา '
+            '(ราคาใส่ทีหลังได้)',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -9898,10 +9898,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 14),
           _buildFuelStockBanner(pendingDelta: liters),
-          const SizedBox(height: 14),
-          _fuelTypeChips(
-            selected: _fuelStockInFuelType,
-            onChanged: (v) => setState(() => _fuelStockInFuelType = v),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFA5D6A7)),
+              ),
+              child: Text(
+                'ดีเซล',
+                style: GoogleFonts.kanit(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF2E7D32),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           TextFormField(
@@ -9937,7 +9952,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   readOnly: true,
                   onTap: () => _openNumericPad(
                     controller: _fuelStockInPricePerLiterController,
-                    label: 'ราคาต่อลิตร (บาท)',
+                    label: 'ราคาต่อลิตร (บาท) — ไม่บังคับ',
                     allowDecimal: true,
                     maxDecimalPlaces: 2,
                     onChanged: (_) {
@@ -9951,7 +9966,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     fontWeight: FontWeight.w800,
                   ),
                   decoration: const InputDecoration(
-                    labelText: 'ราคาต่อลิตร',
+                    labelText: 'ราคาต่อลิตร (ไม่บังคับ)',
+                    helperText: 'กรอกทีหลังได้',
                     prefixIcon: Icon(Icons.price_change_outlined),
                   ),
                 ),
@@ -9981,7 +9997,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             readOnly: true,
             onTap: () => _openNumericPad(
               controller: _fuelStockInAmountController,
-              label: 'จำนวนเงินรวม (บาท)',
+              label: 'จำนวนเงินรวม (บาท) — ไม่บังคับ',
               allowDecimal: true,
               maxDecimalPlaces: 2,
               onChanged: (_) => _scheduleUiRefresh(),
@@ -9992,8 +10008,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               fontWeight: FontWeight.w800,
             ),
             decoration: const InputDecoration(
-              labelText: 'จำนวนเงินรวม (บาท)',
-              helperText: 'คำนวณจาก ลิตร x ราคาต่อลิตร — แก้ไขทับได้',
+              labelText: 'จำนวนเงินรวม (ไม่บังคับ)',
+              helperText:
+                  'มีราคาแล้วจะคำนวณให้อัตโนมัติ — ว่างไว้ก่อนได้',
               prefixIcon: Icon(Icons.payments_outlined),
             ),
           ),
