@@ -19,6 +19,7 @@ struct GoldenmoleDashboardApp: App {
 @Observable
 final class AppBootstrap {
     var appState = AppState()
+    var taskStore = TaskStore()
     var authService: AuthService?
     var configError: String?
     /// Becomes true once bootstrap finishes (success or config error).
@@ -37,6 +38,7 @@ final class AppBootstrap {
             let auth = AuthService(dataService: service)
             authService = auth
             appState.configure(dataService: service)
+            taskStore.configure(dataService: service)
             await auth.restoreSession()
             if auth.currentAdmin != nil {
                 await appState.loadInitial()
@@ -76,6 +78,7 @@ struct RootView: View {
                 AuthGateView(auth: auth)
                     .environment(auth)
                     .environment(bootstrap.appState)
+                    .environment(bootstrap.taskStore)
                     .transition(contentEnterTransition)
             }
         }

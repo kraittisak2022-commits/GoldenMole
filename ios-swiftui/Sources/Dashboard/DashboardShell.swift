@@ -3,6 +3,7 @@ import SwiftUI
 enum AppMainTab: Hashable {
     case home
     case realtime
+    case tasks
     case reports
     case calendar
 }
@@ -39,6 +40,12 @@ struct DashboardShell: View {
             }
             .tabItem { Label("Real-time", systemImage: "dot.radiowaves.left.and.right") }
             .tag(AppMainTab.realtime)
+
+            NavigationStack {
+                tasksTab
+            }
+            .tabItem { Label("งาน", systemImage: "checklist") }
+            .tag(AppMainTab.tasks)
 
             NavigationStack {
                 reportsHub
@@ -190,6 +197,13 @@ struct DashboardShell: View {
         .overlay(alignment: .topTrailing) {
             headerControlsOverlay
         }
+    }
+
+    // MARK: - Tasks
+
+    private var tasksTab: some View {
+        TasksHubView()
+            .toolbar { headerToolbar }
     }
 
     // MARK: - Reports hub

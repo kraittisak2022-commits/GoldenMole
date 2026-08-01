@@ -183,4 +183,41 @@ final class SupabaseService: ObservableObject {
             .execute()
     }
 
+    // MARK: - Tasks (เมนู "งาน")
+
+    /// All task rows, newest due date first. Visibility is filtered app-side in `TaskStore`.
+    func fetchTasks() async throws -> [WorkTask] {
+        do {
+            return try await client.from("tasks")
+                .select()
+                .order("due_date", ascending: false)
+                .order("created_at", ascending: false)
+                .limit(1000)
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func upsertTask(_ task: WorkTask) async throws {
+        do {
+            _ = try await client.from("tasks")
+                .upsert(task, onConflict: "id")
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func deleteTask(id: String) async throws {
+        do {
+            _ = try await client.from("tasks")
+                .delete()
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
 }

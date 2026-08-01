@@ -310,6 +310,28 @@ CREATE INDEX IF NOT EXISTS idx_mobile_error_reports_unreviewed
     ON mobile_error_reports (reviewed)
     WHERE reviewed = FALSE;
 
+-- 8. Tasks (เมนู "งาน" ในแอป iOS — สิ่งที่ต้องทำรายวัน/สัปดาห์/เดือน/ปี)
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    note TEXT,
+    owner_admin_id TEXT NOT NULL,
+    owner_name TEXT,
+    assignee_admin_id TEXT,
+    assignee_name TEXT,
+    visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
+    scope TEXT NOT NULL DEFAULT 'Daily' CHECK (scope IN ('Daily', 'Weekly', 'Monthly', 'Yearly')),
+    due_date TEXT NOT NULL,
+    remind_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'Todo' CHECK (status IN ('Todo', 'InProgress', 'Done')),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Urgent', 'High', 'Normal', 'Low')),
+    is_focus BOOLEAN NOT NULL DEFAULT FALSE,
+    focus_order INTEGER,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================
 -- Row Level Security (RLS) - Allow all for anon key
 -- (For production, you should configure proper RLS policies)
@@ -322,6 +344,7 @@ ALTER TABLE work_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mobile_error_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 
 -- Allow full access for authenticated and anon users (DROP ก่อนเพื่อให้รันสคริปต์ซ้ำได้)
 DROP POLICY IF EXISTS "Allow all on employees" ON employees;
@@ -332,6 +355,7 @@ DROP POLICY IF EXISTS "Allow all on work_plans" ON work_plans;
 DROP POLICY IF EXISTS "Allow all on admin_users" ON admin_users;
 DROP POLICY IF EXISTS "Allow all on admin_logs" ON admin_logs;
 DROP POLICY IF EXISTS "Allow all on mobile_error_reports" ON mobile_error_reports;
+DROP POLICY IF EXISTS "Allow all on tasks" ON tasks;
 
 CREATE POLICY "Allow all on employees" ON employees FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
@@ -341,6 +365,7 @@ CREATE POLICY "Allow all on work_plans" ON work_plans FOR ALL USING (true) WITH 
 CREATE POLICY "Allow all on admin_users" ON admin_users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on admin_logs" ON admin_logs FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on mobile_error_reports" ON mobile_error_reports FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on tasks" ON tasks FOR ALL USING (true) WITH CHECK (true);
 
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -351,3 +376,7 @@ CREATE INDEX IF NOT EXISTS idx_work_plans_admin_id ON work_plans(admin_id);
 CREATE INDEX IF NOT EXISTS idx_work_plans_plan_date ON work_plans(plan_date);
 CREATE INDEX IF NOT EXISTS idx_work_plans_scope ON work_plans(scope);
 CREATE INDEX IF NOT EXISTS idx_work_plans_status ON work_plans(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_admin_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_admin_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_focus ON tasks(due_date, focus_order) WHERE is_focus = TRUE;
