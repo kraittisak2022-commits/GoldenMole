@@ -11429,7 +11429,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'ไม่แสดงตำแหน่ง: คนขับรถ, รับจ้างรายวัน',
+            'แสดงเฉพาะตำแหน่ง: พนักงานท่าทราย, คนขับรถแม็คโคร',
             style: GoogleFonts.kanit(
               fontSize: 12,
               color: const Color(0xFF64748B),
@@ -11441,7 +11441,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    'ยังไม่มีพนักงานที่เลือกได้ (ยกเว้นคนขับรถและรับจ้างรายวัน)',
+                    'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
+                    'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF8A6A2C),
@@ -11812,7 +11813,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   stepLabel(
                     '1',
                     'เลือกพนักงาน',
-                    'เลือกได้หลายคน — ไม่แสดงคนขับรถและรับจ้างรายวัน',
+                    'เลือกได้หลายคน — เฉพาะพนักงานท่าทรายและคนขับรถแม็คโคร',
                   ),
                   const SizedBox(height: 10),
                   advancePanel(
@@ -11829,7 +11830,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    'ยังไม่มีรายการพนักงานในระบบ',
+                                    'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
+                                    'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
                                     style: GoogleFonts.kanit(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,

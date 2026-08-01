@@ -5,6 +5,7 @@ import 'package:mobile_flutter/utils/advance_employee_filter.dart';
 Employee _emp({
   List<String> positions = const [],
   String? position,
+  bool inactive = false,
 }) =>
     Employee(
       id: '1',
@@ -13,37 +14,59 @@ Employee _emp({
       type: 'Daily',
       positions: positions,
       position: position,
+      inactive: inactive,
     );
 
 void main() {
-  test('advance shows when any position is not blocked', () {
-    final e = _emp(positions: ['ร่อนทราย', 'คนขับรถ']);
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
-    expect(employeeEligibleForAdvancePicker(e), isTrue);
+  test('advance shows sand yard staff and macro drivers', () {
+    for (final title in ['พนักงานท่าทราย', 'คนขับรถแม็คโคร']) {
+      final e = _emp(positions: [title]);
+      expect(isExcludedFromAdvanceEmployeePicker(e), isFalse, reason: title);
+      expect(employeeEligibleForAdvancePicker(e), isTrue, reason: title);
+      expect(employeeEligibleForLeavePicker(e), isTrue, reason: title);
+    }
   });
 
-  test('advance shows when legacy position is blocked but list is not', () {
-    final e = _emp(positions: ['ร่อนทราย'], position: 'รับจ้างรายวัน');
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
-    expect(employeeEligibleForAdvancePicker(e), isTrue);
+  test('advance accepts alternate spellings', () {
+    for (final title in ['พนักงานทำทราย', 'คนขับรถแมคโคร', 'ท่าทราย']) {
+      expect(
+        employeeEligibleForAdvancePicker(_emp(positions: [title])),
+        isTrue,
+        reason: title,
+      );
+    }
   });
 
-  test('advance shows when comma-separated mix has eligible title', () {
-    final e = _emp(position: 'คนขับรถ, ร่อนทราย');
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
-    expect(employeeEligibleForAdvancePicker(e), isTrue);
+  test('advance hides every other position', () {
+    for (final title in ['ร่อนทราย', 'เฝ้ากลางคืน', 'คนขับรถ', 'รับจ้างรายวัน']) {
+      final e = _emp(positions: [title]);
+      expect(isExcludedFromAdvanceEmployeePicker(e), isTrue, reason: title);
+      expect(employeeEligibleForAdvancePicker(e), isFalse, reason: title);
+      expect(employeeEligibleForLeavePicker(e), isFalse, reason: title);
+    }
   });
 
-  test('advance hides only when every position is blocked', () {
-    final e = _emp(positions: ['คนขับรถ', 'รับจ้างรายวัน']);
-    expect(isExcludedFromAdvanceEmployeePicker(e), isTrue);
+  test('advance hides employees without any position', () {
+    final e = _emp();
     expect(employeeEligibleForAdvancePicker(e), isFalse);
+    expect(employeeEligibleForLeavePicker(e), isFalse);
   });
 
-  test('shows when no blocked position', () {
-    final e = _emp(positions: ['ร่อนทราย', 'เฝ้ากลางคืน']);
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
+  test('advance shows when one of many positions is allowed', () {
+    final e = _emp(positions: ['คนขับรถ', 'พนักงานท่าทราย']);
     expect(employeeEligibleForAdvancePicker(e), isTrue);
+    expect(employeeEligibleForLeavePicker(e), isTrue);
+  });
+
+  test('advance reads comma-separated legacy position field', () {
+    final e = _emp(position: 'คนขับรถ, คนขับรถแม็คโคร');
+    expect(employeeEligibleForAdvancePicker(e), isTrue);
+  });
+
+  test('inactive employees never show', () {
+    final e = _emp(positions: ['พนักงานท่าทราย'], inactive: true);
+    expect(employeeEligibleForAdvancePicker(e), isFalse);
+    expect(employeeEligibleForLeavePicker(e), isFalse);
   });
 
   test('collects from both positions and position without duplicates', () {
@@ -69,18 +92,10 @@ void main() {
     );
   });
 
-  test('advance and OT show employee when any position is not blocked', () {
+  test('OT still shows employee when any position is not blocked', () {
     final e = _emp(positions: ['ร่อนทราย', 'เฝ้ากลางคืน']);
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
     expect(isExcludedFromOtEmployeePicker(e), isFalse);
-    expect(employeeEligibleForAdvancePicker(e), isTrue);
     expect(employeeEligibleForOtPicker(e), isTrue);
-  });
-
-  test('advance shows driver when also has eligible position', () {
-    final e = _emp(positions: ['คนขับรถ', 'ร่อนทราย']);
-    expect(isExcludedFromAdvanceEmployeePicker(e), isFalse);
-    expect(employeeEligibleForAdvancePicker(e), isTrue);
   });
 
   test('OT shows driver when also has eligible position', () {
@@ -95,18 +110,18 @@ void main() {
     expect(employeeEligibleForOtPicker(e), isFalse);
   });
 
-  test('leave excludes driver and daily hire like advance', () {
+  test('leave uses the same allowlist as advance', () {
     expect(
       isExcludedFromLeaveEmployeePicker(_emp(positions: ['คนขับรถ'])),
       isTrue,
     );
     expect(
       employeeEligibleForLeavePicker(_emp(positions: ['เฝ้ากลางคืน'])),
-      isTrue,
+      isFalse,
     );
     expect(
-      isExcludedFromLeaveEmployeePicker(_emp(position: 'รับจ้างรายวัน')),
-      isTrue,
+      isExcludedFromLeaveEmployeePicker(_emp(positions: ['พนักงานท่าทราย'])),
+      isFalse,
     );
   });
 }
