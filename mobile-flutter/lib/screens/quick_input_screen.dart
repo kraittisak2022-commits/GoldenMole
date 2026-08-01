@@ -578,7 +578,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelWithdrawLitersController = TextEditingController();
   final _fuelWithdrawTimeController = TextEditingController();
   final _fuelWithdrawOtherController = TextEditingController();
-  String _fuelWithdrawFuelType = 'Diesel';
   FuelWithdrawPurpose _fuelWithdrawPurpose = FuelWithdrawPurpose.machine;
   bool _macroExtraVehiclesExpanded = false;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
@@ -3425,7 +3424,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final time = _fuelWithdrawTimeController.text.trim();
     final purpose = _fuelWithdrawPurpose;
     final otherText = _fuelWithdrawOtherController.text.trim();
-    final fuelType = _fuelWithdrawFuelType;
+    // เบิกออกจากถัง = ดีเซลอย่างเดียว
+    const fuelType = 'Diesel';
     await _runSaveWithPopups(
       successMessage: 'บันทึกเบิกน้ำมันสำเร็จ',
       saveActionLabel: 'เบิกน้ำมันออกจากถัง',
@@ -3456,7 +3456,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final desc = purpose == FuelWithdrawPurpose.other
             ? 'เบิกน้ำมัน: $label — $otherText'
             : 'เบิกน้ำมัน: $label';
-        final typeTh = fuelType == 'Benzine' ? 'เบนซิน' : 'ดีเซล';
         await _persist(
           AppTransaction(
             id: '${DateTime.now().millisecondsSinceEpoch}_fuel_wd',
@@ -3465,7 +3464,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             category: 'Fuel',
             subCategory: kFuelWithdrawSubCategory,
             description: _appendRecorder(
-              '$desc ${formatFuelLiters(liters)} ลิตร ($typeTh)',
+              '$desc ${formatFuelLiters(liters)} ลิตร (ดีเซล)',
             ),
             amount: 0,
             note: _activeSignatureNote,
@@ -9788,68 +9787,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     setState(() => controller.text = '$hh:$mm');
   }
 
-  Widget _fuelTypeChips({
-    required String selected,
-    required ValueChanged<String> onChanged,
-  }) {
-    Widget chip(String value, String label) {
-      final isSelected = selected == value;
-      return Expanded(
-        child: Material(
-          color: isSelected ? const Color(0xFFFFF8E1) : const Color(0xFFF8FAFD),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => onChanged(value),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFFFFB300)
-                      : const Color(0xFFE1E8F0),
-                  width: isSelected ? 1.6 : 1,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.local_gas_station_outlined,
-                    size: 18,
-                    color: isSelected
-                        ? const Color(0xFF6D4C00)
-                        : const Color(0xFF90A4AE),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: GoogleFonts.kanit(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: isSelected
-                          ? const Color(0xFF6D4C00)
-                          : const Color(0xFF607D8B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        chip('Diesel', 'ดีเซล'),
-        const SizedBox(width: 10),
-        chip('Benzine', 'เบนซิน'),
-      ],
-    );
-  }
-
   void _recalcFuelStockInAmount() {
     final liters =
         double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
@@ -10057,7 +9994,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => setState(() => _fuelWithdrawPurpose = purpose),
+          onTap: () {
+            setState(() => _fuelWithdrawPurpose = purpose);
+            // อื่นๆ: เปิดแป้นพิมพ์ภาษาไทยทันที
+            if (purpose == FuelWithdrawPurpose.other) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                unawaited(
+                  _openThaiTextPad(
+                    controller: _fuelWithdrawOtherController,
+                    label: 'ระบุรายละเอียด (ภาษาไทย)',
+                    onChanged: () => _scheduleUiRefresh(),
+                    minLines: 2,
+                    maxLines: 3,
+                  ),
+                );
+              });
+            }
+          },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
@@ -10126,7 +10080,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'ระบุจำนวนลิตรที่เอาออกจากคลังสต็อก และนำไปใช้ทำอะไร',
+            'เบิกดีเซลออกจากคลังสต็อก — ระบุจำนวนลิตรและนำไปใช้ทำอะไร',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -10136,10 +10090,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 14),
           _buildFuelStockBanner(pendingDelta: liters > 0 ? -liters : 0),
-          const SizedBox(height: 14),
-          _fuelTypeChips(
-            selected: _fuelWithdrawFuelType,
-            onChanged: (v) => setState(() => _fuelWithdrawFuelType = v),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFFFCC80)),
+              ),
+              child: Text(
+                'ดีเซล',
+                style: GoogleFonts.kanit(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFFEF6C00),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           Row(
@@ -10218,7 +10187,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               readOnly: true,
               onTap: () => _openThaiTextPad(
                 controller: _fuelWithdrawOtherController,
-                label: 'ระบุรายละเอียด',
+                label: 'ระบุรายละเอียด (ภาษาไทย)',
                 onChanged: () => _scheduleUiRefresh(),
                 minLines: 2,
                 maxLines: 3,
@@ -10229,7 +10198,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 fontWeight: FontWeight.w700,
               ),
               decoration: const InputDecoration(
-                labelText: 'ระบุรายละเอียด',
+                labelText: 'ระบุรายละเอียด (ภาษาไทย)',
+                helperText: 'กดช่องนี้เพื่อเปิดแป้นพิมพ์ภาษาไทย',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
             ),

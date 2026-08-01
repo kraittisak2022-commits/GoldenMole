@@ -167,7 +167,7 @@ class _ThaiTextPadPanelState extends State<_ThaiTextPadPanel> {
                 color: const Color(0xFF1D2A3A),
               ),
               decoration: InputDecoration(
-                hintText: 'รายละเอียดงานที่ทำ',
+                hintText: 'พิมพ์เป็นภาษาไทย เช่น ใช้กับเครื่องปั่นไฟ',
                 hintStyle: GoogleFonts.kanit(
                   fontSize: 14,
                   color: Colors.black45,

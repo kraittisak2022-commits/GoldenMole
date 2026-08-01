@@ -165,7 +165,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final withdraw = _FuelModeOption(
       title: 'เบิกน้ำมัน',
-      subtitle: 'เอาน้ำมันออกจากถังสต็อก',
+      subtitle: 'เบิกดีเซลออกจากถังสต็อก',
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
       iconTileColor: const Color(0xFFFFF3E0),
