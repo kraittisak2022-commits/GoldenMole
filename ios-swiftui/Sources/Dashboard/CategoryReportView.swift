@@ -13,6 +13,18 @@ enum CategoryReportType {
         case .income: return "รายรับ"
         }
     }
+
+    /// Rows this report draws from — used to tell "no data on this day" apart from an empty report.
+    func matches(_ t: Transaction) -> Bool {
+        switch self {
+        case .labor: return t.category == "Labor"
+        case .vehicle: return t.category == "Vehicle" || (t.category == "DailyLog" && t.subCategory == "VehicleTrip")
+        case .sand: return t.category == "DailyLog" && t.subCategory == "Sand"
+        case .fuel: return t.category == "Fuel"
+        case .land: return t.category == "Land"
+        case .income: return t.type == .income
+        }
+    }
 }
 
 struct CategoryReportView: View {
@@ -21,9 +33,13 @@ struct CategoryReportView: View {
     let settings: AppSettings
     let employees: [Employee]
     let dateFilter: DateFilter
+    var scopeTitle: String = "ช่วงวันที่ที่เลือก"
 
     @State private var expandedDate: String?
     @State private var sandPeriod: SandPeriod = .week
+
+    /// A one-bar chart says nothing, so the daily breakdown is dropped in single-day mode.
+    private var isSingleDay: Bool { dateFilter.start == dateFilter.end }
 
     enum SandPeriod: String, CaseIterable {
         case week, month, year
@@ -41,7 +57,7 @@ struct CategoryReportView: View {
             SectionHeader(
                 title: "รายงาน: \(type.title)",
                 systemImage: "doc.text.fill",
-                subtitle: "สรุปตามช่วงวันที่ที่เลือก"
+                subtitle: scopeTitle
             )
 
             switch type {
@@ -267,19 +283,23 @@ struct CategoryReportView: View {
         }
     }
 
+    @ViewBuilder
     private func dailyBarSection(amountForDate: @escaping (String) -> Double) -> some View {
-        let dates = DashboardAggregations.enumerateDates(in: dateFilter)
-        let labels = dates.map { DashboardAggregations.dayLabel($0) }
-        let values = dates.map(amountForDate)
-        return SectionCard("รายวัน", systemImage: "calendar") {
-            BarChartView(labels: labels, values: values)
+        if !isSingleDay {
+            let dates = DashboardAggregations.enumerateDates(in: dateFilter)
+            SectionCard("รายวัน", systemImage: "calendar") {
+                BarChartView(
+                    labels: dates.map { DashboardAggregations.dayLabel($0) },
+                    values: dates.map(amountForDate)
+                )
+            }
         }
     }
 
     private func detailByDate(category: String) -> some View {
         let grouped = Dictionary(grouping: transactions.filter { $0.category == category }) { String($0.date.prefix(10)) }
             .sorted { $0.key > $1.key }
-        return SectionCard("รายละเอียดรายวัน", systemImage: "list.bullet") {
+        return SectionCard(isSingleDay ? "รายละเอียด" : "รายละเอียดรายวัน", systemImage: "list.bullet") {
             ForEach(grouped, id: \.0) { date, txs in
                 DisclosureGroup(isExpanded: Binding(
                     get: { expandedDate == date },

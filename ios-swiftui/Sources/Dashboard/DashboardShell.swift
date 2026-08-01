@@ -211,6 +211,11 @@ struct DashboardShell: View {
     private var reportsHub: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
+                DailyWizardSummaryCard(
+                    transactions: appState.transactions,
+                    employees: appState.employees
+                )
+
                 reportsHero
 
                 reportsSection(
@@ -453,38 +458,7 @@ struct DashboardShell: View {
     }
 
     private func categoryDetail(_ type: CategoryReportType) -> some View {
-        reportDetail(title: type.title) {
-            CategoryReportView(
-                type: type,
-                transactions: appState.filteredTransactions,
-                settings: appState.settings,
-                employees: appState.employees,
-                dateFilter: appState.dateFilter
-            )
-        }
-    }
-
-    private func reportDetail<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        let appStateBindable = Bindable(appState)
-        return VStack(spacing: 0) {
-            DateFilterBar(
-                datePreset: appStateBindable.datePreset,
-                customStart: appStateBindable.customStart,
-                customEnd: appStateBindable.customEnd
-            )
-            ScrollView {
-                content()
-                    .padding(AppTheme.spaceLG)
-            }
-            .refreshable { await appState.refresh() }
-            .scrollContentBackground(.hidden)
-        }
-        .background(DashboardBackground())
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        CategoryReportScreen(type: type)
     }
 
     // MARK: - Calendar
