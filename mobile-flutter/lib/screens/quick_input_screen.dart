@@ -246,6 +246,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   late DateTime _selectedDate;
   late DateTime _leaveStartDate;
+
+  /// วันสุดท้ายของการลา — เท่ากับวันเริ่มเมื่อลาวันเดียว
+  late DateTime _leaveEndDate;
   late final AnimationController _entranceController;
   late final Animation<double> _entranceFade;
   late final Animation<Offset> _entranceSlide;
@@ -853,6 +856,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _selectedDate.month,
       _selectedDate.day,
     );
+    _leaveEndDate = _leaveStartDate;
     _categoryController = TextEditingController(
       text: widget.initialCategory?.trim().isNotEmpty == true
           ? widget.initialCategory!.trim()
@@ -1135,6 +1139,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _selectedDate.month,
           _selectedDate.day,
         );
+        _leaveEndDate = _leaveStartDate;
       }
     } else if (_isLaborAdvanceMode) {
       _selectedAdvanceEmpIds.clear();
@@ -4225,11 +4230,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     // เก็บค่าก่อน async — โหลดรายการวันอาจล้าง controller ระหว่างลายเซ็น/บันทึก
     final leaveEmpIds = _selectedLeaveEmpIds.toList();
     final reason = _leaveReasonController.text.trim();
-    final leaveDaysText = _leaveDaysController.text.trim();
+    // จำนวนวันมาจากช่วงวันที่เลือกในปฏิทินเสมอ
+    final leaveRangeDays = _leaveRangeDays;
     final leaveIsHalfDay = _leaveIsHalfDay;
     final leaveHalfPart = _leaveHalfPart;
     final leaveTypeChoice = _leaveTypeChoice;
     final leaveStartDate = _leaveStartDate;
+    final leaveEndDate = _leaveEndDate;
     final existingLeaveTxId = _laborLeaveTxId;
     await _runSaveWithPopups(
       successMessage: existingLeaveTxId != null
@@ -4253,6 +4260,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _selectedDate.month,
           _selectedDate.day,
         );
+        _leaveEndDate = _leaveStartDate;
       },
       body: () async {
         if (leaveEmpIds.isEmpty) {
@@ -4265,16 +4273,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (blockedLeave.isNotEmpty) {
           _failSave('ไม่สามารถบันทึกลาให้คนขับรถหรือรับจ้างรายวันได้');
         }
-        if (reason.isEmpty) {
-          _failSave('กรุณากรอกเหตุผลการลา', field: 'เหตุผลการลา');
-        }
-        final days = double.tryParse(leaveDaysText) ?? 0;
+        final days = leaveRangeDays.toDouble();
         if (leaveIsHalfDay) {
           if (leaveHalfPart != 'morning' && leaveHalfPart != 'afternoon') {
             _failSave('กรุณาเลือกลาครึ่งเช้าหรือครึ่งบ่าย');
           }
         } else if (days <= 0) {
-          _failSave('กรุณากรอกจำนวนวันให้มากกว่า 0');
+          _failSave('กรุณาเลือกช่วงวันลาให้ถูกต้อง', field: 'ช่วงวันลา');
         }
         final effectiveDays = leaveIsHalfDay ? 0.5 : days;
         final halfTh = leaveIsHalfDay
@@ -4296,10 +4301,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         _laborLeaveTxId = id;
         final typeTh = leaveTypeChoice == 'Sick' ? 'ป่วย' : 'กิจ';
-        final descCore = 'ลา$typeTh: $reason';
+        final descCore = reason.isEmpty ? 'ลา$typeTh' : 'ลา$typeTh: $reason';
+        final rangeTh = leaveEndDate.isAfter(leaveStartDate)
+            ? ' (${_formatDate(leaveStartDate)} - ${_formatDate(leaveEndDate)}'
+                  ' รวม ${effectiveDays.round()} วัน)'
+            : '';
         final desc = leaveIsHalfDay
             ? '$descCore (ครึ่งวัน — $halfTh)'
-            : descCore;
+            : '$descCore$rangeTh';
         final saved = AppTransaction(
           id: id,
           date: ymd,
@@ -4505,18 +4514,54 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Future<void> _pickLeaveStartDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _leaveStartDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (picked != null) {
-      setState(
-        () => _leaveStartDate = DateTime(picked.year, picked.month, picked.day),
-      );
+  /// จำนวนวันลาจากช่วงวันที่เลือก (นับรวมวันแรกและวันสุดท้าย)
+  int get _leaveRangeDays {
+    final diff = _leaveEndDate.difference(_leaveStartDate).inDays;
+    return diff < 0 ? 1 : diff + 1;
+  }
+
+  void _syncLeaveDaysFromRange() {
+    if (_leaveIsHalfDay) {
+      _leaveDaysController.text = '0.5';
+      return;
     }
+    _leaveDaysController.text = '$_leaveRangeDays';
+  }
+
+  /// เลือกช่วงวันลาจากปฏิทิน — ลาวันเดียวก็แตะวันเดิมซ้ำได้
+  Future<void> _pickLeaveDateRange() async {
+    final now = DateTime.now();
+    final first = DateTime(2020);
+    final last = DateTime(now.year + 1, now.month, now.day);
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(
+        start: _leaveStartDate,
+        end: _leaveEndDate.isBefore(_leaveStartDate)
+            ? _leaveStartDate
+            : _leaveEndDate,
+      ),
+      firstDate: first,
+      lastDate: last,
+      helpText: 'เลือกวันเริ่มลา — วันสุดท้าย',
+      saveText: 'ตกลง',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _leaveStartDate = DateTime(
+        picked.start.year,
+        picked.start.month,
+        picked.start.day,
+      );
+      _leaveEndDate = DateTime(
+        picked.end.year,
+        picked.end.month,
+        picked.end.day,
+      );
+      // ลาหลายวันจะไม่ใช่ครึ่งวันแล้ว
+      if (_leaveEndDate.isAfter(_leaveStartDate)) _leaveIsHalfDay = false;
+      _syncLeaveDaysFromRange();
+    });
   }
 
   Future<void> _pickDate() async {
@@ -6333,6 +6378,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? '0.5'
           : (t.leaveDays != null ? _strNum(t.leaveDays) : '1');
       _leaveStartDate = startDate;
+      // สร้างช่วงวันกลับจากจำนวนวันที่บันทึกไว้ (นับรวมวันแรก)
+      final savedDays = isHalf ? 1 : (t.leaveDays ?? 1).round();
+      _leaveEndDate = savedDays > 1
+          ? startDate.add(Duration(days: savedDays - 1))
+          : startDate;
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -11205,12 +11255,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildLaborLeaveFormCard() {
     final employees = _employeesForLeavePicker();
-    final days = double.tryParse(_leaveDaysController.text.trim()) ?? 0;
+    final days = _leaveIsHalfDay ? 0.5 : _leaveRangeDays.toDouble();
     final summaryDuration = _leaveIsHalfDay
         ? 'ครึ่งวัน (${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})'
-        : (days == days.roundToDouble()
-              ? '${days.round()} วัน'
-              : '$days วัน');
+        : '$_leaveRangeDays วัน';
+    final leaveRangeLabel = _leaveEndDate.isAfter(_leaveStartDate)
+        ? '${_formatDate(_leaveStartDate)} - ${_formatDate(_leaveEndDate)}'
+        : 'เริ่ม ${_formatDate(_leaveStartDate)}';
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -11281,6 +11332,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               _selectedDate.month,
                               _selectedDate.day,
                             );
+                            _leaveEndDate = _leaveStartDate;
                           }),
                     child: Text(
                       'ยกเลิก',
@@ -11349,11 +11401,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 setState(() {
                   _leaveIsHalfDay = next.first;
                   if (_leaveIsHalfDay) {
-                    _leaveDaysController.text = '0.5';
+                    // ครึ่งวัน = วันเดียวเสมอ
+                    _leaveEndDate = _leaveStartDate;
                     _leaveHalfPart = 'morning';
-                  } else if (_leaveDaysController.text.trim() == '0.5') {
-                    _leaveDaysController.text = '1';
                   }
+                  _syncLeaveDaysFromRange();
                 });
               },
               style: ButtonStyle(
@@ -11402,7 +11454,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ],
           const SizedBox(height: 12),
           Text(
-            'วันเริ่มลา',
+            'ช่วงวันลา',
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
               fontSize: 13,
@@ -11411,11 +11463,53 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           OutlinedButton.icon(
-            onPressed: _saving ? null : _pickLeaveStartDate,
-            icon: const Icon(Icons.calendar_month_outlined, size: 20),
+            onPressed: _saving ? null : _pickLeaveDateRange,
+            icon: const Icon(Icons.calendar_month_outlined, size: 22),
             label: Text(
-              _formatDate(_leaveStartDate),
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              _leaveEndDate.isAfter(_leaveStartDate)
+                  ? '${_formatDate(_leaveStartDate)} → ${_formatDate(_leaveEndDate)}'
+                  : _formatDate(_leaveStartDate),
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              foregroundColor: const Color(0xFF00695C),
+              side: const BorderSide(color: Color(0xFF80CBC4), width: 1.5),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2F1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF80CBC4)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.event_available_rounded,
+                  size: 20,
+                  color: Color(0xFF00695C),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _leaveIsHalfDay
+                        ? 'รวม 0.5 วัน (ครึ่งวัน — '
+                              '${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})'
+                        : 'รวม $_leaveRangeDays วัน',
+                    style: GoogleFonts.kanit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF00695C),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
@@ -11472,81 +11566,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   }).toList(),
                 ),
           const SizedBox(height: 10),
-          if (!_leaveIsHalfDay) ...[
-            Text(
-              'จำนวนวัน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: const Color(0xFF314C6D),
-              ),
-            ),
-            const SizedBox(height: 6),
-            _AnimatedInputField(
-              controller: _leaveDaysController,
-              decoration: const InputDecoration(
-                labelText: 'จำนวนวัน',
-                prefixIcon: Icon(Icons.timelapse_outlined),
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              readOnly: true,
-              onTap: () => _openNumericPad(
-                controller: _leaveDaysController,
-                label: 'จำนวนวันลา',
-                allowDecimal: true,
-                maxDecimalPlaces: 1,
-                onChanged: (_) => setState(() {}),
-              ),
-              style: GoogleFonts.kanit(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF1D2A3A),
-              ),
-            ),
-          ] else ...[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFA5D6A7)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 14,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.schedule_outlined,
-                      color: Colors.teal.shade700,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'จำนวน 0.5 วัน (ครึ่งวัน — ${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: const Color(0xFF1B5E20),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
           _AnimatedInputField(
             controller: _leaveReasonController,
             decoration: const InputDecoration(
-              labelText: 'เหตุผลการลา',
+              labelText: 'เหตุผลการลา (ไม่บังคับ)',
               prefixIcon: Icon(Icons.note_alt_outlined),
-              hintText: 'กด Enter เพื่อบันทึก',
+              hintText: 'ไม่ใส่ก็บันทึกได้',
             ),
             keyboardType: TextInputType.text,
             textInputAction: TextInputAction.done,
@@ -11572,7 +11597,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: Padding(
                   padding: const EdgeInsets.all(10),
                   child: Text(
-                    'สรุป: ${_selectedLeaveEmpIds.length} คน · เริ่ม ${_formatDate(_leaveStartDate)} · $summaryDuration',
+                    'สรุป: ${_selectedLeaveEmpIds.length} คน · '
+                    '$leaveRangeLabel · $summaryDuration',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
