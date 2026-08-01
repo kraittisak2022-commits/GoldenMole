@@ -242,7 +242,10 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       children: [
         header,
         SizedBox(height: gap),
-        useColumns ? SizedBox(height: 200, child: options) : options,
+        // แนวตั้ง (แท็บเล็ตแนวนอน): ให้สูงพอกับเนื้อหา + FittedBox ในแต่ละการ์ดกัน overflow
+        useColumns
+            ? SizedBox(height: isTablet ? 240 : 220, child: options)
+            : options,
       ],
     );
   }
@@ -326,22 +329,27 @@ class _FuelModeOption extends StatelessWidget {
     );
 
     final body = vertical
-        ? Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              iconTile,
-              SizedBox(height: isTablet ? 16 : 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: textBlock,
+        ? FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  iconTile,
+                  SizedBox(height: isTablet ? 12 : 8),
+                  textBlock,
+                  SizedBox(height: isTablet ? 10 : 8),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: accent.withValues(alpha: 0.85),
+                    size: isTablet ? 26 : 22,
+                  ),
+                ],
               ),
-              SizedBox(height: isTablet ? 14 : 10),
-              Icon(
-                Icons.arrow_forward_rounded,
-                color: accent.withValues(alpha: 0.85),
-                size: isTablet ? 26 : 22,
-              ),
-            ],
+            ),
           )
         : Row(
             children: [
@@ -386,10 +394,10 @@ class _FuelModeOption extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: vertical
-                        ? (isTablet ? 14 : 12)
+                        ? (isTablet ? 12 : 10)
                         : (isTablet ? 18 : 14),
                     vertical: vertical
-                        ? (isTablet ? 18 : 14)
+                        ? (isTablet ? 14 : 10)
                         : (isTablet ? 16 : 13),
                   ),
                   child: body,
