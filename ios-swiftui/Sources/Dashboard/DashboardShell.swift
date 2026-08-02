@@ -218,7 +218,7 @@ struct DashboardShell: View {
     private var reportsHub: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
-                DailyWizardSummaryCard(
+                MobileDailyAuditCard(
                     transactions: appState.transactions,
                     employees: appState.employees
                 )
