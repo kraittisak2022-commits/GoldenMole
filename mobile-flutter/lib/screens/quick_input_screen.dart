@@ -98,6 +98,7 @@ const _kOfflineCapableModuleCategories = {
   'บันทึกการร่อนทราย',
   'เช็คชื่อ',
   'การใช้รถแม็คโคร',
+  'น้ำมัน',
 };
 
 const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
@@ -2557,7 +2558,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// คงเหลือในถังน้ำมัน — รวมทุกวันจากรายการทั้งหมด + ค่ายกมาจากตั้งค่าเว็บ
   Future<void> _refreshFuelStock() async {
     try {
-      final rows = await widget.service.fetchTransactions();
+      final serverRows = await widget.service.fetchTransactions();
+      final rows = await CountRecordOfflineSync.instance
+          .mergeAllTransactionsAsync(serverRows);
       if (!mounted) return;
       final balance = computeFuelStockBalance(
         rows,
