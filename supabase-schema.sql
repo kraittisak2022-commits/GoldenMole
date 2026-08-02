@@ -328,6 +328,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     is_focus BOOLEAN NOT NULL DEFAULT FALSE,
     focus_order INTEGER,
     deadline TIMESTAMPTZ,
+    assigned_at TIMESTAMPTZ,
+    assignee_seen_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -382,3 +384,4 @@ CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_admin_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_admin_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_focus ON tasks(due_date, focus_order) WHERE is_focus = TRUE;
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline) WHERE deadline IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee_unseen ON tasks(assignee_admin_id) WHERE assignee_seen_at IS NULL;

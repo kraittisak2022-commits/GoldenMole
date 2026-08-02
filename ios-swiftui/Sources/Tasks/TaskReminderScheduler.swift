@@ -1,10 +1,11 @@
 import Foundation
 import UserNotifications
 
-/// Local notifications for task reminders.
+/// Local notifications for task reminders and assignment hand-offs.
 ///
-/// These fire only on the device that scheduled them — assigning a task to someone else
-/// does not notify their phone, which would need push infrastructure the app doesn't have.
+/// Everything here fires on the device that schedules it. Assignment alerts therefore appear
+/// when the assignee's own app loads the task, not the moment someone else assigns it — real
+/// push delivery would need APNs infrastructure the app doesn't have.
 @MainActor
 final class TaskReminderScheduler {
     static let shared = TaskReminderScheduler()
@@ -12,6 +13,8 @@ final class TaskReminderScheduler {
     private let center = UNUserNotificationCenter.current()
     /// nil until the first request; avoids re-prompting on every save.
     private var isAuthorized: Bool?
+    /// Assignment alerts already fired this session, so a refresh loop can't spam the same task.
+    private var announcedAssignments: Set<String> = []
 
     private init() {}
 
@@ -66,11 +69,38 @@ final class TaskReminderScheduler {
         try? await center.add(request)
     }
 
+    /// Alerts the assignee once, right when their app first sees the hand-off.
+    func notifyAssignment(_ task: WorkTask) async {
+        guard !announcedAssignments.contains(task.id) else { return }
+        announcedAssignments.insert(task.id)
+
+        guard await ensureAuthorization() else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "ได้รับมอบหมายงานใหม่"
+        content.body = task.title
+        if let owner = task.ownerName?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
+            content.subtitle = "จาก \(owner)"
+        }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: Self.assignmentIdentifier(for: task.id),
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
+    }
+
     func cancel(taskId: String) {
         center.removePendingNotificationRequests(withIdentifiers: [Self.identifier(for: taskId)])
     }
 
     private static func identifier(for taskId: String) -> String {
         "task.reminder.\(taskId)"
+    }
+
+    private static func assignmentIdentifier(for taskId: String) -> String {
+        "task.assigned.\(taskId)"
     }
 }

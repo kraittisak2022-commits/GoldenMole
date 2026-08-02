@@ -17,6 +17,7 @@ private enum HomeSegment: String, CaseIterable, Identifiable {
 struct DashboardShell: View {
     @Environment(AuthService.self) private var auth
     @Environment(AppState.self) private var appState
+    @Environment(TaskStore.self) private var taskStore
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtime
@@ -45,6 +46,7 @@ struct DashboardShell: View {
                 tasksTab
             }
             .tabItem { Label("งาน", systemImage: "checklist") }
+            .badge(taskStore.inboxCount)
             .tag(AppMainTab.tasks)
 
             NavigationStack {
@@ -62,6 +64,11 @@ struct DashboardShell: View {
         .tint(AppTheme.brand)
         .task {
             await appState.refresh()
+        }
+        .task(id: auth.currentAdmin?.id) {
+            // Load tasks before the "งาน" tab is ever opened so the assignment badge is accurate.
+            taskStore.currentAdminId = auth.currentAdmin?.id ?? ""
+            await taskStore.loadIfNeeded()
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack {

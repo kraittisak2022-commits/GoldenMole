@@ -32,6 +32,7 @@ struct TasksHubView: View {
     @State private var chip: TaskFilterChip = .all
     @State private var selectedDay = DashboardAggregations.todayYMD()
     @State private var editorTarget: EditorTarget?
+    @State private var statusTarget: WorkTask?
 
     private struct EditorTarget: Identifiable {
         let id: String
@@ -106,6 +107,10 @@ struct TasksHubView: View {
         store.focusTasks(on: today, adminId: adminId)
     }
 
+    private var inboxTasks: [WorkTask] {
+        store.inboxTasks()
+    }
+
     /// Today's scope tasks plus unfinished carry-overs — what the hero card counts.
     private var todayTasks: [WorkTask] {
         let day = store.dayTasks(on: today, adminId: adminId)
@@ -136,7 +141,11 @@ struct TasksHubView: View {
                     errorBanner(error)
                 }
 
-                if segment == .today {
+                if !inboxTasks.isEmpty {
+                    inboxSection
+                }
+
+                if segment == .today, !focusTasks.isEmpty {
                     focusSection
                 }
 
@@ -157,7 +166,10 @@ struct TasksHubView: View {
         .overlay(alignment: .bottomTrailing) { addButton }
         .navigationTitle("งาน")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.loadIfNeeded() }
+        .task {
+            store.currentAdminId = adminId
+            await store.loadIfNeeded()
+        }
         .sheet(item: $editorTarget) { target in
             TaskEditorSheet(
                 task: target.task,
@@ -167,6 +179,13 @@ struct TasksHubView: View {
                 onDelete: { removed in Task { await store.delete(removed) } }
             )
             .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $statusTarget) { target in
+            TaskStatusSheet(task: target) { picked in
+                Task { await store.setStatus(target, to: picked) }
+            }
+            .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
         }
         .alert("ปักโฟกัสไม่ได้", isPresented: noticeBinding) {
@@ -198,9 +217,9 @@ struct TasksHubView: View {
                 .blur(radius: 26)
                 .offset(x: 210, y: -48)
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         Text("TASKS")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(1.6)
@@ -211,19 +230,32 @@ struct TasksHubView: View {
                         Text(DashboardAggregations.thaiDateLong(today))
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
+                        if carryOverCount > 0 {
+                            Label("ยกมา \(carryOverCount) งาน", systemImage: "arrow.uturn.forward")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color(hex: "#FFEDD5"))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white.opacity(0.16)))
+                                .padding(.top, 2)
+                        }
                     }
                     Spacer(minLength: 0)
                     progressRing
                 }
 
-                HStack(spacing: 10) {
-                    heroChip(title: "เสร็จแล้ว", value: "\(doneToday)", tint: Color(hex: "#A7F3D0"))
-                    heroChip(title: "กำลังทำ", value: "\(inProgressToday)", tint: Color(hex: "#FDE68A"))
-                    heroChip(title: "ยังไม่ทำ", value: "\(openToday)", tint: Color(hex: "#CFFAFE"))
-                    if carryOverCount > 0 {
-                        heroChip(title: "ยกมา", value: "\(carryOverCount)", tint: Color(hex: "#FDBA74"))
-                    }
+                HStack(spacing: 0) {
+                    heroStat(title: "เสร็จแล้ว", value: doneToday, tint: Color(hex: "#A7F3D0"))
+                    heroDivider
+                    heroStat(title: "กำลังทำ", value: inProgressToday, tint: Color(hex: "#FDE68A"))
+                    heroDivider
+                    heroStat(title: "ยังไม่ทำ", value: openToday, tint: Color(hex: "#CFFAFE"))
                 }
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                )
             }
             .padding(20)
         }
@@ -236,37 +268,43 @@ struct TasksHubView: View {
     private var progressRing: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.25), lineWidth: 6)
+                .stroke(Color.white.opacity(0.25), lineWidth: 7)
             Circle()
                 .trim(from: 0, to: CGFloat(todayProgress))
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            Text("\(Int(round(todayProgress * 100)))%")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.7)
+            VStack(spacing: 0) {
+                Text("\(Int(round(todayProgress * 100)))%")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("\(doneToday)/\(todayTasks.count)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            .minimumScaleFactor(0.6)
         }
-        .frame(width: 54, height: 54)
+        .frame(width: 64, height: 64)
         .animation(.snappy(duration: 0.3), value: todayProgress)
         .accessibilityHidden(true)
     }
 
-    private func heroChip(title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func heroStat(title: String, value: Int, tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text("\(value)")
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(tint)
+                .contentTransition(.numericText())
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(tint)
+                .foregroundStyle(.white.opacity(0.75))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.12))
-        )
+        .frame(maxWidth: .infinity)
+    }
+
+    private var heroDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.18))
+            .frame(width: 1, height: 26)
     }
 
     // MARK: - Controls
@@ -323,6 +361,82 @@ struct TasksHubView: View {
         )
     }
 
+    // MARK: - Assignment inbox
+
+    private var inboxSection: some View {
+        SectionCard(
+            "มอบหมายให้คุณ",
+            systemImage: "tray.full.fill",
+            subtitle: "\(inboxTasks.count) งานใหม่ที่ยังไม่ได้รับทราบ"
+        ) {
+            HStack {
+                Spacer(minLength: 0)
+                Button {
+                    let all = inboxTasks
+                    Task { await store.markAssignmentSeen(all) }
+                } label: {
+                    Label("รับทราบทั้งหมด", systemImage: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .tint(AppTheme.brand)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(inboxTasks) { task in
+                    inboxRow(task)
+                }
+            }
+        }
+    }
+
+    private func inboxRow(_ task: WorkTask) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(.title3)
+                .foregroundStyle(AppTheme.info)
+                .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                Text(inboxSubtitle(task))
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("รับทราบ") {
+                Task { await store.markAssignmentSeen([task]) }
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.bordered)
+            .tint(AppTheme.brand)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.info.opacity(0.09))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { editorTarget = EditorTarget(id: task.id, task: task, isNew: false) }
+    }
+
+    private func inboxSubtitle(_ task: WorkTask) -> String {
+        var parts: [String] = []
+        if let owner = task.ownerName?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
+            parts.append("จาก \(owner)")
+        }
+        if let assigned = task.assignedDate {
+            parts.append(TaskDates.shortTime(assigned))
+        }
+        parts.append("กำหนด \(DashboardAggregations.dayLabel(task.dueDate))")
+        return parts.joined(separator: " · ")
+    }
+
     // MARK: - Focus
 
     private var focusSection: some View {
@@ -342,17 +456,9 @@ struct TasksHubView: View {
                 )
             }
 
-            if focusTasks.isEmpty {
-                EmptyStateView(
-                    title: "ยังไม่ได้ปักงานสำคัญ",
-                    message: "แตะไอคอนหมุดที่งานเพื่อปักเป็นงานโฟกัสของวันนี้",
-                    systemImage: "target"
-                )
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(focusTasks.enumerated()), id: \.element.id) { index, task in
-                        focusRow(index: index, task: task)
-                    }
+            VStack(spacing: 8) {
+                ForEach(Array(focusTasks.enumerated()), id: \.element.id) { index, task in
+                    focusRow(index: index, task: task)
                 }
             }
         }
@@ -407,8 +513,10 @@ struct TasksHubView: View {
         SectionCard(listTitle, systemImage: "list.bullet", subtitle: listSubtitle) {
             if listedTasks.isEmpty {
                 EmptyStateView(
-                    title: "ยังไม่มีงานในช่วงนี้",
-                    message: "กดปุ่ม + มุมขวาล่างเพื่อเพิ่มงานใหม่",
+                    title: emptyTitle,
+                    message: chip == .all
+                        ? "แตะปุ่ม + มุมขวาล่างเพื่อเพิ่มงาน พิมพ์หลายบรรทัดได้เลยถ้ามีหลายอย่าง"
+                        : "ลองเปลี่ยนตัวกรองเป็น «ทั้งหมด» เพื่อดูงานของทุกคน",
                     systemImage: "checklist"
                 )
             } else {
@@ -417,7 +525,16 @@ struct TasksHubView: View {
                         taskRow(task)
                     }
                 }
+                .animation(.snappy(duration: 0.25), value: listedTasks.map(\.id))
             }
+        }
+    }
+
+    private var emptyTitle: String {
+        switch segment {
+        case .today: return "วันนี้ยังไม่มีงาน"
+        case .calendar: return "วันนี้ที่เลือกยังไม่มีงาน"
+        default: return "ยังไม่มีงานในช่วงนี้"
         }
     }
 
@@ -436,16 +553,23 @@ struct TasksHubView: View {
         return "\(listedTasks.count) งาน · ค้าง \(open)"
     }
 
-    private func taskRow(_ task: WorkTask, tint: Color? = nil) -> some View {
+    private func taskRow(_ task: WorkTask) -> some View {
         HStack(alignment: .top, spacing: 12) {
             statusButton(task)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(task.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(task.isDone ? AppTheme.inkMuted : AppTheme.ink)
-                    .strikethrough(task.isDone, color: AppTheme.inkMuted)
-                    .multilineTextAlignment(.leading)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    if task.isFocus {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AppTheme.purple)
+                    }
+                    Text(task.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(task.isDone ? AppTheme.inkMuted : AppTheme.ink)
+                        .strikethrough(task.isDone, color: AppTheme.inkMuted)
+                        .multilineTextAlignment(.leading)
+                }
 
                 if let note = task.note, !note.isEmpty {
                     Text(note)
@@ -456,6 +580,9 @@ struct TasksHubView: View {
                 }
 
                 HStack(spacing: 6) {
+                    if task.isNewAssignment(for: adminId) {
+                        metaChip(text: "ใหม่", systemImage: "sparkles", color: AppTheme.info)
+                    }
                     if let days = task.carryOverDays(to: today) {
                         metaChip(
                             text: "ยกมา \(days) วัน",
@@ -463,19 +590,16 @@ struct TasksHubView: View {
                             color: AppTheme.warning
                         )
                     }
-                    metaChip(
-                        text: task.priority.label,
-                        systemImage: task.priority.systemImage,
-                        color: task.priority.color
-                    )
-                    metaChip(
-                        text: task.scope.shortLabel,
-                        systemImage: task.scope.systemImage,
-                        color: tint ?? AppTheme.slate
-                    )
+                    if task.scope != .daily {
+                        metaChip(
+                            text: task.scope.shortLabel,
+                            systemImage: task.scope.systemImage,
+                            color: AppTheme.slate
+                        )
+                    }
                     if let deadline = task.deadlineDate {
                         metaChip(
-                            text: "ถึง \(TaskDates.clockTime(deadline))",
+                            text: deadlineLabel(deadline, isPast: task.isPastDeadline()),
                             systemImage: "clock.fill",
                             color: task.isPastDeadline() ? AppTheme.expense : AppTheme.info
                         )
@@ -497,7 +621,7 @@ struct TasksHubView: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 26, height: 26)
-                        .background(Circle().fill(AppTheme.brand))
+                        .background(Circle().fill(Self.avatarColor(for: task.assigneeName ?? "")))
                         .accessibilityLabel("มอบหมายให้ \(task.assigneeName ?? "")")
                 }
                 Text(DashboardAggregations.dayLabel(task.dueDate))
@@ -509,15 +633,18 @@ struct TasksHubView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
+                .fill(AppTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
         .overlay(alignment: .leading) {
-            if task.isFocus {
-                Capsule()
-                    .fill(AppTheme.purple)
-                    .frame(width: 3)
-                    .padding(.vertical, 8)
-            }
+            Capsule()
+                .fill(task.isDone ? AppTheme.inkMuted.opacity(0.4) : task.priority.color)
+                .frame(width: 3)
+                .padding(.vertical, 8)
+                .accessibilityLabel("ความสำคัญ \(task.priority.label)")
         }
         .contentShape(Rectangle())
         .onTapGesture { editorTarget = EditorTarget(id: task.id, task: task, isNew: false) }
@@ -563,7 +690,7 @@ struct TasksHubView: View {
     private func statusButton(_ task: WorkTask) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            Task { await store.advanceStatus(task) }
+            statusTarget = task
         } label: {
             Image(systemName: task.status.systemImage)
                 .font(.title3)
@@ -572,7 +699,38 @@ struct TasksHubView: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(task.title) สถานะ \(task.status.label) แตะเพื่อเปลี่ยนเป็น \(task.status.next.label)")
+        .accessibilityLabel("\(task.title) สถานะ \(task.status.label) แตะเพื่อเลือกสถานะใหม่")
+    }
+
+    /// Relative wording so the chip reads as urgency, not as a raw timestamp.
+    private func deadlineLabel(_ date: Date, isPast: Bool) -> String {
+        let minutes = Int(abs(date.timeIntervalSinceNow) / 60)
+        if isPast {
+            if minutes < 60 { return "เลย \(max(1, minutes)) นาที" }
+            if minutes < 60 * 24 { return "เลย \(minutes / 60) ชม." }
+            return "เลย \(minutes / (60 * 24)) วัน"
+        }
+        if date > Date() {
+            if minutes < 60 { return "เหลือ \(max(1, minutes)) นาที" }
+            if minutes < 60 * 12 { return "เหลือ \(minutes / 60) ชม." }
+        }
+        let day = DashboardAggregations.formatYMD(date)
+        return day == today
+            ? "ถึง \(TaskDates.clockTime(date))"
+            : "ถึง \(DashboardAggregations.dayLabel(day)) \(TaskDates.clockTime(date))"
+    }
+
+    private static let avatarPalette: [Color] = [
+        AppTheme.brand, AppTheme.purple, AppTheme.info,
+        AppTheme.warning, AppTheme.income, AppTheme.cyan
+    ]
+
+    /// Stable per-person tint so the same initials keep the same colour across rows.
+    private static func avatarColor(for name: String) -> Color {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return AppTheme.brand }
+        let hash = key.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFF_FFFF }
+        return avatarPalette[hash % avatarPalette.count]
     }
 
     private func metaChip(text: String, systemImage: String, color: Color) -> some View {

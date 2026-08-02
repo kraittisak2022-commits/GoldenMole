@@ -16,6 +16,8 @@ final class TaskStore {
     var errorMessage: String?
     /// Set when a focus toggle is rejected for exceeding `focusLimit`.
     var noticeMessage: String?
+    /// Signed-in admin, used to build the assignment inbox without threading the id everywhere.
+    var currentAdminId = ""
 
     private(set) var lastLoadedAt: Date?
 
@@ -32,9 +34,11 @@ final class TaskStore {
         if tasks.isEmpty { isLoading = true }
         do {
             let rows = try await dataService.fetchTasks()
+            let knownInbox = Set(inboxTasks().map(\.id))
             if tasks != rows { tasks = rows }
             errorMessage = nil
             lastLoadedAt = Date()
+            await announceNewAssignments(excluding: knownInbox)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -74,14 +78,40 @@ final class TaskStore {
             .sorted { ($0.focusOrder ?? Int.max, $0.title) < ($1.focusOrder ?? Int.max, $1.title) }
     }
 
-    /// Unfinished tasks whose window closed before today.
-    func overdueTasks(adminId: String, today: String = DashboardAggregations.todayYMD()) -> [WorkTask] {
-        Self.sorted(visible(to: adminId).filter { $0.isOverdue(today: today) })
-    }
-
     /// Unfinished tasks whose own scope ended before `day` — shown as carry-overs without rewriting `due_date`.
     func carryOverTasks(to day: String, adminId: String) -> [WorkTask] {
         Self.sorted(visible(to: adminId).filter { !$0.isDone && $0.scopeEndDate < day })
+    }
+
+    // MARK: - Assignment inbox
+
+    /// Tasks handed to the signed-in admin by someone else and not acknowledged yet, newest first.
+    func inboxTasks() -> [WorkTask] {
+        tasks
+            .filter { $0.isNewAssignment(for: currentAdminId) }
+            .sorted { ($0.assignedAt ?? $0.createdAt ?? "") > ($1.assignedAt ?? $1.createdAt ?? "") }
+    }
+
+    var inboxCount: Int { inboxTasks().count }
+
+    /// Clears the inbox badge for these tasks by stamping `assignee_seen_at`.
+    func markAssignmentSeen(_ items: [WorkTask]) async {
+        let stamp = TaskDates.nowISO()
+        for task in items where task.assigneeSeenAt == nil {
+            var updated = task
+            updated.assigneeSeenAt = stamp
+            updated.updatedAt = stamp
+            applyLocally(updated)
+            await write(updated)
+        }
+    }
+
+    /// Fires one local alert per assignment that appeared since the previous load.
+    private func announceNewAssignments(excluding known: Set<String>) async {
+        guard !currentAdminId.isEmpty else { return }
+        for task in inboxTasks() where !known.contains(task.id) {
+            await TaskReminderScheduler.shared.notifyAssignment(task)
+        }
     }
 
     static func sorted(_ items: [WorkTask]) -> [WorkTask] {
@@ -113,6 +143,7 @@ final class TaskStore {
         if updated.createdAt == nil { updated.createdAt = updated.updatedAt }
         updated.completedAt = updated.status == .done ? (task.completedAt ?? TaskDates.nowISO()) : nil
         if !updated.isFocus { updated.focusOrder = nil }
+        updated = stampAssignment(updated)
 
         applyLocally(updated)
         await TaskReminderScheduler.shared.sync(updated)
@@ -131,7 +162,7 @@ final class TaskStore {
             if t.createdAt == nil { t.createdAt = t.updatedAt }
             t.completedAt = t.status == .done ? (task.completedAt ?? TaskDates.nowISO()) : nil
             if !t.isFocus { t.focusOrder = nil }
-            return t
+            return stampAssignment(t)
         }
 
         let focusCandidates = prepared.filter(\.isFocus)
@@ -185,10 +216,11 @@ final class TaskStore {
         }
     }
 
-    func advanceStatus(_ task: WorkTask) async {
+    func setStatus(_ task: WorkTask, to status: TaskStatus) async {
+        guard task.status != status else { return }
         var updated = task
-        updated.status = task.status.next
-        updated.completedAt = updated.status == .done ? TaskDates.nowISO() : nil
+        updated.status = status
+        updated.completedAt = status == .done ? (task.completedAt ?? TaskDates.nowISO()) : nil
         updated.updatedAt = TaskDates.nowISO()
 
         applyLocally(updated)
@@ -233,6 +265,29 @@ final class TaskStore {
     }
 
     // MARK: - Helpers
+
+    /// Marks a hand-off so the new assignee gets an inbox entry, and keeps the stamps untouched
+    /// when the assignee did not change. Self-assigned and unassigned tasks never enter an inbox.
+    private func stampAssignment(_ task: WorkTask) -> WorkTask {
+        var t = task
+        let previous = tasks.first { $0.id == t.id }
+        let newAssignee = (t.assigneeAdminId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let oldAssignee = (previous?.assigneeAdminId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if newAssignee.isEmpty {
+            t.assignedAt = nil
+            t.assigneeSeenAt = nil
+            return t
+        }
+        if newAssignee != oldAssignee {
+            t.assignedAt = TaskDates.nowISO()
+            t.assigneeSeenAt = newAssignee == t.ownerAdminId ? TaskDates.nowISO() : nil
+        } else {
+            t.assignedAt = previous?.assignedAt ?? t.assignedAt
+            t.assigneeSeenAt = previous?.assigneeSeenAt ?? t.assigneeSeenAt
+        }
+        return t
+    }
 
     private func applyLocally(_ task: WorkTask) {
         if let idx = tasks.firstIndex(where: { $0.id == task.id }) {

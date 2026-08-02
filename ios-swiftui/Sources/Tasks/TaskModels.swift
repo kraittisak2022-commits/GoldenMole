@@ -72,20 +72,19 @@ enum TaskStatus: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var detail: String {
+        switch self {
+        case .todo: return "ยังไม่ได้เริ่มลงมือ"
+        case .inProgress: return "เริ่มแล้ว ยังไม่เสร็จ"
+        case .done: return "ปิดงานเรียบร้อย"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .todo: return "circle"
         case .inProgress: return "circle.lefthalf.filled"
         case .done: return "checkmark.circle.fill"
-        }
-    }
-
-    /// Tapping the status button walks Todo -> InProgress -> Done -> Todo.
-    var next: TaskStatus {
-        switch self {
-        case .todo: return .inProgress
-        case .inProgress: return .done
-        case .done: return .todo
         }
     }
 }
@@ -179,6 +178,10 @@ struct WorkTask: Codable, Identifiable, Equatable, Sendable {
     var focusOrder: Int?
     /// Optional hard deadline (`timestamptz`); independent of the soft `due_date` scope window.
     var deadline: String?
+    /// When the task was handed to `assigneeAdminId`.
+    var assignedAt: String?
+    /// When the assignee acknowledged it; `nil` keeps it in their inbox.
+    var assigneeSeenAt: String?
     var completedAt: String?
     var createdAt: String?
     var updatedAt: String?
@@ -193,6 +196,8 @@ struct WorkTask: Codable, Identifiable, Equatable, Sendable {
         case remindAt = "remind_at"
         case isFocus = "is_focus"
         case focusOrder = "focus_order"
+        case assignedAt = "assigned_at"
+        case assigneeSeenAt = "assignee_seen_at"
         case completedAt = "completed_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -220,6 +225,8 @@ struct WorkTask: Codable, Identifiable, Equatable, Sendable {
             isFocus: false,
             focusOrder: nil,
             deadline: nil,
+            assignedAt: nil,
+            assigneeSeenAt: nil,
             completedAt: nil,
             createdAt: TaskDates.nowISO(),
             updatedAt: TaskDates.nowISO()
@@ -270,6 +277,18 @@ extension WorkTask {
     func isPastDeadline(now: Date = Date()) -> Bool {
         guard !isDone, let d = deadlineDate else { return false }
         return d < now
+    }
+
+    var assignedDate: Date? {
+        assignedAt.flatMap(TaskDates.parseISO)
+    }
+
+    /// Someone else handed this task to `adminId` and they have not acknowledged it yet.
+    func isNewAssignment(for adminId: String) -> Bool {
+        guard !adminId.isEmpty, !isDone else { return false }
+        return assigneeAdminId == adminId
+            && ownerAdminId != adminId
+            && assigneeSeenAt == nil
     }
 }
 
