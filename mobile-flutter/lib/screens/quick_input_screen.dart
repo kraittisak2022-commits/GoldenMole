@@ -99,6 +99,7 @@ const _kOfflineCapableModuleCategories = {
   'เช็คชื่อ',
   'การใช้รถแม็คโคร',
   'น้ำมัน',
+  'เหตุการณ์',
 };
 
 const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
