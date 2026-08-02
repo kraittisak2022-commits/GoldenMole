@@ -145,6 +145,8 @@ const List<_DailyModuleDef> _kDailyModules = [
 const _kOfflineCapableModuleCategories = {
   'จำนวนเที่ยวรถ',
   'บันทึกการร่อนทราย',
+  'เช็คชื่อ',
+  'การใช้รถแม็คโคร',
 };
 
 bool _isOfflineCapableModule(String category) =>
@@ -700,7 +702,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(
           content: Text(
-            'ไม่มีเน็ต — ใช้เมนู «บันทึกการร่อนทราย» «บันทึกรถดรัม» หรือ «บันทึกและนับจำนวน»',
+            'ไม่มีเน็ต — ใช้เมนู «เช็คชื่อ» «การใช้รถแม็คโคร» «บันทึกการร่อนทราย» «บันทึกรถดรัม» หรือ «บันทึกและนับจำนวน»',
           ),
           duration: Duration(seconds: 3),
         ),
@@ -1647,7 +1649,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                     ?.showSnackBar(
                                   const SnackBar(
                                     content: Text(
-                                      'ไม่มีเน็ต — ใช้เมนู «บันทึกและนับจำนวน» เท่านั้น',
+                                      'ไม่มีเน็ต — ใช้ได้เฉพาะเมนู «เช็คชื่อ» «การใช้รถแม็คโคร» «บันทึกการร่อนทราย» «บันทึกรถดรัม» และ «บันทึกและนับจำนวน»',
                                     ),
                                     duration: Duration(seconds: 2),
                                     behavior: SnackBarBehavior.floating,

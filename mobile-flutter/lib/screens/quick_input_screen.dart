@@ -96,6 +96,8 @@ void _applyDefaultCubicForVehicleRow(_VehicleTripDraft row, String vehicleId) {
 const _kOfflineCapableModuleCategories = {
   'จำนวนเที่ยวรถ',
   'บันทึกการร่อนทราย',
+  'เช็คชื่อ',
+  'การใช้รถแม็คโคร',
 };
 
 const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
@@ -412,9 +414,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         byVehicle[vid] = t;
         continue;
       }
-      final ta = t.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final ea = existing.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      if (ta.isAfter(ea)) byVehicle[vid] = t;
+      // แถวที่ยังค้างคิวออฟไลน์ไม่มี createdAt — ถือว่าใหม่กว่าแถวที่ขึ้นเซิร์ฟเวอร์แล้ว
+      final ta = t.createdAt;
+      final ea = existing.createdAt;
+      if (ta == null || (ea != null && ta.isAfter(ea))) {
+        byVehicle[vid] = t;
+      }
     }
 
     final preserved = <String, _MacroVehicleDraft>{
@@ -862,7 +867,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? widget.initialCategory!.trim()
           : 'ค่าแรง',
     );
-    _loadEmployees(forceRefresh: _isLaborMode || _isAttendanceMode);
+    // ออฟไลน์ห้ามบังคับดึงเน็ต — ไม่งั้นกระดานลากชื่อจะว่างจนกว่า request จะ timeout
+    _loadEmployees(
+      forceRefresh:
+          (_isLaborMode || _isAttendanceMode) && widget.serverOnlineHint,
+    );
     if (_isFuelMode) {
       // ต้องได้ค่ายกมาก่อนคิดคงเหลือในถัง
       unawaited(_loadAppCars().then((_) => _refreshFuelStock()));
@@ -2522,7 +2531,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ไม่รวมแถว OT และไม่รวมลางาน — ใช้จัดอันดับพูลรายชื่อในกระดานเช็คชื่อ
   Future<void> _refreshAttendanceDaysWorked() async {
     try {
-      final rows = await widget.service.fetchTransactions();
+      final serverRows = await widget.service.fetchTransactions();
+      final rows = await CountRecordOfflineSync.instance
+          .mergeAllTransactionsAsync(serverRows);
       final daysByEmp = <String, Set<String>>{};
       for (final t in rows) {
         if (!isLaborWorkAttendanceRow(t)) continue;
