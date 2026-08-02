@@ -1234,6 +1234,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (_isLaborMode) {
         _syncMacroDriverCanvasFromVehicleUsage();
       }
+      _captureModuleFormBaseline();
       if (mounted && isCurrentLoad()) setState(() {});
     }
 
@@ -1280,6 +1281,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       if (mounted && isCurrentLoad()) {
         setState(() => _moduleDayLoading = false);
+        _captureModuleFormBaseline();
       }
       return;
     }
@@ -1331,6 +1333,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _moduleDayLoading = false;
           _moduleHistoryVisible = false;
         });
+        _captureModuleFormBaseline();
       } else if (mounted) {
         setState(() => _moduleDayLoading = false);
       }
@@ -6945,7 +6948,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           // เมนูย่อยน้ำมัน/เช็คชื่อ — ปุ่มย้อนกลับของระบบให้กลับหน้าเลือกเมนูก่อน
           canPop: !(
             (_isFuelMode && _fuelSubMode != null) ||
-            (_isAttendanceMode && _attendanceSection != null)
+            (_isAttendanceMode && _attendanceSection != null) ||
+            _hasUnsavedModuleChanges
           ),
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) return;
@@ -6989,6 +6993,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   _attendanceSection != null)
                                 IconButton(
                                   onPressed: _handleQuickInputBack,
+                                  iconSize: 28,
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size(52, 52),
+                                    padding: const EdgeInsets.all(12),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.padded,
+                                  ),
                                   icon: const Icon(
                                     Icons.arrow_back_ios_new_rounded,
                                     color: Colors.white,
@@ -9808,18 +9819,168 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   /// ปุ่มย้อนกลับ — เมนูย่อยน้ำมัน/เช็คชื่อกลับหน้าเลือกก่อน
-  void _handleQuickInputBack() {
-    if (_isFuelMode && _fuelSubMode != null) {
+  Future<void> _handleQuickInputBack() async {
+    // กลับจากฟอร์มย่อย / กระดาน — ถ้ายังมีข้อมูลค้างให้ถามก่อน
+    if ((_isFuelMode && _fuelSubMode != null) ||
+        (_isAttendanceMode && _attendanceSection != null)) {
+      if (_hasUnsavedModuleChanges) {
+        final discard = await _confirmDiscardUnsavedChanges();
+        if (!discard || !mounted) return;
+      }
       _releaseKeyboardFocus();
-      setState(() => _fuelSubMode = null);
+      setState(() {
+        if (_isFuelMode) _fuelSubMode = null;
+        if (_isAttendanceMode) _attendanceSection = null;
+      });
       return;
     }
-    if (_isAttendanceMode && _attendanceSection != null) {
-      _releaseKeyboardFocus();
-      setState(() => _attendanceSection = null);
-      return;
+    if (_hasUnsavedModuleChanges) {
+      final discard = await _confirmDiscardUnsavedChanges();
+      if (!discard || !mounted) return;
     }
+    if (!mounted) return;
     Navigator.maybePop(context);
+  }
+
+  /// เมนูที่เตือนเมื่อกดย้อนกลับทั้งที่ยังไม่ได้บันทึก
+  static const Set<String> _kUnsavedGuardCategories = {
+    'เช็คชื่อ',
+    'การใช้รถแม็คโคร',
+    'น้ำมัน',
+    'ลางาน',
+  };
+
+  bool get _guardsUnsavedChanges =>
+      _kUnsavedGuardCategories.contains(widget.initialCategory?.trim());
+
+  /// ลายเซ็นของฟอร์มตอนที่ตรงกับข้อมูลที่บันทึกไว้แล้ว
+  String? _savedModuleSignature;
+
+  /// ย่อสถานะฟอร์มเป็นข้อความเพื่อเทียบว่าผู้ใช้แก้อะไรไปหลังโหลดล่าสุด
+  /// แถวที่ยังว่างไม่ถูกนับ — รายชื่อรถโหลดช้ากว่าฟอร์มได้ ไม่ควรกลายเป็น «แก้แล้ว»
+  String _moduleFormSignature() {
+    final buf = StringBuffer();
+    void put(String key, Object? value) => buf.write('$key=$value;');
+
+    if (_isAttendanceMode) {
+      final buckets = _attendanceAssignments.keys.toList()..sort();
+      for (final bucket in buckets) {
+        final ids = _attendanceAssignments[bucket]!.toList()..sort();
+        if (ids.isEmpty) continue;
+        put(bucket, ids.join(','));
+      }
+      return buf.toString();
+    }
+
+    if (_isMacroVehicleMode) {
+      for (final row in _macroVehicleDrafts) {
+        final details = row.isDisposed
+            ? ''
+            : row.workDetailsController.text.trim();
+        if (row.driverId.trim().isEmpty && details.isEmpty) continue;
+        put(row.vehicleId, '${row.driverId}|${row.workType}|$details');
+      }
+      return buf.toString();
+    }
+
+    if (_isFuelMode) {
+      for (final row in _fuelVehicleDrafts) {
+        final liters = row.litersController.text.trim();
+        final time = row.timeController.text.trim();
+        if (liters.isEmpty && time.isEmpty) continue;
+        put(row.vehicleId, '${row.fuelType}|$liters|$time');
+      }
+      put(
+        'stockIn',
+        [
+          _fuelStockInLitersController.text.trim(),
+          _fuelStockInPricePerLiterController.text.trim(),
+          _fuelStockInAmountController.text.trim(),
+          _fuelStockInTimeController.text.trim(),
+        ].join('|'),
+      );
+      put(
+        'withdraw',
+        [
+          _fuelWithdrawLitersController.text.trim(),
+          _fuelWithdrawTimeController.text.trim(),
+          _fuelWithdrawOtherController.text.trim(),
+          _fuelWithdrawPurpose.name,
+        ].join('|'),
+      );
+      return buf.toString();
+    }
+
+    if (_isLaborLeaveMode) {
+      final ids = _selectedLeaveEmpIds.toList()..sort();
+      put('emp', ids.join(','));
+      put('reason', _leaveReasonController.text.trim());
+      put('days', _leaveDaysController.text.trim());
+      put('type', _leaveTypeChoice);
+      put('half', '$_leaveIsHalfDay|$_leaveHalfPart');
+      put('range', '${_quickYmd(_leaveStartDate)}~${_quickYmd(_leaveEndDate)}');
+    }
+    return buf.toString();
+  }
+
+  void _captureModuleFormBaseline() {
+    if (!_guardsUnsavedChanges) return;
+    _savedModuleSignature = _moduleFormSignature();
+  }
+
+  bool get _hasUnsavedModuleChanges {
+    if (!_guardsUnsavedChanges || _saving) return false;
+    final baseline = _savedModuleSignature;
+    if (baseline == null) return false;
+    return baseline != _moduleFormSignature();
+  }
+
+  Future<bool> _confirmDiscardUnsavedChanges() async {
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final discard = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          size: 36,
+          color: Color(0xFFF08A24),
+        ),
+        title: Text(
+          'ยังไม่ได้บันทึก',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'ข้อมูลที่กรอกไว้จะหายถ้าออกตอนนี้',
+          style: GoogleFonts.kanit(fontSize: 15.5),
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'อยู่ต่อ',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ออกโดยไม่บันทึก',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return discard ?? false;
   }
 
   /// เนื้อหาเมนู «น้ำมัน» — เลือกเมนูย่อยก่อน แล้วค่อยแสดงฟอร์ม
@@ -12869,6 +13030,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 children: [
                   IconButton(
                     onPressed: _handleQuickInputBack,
+                    iconSize: 28,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(52, 52),
+                      padding: const EdgeInsets.all(12),
+                      tapTargetSize: MaterialTapTargetSize.padded,
+                    ),
                     icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     color: const Color(0xFF0F5FAF),
                   ),
