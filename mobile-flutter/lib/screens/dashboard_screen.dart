@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../models/app_sync_snapshot.dart';
 import '../models/admin_user.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
@@ -140,22 +139,6 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: Color(0xFF6370E8),
   ),
 ];
-
-/// หมวดเมนูที่บันทึกออฟไลน์ได้ (ผ่าน «บันทึกและนับจำนวน»)
-const _kOfflineCapableModuleCategories = {
-  'จำนวนเที่ยวรถ',
-  'บันทึกการร่อนทราย',
-  'เช็คชื่อ',
-  'การใช้รถแม็คโคร',
-  'น้ำมัน',
-  'เหตุการณ์',
-  'ลางาน',
-};
-
-bool _isOfflineCapableModule(String category) =>
-    _kOfflineCapableModuleCategories.contains(category);
-
-/// เมนูบนหน้าแรกที่แสดงตอนไม่มีเน็ต — โหมดออฟไลน์จะจางเมนูอื่น แต่ยังแสดงกริดเดิม
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -701,17 +684,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _openQuickInput(_DailyModuleDef m) {
-    if (!_serverOnline && !_isOfflineCapableModule(m.category)) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'ไม่มีเน็ต — เมนูนี้ยังบันทึกออฟไลน์ไม่ได้ ใช้การ์ดที่ไม่จางแทน',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
     AppHaptics.confirm();
     _openWithAnimation(
       QuickInputScreen(
@@ -1108,8 +1080,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final useLiteAnimations = _reduceMotion;
     final l10n = AppLocalizations.of(context);
     final localeScope = AppLocaleScope.of(context);
-    final offlineMode = !widget.serverOnline;
-    final reconnecting = widget.serverReconnecting;
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? l10n.formatShortDateFromYmd(
@@ -1320,9 +1290,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         );
                 }
 
-                final backLabel = modeSelected
-                    ? 'เลือกงานใหม่'
-                    : (offlineMode ? 'กลับเลือกเมนู' : 'กลับเมนูหลัก');
+                final backLabel =
+                    modeSelected ? 'เลือกงานใหม่' : 'กลับเมนูหลัก';
 
                 return CountRecordMenuShell(
                   child: Padding(
@@ -1333,83 +1302,20 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       Row(
                         children: [
                           Flexible(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    'บันทึกและนับจำนวน',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: const Color(0xFF1A2433),
-                                        ),
+                            child: Text(
+                              'บันทึกและนับจำนวน',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF1A2433),
                                   ),
-                                ),
-                                if (offlineMode)
-                                  const _CountRecordPendingBadge(),
-                              ],
                             ),
                           ),
                           const Spacer(),
-                          if (offlineMode || reconnecting)
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 320),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              child: Container(
-                                key: ValueKey(
-                                  reconnecting ? 'reconnecting' : 'offline',
-                                ),
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: reconnecting
-                                      ? const Color(0xFFFFF8E1)
-                                      : const Color(0xFFFFF3E0),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: reconnecting
-                                        ? const Color(0xFFFFE082)
-                                        : const Color(0xFFFFCC80),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      reconnecting
-                                          ? Icons.sync_rounded
-                                          : Icons.cloud_off_outlined,
-                                      size: 16,
-                                      color: reconnecting
-                                          ? const Color(0xFFF57F17)
-                                          : const Color(0xFFE65100),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      reconnecting
-                                          ? 'กำลังซิงก์'
-                                          : 'โหมดออฟไลน์',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: reconnecting
-                                            ? const Color(0xFFF57F17)
-                                            : const Color(0xFFE65100),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                           SoftPressButton(
                             onTap: _openCountRecordTutorial,
                             size: SoftPressSize.small,
@@ -1628,39 +1534,21 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       employees: widget.data.employees,
                       allTransactionsForStock: widget.data.allTransactions,
                     );
-                    final moduleOfflineLocked = offlineMode &&
-                        !_isOfflineCapableModule(m.category);
-                    final card = Opacity(
-                      opacity: moduleOfflineLocked ? 0.38 : 1.0,
-                      child: RecordModuleCard(
-                        title: l10n.moduleTitle(m.category),
-                        icon: m.icon,
-                        tileColor: m.color,
-                        showLightStyle: index.isOdd,
-                        fillStatus: fill,
-                        completeStatusLabelOverride: translateDailyCardStatus(
-                          rawStatus,
-                          localeScope.locale,
-                        ),
-                        statusMaxLines:
-                            _kDailyMenuDetailCategories.contains(m.category)
-                            ? 3
-                            : 2,
-                        onTap: moduleOfflineLocked
-                            ? () {
-                                ScaffoldMessenger.maybeOf(context)
-                                    ?.showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'ไม่มีเน็ต — เมนูนี้ยังบันทึกออฟไลน์ไม่ได้ ใช้การ์ดที่ไม่จางแทน',
-                                    ),
-                                    duration: Duration(seconds: 2),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              }
-                            : () => widget.onOpenModule(m),
+                    final card = RecordModuleCard(
+                      title: l10n.moduleTitle(m.category),
+                      icon: m.icon,
+                      tileColor: m.color,
+                      showLightStyle: index.isOdd,
+                      fillStatus: fill,
+                      completeStatusLabelOverride: translateDailyCardStatus(
+                        rawStatus,
+                        localeScope.locale,
                       ),
+                      statusMaxLines:
+                          _kDailyMenuDetailCategories.contains(m.category)
+                          ? 3
+                          : 2,
+                      onTap: () => widget.onOpenModule(m),
                     );
                     if (_gridEntranceCompleted) {
                       return RepaintBoundary(
@@ -1750,70 +1638,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
           ),
         ),
       ],
-    );
-  }
-}
-
-/// จำนวนรายการรอซิงก์ — แสดงข้างหัวข้อ «บันทึกและนับจำนวน» ตอนโหมดออฟไลน์
-class _CountRecordPendingBadge extends StatefulWidget {
-  const _CountRecordPendingBadge();
-
-  @override
-  State<_CountRecordPendingBadge> createState() =>
-      _CountRecordPendingBadgeState();
-}
-
-class _CountRecordPendingBadgeState extends State<_CountRecordPendingBadge> {
-  @override
-  void initState() {
-    super.initState();
-    // บังคับโหลดคิวจากดิสก์ครั้งแรก — จากนั้นฟังค่าผ่าน notifier ไม่ต้อง polling
-    unawaited(CountRecordOfflineSync.instance.pendingCount());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: CountRecordOfflineSync.instance.pendingCountListenable,
-      builder: (context, pending, _) {
-        if (pending <= 0) return const SizedBox.shrink();
-        return _buildBadge(pending);
-      },
-    );
-  }
-
-  Widget _buildBadge(int pending) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF3E0),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFFFCC80)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.cloud_upload_outlined,
-                size: 14,
-                color: Color(0xFFE65100),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                'รอซิงก $pending',
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFE65100),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -2245,41 +2069,6 @@ class _HomeHeaderCompact extends StatelessWidget {
                         label: '${l10n.latestPrefix} $lastLabel',
                       ),
                       _LiveClockChip(l10n: l10n),
-                      ValueListenableBuilder<AppSyncSnapshot>(
-                        valueListenable:
-                            CountRecordOfflineSync.instance.syncState,
-                        builder: (context, sync, _) {
-                          IconData icon;
-                          Color iconColor;
-                          String label;
-                          if (sync.isSyncing) {
-                            icon = Icons.sync_rounded;
-                            iconColor = const Color(0xFFF9A825);
-                            label = sync.headerStatusLabel;
-                          } else if (sync.network == NetworkLinkState.unlink) {
-                            icon = Icons.wifi_off_rounded;
-                            iconColor = const Color(0xFF78909C);
-                            label = sync.headerStatusLabel;
-                          } else if (sync.server == ServerReachState.offline) {
-                            icon = Icons.cloud_off_rounded;
-                            iconColor = const Color(0xFFC25050);
-                            label = sync.headerStatusLabel;
-                          } else if (sync.pendingCount > 0) {
-                            icon = Icons.cloud_upload_outlined;
-                            iconColor = const Color(0xFF1565C0);
-                            label = sync.headerStatusLabel;
-                          } else {
-                            icon = Icons.cloud_done_rounded;
-                            iconColor = const Color(0xFF1E8E56);
-                            label = l10n.serverOnline;
-                          }
-                          return _HeaderStatChip(
-                            icon: icon,
-                            label: label,
-                            iconColor: iconColor,
-                          );
-                        },
-                      ),
                     ],
                   ),
                 ],
@@ -2337,12 +2126,11 @@ class _HeaderStatChip extends StatelessWidget {
   const _HeaderStatChip({
     required this.icon,
     required this.label,
-    this.iconColor = const Color(0xFF415268),
   });
 
   final IconData icon;
   final String label;
-  final Color iconColor;
+  static const Color iconColor = Color(0xFF415268);
 
   @override
   Widget build(BuildContext context) {

@@ -998,16 +998,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final persistedId = row.tripTxId?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
       try {
-        final queued = await _deleteTransactionOfflineAware(persistedId);
+        await _deleteTransactionOfflineAware(persistedId);
         if (!mounted) return;
         await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              queued
-                  ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
-                  : 'ลบรายการจากฐานข้อมูลแล้ว',
+              'ลบรายการจากฐานข้อมูลแล้ว',
               style: GoogleFonts.kanit(),
             ),
           ),
@@ -1037,16 +1035,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final persistedId = row.txId?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
       try {
-        final queued = await _deleteTransactionOfflineAware(persistedId);
+        await _deleteTransactionOfflineAware(persistedId);
         if (!mounted) return;
         await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              queued
-                  ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
-                  : 'ลบรายการจากฐานข้อมูลแล้ว',
+              'ลบรายการจากฐานข้อมูลแล้ว',
               style: GoogleFonts.kanit(),
             ),
           ),
@@ -2695,21 +2691,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await WidgetsBinding.instance.endOfFrame;
         }
         if (!mounted) return;
-        final msg = _lastPersistQueued
-            ? '$successMessage (บันทึกในเครื่อง — รออัปโหลด)'
-            : successMessage;
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(msg, style: GoogleFonts.kanit())),
+          SnackBar(
+            content: Text(successMessage, style: GoogleFonts.kanit()),
+          ),
         );
         await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
       } else {
         // dialog เดิม morph เป็น success ต่อเนื่อง — ไม่ปิดแล้วเปิดใหม่
         savingDialogOpen = false;
         _releaseKeyboardFocus();
-        final msg = _lastPersistQueued
-            ? '$successMessage (บันทึกในเครื่อง — รออัปโหลด)'
-            : successMessage;
-        await _showSuccessPopupAndPopToHome(msg);
+        await _showSuccessPopupAndPopToHome(successMessage);
       }
     } catch (error) {
       if (savingDialogOpen && mounted) {
@@ -4823,7 +4815,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
     if (ok != true || !mounted) return;
     try {
-      final queued = await _deleteTransactionOfflineAware(
+      await _deleteTransactionOfflineAware(
         t.id,
         ymd: t.date.trim(),
       );
@@ -4831,9 +4823,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            queued
-                ? 'ลบแล้ว — รออัปโหลดเมื่อมีเน็ต'
-                : 'ลบรายการจากฐานข้อมูลแล้ว',
+            'ลบรายการจากฐานข้อมูลแล้ว',
             style: GoogleFonts.kanit(),
           ),
         ),
