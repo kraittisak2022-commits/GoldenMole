@@ -149,6 +149,7 @@ const _kOfflineCapableModuleCategories = {
   'การใช้รถแม็คโคร',
   'น้ำมัน',
   'เหตุการณ์',
+  'ลางาน',
 };
 
 bool _isOfflineCapableModule(String category) =>

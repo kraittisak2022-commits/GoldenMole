@@ -100,6 +100,7 @@ const _kOfflineCapableModuleCategories = {
   'การใช้รถแม็คโคร',
   'น้ำมัน',
   'เหตุการณ์',
+  'ลางาน',
 };
 
 const String _kGeneralWorkPrefix = kGeneralWorkPrefix;
@@ -899,6 +900,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return '$y-$m-$day';
   }
 
+  /// «ลางาน» อ่านรายการทุกวันเพราะการลาคร่อมหลายวันได้ — เมนูอื่นดูเฉพาะวันที่เลือก
+  bool get _moduleReadsAllTransactions =>
+      widget.initialCategory?.trim() == 'ลางาน';
+
+  /// รวมแถวที่ค้างคิวออฟไลน์เข้ากับรายการที่โหลดมา
+  Future<List<AppTransaction>> _mergeOfflineQueue(
+    List<AppTransaction> rows,
+    String ymd,
+  ) {
+    return _moduleReadsAllTransactions
+        ? CountRecordOfflineSync.instance.mergeAllTransactionsAsync(rows)
+        : CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows);
+  }
+
   Future<void> _persist(AppTransaction t) async {
     final omitCreated =
         _persistOmitCreatedForIds.contains(t.id) ||
@@ -915,9 +930,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _lastPersistQueued = queued;
       _persistOmitCreatedSessionIds.add(t.id);
       final ymd = t.date;
-      final mergedDay = await CountRecordOfflineSync.instance.mergeForDayAsync(
-        ymd,
+      final mergedDay = await _mergeOfflineQueue(
         _moduleDayAllTransactions,
+        ymd,
       );
       if (mounted) {
         setState(() {
@@ -954,9 +969,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         dayServerRows: _moduleDayAllTransactions,
         serverOnlineHint: widget.serverOnlineHint,
       );
-      final mergedDay = await CountRecordOfflineSync.instance.mergeForDayAsync(
-        date,
+      final mergedDay = await _mergeOfflineQueue(
         _moduleDayAllTransactions,
+        date,
       );
       if (mounted) {
         setState(() {
@@ -1265,10 +1280,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
       }
       if (_isOfflineCapableCategory && cachedRows != null) {
-        cachedRows = await CountRecordOfflineSync.instance.mergeForDayAsync(
-          ymd,
-          cachedRows,
-        );
+        cachedRows = await _mergeOfflineQueue(cachedRows, ymd);
       }
       if (cachedRows != null && cachedRows.isNotEmpty) {
         if (!mounted || !isCurrentLoad()) return;
@@ -1282,9 +1294,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (skipNetwork) {
       if (!mounted || !isCurrentLoad()) return;
       if (_moduleDayTransactions.isEmpty) {
-        var rows = await LocalDataCache.readTransactionsForDayAny(ymd) ??
+        var rows = (_moduleReadsAllTransactions
+                ? await LocalDataCache.readTransactionsFullAny()
+                : await LocalDataCache.readTransactionsForDayAny(ymd)) ??
             const <AppTransaction>[];
-        rows = await CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows);
+        rows = await _mergeOfflineQueue(rows, ymd);
         if (rows.isNotEmpty) {
           _clearHydrationSlots();
           await applyRows(rows, clearForm: true);
@@ -1327,7 +1341,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             );
       if (!mounted || !isCurrentLoad()) return;
       final mergedRows = _isOfflineCapableCategory
-          ? await CountRecordOfflineSync.instance.mergeForDayAsync(ymd, rows)
+          ? await _mergeOfflineQueue(rows, ymd)
           : rows;
       if (!mounted || !isCurrentLoad()) return;
       _clearHydrationSlots();
@@ -4340,7 +4354,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           workDetails: halfMeta,
         );
         await _persist(saved);
-        unawaited(notifyLeaveLineAfterSaved(saved, _employees));
+        // ออฟไลน์ส่ง LINE ไม่ได้ — ข้ามไปแทนที่จะยิงทิ้งแล้วล้มเงียบ
+        if (!_lastPersistQueued) {
+          unawaited(notifyLeaveLineAfterSaved(saved, _employees));
+        }
       },
     );
   }
