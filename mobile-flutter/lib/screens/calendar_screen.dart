@@ -617,7 +617,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                       ),
                       Text(
-                        'ค่ามาตรฐาน: วันพุธของทุกสัปดาห์ • จันทร์แรกของสัปดาห์นี้: $mondayStr',
+                        'ค่ามาตรฐาน: วันพฤหัสบดีของทุกสัปดาห์ • จันทร์แรกของสัปดาห์นี้: $mondayStr',
                         style: GoogleFonts.kanit(
                           fontSize: 12.5,
                           color: Colors.black54,
@@ -661,7 +661,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           textInputAction: TextInputAction.done,
                           decoration: InputDecoration(
                             labelText: 'เหตุผล / สาเหตุที่ย้ายวันหยุด',
-                            hintText: 'เช่น งานเร่งด่วนวันพุธ, สลับกับทีมอื่น',
+                            hintText: 'เช่น งานเร่งด่วนวันพฤหัสบดี, สลับกับทีมอื่น',
                             labelStyle: GoogleFonts.kanit(),
                             hintStyle: GoogleFonts.kanit(fontSize: 13),
                             border: const OutlineInputBorder(),
@@ -703,7 +703,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             SnackBar(
                               content: Text(
                                 sel == WeeklyOffCalendarStore.defaultOffWeekday
-                                    ? 'ใช้หยุดวันพุธตามมาตรฐานสำหรับสัปดาห์นี้แล้ว'
+                                    ? 'ใช้หยุดวันพฤหัสบดีตามมาตรฐานสำหรับสัปดาห์นี้แล้ว'
                                     : 'ย้ายหยุดเป็น${_thaiWeekdayLongFixed(sel)} สำหรับสัปดาห์นี้แล้ว$reasonNote',
                                 style: GoogleFonts.kanit(),
                               ),
@@ -745,9 +745,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   /// ข้อความที่แสดงในปฏิทินสำหรับวันหยุดรายสัปดาห์
   String _companyWeeklyHolidayLine(int offWeekday) {
     if (offWeekday == WeeklyOffCalendarStore.defaultOffWeekday) {
-      return 'หยุดรายสัปดาห์ (ค่ามาตรฐานวันพุธ)';
+      return 'หยุดรายสัปดาห์ (ค่ามาตรฐานวันพฤหัสบดี)';
     }
-    return 'หยุดรายสัปดาห์ • ${_thaiWeekdayLongFixed(offWeekday)} (เลื่อนจากวันพุธในสัปดาห์นี้)';
+    return 'หยุดรายสัปดาห์ • ${_thaiWeekdayLongFixed(offWeekday)} (เลื่อนจากวันพฤหัสบดีในสัปดาห์นี้)';
   }
 
   void _openCreateEntrySheet() {

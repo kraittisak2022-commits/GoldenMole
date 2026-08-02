@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// ข้อมูลหยุดรายสัปดาห์ (วันในสัปดาห์ + เหตุผลเมื่อเลื่อนจากวันพุธ)
+/// ข้อมูลหยุดรายสัปดาห์ (วันในสัปดาห์ + เหตุผลเมื่อเลื่อนจากวันพฤหัสบดี)
 class WeeklyOffCalendarData {
   const WeeklyOffCalendarData({
     required this.weekdayByMonday,
@@ -15,7 +15,7 @@ class WeeklyOffCalendarData {
   final Map<String, String> moveReasonByMonday;
 }
 
-/// เก็บว่าวันไหนในสัปดาห์เป็นวันหยุดประจำ (ค่าเริ่มต้นวันพุธ) โดยคีย์คือ yyyy-MM-dd ของ **วันจันทร์** ในสัปดาห์นั้น
+/// เก็บว่าวันไหนในสัปดาห์เป็นวันหยุดประจำ (ค่าเริ่มต้นวันพฤหัสบดี) โดยคีย์คือ yyyy-MM-dd ของ **วันจันทร์** ในสัปดาห์นั้น
 ///
 /// เก็บใน SharedPreferences และ **ซิงก์ไป Supabase** (`app_settings.app_defaults`)
 /// — `weeklyOffByMonday` (วัน) และ `weeklyOffMoveReasonByMonday` (เหตุผลเมื่อเลื่อนหยุด)
@@ -27,8 +27,8 @@ class WeeklyOffCalendarStore {
   static const _remoteKey = 'weeklyOffByMonday';
   static const _remoteReasonKey = 'weeklyOffMoveReasonByMonday';
 
-  /// ปกติหยุดวันพุธ (ตาม Dart: จันทร์=1 … พุธ=3)
-  static const int defaultOffWeekday = DateTime.wednesday;
+  /// ปกติหยุดวันพฤหัสบดี (ตาม Dart: จันทร์=1 … พฤหัสบดี=4)
+  static const int defaultOffWeekday = DateTime.thursday;
 
   static String mondayKeyOf(DateTime d) {
     final local = DateTime(d.year, d.month, d.day);
@@ -225,8 +225,8 @@ class WeeklyOffCalendarStore {
     }
   }
 
-  /// ถ้าเลือกวันพุธจะถือว่าใช้ค่ามาตรฐาน (ลบการเลื่อนของสัปดาห์นั้น)
-  /// ถ้าเลื่อนจากวันพุธ — ต้องระบุ [moveReason] (ไม่ว่าง)
+  /// ถ้าเลือกวันพฤหัสบดีจะถือว่าใช้ค่ามาตรฐาน (ลบการเลื่อนของสัปดาห์นั้น)
+  /// ถ้าเลื่อนจากวันพฤหัสบดี — ต้องระบุ [moveReason] (ไม่ว่าง)
   Future<void> setWeekOffWeekday(
     DateTime anyDayInWeek,
     int weekday, {

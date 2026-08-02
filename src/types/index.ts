@@ -156,7 +156,7 @@ export interface OrgProfile {
 export interface AppDefaults {
     /** คีย์ = yyyy-MM-dd ของวันจันทร์ในสัปดาห์นั้น, ค่า = 1–7 (จันทร์–อาทิตย์) วันหยุดประจำสัปดาห์ที่เลื่อนจากมาตรฐาน — ซิงก์จากแอปมือถือปฏิทิน */
     weeklyOffByMonday?: Record<string, number>;
-    /** คีย์ = วันจันทร์ของสัปดาห์, ค่า = เหตุผลเมื่อเลื่อนหยุดรายสัปดาห์จากวันพุธ */
+    /** คีย์ = วันจันทร์ของสัปดาห์, ค่า = เหตุผลเมื่อเลื่อนหยุดรายสัปดาห์จากวันพฤหัสบดี */
     weeklyOffMoveReasonByMonday?: Record<string, string>;
     sandCubicPerTrip?: number;
     vehicleDefaultMachineWage?: number;
