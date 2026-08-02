@@ -915,6 +915,13 @@ const _kDailyMenuDetailCategories = {
   'OT',
 };
 
+/// เมนูรอง — ซ่อนไว้ด้านล่างจนกว่าจะกดขยาย
+const _kCollapsedDailyMenuCategories = {
+  'ค่าแรง', // บันทึกการทำงาน
+  'OT',
+  'รายจ่ายรายรับ', // รายรับ-รายจ่าย
+};
+
 class _HomePayload {
   const _HomePayload({
     required this.summary,
@@ -981,7 +988,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   bool _gridEntranceCompleted = false;
   bool _countRecordTutorialScheduled = false;
   CountRecordWorkMode? _workMode;
+  /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
+  bool _moreMenusExpanded = false;
   static const _kPanelShadowColor = Color(0x12000000);
+  static const _kMoreMenusBarHeight = 40.0;
 
   void _onEntranceStatus(AnimationStatus status) {
     if (!mounted) return;
@@ -1164,7 +1174,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
             key: ValueKey(
               '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
               'menu_${widget.countAndRecordMenuOpen}_'
-              'work_${_workMode?.name ?? 'pick'}',
+              'work_${_workMode?.name ?? 'pick'}_'
+              'more_$_moreMenusExpanded',
             ),
             builder: (context, constraints) {
               if (widget.countAndRecordMenuOpen) {
@@ -1421,7 +1432,24 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 );
               }
 
-              final visibleModules = _kDailyModules;
+              final primaryModules = _kDailyModules
+                  .where(
+                    (m) => !_kCollapsedDailyMenuCategories
+                        .contains(m.category),
+                  )
+                  .toList(growable: false);
+              final secondaryModules = _kDailyModules
+                  .where(
+                    (m) => _kCollapsedDailyMenuCategories
+                        .contains(m.category),
+                  )
+                  .toList(growable: false);
+              final visibleModules = _moreMenusExpanded
+                  ? <_DailyModuleDef>[
+                      ...primaryModules,
+                      ...secondaryModules,
+                    ]
+                  : primaryModules;
               final gridItemCount = visibleModules.length + 1;
               final gap = TouchProfile.of(context).gridGap;
               const sideInset = 2.0;
@@ -1445,11 +1473,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final w =
                   layoutW > safeMq ? safeMq : layoutW;
               final rawMaxH = constraints.maxHeight;
-              final availH = !rawMaxH.isFinite
-                  ? 120.0
+              final panelH = !rawMaxH.isFinite
+                  ? 120.0 + _kMoreMenusBarHeight
                   : rawMaxH <= 0
-                      ? 1.0
+                      ? 1.0 + _kMoreMenusBarHeight
                       : rawMaxH;
+              final availH =
+                  (panelH - _kMoreMenusBarHeight).clamp(1.0, panelH);
               final rows =
                   (gridItemCount / cross).ceil().clamp(1, 12);
               final usableWidth = w - (sideInset * 2);
@@ -1480,91 +1510,151 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final topInset = menuScrolls
                   ? 6.0
                   : ((availH - contentHeight) / 2).clamp(0.0, 24.0);
-              return RepaintBoundary(
-                child: GridView.builder(
-                  padding: EdgeInsets.fromLTRB(
-                    sideInset,
-                    topInset,
-                    sideInset,
-                    menuScrolls ? 10 : 0,
-                  ),
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: ClampingScrollPhysics(),
-                  ),
-                  addAutomaticKeepAlives: true,
-                  addRepaintBoundaries: true,
-                  cacheExtent:
-                      menuScrolls ? (cellHeight * cacheRows + gap * 2) : 0,
-                  itemCount: gridItemCount,
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: cross,
-                    mainAxisSpacing: gap,
-                    crossAxisSpacing: gap,
-                    mainAxisExtent: cellHeight,
-                  ),
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      final card = buildCountRecordEntryCard(
-                        showLightStyle: index.isOdd,
-                      );
-                      if (_gridEntranceCompleted) {
-                        return RepaintBoundary(
-                          key: ValueKey('mod_count_record_root'),
-                          child: card,
-                        );
-                      }
-                      return _StaggerMenuTile(
-                        parent: _entranceController,
-                        index: 0,
-                        lite: useLiteAnimations,
-                        child: card,
-                      );
-                    }
-                    final moduleIndex = index - 1;
-                    final m = visibleModules[moduleIndex];
-                    final fill =
-                        menuStatusByCategory[m.category] ??
-                            DailyModuleFillStatus.pending;
-                    final globalIndex = _kDailyModules.indexOf(m);
-                    final rawStatus = dailyModuleCardStatusLabel(
-                      moduleCategory: m.category,
-                      dayKey: dayKey,
-                      dayTransactions: widget.data.dayTransactions,
-                      employees: widget.data.employees,
-                      allTransactionsForStock: widget.data.allTransactions,
-                    );
-                    final card = RecordModuleCard(
-                      title: l10n.moduleTitle(m.category),
-                      icon: m.icon,
-                      tileColor: m.color,
-                      showLightStyle: index.isOdd,
-                      fillStatus: fill,
-                      completeStatusLabelOverride: translateDailyCardStatus(
-                        rawStatus,
-                        localeScope.locale,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: RepaintBoundary(
+                      child: GridView.builder(
+                        padding: EdgeInsets.fromLTRB(
+                          sideInset,
+                          topInset,
+                          sideInset,
+                          menuScrolls ? 10 : 0,
+                        ),
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: ClampingScrollPhysics(),
+                        ),
+                        addAutomaticKeepAlives: true,
+                        addRepaintBoundaries: true,
+                        cacheExtent: menuScrolls
+                            ? (cellHeight * cacheRows + gap * 2)
+                            : 0,
+                        itemCount: gridItemCount,
+                        gridDelegate:
+                            SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: cross,
+                          mainAxisSpacing: gap,
+                          crossAxisSpacing: gap,
+                          mainAxisExtent: cellHeight,
+                        ),
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            final card = buildCountRecordEntryCard(
+                              showLightStyle: index.isOdd,
+                            );
+                            if (_gridEntranceCompleted) {
+                              return RepaintBoundary(
+                                key: const ValueKey(
+                                  'mod_count_record_root',
+                                ),
+                                child: card,
+                              );
+                            }
+                            return _StaggerMenuTile(
+                              parent: _entranceController,
+                              index: 0,
+                              lite: useLiteAnimations,
+                              child: card,
+                            );
+                          }
+                          final moduleIndex = index - 1;
+                          final m = visibleModules[moduleIndex];
+                          final fill =
+                              menuStatusByCategory[m.category] ??
+                                  DailyModuleFillStatus.pending;
+                          final globalIndex = _kDailyModules.indexOf(m);
+                          final rawStatus = dailyModuleCardStatusLabel(
+                            moduleCategory: m.category,
+                            dayKey: dayKey,
+                            dayTransactions: widget.data.dayTransactions,
+                            employees: widget.data.employees,
+                            allTransactionsForStock:
+                                widget.data.allTransactions,
+                          );
+                          final card = RecordModuleCard(
+                            title: l10n.moduleTitle(m.category),
+                            icon: m.icon,
+                            tileColor: m.color,
+                            showLightStyle: index.isOdd,
+                            fillStatus: fill,
+                            completeStatusLabelOverride:
+                                translateDailyCardStatus(
+                              rawStatus,
+                              localeScope.locale,
+                            ),
+                            statusMaxLines:
+                                _kDailyMenuDetailCategories
+                                        .contains(m.category)
+                                    ? 3
+                                    : 2,
+                            onTap: () => widget.onOpenModule(m),
+                          );
+                          if (_gridEntranceCompleted) {
+                            return RepaintBoundary(
+                              key: ValueKey('mod_${m.category}'),
+                              child: card,
+                            );
+                          }
+                          return _StaggerMenuTile(
+                            parent: _entranceController,
+                            index: globalIndex >= 0
+                                ? globalIndex
+                                : index,
+                            lite: useLiteAnimations,
+                            child: card,
+                          );
+                        },
                       ),
-                      statusMaxLines:
-                          _kDailyMenuDetailCategories.contains(m.category)
-                          ? 3
-                          : 2,
-                      onTap: () => widget.onOpenModule(m),
-                    );
-                    if (_gridEntranceCompleted) {
-                      return RepaintBoundary(
-                        key: ValueKey('mod_${m.category}'),
-                        child: card,
-                      );
-                    }
-                    return _StaggerMenuTile(
-                      parent: _entranceController,
-                      index:
-                          globalIndex >= 0 ? globalIndex : index,
-                      lite: useLiteAnimations,
-                      child: card,
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: _kMoreMenusBarHeight,
+                    child: Center(
+                      child: SoftPressButton(
+                        onTap: () {
+                          AppHaptics.tap();
+                          setState(
+                            () => _moreMenusExpanded = !_moreMenusExpanded,
+                          );
+                        },
+                        size: SoftPressSize.small,
+                        borderRadius: 20,
+                        isDarkSurface: false,
+                        liftWhenIdle: true,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _moreMenusExpanded
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                size: 20,
+                                color: const Color(0xFF4A5A70),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _moreMenusExpanded
+                                    ? 'ซ่อนเมนูเพิ่มเติม'
+                                    : 'แสดงเมนูเพิ่มเติม',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: Color(0xFF4A5A70),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
