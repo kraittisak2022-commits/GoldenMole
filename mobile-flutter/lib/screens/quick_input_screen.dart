@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -634,30 +635,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       shortTitle: 'ลางาน',
       color: Color(0xFFEF5D6E),
     ),
-    _LaborWorkCategory(
-      id: 'att_ot_1',
-      label: 'OT +1 ชั่วโมง',
-      shortTitle: 'OT +1 ชม.',
-      color: Color(0xFFF5A524),
-    ),
-    _LaborWorkCategory(
-      id: 'att_ot_2',
-      label: 'OT +2 ชั่วโมง',
-      shortTitle: 'OT +2 ชม.',
-      color: Color(0xFFF08A24),
-    ),
-    _LaborWorkCategory(
-      id: 'att_ot_3',
-      label: 'OT +3 ชั่วโมง',
-      shortTitle: 'OT +3 ชม.',
-      color: Color(0xFFE8701A),
-    ),
-    _LaborWorkCategory(
-      id: 'att_ot_custom',
-      label: 'OT • ระบุชั่วโมง',
-      shortTitle: 'OT · ระบุชั่วโมง',
-      color: Color(0xFFD65A2E),
-    ),
   ];
   static const List<_LaborWorkCategory> _attendanceDriverBuckets = [
     _LaborWorkCategory(
@@ -667,15 +644,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFFEF6C00),
     ),
     _LaborWorkCategory(
-      id: 'att_drv_drum_morning',
-      label: 'ขับรถดรัม • ช่วงเช้า',
-      shortTitle: 'ขับรถดรัม · เช้า',
-      color: Color(0xFF3B9AE1),
-    ),
-    _LaborWorkCategory(
-      id: 'att_drv_drum_afternoon',
-      label: 'ขับรถดรัม • ช่วงบ่าย',
-      shortTitle: 'ขับรถดรัม · บ่าย',
+      id: 'att_drv_drum',
+      label: 'ขับรถดรัม',
+      shortTitle: 'ขับรถดรัม',
       color: Color(0xFF6C6FE6),
     ),
     _LaborWorkCategory(
@@ -695,16 +666,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     'att_half_afternoon',
     'att_leave',
   };
-  static const Set<String> _attGeneralOtIds = {
-    'att_ot_1',
-    'att_ot_2',
-    'att_ot_3',
-    'att_ot_custom',
-  };
   static const Set<String> _attDriverIds = {
     'att_drv_macro',
-    'att_drv_drum_morning',
-    'att_drv_drum_afternoon',
+    'att_drv_drum',
     'att_drv_leave',
   };
   final Map<String, Set<String>> _attendanceAssignments = {
@@ -715,15 +679,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   };
   final Set<String> _attendanceGeneralPicked = <String>{};
   final Set<String> _attendanceDriverPicked = <String>{};
-  final TextEditingController _attendanceOtCustomController =
-      TextEditingController();
+
+  /// ความสูงกล่อง «#ทำงาน» — ลากขอบล่างปรับได้ เพราะบางวันมีคนเยอะกว่าปกติมาก
+  static const String _kAttWorkCardHeightKey = 'attendance_work_card_height_v1';
+  static const double _kAttWorkCardMinHeight = 220;
+  static const double _kAttWorkCardMaxHeight = 900;
+  double _attWorkCardHeight = 380;
+
   String? _attendanceLaborTxId;
   String? _attendanceLeaveTxId;
   String? _attendanceDriverLaborTxId;
   String? _attendanceDriverLeaveTxId;
   String? _attendanceLegacyLaborTxId;
   String? _attendanceLegacyLeaveTxId;
-  final Map<String, String> _attendanceOtTxIds = {};
 
   /// เมนูย่อยเช็คชื่อ (null = หน้าเลือกเมนู)
   AttendanceSection? _attendanceSection;
@@ -733,8 +701,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     'half:morning',
     'half:afternoon',
   };
+  /// `drum:morning` / `drum:afternoon` เป็นคีย์เดิมก่อนรวมกะเช้า-บ่าย
   static const Set<String> _attDriverWaKeys = {
     'macro_driver',
+    'drum',
     'drum:morning',
     'drum:afternoon',
   };
@@ -885,7 +855,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadOtSuggestions();
     _loadVehicleWorkSuggestions();
     _refreshHomeSandStock();
-    if (_isAttendanceMode) _refreshAttendanceDaysWorked();
+    if (_isAttendanceMode) {
+      _refreshAttendanceDaysWorked();
+      unawaited(_loadAttWorkCardHeight());
+    }
     _otGroups.add(_OtGroupDraft.empty());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -1724,7 +1697,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
-  /// เติมกระดานเช็คชื่อจากรายการที่บันทึกไว้ของวันนั้น (Labor Attendance / Leave / OT)
+  Future<void> _loadAttWorkCardHeight() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getDouble(_kAttWorkCardHeightKey);
+    if (saved == null || !mounted) return;
+    setState(() {
+      _attWorkCardHeight = saved.clamp(
+        _kAttWorkCardMinHeight,
+        _kAttWorkCardMaxHeight,
+      );
+    });
+  }
+
+  void _resizeAttWorkCard(double height) {
+    final next = height.clamp(_kAttWorkCardMinHeight, _kAttWorkCardMaxHeight);
+    if (next == _attWorkCardHeight) return;
+    setState(() => _attWorkCardHeight = next);
+  }
+
+  Future<void> _saveAttWorkCardHeight() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kAttWorkCardHeightKey, _attWorkCardHeight);
+  }
+
+  /// เติมกระดานเช็คชื่อจากรายการที่บันทึกไว้ของวันนั้น (Labor Attendance / Leave)
   void _hydrateAttendanceFromTransactions(List<AppTransaction> txs) {
     // ล้างค่าก่อนเติมใหม่ (กันค้างจากรอบก่อน)
     for (final k in _attendanceAssignments.keys) {
@@ -1741,8 +1737,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _attendanceDriverLeaveTxId = null;
     _attendanceLegacyLaborTxId = null;
     _attendanceLegacyLeaveTxId = null;
-    _attendanceOtTxIds.clear();
-    _attendanceOtCustomController.clear();
     _attendanceJustDroppedIds.clear();
 
     void assign(String bucketId, String empId) {
@@ -1816,30 +1810,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         continue;
       }
 
-      if (isOt) {
-        final hours = t.otHours ?? 0;
-        final String key;
-        if (hours == 1) {
-          key = 'att_ot_1';
-        } else if (hours == 2) {
-          key = 'att_ot_2';
-        } else if (hours == 3) {
-          key = 'att_ot_3';
-        } else {
-          key = 'att_ot_custom';
-          if (hours > 0 && _attendanceOtCustomController.text.trim().isEmpty) {
-            _attendanceOtCustomController.text =
-                hours == hours.roundToDouble()
-                    ? hours.toStringAsFixed(0)
-                    : hours.toStringAsFixed(1);
-          }
-        }
-        _attendanceOtTxIds[key] = t.id;
-        for (final id in t.employeeIds) {
-          assign(key, id);
-        }
-        continue;
-      }
+      // OT ย้ายไปเมนู «การทำงานล่วงเวลา» แล้ว — กระดานเช็คชื่อไม่แตะแถว OT
+      if (isOt) continue;
 
       if (isAttendance) {
         final wa = t.workAssignments;
@@ -1872,8 +1844,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           takeRole('half:morning', 'att_half_morning');
           takeRole('half:afternoon', 'att_half_afternoon');
           takeRole('macro_driver', 'att_drv_macro');
-          takeRole('drum:morning', 'att_drv_drum_morning');
-          takeRole('drum:afternoon', 'att_drv_drum_afternoon');
+          takeRole('drum', 'att_drv_drum');
+          takeRole('drum:morning', 'att_drv_drum');
+          takeRole('drum:afternoon', 'att_drv_drum');
         }
         // คนที่เหลือ (ไม่มีใน workAssignments) — ใช้ workTypeByEmployee เดา
         final wtByEmp = t.workTypeByEmployee ?? const {};
@@ -1885,12 +1858,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (isSandOnly) {
             assign(wt == 'halfday' ? 'att_half_morning' : 'att_work', id);
           } else if (isDriverOnly) {
-            assign(
-              wt == 'halfday' ? 'att_drv_drum_morning' : 'att_drv_macro',
-              id,
-            );
+            assign(wt == 'halfday' ? 'att_drv_drum' : 'att_drv_macro', id);
           } else if (wt == 'halfday') {
-            assign(isDriver ? 'att_drv_drum_morning' : 'att_half_morning', id);
+            assign(isDriver ? 'att_drv_drum' : 'att_half_morning', id);
           } else if (isDriver) {
             assign('att_drv_macro', id);
           } else {
@@ -2053,7 +2023,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelWithdrawTimeController.dispose();
     _fuelWithdrawOtherController.dispose();
     _laborWorkDetailsController.dispose();
-    _attendanceOtCustomController.dispose();
     _attendanceGeneralPoolScroll.dispose();
     _attendanceDriverPoolScroll.dispose();
     for (final job in _generalSubJobs) {
@@ -3762,17 +3731,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final halfM = _attendanceAssignments['att_half_morning']!.toSet();
     final halfA = _attendanceAssignments['att_half_afternoon']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
-    final ot1 = _attendanceAssignments['att_ot_1']!.toSet();
-    final ot2 = _attendanceAssignments['att_ot_2']!.toSet();
-    final ot3 = _attendanceAssignments['att_ot_3']!.toSet();
-    final otCustom = _attendanceAssignments['att_ot_custom']!.toSet();
-    final otCustomHours =
-        double.tryParse(_attendanceOtCustomController.text.trim()) ?? 0;
 
     // snapshot คนขับไว้เผื่อต้องแยกแถวรวมเก่า
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
-    final drvDrumM = _attendanceAssignments['att_drv_drum_morning']!.toSet();
-    final drvDrumA = _attendanceAssignments['att_drv_drum_afternoon']!.toSet();
+    final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
     final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
 
     await _runSaveWithPopups(
@@ -3786,15 +3748,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
         }
         final present = <String>{...work, ...halfM, ...halfA};
-        final anyOt = ot1.isNotEmpty ||
-            ot2.isNotEmpty ||
-            ot3.isNotEmpty ||
-            otCustom.isNotEmpty;
-        if (present.isEmpty && genLeave.isEmpty && !anyOt) {
+        if (present.isEmpty && genLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
-        }
-        if (otCustom.isNotEmpty && otCustomHours <= 0) {
-          _failSave('กรุณาระบุจำนวนชั่วโมง OT ในกล่อง «ระบุชั่วโมง»');
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
@@ -3809,8 +3764,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           sandPresent: present,
           sandLeave: genLeave,
           drvMacro: drvMacro,
-          drvDrumM: drvDrumM,
-          drvDrumA: drvDrumA,
+          drvDrum: drvDrum,
           drvLeave: drvLeave,
         );
 
@@ -3901,56 +3855,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceLeaveTxId = null;
         }
 
-        Future<void> saveOtGroup(
-          String key,
-          Set<String> ids,
-          double hours,
-        ) async {
-          final filtered = ids.where((id) {
-            final e = _employeesById[id];
-            return e == null || !isExcludedFromOtEmployeePicker(e);
-          }).toList();
-          if (filtered.isEmpty || hours <= 0) {
-            final existing = _attendanceOtTxIds[key];
-            if (existing != null) {
-              await _attendanceDeleteRowIfAny(existing);
-              _attendanceOtTxIds.remove(key);
-            }
-            return;
-          }
-          final txId = _attendanceOtTxIds[key] ?? '${baseTs}_$key';
-          if (_attendanceOtTxIds.containsKey(key)) {
-            _persistOmitCreatedSessionIds.add(txId);
-          }
-          _attendanceOtTxIds[key] = txId;
-          final hoursText = hours == hours.roundToDouble()
-              ? hours.toStringAsFixed(0)
-              : hours.toStringAsFixed(1);
-          await _persist(
-            AppTransaction(
-              id: txId,
-              date: date,
-              type: 'Expense',
-              category: 'Labor',
-              subCategory: 'OT',
-              laborStatus: 'OT',
-              employeeIds: filtered,
-              amount: 0,
-              otAmount: 0,
-              otHours: hours,
-              note: _activeSignatureNote,
-              otDescription: 'เช็คชื่อ OT',
-              description: _appendRecorder(
-                'เช็คชื่อ OT $hoursText ชม. (${filtered.length} คน)',
-              ),
-            ),
-          );
-        }
-
-        await saveOtGroup('att_ot_1', ot1, 1);
-        await saveOtGroup('att_ot_2', ot2, 2);
-        await saveOtGroup('att_ot_3', ot3, 3);
-        await saveOtGroup('att_ot_custom', otCustom, otCustomHours);
         await _refreshAttendanceDaysWorked();
       },
     );
@@ -3958,8 +3862,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveAttendanceDriverEntry() async {
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
-    final drvDrumM = _attendanceAssignments['att_drv_drum_morning']!.toSet();
-    final drvDrumA = _attendanceAssignments['att_drv_drum_afternoon']!.toSet();
+    final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
     final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
 
     final work = _attendanceAssignments['att_work']!.toSet();
@@ -3977,7 +3880,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (_employeesLoading) {
           _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
         }
-        final present = <String>{...drvMacro, ...drvDrumM, ...drvDrumA};
+        final present = <String>{...drvMacro, ...drvDrum};
         if (present.isEmpty && drvLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
@@ -3997,8 +3900,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           sandHalfM: halfM,
           sandHalfA: halfA,
           drvMacro: drvMacro,
-          drvDrumM: drvDrumM,
-          drvDrumA: drvDrumA,
+          drvDrum: drvDrum,
           drvLeave: drvLeave,
         );
 
@@ -4007,11 +3909,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           for (final id in drvMacro) {
             workType[id] = 'FullDay';
           }
-          for (final id in drvDrumM) {
-            workType[id] = 'HalfDay';
-          }
-          for (final id in drvDrumA) {
-            workType[id] = 'HalfDay';
+          for (final id in drvDrum) {
+            workType[id] = 'FullDay';
           }
           final assignments = <String, List<String>>{};
           void put(String key, Set<String> s) {
@@ -4019,8 +3918,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
 
           put('macro_driver', drvMacro);
-          put('drum:morning', drvDrumM);
-          put('drum:afternoon', drvDrumA);
+          put('drum', drvDrum);
           final id = _attendanceDriverLaborTxId ??
               _attendanceLegacyLaborTxId ??
               '${baseTs}_att_drv';
@@ -4111,8 +4009,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     Set<String> sandHalfM = const {},
     Set<String> sandHalfA = const {},
     required Set<String> drvMacro,
-    required Set<String> drvDrumM,
-    required Set<String> drvDrumA,
+    required Set<String> drvDrum,
     required Set<String> drvLeave,
   }) async {
     final legacyLabor = _attendanceLegacyLaborTxId;
@@ -4120,26 +4017,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (legacyLabor == null && legacyLeave == null) return;
 
     if (savingSand) {
-      final otherPresent = <String>{...drvMacro, ...drvDrumM, ...drvDrumA};
+      final otherPresent = <String>{...drvMacro, ...drvDrum};
       if (_attendanceDriverLaborTxId == null && otherPresent.isNotEmpty) {
         final workType = <String, String>{};
-        for (final id in drvMacro) {
+        for (final id in otherPresent) {
           workType[id] = 'FullDay';
-        }
-        for (final id in drvDrumM) {
-          workType[id] = 'HalfDay';
-        }
-        for (final id in drvDrumA) {
-          workType[id] = 'HalfDay';
         }
         final assignments = <String, List<String>>{};
         if (drvMacro.isNotEmpty) assignments['macro_driver'] = drvMacro.toList();
-        if (drvDrumM.isNotEmpty) {
-          assignments['drum:morning'] = drvDrumM.toList();
-        }
-        if (drvDrumA.isNotEmpty) {
-          assignments['drum:afternoon'] = drvDrumA.toList();
-        }
+        if (drvDrum.isNotEmpty) assignments['drum'] = drvDrum.toList();
         final id = '${baseTs}_att_drv_mig';
         _attendanceDriverLaborTxId = id;
         await _persist(
@@ -12355,7 +12241,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Set<String> _attendanceExclusionGroup(String bucketId) {
     if (_attGeneralPresenceIds.contains(bucketId)) return _attGeneralPresenceIds;
-    if (_attGeneralOtIds.contains(bucketId)) return _attGeneralOtIds;
     return _attDriverIds;
   }
 
@@ -12416,49 +12301,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  Widget _attendanceOtCustomHoursField({bool compact = false}) {
-    return TextField(
-      controller: _attendanceOtCustomController,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-      style: GoogleFonts.kanit(
-        fontWeight: FontWeight.w700,
-        fontSize: compact ? 13 : 14,
-        color: const Color(0xFF1D2A3A),
-      ),
-      onChanged: (_) => setState(() {}),
-      decoration: InputDecoration(
-        isDense: true,
-        labelText: compact ? 'ชั่วโมง' : 'ระบุชั่วโมง OT',
-        hintText: 'เช่น 4',
-        suffixText: 'ชม.',
-        labelStyle: GoogleFonts.kanit(
-          fontSize: compact ? 11.5 : 12.5,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF64748B),
-        ),
-        filled: true,
-        fillColor: const Color(0xFFFFF6EE),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: compact ? 10 : 12,
-          vertical: compact ? 8 : 10,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFEBC7AD)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFEBC7AD)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFD65A2E), width: 1.4),
-        ),
-      ),
-    );
-  }
-
   /// ช่องดรอปย่อยในการ์ดเช็คชื่อ (ว่าง = แสดง label, มีคน = ชิป)
   Widget _attendanceZone(
     _AttZoneDef z,
@@ -12468,7 +12310,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) {
     final ids = _attendanceAssignments[z.bucketId] ?? <String>{};
     final canMove = pickedPool.isNotEmpty;
-    Widget body = DragTarget<String>(
+    final Widget body = DragTarget<String>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (d) =>
           _attendanceAssignEmp(z.bucketId, d.data, pickedPool),
@@ -12510,85 +12352,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ),
                       ),
                     )
-                  : Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: ids.map((empId) {
-                        final emp = _employeesById[empId];
-                        final label = emp == null
-                            ? empId
-                            : _employeeUiDisplayName(emp);
-                        return LongPressDraggable<String>(
-                          data: empId,
-                          delay: _attDragDelay,
-                          onDragStarted: () => AppHaptics.tap(),
-                          feedback: Material(
-                            color: Colors.transparent,
-                            elevation: 6,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Chip(
-                              label: Text(
-                                label,
-                                style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              backgroundColor: color.withValues(alpha: 0.92),
-                            ),
-                          ),
-                          childWhenDragging: Opacity(
-                            opacity: 0.35,
-                            child: InputChip(
-                              labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 9,
-                                horizontal: 6,
-                              ),
-                              label: Text(
-                                label,
-                                style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 17,
-                                ),
-                              ),
-                              onDeleted: null,
-                            ),
-                          ),
-                          child: AnimatedScale(
-                            scale: _attendanceJustDroppedIds.contains(empId)
-                                ? 1.08
-                                : 1.0,
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutBack,
-                            child: InputChip(
-                              labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 9,
-                                horizontal: 6,
-                              ),
-                              label: Text(
-                                label,
-                                style: GoogleFonts.kanit(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 17,
-                                ),
-                              ),
-                              deleteIcon: const Icon(
-                                Icons.cancel_rounded,
-                                size: 20,
-                              ),
-                              onDeleted: () =>
-                                  _attendanceRemoveEmp(z.bucketId, empId),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                  : _attendanceZoneChips(
+                      ids: ids,
+                      color: color,
+                      bucketId: z.bucketId,
+                      scrollable: expand,
                     ),
             ),
           ),
@@ -12597,23 +12365,83 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         return SizedBox.expand(child: child);
       },
     );
-    if (z.isOtCustom) {
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (expand) Expanded(child: body) else body,
-          const SizedBox(height: 6),
-          _attendanceOtCustomHoursField(compact: true),
-        ],
-      );
-    }
-    if (expand && !z.isOtCustom) {
-      return Expanded(child: body);
-    }
-    if (expand && z.isOtCustom) {
-      return Expanded(child: body);
-    }
-    return body;
+    return expand ? Expanded(child: body) : body;
+  }
+
+  /// ชิปรายชื่อในช่องดรอป — เลื่อนได้เมื่อช่องมีความสูงคงที่ กันชื่อล้นกล่อง
+  Widget _attendanceZoneChips({
+    required Set<String> ids,
+    required Color color,
+    required String bucketId,
+    required bool scrollable,
+  }) {
+    final chips = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: ids.map((empId) {
+        final emp = _employeesById[empId];
+        final label = emp == null ? empId : _employeeUiDisplayName(emp);
+        return LongPressDraggable<String>(
+          data: empId,
+          delay: _attDragDelay,
+          onDragStarted: () => AppHaptics.tap(),
+          feedback: Material(
+            color: Colors.transparent,
+            elevation: 6,
+            borderRadius: BorderRadius.circular(16),
+            child: Chip(
+              label: Text(
+                label,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  fontSize: 18,
+                ),
+              ),
+              backgroundColor: color.withValues(alpha: 0.92),
+            ),
+          ),
+          childWhenDragging: Opacity(
+            opacity: 0.35,
+            child: InputChip(
+              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+              label: Text(
+                label,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                ),
+              ),
+              onDeleted: null,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _attendanceJustDroppedIds.contains(empId) ? 1.08 : 1.0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutBack,
+            child: InputChip(
+              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+              label: Text(
+                label,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                ),
+              ),
+              deleteIcon: const Icon(Icons.cancel_rounded, size: 20),
+              onDeleted: () => _attendanceRemoveEmp(bucketId, empId),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+    if (!scrollable) return chips;
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: chips,
+    );
   }
 
   /// การ์ดกลุ่ม (ทำงาน / ครึ่งวัน / ลางาน / OT / แม็คโคร / ดรัม)
@@ -12937,18 +12765,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final halfN = (_attendanceAssignments['att_half_morning']?.length ?? 0) +
         (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
     final leaveN = _attendanceAssignments['att_leave']?.length ?? 0;
-    final otN = (_attendanceAssignments['att_ot_1']?.length ?? 0) +
-        (_attendanceAssignments['att_ot_2']?.length ?? 0) +
-        (_attendanceAssignments['att_ot_3']?.length ?? 0) +
-        (_attendanceAssignments['att_ot_custom']?.length ?? 0);
     final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
-    final drumN = (_attendanceAssignments['att_drv_drum_morning']?.length ?? 0) +
-        (_attendanceAssignments['att_drv_drum_afternoon']?.length ?? 0);
+    final drumN = _attendanceAssignments['att_drv_drum']?.length ?? 0;
     final drvLeaveN = _attendanceAssignments['att_drv_leave']?.length ?? 0;
 
-    final sandSummary = workN + halfN + leaveN + otN == 0
+    final sandSummary = workN + halfN + leaveN == 0
         ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
-        : 'ทำงาน $workN · ครึ่งวัน $halfN · ลา $leaveN · OT $otN';
+        : 'ทำงาน $workN · ครึ่งวัน $halfN · ลา $leaveN';
     final driverSummary = macroN + drumN + drvLeaveN == 0
         ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
         : 'แม็คโคร $macroN · ดรัม $drumN · ลา $drvLeaveN';
@@ -13020,16 +12843,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           (_attendanceAssignments['att_half_morning']?.length ?? 0) +
           (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
       final leave = _attendanceAssignments['att_leave']?.length ?? 0;
-      final ot = (_attendanceAssignments['att_ot_1']?.length ?? 0) +
-          (_attendanceAssignments['att_ot_2']?.length ?? 0) +
-          (_attendanceAssignments['att_ot_3']?.length ?? 0) +
-          (_attendanceAssignments['att_ot_custom']?.length ?? 0);
-      return 'ทำงาน $work · ครึ่งวัน $half · ลา $leave · OT $ot';
+      return 'ทำงาน $work · ครึ่งวัน $half · ลา $leave';
     }
     final macro = _attendanceAssignments['att_drv_macro']?.length ?? 0;
-    final drum =
-        (_attendanceAssignments['att_drv_drum_morning']?.length ?? 0) +
-        (_attendanceAssignments['att_drv_drum_afternoon']?.length ?? 0);
+    final drum = _attendanceAssignments['att_drv_drum']?.length ?? 0;
     final leave = _attendanceAssignments['att_drv_leave']?.length ?? 0;
     return 'แม็คโคร $macro · ดรัม $drum · ลา $leave';
   }
@@ -13146,10 +12963,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildAttendanceSandYardBoard() {
-    final genPresenceIds = {
-      ..._attGeneralPresenceIds,
-      ..._attGeneralOtIds,
-    };
+    const genPresenceIds = _attGeneralPresenceIds;
     final assignedGeneral = <String>{
       for (final id in genPresenceIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
@@ -13167,7 +12981,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const workColor = Color(0xFF2FB6A6);
     const halfColor = Color(0xFF3B9AE1);
     const leaveColor = Color(0xFFEF5D6E);
-    const otColor = Color(0xFFF08A24);
     const poolAccent = Color(0xFF7C4DFF);
 
     final workCard = _attendanceGroupedCard(
@@ -13194,23 +13007,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       pickedPool: _attendanceGeneralPicked,
       equalHeightZones: true,
     );
-    final otCard = _attendanceGroupedCard(
-      title: 'OT',
-      color: otColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_ot_1', subLabel: '+1 ชั่วโมง'),
-        _AttZoneDef(bucketId: 'att_ot_2', subLabel: '+2 ชั่วโมง'),
-        _AttZoneDef(bucketId: 'att_ot_3', subLabel: '+3 ชั่วโมง'),
-        _AttZoneDef(
-          bucketId: 'att_ot_custom',
-          subLabel: 'ระบุชั่วโมง',
-          isOtCustom: true,
-        ),
-      ],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-
     final pool = _attendancePoolColumn(
       hashtag: '#รายชื่อพนักงานท่าทราย',
       people: generalPeople,
@@ -13224,7 +13020,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     return _attendanceFullscreenBoardLayout(
       pool: pool,
-      cards: [workCard, halfCard, leaveCard, otCard],
+      cards: [
+        _AttBoardCard(
+          child: workCard,
+          height: _attWorkCardHeight,
+          flex: 2,
+          onResize: _resizeAttWorkCard,
+          onResizeEnd: _saveAttWorkCardHeight,
+        ),
+        _AttBoardCard(child: halfCard, height: 260),
+        _AttBoardCard(child: leaveCard, height: 220),
+      ],
     );
   }
 
@@ -13259,10 +13065,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final drumCard = _attendanceGroupedCard(
       title: 'ขับรถดรัม',
       color: drumColor,
-      subheader: 'ขับรถดรัมช่วงเวลา',
       zones: const [
-        _AttZoneDef(bucketId: 'att_drv_drum_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(bucketId: 'att_drv_drum_afternoon', subLabel: 'ช่วงบ่าย'),
+        _AttZoneDef(bucketId: 'att_drv_drum', subLabel: 'ขับรถดรัม'),
       ],
       pickedPool: _attendanceDriverPicked,
       equalHeightZones: true,
@@ -13290,13 +13094,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     return _attendanceFullscreenBoardLayout(
       pool: pool,
-      cards: [macroCard, drumCard, leaveCard],
+      cards: [
+        _AttBoardCard(child: macroCard, height: 240),
+        _AttBoardCard(child: drumCard, height: 240),
+        _AttBoardCard(child: leaveCard, height: 220),
+      ],
     );
   }
 
   Widget _attendanceFullscreenBoardLayout({
     required Widget pool,
-    required List<Widget> cards,
+    required List<_AttBoardCard> cards,
   }) {
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 820 || size.width > size.height;
@@ -13314,7 +13122,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               children: [
                 for (var i = 0; i < cards.length; i++) ...[
                   if (i > 0) const SizedBox(height: gap),
-                  Expanded(child: cards[i]),
+                  Expanded(flex: cards[i].flex, child: cards[i].child),
                 ],
               ],
             ),
@@ -13336,14 +13144,53 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             itemCount: cards.length,
             separatorBuilder: (context, index) => const SizedBox(height: gap),
             itemBuilder: (context, i) {
-              final h = i == cards.length - 1 && cards.length >= 4
-                  ? 400.0
-                  : (i == 1 ? 260.0 : 200.0);
-              return SizedBox(height: h, child: cards[i]);
+              final card = cards[i];
+              final body = SizedBox(height: card.height, child: card.child);
+              final onResize = card.onResize;
+              if (onResize == null) return body;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  body,
+                  _attendanceCardResizeHandle(card, onResize),
+                ],
+              );
             },
           ),
         ),
       ],
+    );
+  }
+
+  /// จับลากขอบล่างการ์ดเพื่อย่อ-ขยาย (เก็บค่าไว้ใช้ครั้งหน้า)
+  Widget _attendanceCardResizeHandle(
+    _AttBoardCard card,
+    ValueChanged<double> onResize,
+  ) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: (d) => onResize(card.height + d.delta.dy),
+      onVerticalDragEnd: (_) {
+        AppHaptics.tap();
+        final done = card.onResizeEnd;
+        if (done != null) unawaited(done());
+      },
+      child: Semantics(
+        label: 'ปรับความสูงกล่อง',
+        child: SizedBox(
+          height: 26,
+          child: Center(
+            child: Container(
+              width: 64,
+              height: 6,
+              decoration: BoxDecoration(
+                color: const Color(0xFFB6C2D2),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -17037,15 +16884,27 @@ class _LaborWorkCategory {
 
 /// นิยามช่องดรอปย่อยในกระดานเช็คชื่อ
 class _AttZoneDef {
-  const _AttZoneDef({
-    required this.bucketId,
-    this.subLabel,
-    this.isOtCustom = false,
-  });
+  const _AttZoneDef({required this.bucketId, this.subLabel});
 
   final String bucketId;
   final String? subLabel;
-  final bool isOtCustom;
+}
+
+/// การ์ดหนึ่งใบบนกระดานเช็คชื่อ — จอกว้างใช้ [flex], จอสูงใช้ [height]
+class _AttBoardCard {
+  const _AttBoardCard({
+    required this.child,
+    required this.height,
+    this.flex = 1,
+    this.onResize,
+    this.onResizeEnd,
+  });
+
+  final Widget child;
+  final double height;
+  final int flex;
+  final ValueChanged<double>? onResize;
+  final Future<void> Function()? onResizeEnd;
 }
 
 class _GeneralSubJob {

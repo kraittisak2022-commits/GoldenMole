@@ -360,9 +360,10 @@ export const SAND_YARD_ATTENDANCE_ASSIGNMENT_KEYS = new Set([
     'half:afternoon',
 ]);
 
-/** คีย์เช็คชื่อคนขับรถจากมือถือ (แถวแยกจากท่าทราย) */
+/** คีย์เช็คชื่อคนขับรถจากมือถือ (แถวแยกจากท่าทราย) — drum:* คือคีย์เดิมก่อนรวมกะเช้า-บ่าย */
 export const DRIVER_ATTENDANCE_ASSIGNMENT_KEYS = new Set([
     'macro_driver',
+    'drum',
     'drum:morning',
     'drum:afternoon',
 ]);
