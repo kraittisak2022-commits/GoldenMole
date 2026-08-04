@@ -1,7 +1,9 @@
 import SwiftUI
 
-enum CategoryReportType {
+enum CategoryReportType: CaseIterable, Identifiable {
     case labor, vehicle, sand, fuel, land, income
+
+    var id: String { title }
 
     var title: String {
         switch self {
@@ -11,6 +13,28 @@ enum CategoryReportType {
         case .fuel: return "น้ำมัน"
         case .land: return "ที่ดิน"
         case .income: return "รายรับ"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .labor: return "person.2.fill"
+        case .vehicle: return "truck.box.fill"
+        case .sand: return "drop.fill"
+        case .fuel: return "fuelpump.fill"
+        case .land: return "map.fill"
+        case .income: return "banknote.fill"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .labor: return AppTheme.labor
+        case .vehicle: return AppTheme.vehicle
+        case .sand: return AppTheme.sand
+        case .fuel: return AppTheme.fuel
+        case .land: return AppTheme.land
+        case .income: return AppTheme.income
         }
     }
 
@@ -25,6 +49,97 @@ enum CategoryReportType {
         case .income: return t.type == .income
         }
     }
+
+    /// Compact hub card values for a single day (shown on the Reports tab before drilling in).
+    func hubSummary(
+        dayKey: String,
+        transactions: [Transaction],
+        employees: [Employee],
+        settings: AppSettings
+    ) -> CategoryHubSummary {
+        let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey && matches($0) }
+        switch self {
+        case .labor:
+            let total = dayTx.reduce(0.0) {
+                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+            }
+            let people = Set(dayTx.flatMap { $0.employeeIds ?? [] }.filter { !$0.isEmpty }).count
+            return CategoryHubSummary(
+                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
+                secondary: people > 0 ? "\(people) คนที่เกี่ยวข้อง" : "ยังไม่มีบันทึกวันนี้",
+                hasData: total > 0 || !dayTx.isEmpty
+            )
+        case .vehicle:
+            let total = dayTx.reduce(0.0) {
+                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+            }
+            let trips = dayTx.reduce(0) { $0 + CountRecordLogic.tripRounds(from: $1) }
+            let cars = Set(dayTx.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }).count
+            let secondary: String
+            if trips > 0 || cars > 0 {
+                secondary = "\(cars) คัน · \(trips) เที่ยว"
+            } else {
+                secondary = total > 0 ? "ค่าใช้จ่ายยานพาหนะ" : "ยังไม่มีบันทึกวันนี้"
+            }
+            return CategoryHubSummary(
+                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
+                secondary: secondary,
+                hasData: total > 0 || trips > 0 || !dayTx.isEmpty
+            )
+        case .sand:
+            let obtained = dayTx.compactMap(\.drumsObtained).max() ?? 0
+            let home = DashboardAggregations.persistedSandHomeDrums(dayTx)
+            let washed = dayTx.reduce(0.0) { $0 + DashboardAggregations.sandWashedCubic($1) }
+            let hasData = obtained > 0 || home > 0 || washed > 0 || !dayTx.isEmpty
+            return CategoryHubSummary(
+                primary: washed > 0
+                    ? "\(DashboardAggregations.formatNumber(washed)) คิว"
+                    : (obtained > 0 ? "\(DashboardAggregations.formatNumber(obtained)) ถัง" : "—"),
+                secondary: hasData
+                    ? "ได้ \(DashboardAggregations.formatNumber(obtained)) · บ้าน \(DashboardAggregations.formatNumber(home))"
+                    : "ยังไม่มีบันทึกวันนี้",
+                hasData: hasData
+            )
+        case .fuel:
+            let total = dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+            let liters = dayTx.reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            return CategoryHubSummary(
+                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
+                secondary: liters != 0
+                    ? "\(DashboardAggregations.formatNumber(abs(liters))) ลิตร"
+                    : (dayTx.isEmpty ? "ยังไม่มีบันทึกวันนี้" : "มีการเคลื่อนไหวสต็อก"),
+                hasData: total > 0 || liters != 0 || !dayTx.isEmpty
+            )
+        case .land:
+            let total = dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+            let groups = Set(dayTx.compactMap { t -> String? in
+                if let sc = t.subCategory?.trimmingCharacters(in: .whitespacesAndNewlines), !sc.isEmpty {
+                    return sc
+                }
+                return settings.landGroups.first { t.description.contains($0) }
+            })
+            return CategoryHubSummary(
+                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
+                secondary: groups.isEmpty
+                    ? (dayTx.isEmpty ? "ยังไม่มีบันทึกวันนี้" : "\(dayTx.count) รายการ")
+                    : "\(groups.count) โครงการ",
+                hasData: total > 0 || !dayTx.isEmpty
+            )
+        case .income:
+            let total = dayTx.reduce(0.0) { $0 + $1.amount }
+            return CategoryHubSummary(
+                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
+                secondary: dayTx.isEmpty ? "ยังไม่มีรายรับวันนี้" : "\(dayTx.count) รายการ",
+                hasData: total > 0 || !dayTx.isEmpty
+            )
+        }
+    }
+}
+
+struct CategoryHubSummary: Sendable {
+    let primary: String
+    let secondary: String
+    let hasData: Bool
 }
 
 struct CategoryReportView: View {
@@ -54,11 +169,7 @@ struct CategoryReportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
-            SectionHeader(
-                title: "รายงาน: \(type.title)",
-                systemImage: "doc.text.fill",
-                subtitle: scopeTitle
-            )
+            reportHeroBanner
 
             switch type {
             case .sand: sandView
@@ -68,6 +179,116 @@ struct CategoryReportView: View {
             case .land: landView
             case .income: incomeView
             }
+        }
+    }
+
+    private var reportHeroBanner: some View {
+        let summary = type.hubSummary(
+            dayKey: dateFilter.end,
+            transactions: transactions,
+            employees: employees,
+            settings: settings
+        )
+        let banner = rangeBannerValues(fallback: summary)
+
+        return HStack(alignment: .center, spacing: 14) {
+            Image(systemName: type.systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color.white.opacity(0.18)))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(type.title.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.7))
+                Text(banner.primary)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(banner.secondary)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .background(
+            LinearGradient(
+                colors: [type.accent.opacity(0.95), type.accent.opacity(0.7), AppTheme.brandDark.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: type.accent.opacity(0.3), radius: 14, y: 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(type.title) \(banner.primary) \(banner.secondary)")
+    }
+
+    private func rangeBannerValues(fallback: CategoryHubSummary) -> CategoryHubSummary {
+        guard !isSingleDay else {
+            return CategoryHubSummary(
+                primary: fallback.primary,
+                secondary: "\(scopeTitle) · \(fallback.secondary)",
+                hasData: fallback.hasData
+            )
+        }
+        switch type {
+        case .labor:
+            let total = transactions.reduce(0.0) {
+                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+            }
+            return CategoryHubSummary(
+                primary: DashboardAggregations.formatCurrency(total),
+                secondary: "\(scopeTitle) · \(transactions.count) รายการ",
+                hasData: total > 0 || !transactions.isEmpty
+            )
+        case .vehicle:
+            let total = transactions.reduce(0.0) {
+                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+            }
+            return CategoryHubSummary(
+                primary: DashboardAggregations.formatCurrency(total),
+                secondary: "\(scopeTitle) · \(transactions.count) รายการ",
+                hasData: total > 0 || !transactions.isEmpty
+            )
+        case .fuel:
+            let total = transactions.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+            let liters = transactions.reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            return CategoryHubSummary(
+                primary: DashboardAggregations.formatCurrency(total),
+                secondary: "\(scopeTitle) · \(DashboardAggregations.formatNumber(abs(liters))) ลิตร",
+                hasData: total > 0 || liters != 0
+            )
+        case .land:
+            let total = transactions.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+            return CategoryHubSummary(
+                primary: DashboardAggregations.formatCurrency(total),
+                secondary: scopeTitle,
+                hasData: total > 0
+            )
+        case .income:
+            let total = transactions.reduce(0.0) { $0 + $1.amount }
+            return CategoryHubSummary(
+                primary: DashboardAggregations.formatCurrency(total),
+                secondary: scopeTitle,
+                hasData: total > 0
+            )
+        case .sand:
+            let obtained = Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
+                .values
+                .reduce(0.0) { $0 + ($1.compactMap(\.drumsObtained).max() ?? 0) }
+            let home = DashboardAggregations.persistedSandHomeDrums(transactions)
+            let washed = transactions.reduce(0.0) { $0 + DashboardAggregations.sandWashedCubic($1) }
+            return CategoryHubSummary(
+                primary: "\(DashboardAggregations.formatNumber(washed)) คิว",
+                secondary: "\(scopeTitle) · ได้ \(DashboardAggregations.formatNumber(obtained)) · บ้าน \(DashboardAggregations.formatNumber(home))",
+                hasData: washed > 0 || obtained > 0 || home > 0
+            )
         }
     }
 
@@ -169,12 +390,25 @@ struct CategoryReportView: View {
                 ("OT", laborOT, "#3b82f6"),
                 ("เบิกล่วงหน้า", laborAdvance, "#f59e0b")
             ],
-            dailyAmount: { date in DashboardAggregations.categoryExpense(transactions, category: "Labor", date: date) }
+            dailyAmount: { date in
+                let dayTx = transactions.filter {
+                    String($0.date.prefix(10)) == date && $0.category == "Labor"
+                }
+                return dayTx.reduce(0.0) {
+                    $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+                }
+            }
         )
     }
 
-    private var laborTotal: Double { transactions.filter { $0.category == "Labor" && $0.type == .expense }.reduce(0) { $0 + $1.amount } }
-    private var laborBase: Double { transactions.filter { $0.category == "Labor" }.reduce(0) { $0 + ($1.amount - ($1.otAmount ?? 0) - ($1.advanceAmount ?? 0)) } }
+    private var laborTotal: Double {
+        transactions
+            .filter { $0.category == "Labor" }
+            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+    }
+    private var laborBase: Double {
+        max(0, laborTotal - laborOT - laborAdvance)
+    }
     private var laborOT: Double { transactions.filter { $0.category == "Labor" }.reduce(0) { $0 + ($1.otAmount ?? 0) } }
     private var laborAdvance: Double { transactions.filter { $0.category == "Labor" }.reduce(0) { $0 + ($1.advanceAmount ?? 0) } }
 
@@ -188,13 +422,33 @@ struct CategoryReportView: View {
                 ("รถ", vehicleOnly, "#f59e0b"),
                 ("เที่ยว", tripOnly, "#3b82f6")
             ],
-            dailyAmount: { date in DashboardAggregations.vehicleExpense(transactions, date: date) }
+            dailyAmount: { date in
+                let dayTx = transactions.filter {
+                    String($0.date.prefix(10)) == date
+                        && ($0.category == "Vehicle" || ($0.category == "DailyLog" && $0.subCategory == "VehicleTrip"))
+                }
+                return dayTx.reduce(0.0) {
+                    $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
+                }
+            }
         )
     }
 
-    private var vehicleTotal: Double { transactions.filter { $0.type == .expense }.filter { $0.category == "Vehicle" || ($0.category == "DailyLog" && $0.subCategory == "VehicleTrip") }.reduce(0) { $0 + $1.amount } }
-    private var vehicleOnly: Double { transactions.filter { $0.category == "Vehicle" && $0.type == .expense }.reduce(0) { $0 + $1.amount } }
-    private var tripOnly: Double { transactions.filter { $0.category == "DailyLog" && $0.subCategory == "VehicleTrip" && $0.type == .expense }.reduce(0) { $0 + $1.amount } }
+    private var vehicleTotal: Double {
+        transactions
+            .filter { $0.category == "Vehicle" || ($0.category == "DailyLog" && $0.subCategory == "VehicleTrip") }
+            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+    }
+    private var vehicleOnly: Double {
+        transactions
+            .filter { $0.category == "Vehicle" }
+            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+    }
+    private var tripOnly: Double {
+        transactions
+            .filter { $0.category == "DailyLog" && $0.subCategory == "VehicleTrip" }
+            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+    }
 
     // MARK: - Fuel
 
@@ -269,14 +523,47 @@ struct CategoryReportView: View {
         @ViewBuilder extra: () -> Extra = { EmptyView() }
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            StatCardView(title: "รวม", value: DashboardAggregations.formatCurrency(total), subtitle: nil, accent: Color(hex: "#ef4444"), systemImage: "chart.bar")
+            // Breakdown chips — the hero banner already shows the headline total.
+            if slices.contains(where: { $0.1 > 0 }) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(Array(slices.enumerated()), id: \.offset) { _, slice in
+                        let (label, value, hex) = slice
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(label)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                            Text(DashboardAggregations.formatCurrency(value))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Color(hex: hex))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(hex: hex).opacity(0.1))
+                        )
+                    }
+                }
+            } else {
+                StatCardView(
+                    title: "รวม",
+                    value: DashboardAggregations.formatCurrency(total),
+                    subtitle: scopeTitle,
+                    accent: type.accent,
+                    systemImage: type.systemImage
+                )
+            }
             extra()
             let chartSlices = slices.compactMap { label, value, color -> ChartSlice? in
                 guard value > 0 else { return nil }
                 return ChartSlice(label: label, value: value, colorHex: color)
             }
             if !chartSlices.isEmpty {
-                DonutChartView(slices: chartSlices).frame(height: 160)
+                SectionCard("สัดส่วน", systemImage: "chart.pie.fill") {
+                    DonutChartView(slices: chartSlices).frame(height: 160)
+                }
             }
             dailyBarSection(amountForDate: dailyAmount)
             detailByDate(category: category)

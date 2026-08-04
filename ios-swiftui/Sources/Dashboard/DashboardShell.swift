@@ -245,51 +245,9 @@ struct DashboardShell: View {
                 reportsSection(
                     eyebrow: "CATEGORIES",
                     title: "รายงานตามหมวด",
-                    subtitle: "สรุปค่าใช้จ่ายและรายได้"
+                    subtitle: "สรุปวันนี้ · แตะการ์ดเพื่อดูรายละเอียด"
                 ) {
-                    reportLink(
-                        title: "ค่าแรง",
-                        subtitle: "สรุปค่าแรงตามช่วง",
-                        icon: "person.2.fill",
-                        color: AppTheme.labor,
-                        destination: { categoryDetail(.labor) }
-                    )
-                    reportLink(
-                        title: "การใช้รถ",
-                        subtitle: "ค่าใช้จ่ายยานพาหนะ",
-                        icon: "truck.box.fill",
-                        color: AppTheme.vehicle,
-                        destination: { categoryDetail(.vehicle) }
-                    )
-                    reportLink(
-                        title: "ล้างทราย",
-                        subtitle: "ทรายและถัง",
-                        icon: "drop.fill",
-                        color: AppTheme.sand,
-                        destination: { categoryDetail(.sand) }
-                    )
-                    reportLink(
-                        title: "น้ำมัน",
-                        subtitle: "ดีเซล / เบนซิน",
-                        icon: "fuelpump.fill",
-                        color: AppTheme.fuel,
-                        destination: { categoryDetail(.fuel) }
-                    )
-                    reportLink(
-                        title: "ที่ดิน",
-                        subtitle: "โครงการและค่าใช้จ่าย",
-                        icon: "map.fill",
-                        color: AppTheme.land,
-                        destination: { categoryDetail(.land) }
-                    )
-                    reportLink(
-                        title: "รายรับ",
-                        subtitle: "สรุปรายได้",
-                        icon: "banknote.fill",
-                        color: AppTheme.income,
-                        showsDivider: false,
-                        destination: { categoryDetail(.income) }
-                    )
+                    categorySummaryGrid
                 }
             }
             .padding(AppTheme.spaceLG)
@@ -300,6 +258,81 @@ struct DashboardShell: View {
         .navigationTitle("รายงาน")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
+    }
+
+    private var todayKey: String { DashboardAggregations.todayYMD() }
+
+    private var categorySummaryGrid: some View {
+        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        return LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(CategoryReportType.allCases) { type in
+                let summary = type.hubSummary(
+                    dayKey: todayKey,
+                    transactions: appState.transactions,
+                    employees: appState.employees,
+                    settings: appState.settings
+                )
+                NavigationLink {
+                    categoryDetail(type)
+                } label: {
+                    categorySummaryCard(type: type, summary: summary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+    }
+
+    private func categorySummaryCard(type: CategoryReportType, summary: CategoryHubSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Image(systemName: type.systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(type.accent)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(type.accent.opacity(0.14))
+                    )
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AppTheme.inkMuted.opacity(0.7))
+                    .padding(.top, 4)
+            }
+
+            Text(type.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.inkSecondary)
+
+            Text(summary.primary)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(summary.hasData ? AppTheme.ink : AppTheme.inkMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
+
+            Text(summary.secondary)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.surfaceSoft.opacity(0.9))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    summary.hasData ? type.accent.opacity(0.28) : AppTheme.hairline,
+                    lineWidth: 1
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(type.title) \(summary.primary) \(summary.secondary)")
     }
 
     private var reportsHero: some View {
@@ -340,7 +373,12 @@ struct DashboardShell: View {
 
                 HStack(spacing: 10) {
                     reportsHeroChip(title: "มุมมอง", value: "1", tint: Color(hex: "#A7F3D0"))
-                    reportsHeroChip(title: "หมวด", value: "6", tint: Color(hex: "#CFFAFE"))
+                    reportsHeroChip(title: "หมวด", value: "\(CategoryReportType.allCases.count)", tint: Color(hex: "#CFFAFE"))
+                    reportsHeroChip(
+                        title: "วันนี้",
+                        value: categoryHubExpenseTodayLabel,
+                        tint: Color(hex: "#FDE68A")
+                    )
                 }
             }
             .padding(20)
@@ -349,6 +387,31 @@ struct DashboardShell: View {
         .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("ศูนย์รายงาน เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
+    }
+
+    private var categoryHubExpenseTodayLabel: String {
+        let day = todayKey
+        let types: [CategoryReportType] = [.labor, .vehicle, .fuel, .land]
+        let total = types.reduce(0.0) { sum, type in
+            let dayTx = appState.transactions.filter {
+                String($0.date.prefix(10)) == day && type.matches($0)
+            }
+            switch type {
+            case .labor, .vehicle:
+                return sum + dayTx.reduce(0.0) {
+                    $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: appState.employees)
+                }
+            case .fuel, .land:
+                return sum + dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+            default:
+                return sum
+            }
+        }
+        if total <= 0 { return "—" }
+        if total >= 1000 {
+            return "฿\(DashboardAggregations.formatNumber(total / 1000))k"
+        }
+        return DashboardAggregations.formatCurrency(total)
     }
 
     private func reportsHeroChip(title: String, value: String, tint: Color) -> some View {

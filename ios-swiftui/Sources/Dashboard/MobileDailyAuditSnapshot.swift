@@ -228,15 +228,24 @@ enum MobileDailyAuditSnapshot {
         all: [Transaction],
         employees: [Employee]
     ) -> MobileDailyAuditItem {
-        let hasWork = dayTx.contains { isAttendanceWorkRow($0) }
-        let hasLeave = all.contains { CalendarV3Logic.leaveRecordCoversDay($0, day: dayKey) }
-        let hasOT = dayTx.contains { isAttendanceOTRow($0) }
+        let roster = employees.filter(\.isHomeAttendancePool)
+        let rosterIds = Set(roster.map(\.id))
+
+        func touchesRoster(_ t: Transaction) -> Bool {
+            (t.employeeIds ?? []).contains { rosterIds.contains($0) }
+        }
+
+        let hasWork = dayTx.contains { isAttendanceWorkRow($0) && touchesRoster($0) }
+        let hasLeave = all.contains {
+            CalendarV3Logic.leaveRecordCoversDay($0, day: dayKey) && touchesRoster($0)
+        }
+        let hasOT = dayTx.contains { isAttendanceOTRow($0) && touchesRoster($0) }
         let status: MobileDailyFillStatus = (hasWork || hasLeave || hasOT) ? .complete : .pending
 
         let counts = DashboardAggregations.attendanceCounts(
             dayTx: dayTx,
             allTransactions: all,
-            employees: employees,
+            employees: roster,
             dayKey: dayKey
         )
         let headline: String
@@ -249,7 +258,9 @@ enum MobileDailyAuditSnapshot {
             kind: .attendance,
             status: status,
             headline: headline,
-            detail: employees.isEmpty ? nil : "พนักงานทั้งหมด \(employees.count) คน"
+            detail: roster.isEmpty
+                ? nil
+                : "ท่าทราย + แม็คโคร \(roster.count) คน"
         )
     }
 
