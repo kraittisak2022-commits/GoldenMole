@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_flutter/models/app_transaction.dart';
 import 'package:mobile_flutter/models/employee.dart';
+import 'package:mobile_flutter/utils/count_record_work_mode.dart';
 import 'package:mobile_flutter/utils/daily_module_transactions.dart';
 
 void main() {
@@ -359,6 +360,119 @@ void main() {
     );
     expect(
       countRecordMenuStatusLabel(day, txs),
+      '1 คัน · 3 เที่ยว · ร่อน 2 รอบ',
+    );
+  });
+
+  test('count record card respects trip-only work mode', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1: 3 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 3,
+        perCarTrips: 3,
+      ),
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 2 รอบ',
+        amount: 0,
+        drumsObtained: 2,
+      ),
+    ];
+    expect(
+      countRecordMenuStatusLabel(
+        day,
+        txs,
+        workMode: CountRecordWorkMode.trip,
+      ),
+      '1 คัน · 3 เที่ยว',
+    );
+    expect(
+      resolveCountRecordMenuFillStatus(
+        day,
+        txs,
+        workMode: CountRecordWorkMode.trip,
+      ),
+      DailyModuleFillStatus.complete,
+    );
+  });
+
+  test('count record card respects sand-only work mode', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1: 3 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 3,
+        perCarTrips: 3,
+      ),
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 2 รอบ',
+        amount: 0,
+        drumsObtained: 2,
+      ),
+    ];
+    expect(
+      countRecordMenuStatusLabel(
+        day,
+        txs,
+        workMode: CountRecordWorkMode.sand,
+      ),
+      'ร่อน 2 รอบ',
+    );
+  });
+
+  test('count record card both mode keeps trip and sand parts', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1: 3 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 3,
+        perCarTrips: 3,
+      ),
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 2 รอบ',
+        amount: 0,
+        drumsObtained: 2,
+      ),
+    ];
+    expect(
+      countRecordMenuStatusLabel(
+        day,
+        txs,
+        workMode: CountRecordWorkMode.both,
+      ),
       '1 คัน · 3 เที่ยว · ร่อน 2 รอบ',
     );
   });

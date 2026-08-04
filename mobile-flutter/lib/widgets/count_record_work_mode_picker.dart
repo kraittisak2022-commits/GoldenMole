@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../utils/count_record_work_mode.dart';
 import '../utils/device_perf.dart';
 import 'soft_press_button.dart';
 
-/// โหมดงานในแผง «บันทึกและนับจำนวน»
-enum CountRecordWorkMode {
-  trip,
-  sand,
-  both,
-}
+export '../utils/count_record_work_mode.dart' show CountRecordWorkMode;
 
 /// ขั้นเลือกงานก่อนเข้าแผงบันทึกและนับจำนวน — หัวข้อชัด + การ์ดขาว accent bar
 class CountRecordWorkModePicker extends StatefulWidget {

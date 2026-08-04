@@ -10,6 +10,7 @@ import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
 import '../services/count_record_offline_sync.dart';
+import '../services/count_record_work_mode_store.dart';
 import '../services/local_data_cache.dart';
 import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
@@ -988,6 +989,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   bool _gridEntranceCompleted = false;
   bool _countRecordTutorialScheduled = false;
   CountRecordWorkMode? _workMode;
+  /// โหมดที่บันทึกไว้ของวันที่เลือก — ใช้กรองข้อความบนการ์ดเมนู
+  CountRecordWorkMode? _dayWorkMode;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
   static const _kPanelShadowColor = Color(0x12000000);
@@ -1020,9 +1023,31 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     );
     _entranceController.addStatusListener(_onEntranceStatus);
     _entranceController.forward();
+    unawaited(_loadDayWorkMode());
     if (widget.countAndRecordMenuOpen) {
       _scheduleCountRecordTutorialIfNeeded();
     }
+  }
+
+  Future<void> _loadDayWorkMode({bool applyToPanel = false}) async {
+    final key = widget.dateKey(widget.selectedDay);
+    final mode = await CountRecordWorkModeStore.load(key);
+    if (!mounted) return;
+    setState(() {
+      _dayWorkMode = mode;
+      if (applyToPanel || widget.countAndRecordMenuOpen) {
+        _workMode = mode;
+      }
+    });
+  }
+
+  Future<void> _selectWorkMode(CountRecordWorkMode mode) async {
+    final key = widget.dateKey(widget.selectedDay);
+    setState(() {
+      _workMode = mode;
+      _dayWorkMode = mode;
+    });
+    await CountRecordWorkModeStore.save(key, mode);
   }
 
   void _scheduleCountRecordTutorialIfNeeded() {
@@ -1051,11 +1076,14 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       _entranceController
         ..reset()
         ..forward();
+      unawaited(
+        _loadDayWorkMode(applyToPanel: widget.countAndRecordMenuOpen),
+      );
     }
     if (oldWidget.countAndRecordMenuOpen != widget.countAndRecordMenuOpen) {
       _syncErrorTrackerStep();
       if (widget.countAndRecordMenuOpen) {
-        setState(() => _workMode = null);
+        unawaited(_loadDayWorkMode(applyToPanel: true));
         _scheduleCountRecordTutorialIfNeeded();
       }
     }
@@ -1108,10 +1136,12 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final countRecordFill = resolveCountRecordMenuFillStatus(
       dayKey,
       widget.data.dayTransactions,
+      workMode: _dayWorkMode,
     );
     final countRecordStatusLabel = countRecordMenuStatusLabel(
       dayKey,
       widget.data.dayTransactions,
+      workMode: _dayWorkMode,
     );
     Widget buildCountRecordEntryCard({bool showLightStyle = false}) {
       return RecordModuleCard(
@@ -1238,7 +1268,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 Widget buildCounterBody() {
                   if (_workMode == null) {
                     return CountRecordWorkModePicker(
-                      onSelect: (mode) => setState(() => _workMode = mode),
+                      onSelect: (mode) => unawaited(_selectWorkMode(mode)),
                     );
                   }
 
