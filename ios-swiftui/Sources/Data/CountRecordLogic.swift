@@ -54,6 +54,21 @@ enum CountRecordLogic {
         return s.contains("แม็คโคร") || s.contains("แมคโคร") || s.contains("excavator") || s.contains("backhoe")
     }
 
+    /// Drum / dump / 6-wheel / 10-wheel vehicles used by the Android drum-trip menu (excludes macro).
+    static func isDrumTripVehicleId(_ raw: String?) -> Bool {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty, !isMacroVehicleId(s) else { return false }
+        let compact = s.lowercased().replacingOccurrences(of: " ", with: "")
+        if compact.contains("ดั๊ม") || compact.contains("ดั้ม") || compact.contains("ดรัม") || compact.contains("dump") {
+            return true
+        }
+        if compact.contains("หกล้อ") || compact.contains("6ล้อ") { return true }
+        if compact.contains("สิบล้อ") || compact.contains("10ล้อ") { return true }
+        if s.range(of: #"6\s*ล้อ"#, options: .regularExpression) != nil { return true }
+        if s.range(of: #"10\s*ล้อ"#, options: .regularExpression) != nil { return true }
+        return false
+    }
+
     static func getLapTimes(_ t: Transaction) -> [String] {
         t.workAssignments?["lapTimes"] ?? []
     }

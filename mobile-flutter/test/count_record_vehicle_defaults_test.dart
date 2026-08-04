@@ -136,4 +136,11 @@ void main() {
     );
     expect(ordered.first.id, 'd2');
   });
+
+  test('new vehicle in count panel starts at 0 trips with empty laps', () {
+    expect(kCountRecordNewVehicleInitialRounds, 0);
+    final seed = countRecordNewVehicleSeed();
+    expect(seed.rounds, 0);
+    expect(seed.lapTimes, isEmpty);
+  });
 }

@@ -484,8 +484,8 @@ struct OverviewHubView: View {
             SectionCard("พนักงานวันนี้", systemImage: "person.crop.rectangle.stack.fill") {
                 if todayOps.staffRows.isEmpty {
                     EmptyStateView(
-                        title: "ยังไม่มีข้อมูลพนักงานวันนี้",
-                        message: "รอการบันทึกค่าแรง / ลางาน",
+                        title: "ยังไม่มีพนักงานท่าทราย / แม็คโคร",
+                        message: "นับเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครจากเมนูพนักงาน",
                         systemImage: "person.slash"
                     )
                 } else {
@@ -657,7 +657,7 @@ struct OverviewHubView: View {
                 KPITile(
                     title: "ร่อนทราย",
                     value: "\(snapshot.mobileToday.sandRounds) รอบ",
-                    subtitle: "ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileToday.sandWashedCubic)) คิว",
+                    subtitle: "ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileToday.sandWashedCubic)) คิว · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileToday.drumsHome))",
                     accent: AppTheme.sand,
                     systemImage: "drop.fill"
                 )
@@ -667,13 +667,6 @@ struct OverviewHubView: View {
                     subtitle: "ลา \(snapshot.mobileToday.leaveCount) · ขาด \(snapshot.mobileToday.absentCount)",
                     accent: AppTheme.labor,
                     systemImage: "person.3.fill"
-                )
-                KPITile(
-                    title: "รถดรัม",
-                    value: "เช้า \(snapshot.mobileToday.tripMorning)",
-                    subtitle: "บ่าย \(snapshot.mobileToday.tripAfternoon) · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileToday.drumsHome))",
-                    accent: AppTheme.warning,
-                    systemImage: "cylinder.split.1x2"
                 )
                 KPITile(
                     title: "แม็คโคร",
@@ -698,6 +691,8 @@ struct OverviewHubView: View {
                 )
             }
 
+            drumVehiclesCard
+
             SectionCard("รวมช่วง \(periodLabel)", systemImage: "app.badge.fill", subtitle: "ยอดรวมจากแอพมือถือ") {
                 mobileRangeBullet(
                     "เที่ยวรถ",
@@ -713,7 +708,7 @@ struct OverviewHubView: View {
                 )
                 mobileRangeBullet(
                     "รถดรัม",
-                    "เช้า \(snapshot.mobileRange.tripMorning) · บ่าย \(snapshot.mobileRange.tripAfternoon) · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileRange.drumsHome))"
+                    "\(snapshot.mobileRange.drumVehicles) คัน · เช้า \(snapshot.mobileRange.tripMorning) · บ่าย \(snapshot.mobileRange.tripAfternoon)"
                 )
                 mobileRangeBullet(
                     "แม็คโคร",
@@ -729,6 +724,97 @@ struct OverviewHubView: View {
                 )
             }
         }
+    }
+
+    /// Today's drum / dump trip units (excludes macro), aggregated by vehicle name.
+    private var todayDrumTripRows: [DrumTripRow] {
+        let dayKey = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
+        let units = CountRecordLogic.buildTripUnits(
+            dayKey: dayKey,
+            transactions: allTransactions,
+            employees: employees
+        )
+        .filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) && $0.rounds > 0 }
+
+        var byVehicle: [String: DrumTripRow] = [:]
+        for unit in units {
+            let key = unit.vehicleId
+            if var existing = byVehicle[key] {
+                existing.rounds += unit.rounds
+                existing.morning += unit.morning
+                existing.afternoon += max(0, unit.afternoon - unit.ot)
+                if existing.driverLabel == "ยังไม่ระบุ", unit.driverLabel != "ยังไม่ระบุ" {
+                    existing.driverLabel = unit.driverLabel
+                }
+                byVehicle[key] = existing
+            } else {
+                byVehicle[key] = DrumTripRow(
+                    id: key,
+                    vehicleName: unit.vehicleId,
+                    driverLabel: unit.driverLabel,
+                    rounds: unit.rounds,
+                    morning: unit.morning,
+                    afternoon: max(0, unit.afternoon - unit.ot)
+                )
+            }
+        }
+        return byVehicle.values.sorted {
+            if $0.rounds != $1.rounds { return $0.rounds > $1.rounds }
+            return $0.vehicleName.localizedStandardCompare($1.vehicleName) == .orderedAscending
+        }
+    }
+
+    private var drumVehiclesCard: some View {
+        let rows = todayDrumTripRows
+        return SectionCard(
+            rows.isEmpty ? "รถดรัม" : "รถดรัม · \(rows.count) คัน",
+            systemImage: "cylinder.split.1x2"
+        ) {
+            if rows.isEmpty {
+                Text("วันนี้ยังไม่มีรถดรัม")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    if index > 0 { Divider().padding(.vertical, 2) }
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.vehicleName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.ink)
+                                .lineLimit(1)
+                            Text(row.driverLabel)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.inkMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(row.rounds) เที่ยว")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppTheme.warning)
+                            if row.morning > 0 || row.afternoon > 0 {
+                                Text("เช้า \(row.morning) · บ่าย \(row.afternoon)")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.inkMuted)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private struct DrumTripRow: Identifiable {
+        let id: String
+        let vehicleName: String
+        var driverLabel: String
+        var rounds: Int
+        var morning: Int
+        var afternoon: Int
     }
 
     private func mobileRangeBullet(_ title: String, _ detail: String) -> some View {

@@ -2,6 +2,15 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import 'daily_module_transactions.dart';
 
+/// ยอดเที่ยวเริ่มต้นตอนเพิ่มรถใหม่ในแผงนับจำนวน (ก่อนกดการ์ดครั้งแรก)
+const int kCountRecordNewVehicleInitialRounds = 0;
+
+/// ค่าเริ่มต้นของหน่วยนับรถคันใหม่ — rounds = 0, ยังไม่มี lap
+({int rounds, List<String> lapTimes}) countRecordNewVehicleSeed() => (
+      rounds: kCountRecordNewVehicleInitialRounds,
+      lapTimes: const <String>[],
+    );
+
 String compactVehicleLabel(String raw) {
   return raw.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
 }

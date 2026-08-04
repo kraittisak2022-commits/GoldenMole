@@ -5,8 +5,11 @@ struct MobileOpsMetrics: Sendable {
     var tripRounds: Int = 0
     var tripVehicles: Int = 0
     var tripCubic: Double = 0
+    /// Morning / afternoon trip counts for drum / dump / 6–10 wheel vehicles only.
     var tripMorning: Int = 0
     var tripAfternoon: Int = 0
+    /// Distinct drum-trip vehicles with at least one round (today or unique in range).
+    var drumVehicles: Int = 0
     var sandRounds: Int = 0
     var sandWashedCubic: Double = 0
     var drumsObtained: Double = 0
@@ -74,10 +77,12 @@ enum MobileOpsSnapshot {
             transactions: dayTx,
             employees: employees
         )
+        let drumUnits = tripUnits.filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) }
         m.tripRounds = tripUnits.reduce(0) { $0 + $1.rounds }
         m.tripVehicles = tripUnits.filter { $0.rounds > 0 }.count
-        m.tripMorning = tripUnits.reduce(0) { $0 + $1.morning }
-        m.tripAfternoon = tripUnits.reduce(0) { $0 + max(0, $1.afternoon - $1.ot) }
+        m.tripMorning = drumUnits.reduce(0) { $0 + $1.morning }
+        m.tripAfternoon = drumUnits.reduce(0) { $0 + max(0, $1.afternoon - $1.ot) }
+        m.drumVehicles = Set(drumUnits.filter { $0.rounds > 0 }.map(\.vehicleId)).count
         m.tripCubic = dayTx
             .filter { CountRecordLogic.isCountRecordVehicleRow($0) }
             .reduce(0.0) { $0 + ($1.totalCubic ?? $1.perCarCubic ?? 0) }
@@ -89,10 +94,11 @@ enum MobileOpsSnapshot {
         m.drumsObtained = sandRows.compactMap(\.drumsObtained).max() ?? Double(m.sandRounds)
         m.drumsHome = DashboardAggregations.persistedSandHomeDrums(sandRows)
 
+        let roster = employees.filter(\.isHomeAttendancePool)
         let attendance = DashboardAggregations.attendanceCounts(
             dayTx: dayTx,
             allTransactions: transactions,
-            employees: employees,
+            employees: roster,
             dayKey: dayKey
         )
         m.presentCount = attendance.present
@@ -163,6 +169,11 @@ enum MobileOpsSnapshot {
             CountRecordLogic.buildTripUnits(dayKey: day, transactions: rangeTx, employees: employees)
         }
         total.tripVehicles = Set(tripUnitsAll.filter { $0.rounds > 0 }.map(\.vehicleId)).count
+        total.drumVehicles = Set(
+            tripUnitsAll
+                .filter { $0.rounds > 0 && CountRecordLogic.isDrumTripVehicleId($0.vehicleId) }
+                .map(\.vehicleId)
+        ).count
         let macroRows = rangeTx.filter { DashboardAggregations.isMacroUsageRow($0) }
         total.macroVehicles = Set(
             macroRows.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }

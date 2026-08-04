@@ -50,9 +50,9 @@ struct TodayOpsSnapshot: Sendable {
         )
         let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey }
 
-        let laborBaht = dayTx
-            .filter { $0.category == "Labor" }
-            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+        /// Home attendance / wage roster: sand-yard staff + macro drivers only.
+        let roster = employees.filter(\.isHomeAttendancePool)
+        let rosterIds = Set(roster.map(\.id))
 
         let vehicleBaht = dayTx.reduce(0.0) { sum, t in
             let isVehicle = t.category == "Vehicle"
@@ -67,11 +67,24 @@ struct TodayOpsSnapshot: Sendable {
         var workLabelsByEmployee: [String: [String]] = [:]
 
         for t in dayTx where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
-            let ids = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            let allIds = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            let ids = allIds.filter { rosterIds.contains($0) }
+            guard !ids.isEmpty else { continue }
+
             for id in ids { workingIds.insert(id) }
 
-            let inferredTotal = DashboardAggregations.wizardMonetaryAmount(t, employees: employees)
-            let share = ids.isEmpty ? 0 : inferredTotal / Double(ids.count)
+            let rowAmount: Double
+            if t.amount > 0, !allIds.isEmpty {
+                // Pro-rate recorded amount to roster members on this row.
+                rowAmount = t.amount * Double(ids.count) / Double(allIds.count)
+            } else if t.laborStatus == "OT" || t.subCategory == "OT" {
+                let fullOt = DashboardAggregations.wizardMonetaryAmount(t, employees: roster)
+                rowAmount = allIds.isEmpty ? 0 : fullOt * Double(ids.count) / Double(allIds.count)
+            } else {
+                // Prefer base_wage inference scoped to the home attendance pool.
+                rowAmount = DashboardAggregations.wizardMonetaryAmount(t, employees: roster)
+            }
+            let share = rowAmount / Double(ids.count)
             for id in ids {
                 wageByEmployee[id, default: 0] += share
             }
@@ -79,7 +92,7 @@ struct TodayOpsSnapshot: Sendable {
             if let assignments = t.workAssignments {
                 for (catId, empIds) in assignments {
                     let label = DashboardAggregations.workCategoryLabel(catId)
-                    for eid in empIds where !eid.isEmpty {
+                    for eid in empIds where rosterIds.contains(eid) {
                         var labels = workLabelsByEmployee[eid] ?? []
                         if !labels.contains(label) { labels.append(label) }
                         workLabelsByEmployee[eid] = labels
@@ -87,7 +100,7 @@ struct TodayOpsSnapshot: Sendable {
                 }
             }
             if let wte = t.workTypeByEmployee {
-                for (eid, wt) in wte where wt == "HalfDay" {
+                for (eid, wt) in wte where wt == "HalfDay" && rosterIds.contains(eid) {
                     var labels = workLabelsByEmployee[eid] ?? []
                     if !labels.contains("ครึ่งวัน") { labels.append("ครึ่งวัน") }
                     workLabelsByEmployee[eid] = labels
@@ -102,10 +115,12 @@ struct TodayOpsSnapshot: Sendable {
             }
         }
 
+        let laborBaht = wageByEmployee.values.reduce(0.0, +)
+
         let attendance = DashboardAggregations.attendanceCounts(
             dayTx: dayTx,
             allTransactions: transactions,
-            employees: employees,
+            employees: roster,
             dayKey: dayKey,
             workingIdsSeed: workingIds
         )
@@ -113,7 +128,7 @@ struct TodayOpsSnapshot: Sendable {
         leaveIds = attendance.leaveIds
         let absentIds = attendance.absentIds
 
-        let empById = Dictionary(uniqueKeysWithValues: employees.map { ($0.id, $0) })
+        let empById = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
 
         var rows: [StaffRow] = []
         for id in workingIds.sorted() {
@@ -208,6 +223,9 @@ extension DashboardAggregations {
         }
 
         let allIds = Set(employees.map(\.id))
+        // Keep present / leave within the provided employee pool (e.g. home sand-yard + macro).
+        workingIds = workingIds.intersection(allIds)
+        leaveIds = leaveIds.intersection(allIds)
         let absentIds = allIds.subtracting(workingIds).subtracting(leaveIds)
         return AttendanceCounts(
             present: workingIds.count,

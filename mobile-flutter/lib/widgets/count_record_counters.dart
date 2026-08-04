@@ -84,7 +84,7 @@ class _CounterUnit {
     required this.txId,
     required this.title,
     required this.subtitle,
-    this.rounds = 0,
+    this.rounds = kCountRecordNewVehicleInitialRounds,
     List<String>? lapTimes,
     this.persisted = false,
     this.vehicleId,
@@ -1307,6 +1307,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         vehicleId: vid,
         driverId: p.driverId.trim().isEmpty ? null : p.driverId.trim(),
         workDetails: _appendWorkKindTag('', p.workKind),
+        // รถคันใหม่เริ่มนับจาก 0 — กดการ์ดครั้งแรกค่อยเป็น 1
+        rounds: kCountRecordNewVehicleInitialRounds,
       );
       if (!mounted) continue;
       setState(() => _units.add(unit));

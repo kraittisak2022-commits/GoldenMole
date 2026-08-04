@@ -181,6 +181,43 @@ struct Employee: Codable, Identifiable, Sendable, Equatable {
         if let n = nickname?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { return n }
         return name
     }
+
+    /// Active when `inactive` is missing or explicitly false.
+    var isActive: Bool { inactive != true }
+
+    /// Position labels from both the multi-position array and the legacy single field.
+    var positionTokens: [String] {
+        var tokens: [String] = []
+        for p in positions ?? [] {
+            let t = p.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { tokens.append(t) }
+        }
+        if let single = position?.trimmingCharacters(in: .whitespacesAndNewlines), !single.isEmpty {
+            tokens.append(single)
+        }
+        return tokens
+    }
+
+    private var compactPositionTokens: Set<String> {
+        Set(positionTokens.map { $0.replacingOccurrences(of: " ", with: "") })
+    }
+
+    /// Matches Flutter sand-yard attendance pool titles.
+    var isSandYardStaff: Bool {
+        let titles: Set<String> = ["พนักงานท่าทราย", "พนักงานทำทราย", "ท่าทราย"]
+        return !compactPositionTokens.isDisjoint(with: titles)
+    }
+
+    /// Matches Flutter macro excavator driver titles (ทั้งสะกด แม็ค / แมค).
+    var isMacroDriver: Bool {
+        let titles: Set<String> = ["คนขับรถแม็คโคร", "คนขับรถแมคโคร"]
+        return !compactPositionTokens.isDisjoint(with: titles)
+    }
+
+    /// Home-tab attendance roster: active sand-yard staff + macro drivers only.
+    var isHomeAttendancePool: Bool {
+        isActive && (isSandYardStaff || isMacroDriver)
+    }
 }
 
 // MARK: - Transaction
