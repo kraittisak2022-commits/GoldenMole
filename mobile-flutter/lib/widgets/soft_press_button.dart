@@ -125,9 +125,10 @@ class SoftPressShell extends StatelessWidget {
 
     if (depthShadow != null && !DevicePerf.isConstrainedDevice) {
       final s = depthShadow!;
+      // เงาห้ามใช้ curve ที่ overshoot (เช่น easeOutBack) — blurRadius จะติดลบแล้ว assert
       core = AnimatedContainer(
         duration: duration,
-        curve: curve,
+        curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(borderRadius),
           boxShadow: [

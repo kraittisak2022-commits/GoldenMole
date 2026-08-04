@@ -2954,8 +2954,8 @@ class _RecordButtonShell extends StatelessWidget {
     final animDuration = pressed
         ? SoftPressMotion.downDuration()
         : SoftPressMotion.upDuration();
-    final animCurve =
-        pressed ? SoftPressMotion.downCurve() : SoftPressMotion.upCurve();
+    // ห้ามใช้ easeOutBack กับ BoxShadow — ค่า t เกิน 1 ทำให้ blurRadius ติดลบแล้ว crash
+    final animCurve = Curves.easeOutCubic;
     final bg = busy
         ? (busyBgColor ?? bgColor.withValues(alpha: 0.55))
         : dimmed
@@ -2963,6 +2963,7 @@ class _RecordButtonShell extends StatelessWidget {
             : bgColor;
     final shadowBlur = busy ? 0.0 : pressed ? 6.0 : 14.0;
     final shadowY = busy ? 0.0 : pressed ? 2.0 : 6.0;
+    final shadowAlpha = busy ? 0.0 : 0.45;
 
     return SoftPressShell(
       pressed: pressed && !busy,
@@ -2977,15 +2978,14 @@ class _RecordButtonShell extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(borderRadius),
-          boxShadow: busy
-              ? null
-              : [
-                  BoxShadow(
-                    color: shadowColor.withValues(alpha: 0.45),
-                    blurRadius: shadowBlur,
-                    offset: Offset(0, shadowY),
-                  ),
-                ],
+          // รายการเงาต้องมีเสมอ (ห้าม null) และ blur >= 0 — กัน lerp ตอน busy พัง
+          boxShadow: [
+            BoxShadow(
+              color: shadowColor.withValues(alpha: shadowAlpha),
+              blurRadius: shadowBlur,
+              offset: Offset(0, shadowY),
+            ),
+          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(
