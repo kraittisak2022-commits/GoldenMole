@@ -10,6 +10,16 @@ private enum TasksSegment: String, CaseIterable, Identifiable {
     case calendar = "ปฏิทิน"
 
     var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .today: return "sun.max.fill"
+        case .week: return "calendar.day.timeline.left"
+        case .month: return "calendar"
+        case .year: return "calendar.badge.clock"
+        case .calendar: return "calendar.circle.fill"
+        }
+    }
 }
 
 /// Ownership / visibility filter applied on top of the time window.
@@ -150,9 +160,7 @@ struct TasksHubView: View {
                 }
 
                 if segment == .calendar {
-                    SectionCard("ปฏิทินงาน", systemImage: "calendar") {
-                        TaskCalendarView(tasks: scopedTasks, selectedDay: $selectedDay)
-                    }
+                    calendarSection
                 }
 
                 listSection
@@ -207,36 +215,61 @@ struct TasksHubView: View {
     private var heroCard: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
+                colors: [
+                    Color(hex: "#042F36"),
+                    AppTheme.brandDark,
+                    AppTheme.brand,
+                    AppTheme.cyan.opacity(0.75)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Circle()
-                .fill(Color.white.opacity(0.14))
-                .frame(width: 150, height: 150)
-                .blur(radius: 26)
-                .offset(x: 210, y: -48)
 
-            VStack(alignment: .leading, spacing: 16) {
+            // Soft orbs for depth
+            Circle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 180, height: 180)
+                .blur(radius: 30)
+                .offset(x: 220, y: -60)
+            Circle()
+                .fill(AppTheme.cyan.opacity(0.22))
+                .frame(width: 110, height: 110)
+                .blur(radius: 24)
+                .offset(x: -30, y: 120)
+
+            VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("TASKS")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.6)
-                            .foregroundStyle(.white.opacity(0.75))
-                        Text("สิ่งที่ต้องทำวันนี้")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text(DashboardAggregations.thaiDateLong(today))
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.72))
-                        if carryOverCount > 0 {
-                            Label("ยกมา \(carryOverCount) งาน", systemImage: "arrow.uturn.forward")
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("WORKBOARD")
                                 .font(.system(size: 10, weight: .bold))
+                                .tracking(1.8)
+                        }
+                        .foregroundStyle(.white.opacity(0.7))
+
+                        Text(heroHeadline)
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .contentTransition(.opacity)
+
+                        Text(DashboardAggregations.thaiDateLong(today))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.68))
+
+                        if carryOverCount > 0 {
+                            Label("ยกมา \(carryOverCount) งานจากวันก่อน", systemImage: "arrow.uturn.forward")
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(Color(hex: "#FFEDD5"))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(Color.white.opacity(0.16)))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Capsule().fill(Color.white.opacity(0.14)))
+                                .padding(.top, 2)
+                        } else if todayTasks.isEmpty {
+                            Text("ว่างวันนี้ — พร้อมเพิ่มงานใหม่")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.55))
                                 .padding(.top, 2)
                         }
                     }
@@ -254,37 +287,65 @@ struct TasksHubView: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white.opacity(0.12))
+                        .fill(Color.white.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        )
                 )
             }
             .padding(20)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.brand.opacity(0.38), radius: 22, y: 10)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("งานวันนี้ ทั้งหมด \(todayTasks.count) เสร็จแล้ว \(doneToday)")
+    }
+
+    private var heroHeadline: String {
+        if openToday + inProgressToday == 0, !todayTasks.isEmpty {
+            return "วันนี้เคลียร์หมดแล้ว"
+        }
+        if openToday > 0 {
+            return "สิ่งที่ต้องทำวันนี้"
+        }
+        if inProgressToday > 0 {
+            return "กำลังเดินหน้าอยู่"
+        }
+        return "แผงงานประจำวัน"
     }
 
     private var progressRing: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.25), lineWidth: 7)
+                .stroke(Color.white.opacity(0.18), lineWidth: 8)
             Circle()
-                .trim(from: 0, to: CGFloat(todayProgress))
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .trim(from: 0, to: CGFloat(max(0.02, todayProgress)))
+                .stroke(
+                    AngularGradient(
+                        colors: [.white.opacity(0.55), .white, AppTheme.cyan],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text("\(Int(round(todayProgress * 100)))%")
-                    .font(.subheadline.weight(.bold))
+            VStack(spacing: 1) {
+                Text(todayTasks.isEmpty ? "—" : "\(Int(round(todayProgress * 100)))%")
+                    .font(.subheadline.weight(.heavy))
                     .foregroundStyle(.white)
-                Text("\(doneToday)/\(todayTasks.count)")
+                    .contentTransition(.numericText())
+                Text(todayTasks.isEmpty ? "ว่าง" : "\(doneToday)/\(todayTasks.count)")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(.white.opacity(0.72))
             }
             .minimumScaleFactor(0.6)
         }
-        .frame(width: 64, height: 64)
-        .animation(.snappy(duration: 0.3), value: todayProgress)
+        .frame(width: 70, height: 70)
+        .animation(.snappy(duration: 0.35), value: todayProgress)
         .accessibilityHidden(true)
     }
 
@@ -326,21 +387,26 @@ struct TasksHubView: View {
                     } label: {
                         Text(item.rawValue)
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .foregroundStyle(isActive ? .white : AppTheme.brand)
-                            .background(Capsule().fill(isActive ? AppTheme.brand : AppTheme.surfaceSoft))
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(isActive ? .white : AppTheme.inkSecondary)
+                            .background(
+                                Capsule()
+                                    .fill(isActive ? AppTheme.brand : AppTheme.surface)
+                            )
                             .overlay(
                                 Capsule().strokeBorder(
-                                    isActive ? Color.clear : AppTheme.brand.opacity(0.3),
+                                    isActive ? Color.clear : AppTheme.hairline,
                                     lineWidth: 1
                                 )
                             )
+                            .shadow(color: isActive ? AppTheme.brand.opacity(0.25) : .clear, radius: 6, y: 2)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 2)
+            .padding(.vertical, 1)
         }
     }
 
@@ -447,7 +513,7 @@ struct TasksHubView: View {
         ) {
             HStack {
                 Text("ปักไว้แล้ว")
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.inkMuted)
                 Spacer(minLength: 0)
                 PillBadge(
@@ -469,8 +535,16 @@ struct TasksHubView: View {
             Text("\(index + 1)")
                 .font(.caption.weight(.black))
                 .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(AppTheme.purple))
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle().fill(
+                        LinearGradient(
+                            colors: [AppTheme.purple, AppTheme.brand],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                )
 
             statusButton(task)
 
@@ -481,7 +555,7 @@ struct TasksHubView: View {
                     .strikethrough(task.isDone, color: AppTheme.inkMuted)
                     .lineLimit(2)
                 Text(task.priority.label)
-                    .font(.caption2)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(task.priority.color)
             }
 
@@ -498,19 +572,59 @@ struct TasksHubView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("เอา \(task.title) ออกจากโฟกัส")
         }
-        .padding(10)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AppTheme.purple.opacity(0.18), lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture { editorTarget = EditorTarget(id: task.id, task: task, isNew: false) }
     }
 
+    // MARK: - Calendar
+
+    private var calendarSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("ปฏิทินงาน")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("แตะวันเพื่อดูงานที่กำหนดวันนั้น · จุดส้ม = ยังค้าง")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "calendar")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.brand)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(AppTheme.brand.opacity(0.14)))
+            }
+
+            TaskCalendarView(tasks: scopedTasks, selectedDay: $selectedDay)
+        }
+        .padding(AppTheme.spaceLG)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 18, y: 8)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
     // MARK: - List
 
     private var listSection: some View {
-        SectionCard(listTitle, systemImage: "list.bullet", subtitle: listSubtitle) {
+        SectionCard(listTitle, systemImage: listSystemImage, subtitle: listSubtitle) {
             if listedTasks.isEmpty {
                 EmptyStateView(
                     title: emptyTitle,
@@ -520,7 +634,7 @@ struct TasksHubView: View {
                     systemImage: "checklist"
                 )
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(listedTasks) { task in
                         taskRow(task)
                     }
@@ -530,10 +644,18 @@ struct TasksHubView: View {
         }
     }
 
+    private var listSystemImage: String {
+        switch segment {
+        case .today: return "list.bullet.rectangle.portrait.fill"
+        case .calendar: return "calendar.badge.clock"
+        default: return "list.bullet"
+        }
+    }
+
     private var emptyTitle: String {
         switch segment {
         case .today: return "วันนี้ยังไม่มีงาน"
-        case .calendar: return "วันนี้ที่เลือกยังไม่มีงาน"
+        case .calendar: return "วันที่เลือกยังไม่มีงาน"
         default: return "ยังไม่มีงานในช่วงนี้"
         }
     }
@@ -550,6 +672,8 @@ struct TasksHubView: View {
 
     private var listSubtitle: String {
         let open = listedTasks.filter { !$0.isDone }.count
+        if listedTasks.isEmpty { return "ไม่มีรายการในมุมมองนี้" }
+        if open == 0 { return "\(listedTasks.count) งาน · เสร็จครบแล้ว" }
         return "\(listedTasks.count) งาน · ค้าง \(open)"
     }
 
@@ -557,7 +681,7 @@ struct TasksHubView: View {
         HStack(alignment: .top, spacing: 12) {
             statusButton(task)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     if task.isFocus {
                         Image(systemName: "pin.fill")
@@ -620,30 +744,36 @@ struct TasksHubView: View {
                     Text(task.assigneeInitials)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 26, height: 26)
+                        .frame(width: 28, height: 28)
                         .background(Circle().fill(Self.avatarColor(for: task.assigneeName ?? "")))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
                         .accessibilityLabel("มอบหมายให้ \(task.assigneeName ?? "")")
                 }
                 Text(DashboardAggregations.dayLabel(task.dueDate))
-                    .font(.caption2.weight(.medium))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
                 pinButton(task)
             }
         }
-        .padding(12)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surface)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.surfaceSoft.opacity(0.85))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    task.isDone
+                        ? AppTheme.hairline
+                        : task.priority.color.opacity(0.28),
+                    lineWidth: 1
+                )
         )
         .overlay(alignment: .leading) {
             Capsule()
-                .fill(task.isDone ? AppTheme.inkMuted.opacity(0.4) : task.priority.color)
-                .frame(width: 3)
-                .padding(.vertical, 8)
+                .fill(task.isDone ? AppTheme.inkMuted.opacity(0.35) : task.priority.color)
+                .frame(width: 3.5)
+                .padding(.vertical, 10)
                 .accessibilityLabel("ความสำคัญ \(task.priority.label)")
         }
         .contentShape(Rectangle())
@@ -754,19 +884,30 @@ struct TasksHubView: View {
             let draft = WorkTask.new(ownerAdminId: adminId, ownerName: adminName, dueDate: day)
             editorTarget = EditorTarget(id: draft.id, task: draft, isNew: true)
         } label: {
-            Image(systemName: "plus")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
-                .background(
-                    LinearGradient(
-                        colors: [AppTheme.brand, AppTheme.brandMid],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: Circle()
-                )
-                .shadow(color: AppTheme.brand.opacity(0.45), radius: 12, y: 5)
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.body.weight(.bold))
+                Text("เพิ่มงาน")
+                    .font(.subheadline.weight(.bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .frame(height: 52)
+            .background(
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [AppTheme.brand, AppTheme.brandMid],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            )
+            .shadow(color: AppTheme.brand.opacity(0.42), radius: 14, y: 6)
         }
         .buttonStyle(.plain)
         .padding(.trailing, AppTheme.spaceLG)
@@ -783,31 +924,47 @@ private struct TasksSegmentPill: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 ForEach(TasksSegment.allCases) { option in
+                    let isOn = selection == option
                     Button {
                         withAnimation(.snappy(duration: 0.28)) { selection = option }
                     } label: {
-                        Text(option.rawValue)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(selection == option ? .white : AppTheme.inkMuted)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background {
-                                if selection == option {
-                                    Capsule()
-                                        .fill(AppTheme.brand)
-                                        .matchedGeometryEffect(id: "tasksSegThumb", in: pillNS)
-                                        .shadow(color: AppTheme.brand.opacity(0.35), radius: 6, y: 2)
-                                }
+                        HStack(spacing: 5) {
+                            Image(systemName: option.systemImage)
+                                .font(.system(size: 11, weight: .bold))
+                            Text(option.rawValue)
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(isOn ? .white : AppTheme.inkMuted)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background {
+                            if isOn {
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [AppTheme.brand, AppTheme.brandMid],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .matchedGeometryEffect(id: "tasksSegThumb", in: pillNS)
+                                    .shadow(color: AppTheme.brand.opacity(0.35), radius: 8, y: 3)
                             }
+                        }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isOn ? .isSelected : [])
                 }
             }
-            .padding(3)
+            .padding(4)
         }
-        .background(Capsule().fill(AppTheme.surfaceSoft))
+        .background(
+            Capsule()
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow.opacity(0.5), radius: 8, y: 2)
+        )
         .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
     }
 }
