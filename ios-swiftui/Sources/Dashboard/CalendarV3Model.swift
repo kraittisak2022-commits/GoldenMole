@@ -139,7 +139,9 @@ enum CalendarV3Logic {
               let range = cal.range(of: .day, in: .month, for: first) else { return [] }
 
         let holidayMap = publicHolidayMap(year: year)
-        let totalEmployees = employees.count
+        let roster = employees.filter(\.isHomeAttendancePool)
+        let rosterIds = Set(roster.map(\.id))
+        let totalEmployees = roster.count
 
         return range.map { d in
             let dateStr = String(format: "%04d-%02d-%02d", year, month, d)
@@ -151,16 +153,17 @@ enum CalendarV3Logic {
 
             var workingIds = Set<String>()
             for t in financeTrans where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
-                for id in (t.employeeIds ?? []) where !id.isEmpty { workingIds.insert(id) }
+                for id in (t.employeeIds ?? []) where rosterIds.contains(id) { workingIds.insert(id) }
             }
 
             let leaveTrans = transactions.filter { !isCalendarTx($0) && leaveRecordCoversDay($0, day: dateStr) }
             var leaveIds = Set<String>()
             for t in leaveTrans {
-                for id in (t.employeeIds ?? []) where !id.isEmpty { leaveIds.insert(id) }
+                for id in (t.employeeIds ?? []) where rosterIds.contains(id) { leaveIds.insert(id) }
             }
-            let leaveNames = leaveIds.map { id -> String in
-                employees.first(where: { $0.id == id })?.displayName ?? "Unknown"
+            workingIds = workingIds.subtracting(leaveIds)
+            let leaveNames = leaveIds.sorted().map { id -> String in
+                roster.first(where: { $0.id == id })?.displayName ?? "Unknown"
             }
 
             let presentCount = workingIds.count

@@ -1,12 +1,9 @@
 import SwiftUI
+import UIKit
 
-/// ปฏิทินการทำงาน (V.3) — mirrors the web calendar dashboard
-/// (`src/modules/Dashboard/CalendarView.tsx`).
+/// ปฏิทินการทำงาน (V.3) — month grid + summary dashboard + day-detail sheet.
 ///
-/// Sunday-first month grid, net-based day coloring, holiday/appointment/leave
-/// indicators, monthly income/expense summary, and a rich selected-day detail
-/// sheet. Read-only: adding/deleting calendar entries requires the Supabase
-/// write layer, which is intentionally out of scope here.
+/// Read-only: adding/deleting calendar entries requires the Supabase write layer.
 struct CalendarV3View: View {
     let transactions: [Transaction]
     let employees: [Employee]
@@ -14,14 +11,12 @@ struct CalendarV3View: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var visibleMonth: Date = {
-        // Normalize to the 1st of the current month (matches web cursorMonth).
         let cal = DashboardAggregations.gregorian
         let comps = cal.dateComponents([.year, .month], from: Date())
         return cal.date(from: comps) ?? Date()
     }()
     @State private var selectedDay: String?
 
-    // Sunday-first weekday headers (matches web).
     private let weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]
     private let weekdayLabelsFull = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"]
 
@@ -32,15 +27,23 @@ struct CalendarV3View: View {
     private var monthIncome: Double { days.reduce(0) { $0 + $1.income } }
     private var monthExpense: Double { days.reduce(0) { $0 + $1.expense } }
     private var monthNet: Double { monthIncome - monthExpense }
+    private var daysWithFinance: Int { days.filter(\.hasFinance).count }
+    private var holidayDays: Int { days.filter(\.hasHoliday).count }
+    private var attendanceDays: Int { days.filter { $0.presentCount > 0 || $0.leaveCount > 0 }.count }
+
+    private var monthCategorySlices: [LedgerCategoryBucket] {
+        let monthKeys = Set(days.map(\.date))
+        let monthTx = transactions.filter {
+            monthKeys.contains(String($0.date.prefix(10))) && !CalendarV3Logic.isCalendarTx($0)
+        }
+        return LedgerCategoryBucket.group(monthTx)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
             heroCard
-
-            SectionCard {
-                legend
-                calendarGrid
-            }
+            calendarCard
+            monthSummaryDashboard
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: visibleMonth)
         .sheet(item: selectedDayBinding) { day in
@@ -53,83 +56,64 @@ struct CalendarV3View: View {
     private var heroCard: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
+                colors: [
+                    Color(hex: "#042F36"),
+                    AppTheme.brandDark,
+                    AppTheme.brand,
+                    AppTheme.cyan.opacity(0.72)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color.white.opacity(0.14))
-                .frame(width: 150, height: 150)
-                .blur(radius: 26)
-                .offset(x: 210, y: -40)
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 170, height: 170)
+                .blur(radius: 28)
+                .offset(x: 220, y: -50)
+            Circle()
+                .fill(AppTheme.cyan.opacity(0.2))
+                .frame(width: 100, height: 100)
+                .blur(radius: 22)
+                .offset(x: -20, y: 110)
 
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("CALENDAR")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.6)
-                            .foregroundStyle(.white.opacity(0.75))
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("OPS CALENDAR")
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(1.6)
+                        }
+                        .foregroundStyle(.white.opacity(0.7))
+
                         Text("ปฏิทินการทำงาน")
-                            .font(.title3.weight(.bold))
+                            .font(.title2.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("รายรับ · รายจ่าย · วันหยุด · นัดหมาย")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
+                        Text("แตะวันเพื่อดูแดชบอร์ดรายวัน · สรุปเดือนอยู่ด้านล่าง")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.68))
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "calendar")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 42, height: 42)
                         .background(Circle().fill(Color.white.opacity(0.16)))
                         .accessibilityHidden(true)
                 }
 
                 monthNavigation
-
-                HStack(spacing: 10) {
-                    heroMiniStat(
-                        title: "รายรับ",
-                        value: "฿" + DashboardAggregations.formatNumber(monthIncome),
-                        tint: Color(hex: "#A7F3D0")
-                    )
-                    heroMiniStat(
-                        title: "รายจ่าย",
-                        value: "฿" + DashboardAggregations.formatNumber(monthExpense),
-                        tint: Color(hex: "#FECACA")
-                    )
-                    heroMiniStat(
-                        title: "สุทธิ",
-                        value: (monthNet >= 0 ? "+" : "") + "฿" + DashboardAggregations.formatNumber(monthNet),
-                        tint: .white
-                    )
-                }
             }
             .padding(20)
         }
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
-    }
-
-    private func heroMiniStat(title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.55)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                .fill(Color.white.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
+        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
     }
 
     // MARK: - Month navigation
@@ -137,11 +121,7 @@ struct CalendarV3View: View {
     private var monthNavigation: some View {
         HStack(spacing: 10) {
             Button { shiftMonth(-1) } label: {
-                Image(systemName: "chevron.left")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.white.opacity(0.16)))
+                navCircle("chevron.left")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("เดือนก่อน")
@@ -152,98 +132,128 @@ struct CalendarV3View: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Button { goThisMonth() } label: {
-                    Text("เดือนนี้")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.white.opacity(0.18)))
+                if !isCurrentMonth {
+                    Button { goThisMonth() } label: {
+                        Text("กลับเดือนนี้")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.white.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
 
             Button { shiftMonth(1) } label: {
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.white.opacity(0.16)))
+                navCircle("chevron.right")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("เดือนถัดไป")
         }
     }
 
-    // MARK: - Legend
+    private func navCircle(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 38, height: 38)
+            .background(Circle().fill(Color.white.opacity(0.16)))
+    }
 
-    private var legend: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceSM) {
-            Text("สัญลักษณ์")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.inkMuted)
-            HStack(spacing: 0) {
-                legendItem(systemImage: "party.popper", color: AppTheme.expense, label: "วันหยุด")
-                legendItem(systemImage: "clock", color: AppTheme.purple, label: "นัดหมาย")
-                legendItem(systemImage: "sparkles", color: AppTheme.warning, label: "เหตุการณ์")
+    // MARK: - Calendar card
+
+    private var calendarCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ตารางเดือน")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("เขียว = รายรับสุทธิ · แดง = รายจ่ายสุทธิ")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
             }
+
+            legendStrip
+            calendarGrid
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppTheme.spaceLG)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                 .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
-    private func legendItem(systemImage: String, color: Color, label: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(AppTheme.inkSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+    private var legendStrip: some View {
+        HStack(spacing: 10) {
+            legendChip(color: AppTheme.income, label: "รายรับสุทธิ")
+            legendChip(color: AppTheme.expense, label: "รายจ่ายสุทธิ")
+            legendChip(color: AppTheme.purple, label: "นัดหมาย")
+            legendChip(color: AppTheme.expense, label: "วันหยุด", systemImage: "party.popper")
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Grid
+    private func legendChip(color: Color, label: String, systemImage: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(color)
+            } else {
+                Circle().fill(color).frame(width: 6, height: 6)
+            }
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(1)
+        }
+    }
 
     private var calendarGrid: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
         let leading = CalendarV3Logic.leadingBlankCount(visibleMonth: visibleMonth)
-        return LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { index, d in
-                Text(d)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(index == 0 ? AppTheme.expense.opacity(0.85) : AppTheme.inkMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                    .accessibilityLabel(weekdayLabelsFull[index])
+        return VStack(spacing: 8) {
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { index, d in
+                    Text(d)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(index == 0 ? AppTheme.expense.opacity(0.85) : AppTheme.inkMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 2)
+                        .accessibilityLabel(weekdayLabelsFull[index])
+                }
             }
-            ForEach(0..<leading, id: \.self) { i in
-                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                    .fill(AppTheme.surfaceSoft.opacity(0.45))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                            .strokeBorder(AppTheme.hairline.opacity(0.5), lineWidth: 1)
-                    )
-                    .frame(minHeight: 68)
-                    .id("blank-\(i)")
-                    .accessibilityHidden(true)
-            }
-            ForEach(days) { day in
-                dayCell(day)
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(0..<leading, id: \.self) { i in
+                    Color.clear
+                        .frame(minHeight: 62)
+                        .id("blank-\(i)")
+                        .accessibilityHidden(true)
+                }
+                ForEach(days) { day in
+                    dayCell(day)
+                }
             }
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.surfaceSoft.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
     }
 
     private func dayCell(_ day: CalendarDayModel) -> some View {
@@ -252,46 +262,45 @@ struct CalendarV3View: View {
         let style = DayCellStyle(day: day)
 
         return Button {
-            selectedDay = day.date
+            withAnimation(.snappy(duration: 0.2)) { selectedDay = day.date }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .top, spacing: 2) {
                     Text("\(day.day)")
-                        .font(.subheadline.weight(isToday ? .bold : .semibold))
-                        .foregroundStyle(isToday && !day.hasFinance ? AppTheme.brand : style.dayNumberColor)
+                        .font(.system(size: 14, weight: isToday || isSelected ? .bold : .semibold))
+                        .foregroundStyle(
+                            isSelected
+                                ? .white
+                                : (isToday && !day.hasFinance ? AppTheme.brand : style.dayNumberColor)
+                        )
                     Spacer(minLength: 0)
-                    indicatorDots(day)
+                    indicatorDots(day, onSelected: isSelected)
                 }
                 Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 2) {
-                    if day.income > 0 {
-                        amountTag("+" + DashboardAggregations.formatNumber(day.income), color: AppTheme.income)
-                    }
-                    if day.expense > 0 {
-                        amountTag("-" + DashboardAggregations.formatNumber(day.expense), color: AppTheme.expense)
-                    }
+                if day.hasFinance {
+                    Text(compactNet(day.net))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(isSelected ? .white.opacity(0.95) : (day.net >= 0 ? AppTheme.income : AppTheme.expense))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                    .fill(isSelected ? AppTheme.brand.opacity(0.16) : style.background)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? AppTheme.brand : style.background)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(
                         isSelected
-                            ? AppTheme.brand.opacity(0.55)
-                            : (isToday ? AppTheme.brand.opacity(0.65) : style.border),
-                        lineWidth: (isSelected || isToday) ? 1.6 : 1
+                            ? Color.clear
+                            : (isToday ? AppTheme.brand.opacity(0.55) : style.border),
+                        lineWidth: isToday && !isSelected ? 1.5 : (day.hasFinance ? 1 : 0)
                     )
-            )
-            .shadow(
-                color: isSelected ? AppTheme.brand.opacity(0.18) : .clear,
-                radius: 6,
-                y: 2
             )
         }
         .buttonStyle(.plain)
@@ -299,33 +308,27 @@ struct CalendarV3View: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func indicatorDots(_ day: CalendarDayModel) -> some View {
-        HStack(spacing: 3) {
-            if day.hasHoliday { dot(AppTheme.expense) }
-            if day.hasAppointment { dot(AppTheme.purple) }
-            if day.hasReminder { dot(AppTheme.warning) }
-            if day.presentCount > 0 { dot(AppTheme.info) }
-            if day.leaveCount > 0 { dot(AppTheme.warning) }
+    private func compactNet(_ net: Double) -> String {
+        let prefix = net > 0 ? "+" : ""
+        let abs = abs(net)
+        if abs >= 1000 {
+            return "\(prefix)\(DashboardAggregations.formatNumber(abs / 1000))k"
         }
-        .frame(height: 6)
+        return "\(prefix)\(DashboardAggregations.formatNumber(abs))"
     }
 
-    private func dot(_ color: Color) -> some View {
-        Circle().fill(color).frame(width: 5, height: 5)
+    private func indicatorDots(_ day: CalendarDayModel, onSelected: Bool) -> some View {
+        HStack(spacing: 2) {
+            if day.hasHoliday { microDot(onSelected ? .white : AppTheme.expense) }
+            if day.hasAppointment { microDot(onSelected ? .white.opacity(0.85) : AppTheme.purple) }
+            if day.hasReminder { microDot(onSelected ? .white.opacity(0.7) : AppTheme.warning) }
+            if day.presentCount > 0 { microDot(onSelected ? .white.opacity(0.7) : AppTheme.info) }
+        }
+        .frame(height: 5)
     }
 
-    private func amountTag(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(color.opacity(0.14))
-            )
+    private func microDot(_ color: Color) -> some View {
+        Circle().fill(color).frame(width: 4, height: 4)
     }
 
     private func accessibilityLabel(_ day: CalendarDayModel) -> String {
@@ -337,6 +340,162 @@ struct CalendarV3View: View {
         if day.presentCount > 0 { parts.append("มาทำงาน \(day.presentCount)") }
         if day.leaveCount > 0 { parts.append("ลา \(day.leaveCount)") }
         return parts.joined(separator: ", ")
+    }
+
+    // MARK: - Month summary (below calendar)
+
+    private var monthSummaryDashboard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("สรุปเดือน")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(monthTitle)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
+                Text(monthNet >= 0 ? "กำไรสุทธิ" : "ขาดทุนสุทธิ")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(monthNet >= 0 ? AppTheme.income : AppTheme.expense)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule().fill((monthNet >= 0 ? AppTheme.income : AppTheme.expense).opacity(0.12))
+                    )
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                summaryKPI(
+                    title: "รายรับ",
+                    value: DashboardAggregations.formatCurrency(monthIncome),
+                    tint: AppTheme.income,
+                    icon: "arrow.down.circle.fill"
+                )
+                summaryKPI(
+                    title: "รายจ่าย",
+                    value: DashboardAggregations.formatCurrency(monthExpense),
+                    tint: AppTheme.expense,
+                    icon: "arrow.up.circle.fill"
+                )
+                summaryKPI(
+                    title: "สุทธิ",
+                    value: (monthNet >= 0 ? "+" : "") + DashboardAggregations.formatCurrency(monthNet),
+                    tint: monthNet >= 0 ? AppTheme.brand : AppTheme.warning,
+                    icon: "equal.circle.fill"
+                )
+                summaryKPI(
+                    title: "วันที่มีธุรกรรม",
+                    value: "\(daysWithFinance) วัน",
+                    tint: AppTheme.info,
+                    icon: "calendar"
+                )
+            }
+
+            HStack(spacing: 8) {
+                miniStat(title: "วันหยุด", value: "\(holidayDays)")
+                miniStat(title: "วันเช็คชื่อ", value: "\(attendanceDays)")
+                miniStat(title: "วันในเดือน", value: "\(days.count)")
+            }
+
+            if !monthCategorySlices.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("แยกตามหมวด")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    ForEach(monthCategorySlices) { bucket in
+                        categoryProgressRow(bucket, grandTotal: max(monthExpense + monthIncome, 1))
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(AppTheme.spaceLG)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private func summaryKPI(title: String, value: String, tint: Color, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                Spacer(minLength: 0)
+            }
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func miniStat(title: String, value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+    }
+
+    private func categoryProgressRow(_ bucket: LedgerCategoryBucket, grandTotal: Double) -> some View {
+        let amount = abs(bucket.signedTotal)
+        let ratio = min(1, amount / grandTotal)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Image(systemName: bucket.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(bucket.accent)
+                Text(bucket.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer(minLength: 0)
+                Text(bucket.displayTotal)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(bucket.accent)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.surfaceSoft)
+                    Capsule()
+                        .fill(bucket.accent.opacity(0.85))
+                        .frame(width: max(4, geo.size.width * ratio))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - Helpers
@@ -357,6 +516,13 @@ struct CalendarV3View: View {
         return f.string(from: visibleMonth)
     }
 
+    private var isCurrentMonth: Bool {
+        let cal = DashboardAggregations.gregorian
+        let now = Date()
+        return cal.component(.year, from: visibleMonth) == cal.component(.year, from: now)
+            && cal.component(.month, from: visibleMonth) == cal.component(.month, from: now)
+    }
+
     private func shiftMonth(_ delta: Int) {
         visibleMonth = DashboardAggregations.gregorian.date(byAdding: .month, value: delta, to: visibleMonth) ?? visibleMonth
         selectedDay = nil
@@ -370,7 +536,7 @@ struct CalendarV3View: View {
     }
 }
 
-// MARK: - Day cell styling (net-based, matches web)
+// MARK: - Day cell styling
 
 private struct DayCellStyle {
     let background: Color
@@ -393,10 +559,89 @@ private struct DayCellStyle {
                 dayNumberColor = AppTheme.warning
             }
         } else {
-            background = AppTheme.surfaceSoft
-            border = AppTheme.hairline
+            background = Color.clear
+            border = Color.clear
             dayNumberColor = AppTheme.inkSecondary
         }
+    }
+}
+
+// MARK: - Ledger category buckets
+
+private struct LedgerCategoryBucket: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let transactions: [Transaction]
+
+    var expenseTotal: Double {
+        transactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
+    }
+
+    var incomeTotal: Double {
+        transactions.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
+    }
+
+    /// Income positive, expense negative for signed display preference.
+    var signedTotal: Double { incomeTotal - expenseTotal }
+
+    var displayTotal: String {
+        if incomeTotal > 0, expenseTotal == 0 {
+            return DashboardAggregations.formatCurrency(incomeTotal)
+        }
+        if expenseTotal > 0, incomeTotal == 0 {
+            return DashboardAggregations.formatCurrency(expenseTotal)
+        }
+        if incomeTotal > 0, expenseTotal > 0 {
+            return "+\(DashboardAggregations.formatNumber(incomeTotal)) / -\(DashboardAggregations.formatNumber(expenseTotal))"
+        }
+        return "—"
+    }
+
+    static func group(_ txs: [Transaction]) -> [LedgerCategoryBucket] {
+        let order: [(String, String, String, Color, (Transaction) -> Bool)] = [
+            ("labor", "ค่าแรง", "person.2.fill", AppTheme.labor, { $0.category == "Labor" && !CalendarV3Logic.isLaborLeaveRecord($0) }),
+            ("leave", "ลางาน", "calendar.badge.minus", AppTheme.warning, { CalendarV3Logic.isLaborLeaveRecord($0) || $0.category == "Leave" }),
+            ("vehicle", "การใช้รถ", "truck.box.fill", AppTheme.vehicle, {
+                $0.category == "Vehicle" || ($0.category == "DailyLog" && $0.subCategory == "VehicleTrip")
+            }),
+            ("sand", "ล้างทราย", "drop.fill", AppTheme.sand, {
+                $0.category == "DailyLog" && $0.subCategory == "Sand"
+            }),
+            ("fuel", "น้ำมัน", "fuelpump.fill", AppTheme.fuel, { $0.category == "Fuel" }),
+            ("land", "ที่ดิน", "map.fill", AppTheme.land, { $0.category == "Land" }),
+            ("income", "รายรับ", "banknote.fill", AppTheme.income, { $0.type == .income }),
+            ("machine", "เครื่องจักร", "gearshape.2.fill", AppTheme.slate, {
+                $0.category == "DailyLog" && $0.subCategory == "MachineWork"
+            }),
+            ("other", "อื่นๆ", "ellipsis.circle.fill", AppTheme.slate, { _ in true })
+        ]
+
+        var claimed = Set<String>()
+        var buckets: [LedgerCategoryBucket] = []
+        for (id, title, icon, accent, predicate) in order {
+            let rows: [Transaction]
+            if id == "other" {
+                rows = txs.filter { !claimed.contains($0.id) }
+            } else if id == "income" {
+                rows = txs.filter { predicate($0) && !claimed.contains($0.id) }
+            } else {
+                rows = txs.filter { predicate($0) && $0.type != .income && !claimed.contains($0.id) }
+            }
+            guard !rows.isEmpty else { continue }
+            rows.forEach { claimed.insert($0.id) }
+            buckets.append(
+                LedgerCategoryBucket(
+                    id: id,
+                    title: title,
+                    systemImage: icon,
+                    accent: accent,
+                    transactions: rows.sorted { $0.amount > $1.amount }
+                )
+            )
+        }
+        return buckets
     }
 }
 
@@ -406,18 +651,23 @@ private struct DayDetailSheet: View {
     let day: CalendarDayModel
     let onClose: () -> Void
 
+    private var ledgerBuckets: [LedgerCategoryBucket] {
+        LedgerCategoryBucket.group(day.financeTransactions)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                     header
+                    financeDashboard
                     if !day.calendarRows.isEmpty { calendarSection }
-                    financeTotals
                     attendanceSection
-                    activitySection
-                    ledgerSection
+                    if hasOpsActivity { opsActivitySection }
+                    ledgerDashboard
                 }
                 .padding(AppTheme.spaceLG)
+                .padding(.bottom, AppTheme.spaceXL)
             }
             .background(DashboardBackground())
             .scrollContentBackground(.hidden)
@@ -426,15 +676,22 @@ private struct DayDetailSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("ปิด") { onClose() }
+                        .fontWeight(.semibold)
                 }
             }
         }
     }
 
+    private var hasOpsActivity: Bool {
+        !day.machineLogs.isEmpty || !day.sandLogs.isEmpty || !day.eventLogs.isEmpty
+    }
+
+    // MARK: Header
+
     private var header: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.8)],
+                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.75)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -445,23 +702,101 @@ private struct DayDetailSheet: View {
                 .offset(x: 240, y: -30)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("DAY DETAIL")
+                Text("DAY DASHBOARD")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.4)
                     .foregroundStyle(.white.opacity(0.7))
                 Text(longThaiDate(day.date))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
-                Text("สรุปกิจกรรมและข้อมูลการเงิน")
-                    .font(.caption)
+                Text("\(day.financeTransactions.count) รายการเดินบัญชี · \(ledgerBuckets.count) หมวด")
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.72))
             }
             .padding(18)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: AppTheme.brand.opacity(0.28), radius: 14, y: 6)
     }
+
+    // MARK: Finance KPIs
+
+    private var financeDashboard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("สรุปการเงินวันนี้")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+
+            HStack(spacing: 10) {
+                dayKPI(title: "รายรับ", value: DashboardAggregations.formatCurrency(day.income), tint: AppTheme.income)
+                dayKPI(title: "รายจ่าย", value: DashboardAggregations.formatCurrency(day.expense), tint: AppTheme.expense)
+                dayKPI(
+                    title: "สุทธิ",
+                    value: (day.net >= 0 ? "+" : "") + DashboardAggregations.formatCurrency(day.net),
+                    tint: day.net >= 0 ? AppTheme.brand : AppTheme.warning
+                )
+            }
+
+            if !ledgerBuckets.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ledgerBuckets) { bucket in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label(bucket.title, systemImage: bucket.systemImage)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(bucket.accent)
+                                    .lineLimit(1)
+                                Text(bucket.displayTotal)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.ink)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Text("\(bucket.transactions.count) รายการ")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(AppTheme.inkMuted)
+                            }
+                            .padding(10)
+                            .frame(minWidth: 108, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(bucket.accent.opacity(0.1))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(bucket.accent.opacity(0.22), lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func dayKPI(title: String, value: String, tint: Color) -> some View {
+        VStack(spacing: 5) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    // MARK: Calendar events
 
     private var calendarSection: some View {
         SectionCard("วันหยุด / นัดหมาย / เหตุการณ์", systemImage: "calendar") {
@@ -486,113 +821,71 @@ private struct DayDetailSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
                     .background(
-                        RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(AppTheme.surfaceSoft)
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                            .strokeBorder(AppTheme.hairline, lineWidth: 1)
-                    )
                 }
             }
         }
     }
 
-    private var financeTotals: some View {
-        HStack(spacing: AppTheme.spaceMD) {
-            totalTile(title: "รายรับ", value: "+" + DashboardAggregations.formatNumber(day.income), color: AppTheme.income)
-            totalTile(title: "รายจ่าย", value: "-" + DashboardAggregations.formatNumber(day.expense), color: AppTheme.expense)
-            totalTile(
-                title: "ยอดสุทธิ",
-                value: (day.net > 0 ? "+" : "") + DashboardAggregations.formatNumber(day.net),
-                color: day.net >= 0 ? AppTheme.brand : AppTheme.warning
-            )
-        }
-    }
-
-    private func totalTile(title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(color)
-            Text(value)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(color)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(color.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(color.opacity(0.22), lineWidth: 1)
-        )
-    }
+    // MARK: Attendance
 
     private var attendanceSection: some View {
-        SectionCard("การมาทำงาน", systemImage: "person.2.fill") {
-            HStack(spacing: AppTheme.spaceMD) {
-                attendanceCard(count: day.presentCount, title: "มาทำงาน", subtitle: "พนักงานเข้ากะ", color: AppTheme.info)
-                attendanceCard(
-                    count: day.leaveCount,
-                    title: "ลางาน",
-                    subtitle: day.leaveNames.isEmpty ? "-" : day.leaveNames.joined(separator: ", "),
-                    color: AppTheme.warning
-                )
+        SectionCard(
+            "การมาทำงาน",
+            systemImage: "person.2.fill",
+            subtitle: "เฉพาะพนักงานท่าทราย + คนขับรถแม็คโคร"
+        ) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                attendanceTile(count: day.presentCount, title: "มา", color: AppTheme.income)
+                attendanceTile(count: day.leaveCount, title: "ลา", color: AppTheme.warning)
+                attendanceTile(count: day.missingCount, title: "ขาด", color: AppTheme.expense)
             }
-        }
-    }
-
-    private func attendanceCard(count: Int, title: String, subtitle: String, color: Color) -> some View {
-        HStack(spacing: 10) {
-            Text("\(count)")
-                .font(.title3.bold())
-                .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .background(color.opacity(0.15), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(subtitle)
+            if !day.leaveNames.isEmpty {
+                Text("ลา: \(day.leaveNames.joined(separator: ", "))")
                     .font(.caption)
                     .foregroundStyle(AppTheme.inkMuted)
-                    .lineLimit(2)
             }
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+    }
+
+    private func attendanceTile(count: Int, title: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(color.opacity(0.1))
         )
     }
 
-    private var activitySection: some View {
-        SectionCard("บันทึกกิจกรรมแทรกเตอร์ / ทราย", systemImage: "gearshape.2.fill") {
-            let isEmpty = day.machineLogs.isEmpty && day.sandLogs.isEmpty && day.eventLogs.isEmpty
-            if isEmpty {
-                EmptyStateView(title: "ไม่มีบันทึกกิจกรรมพิเศษสำหรับวันนี้", systemImage: "tray")
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(day.machineLogs) { t in activityRow(t, systemImage: "gearshape.2.fill", tint: AppTheme.vehicle, text: machineText(t)) }
-                    ForEach(day.sandLogs) { t in activityRow(t, systemImage: "drop.fill", tint: AppTheme.dailyLog, text: sandText(t)) }
-                    ForEach(day.eventLogs) { t in activityRow(t, systemImage: "pin.fill", tint: AppTheme.warning, text: t.description) }
+    // MARK: Ops activity
+
+    private var opsActivitySection: some View {
+        SectionCard("บันทึกปฏิบัติการ", systemImage: "gearshape.2.fill") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(day.machineLogs) { t in
+                    activityRow(systemImage: "gearshape.2.fill", tint: AppTheme.vehicle, text: machineText(t))
+                }
+                ForEach(day.sandLogs) { t in
+                    activityRow(systemImage: "drop.fill", tint: AppTheme.dailyLog, text: sandText(t))
+                }
+                ForEach(day.eventLogs) { t in
+                    activityRow(systemImage: "pin.fill", tint: AppTheme.warning, text: t.description)
                 }
             }
         }
     }
 
-    private func activityRow(_ t: Transaction, systemImage: String, tint: Color, text: String) -> some View {
+    private func activityRow(systemImage: String, tint: Color, text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
                 .font(.subheadline)
@@ -606,65 +899,127 @@ private struct DayDetailSheet: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
-    private var ledgerSection: some View {
-        SectionCard("รายการเดินบัญชี (ไม่รวมรายการปฏิทิน)", systemImage: "list.bullet.rectangle") {
-            if day.financeTransactions.isEmpty {
+    // MARK: Ledger by category
+
+    private var ledgerDashboard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("รายการเดินบัญชี", systemImage: "list.bullet.rectangle.fill")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer(minLength: 0)
+                Text("แยกตามหมวด")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.brand)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(AppTheme.brand.opacity(0.12)))
+            }
+
+            if ledgerBuckets.isEmpty {
                 EmptyStateView(title: "ไม่มีรายการเดินบัญชี", systemImage: "tray")
+                    .padding(.vertical, 8)
             } else {
-                VStack(spacing: 8) {
-                    ForEach(day.financeTransactions) { t in ledgerRow(t) }
+                ForEach(ledgerBuckets) { bucket in
+                    categoryLedgerCard(bucket)
                 }
             }
         }
-    }
-
-    private func ledgerRow(_ t: Transaction) -> some View {
-        let isIncome = t.type == .income
-        let amountColor: Color = isIncome ? AppTheme.income : (t.category == "Leave" ? AppTheme.warning : AppTheme.expense)
-        let amountText: String = t.amount > 0
-            ? "฿" + DashboardAggregations.formatNumber(t.amount)
-            : (t.category == "Leave" ? "ลา" : "-")
-        return HStack(spacing: 10) {
-            Text(isIncome ? "+" : "-")
-                .font(.headline)
-                .foregroundStyle(amountColor)
-                .frame(width: 34, height: 34)
-                .background(amountColor.opacity(0.15), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(t.description)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(2)
-                Text(t.category + (t.subCategory.map { " • \($0)" } ?? ""))
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-            Spacer(minLength: 0)
-            Text(amountText)
-                .font(.subheadline.bold())
-                .foregroundStyle(amountColor)
-        }
-        .padding(12)
+        .padding(AppTheme.spaceLG)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 14, y: 5)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                 .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
-    // MARK: - Detail helpers
+    private func categoryLedgerCard(_ bucket: LedgerCategoryBucket) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: bucket.systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(bucket.accent)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(bucket.accent.opacity(0.14))
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(bucket.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(bucket.transactions.count) รายการ")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
+                Text(bucket.displayTotal)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(bucket.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            VStack(spacing: 6) {
+                ForEach(bucket.transactions) { t in
+                    ledgerRow(t, accent: bucket.accent)
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.surfaceSoft.opacity(0.9))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(bucket.accent.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func ledgerRow(_ t: Transaction, accent: Color) -> some View {
+        let isIncome = t.type == .income
+        let amountColor: Color = isIncome ? AppTheme.income : (CalendarV3Logic.isLaborLeaveRecord(t) ? AppTheme.warning : AppTheme.expense)
+        let amountText: String = t.amount > 0
+            ? "฿" + DashboardAggregations.formatNumber(t.amount)
+            : (CalendarV3Logic.isLaborLeaveRecord(t) || t.category == "Leave" ? "ลา" : "—")
+
+        return HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(accent)
+                .frame(width: 3, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(t.description.isEmpty ? (t.subCategory ?? t.category) : t.description)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                if let sub = t.subCategory, !sub.isEmpty, sub != t.description {
+                    Text(sub)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Text(amountText)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(amountColor)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: Helpers
 
     private func kindColor(_ sub: String) -> Color {
         switch sub {
