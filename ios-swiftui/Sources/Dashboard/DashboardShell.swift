@@ -5,13 +5,13 @@ enum AppMainTab: Hashable {
     case realtimeTrip
     case realtimeSand
     case tasks
-    case reports
     case calendar
 }
 
 private enum HomeSegment: String, CaseIterable, Identifiable {
     case overview = "ภาพรวม"
     case worklog = "บันทึกงาน"
+    case reports = "รายงาน"
     var id: String { rawValue }
 }
 
@@ -61,17 +61,11 @@ struct DashboardShell: View {
             .tag(AppMainTab.tasks)
 
             NavigationStack {
-                reportsHub
-            }
-            .tabItem { Label("รายงาน", systemImage: "chart.bar.doc.horizontal.fill") }
-            .tag(AppMainTab.reports)
-
-            NavigationStack {
                 calendarTab
             }
             .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
             .tag(AppMainTab.calendar)
-}
+        }
         .tint(AppTheme.brand)
         .task {
             await appState.refresh()
@@ -141,6 +135,9 @@ struct DashboardShell: View {
                     }
                     .refreshable { await appState.refresh() }
                     .scrollContentBackground(.hidden)
+                case .reports:
+                    reportsHub
+                        .refreshable { await appState.refresh() }
                 }
             }
         }
@@ -265,11 +262,7 @@ struct DashboardShell: View {
             .padding(AppTheme.spaceLG)
             .padding(.bottom, AppTheme.spaceXL)
         }
-        .background(DashboardBackground())
         .scrollContentBackground(.hidden)
-        .navigationTitle("รายงาน")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { headerToolbar }
     }
 
     private var todayKey: String { DashboardAggregations.todayYMD() }
@@ -741,7 +734,7 @@ private struct HomeSegmentPill: View {
                     Text(seg.rawValue)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(selection == seg ? .white : AppTheme.inkMuted)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 9)
                         .background {
                             if selection == seg {
