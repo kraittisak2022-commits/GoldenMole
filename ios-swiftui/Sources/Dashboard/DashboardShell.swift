@@ -2,7 +2,8 @@ import SwiftUI
 
 enum AppMainTab: Hashable {
     case home
-    case realtime
+    case realtimeTrip
+    case realtimeSand
     case tasks
     case reports
     case calendar
@@ -20,9 +21,13 @@ struct DashboardShell: View {
     @Environment(TaskStore.self) private var taskStore
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
-    @State private var mainTab: AppMainTab = .realtime
+    @State private var mainTab: AppMainTab = .realtimeTrip
     @State private var homeSegment: HomeSegment = .overview
     @State private var showProfile = false
+
+    private var isRealtimeTabActive: Bool {
+        mainTab == .realtimeTrip || mainTab == .realtimeSand
+    }
 
     init() {
         Self.applyTabBarAppearance()
@@ -37,10 +42,16 @@ struct DashboardShell: View {
             .tag(AppMainTab.home)
 
             NavigationStack {
-                realtimeTab
+                realtimeBoard(mode: .trip)
             }
-            .tabItem { Label("Real-time", systemImage: "dot.radiowaves.left.and.right") }
-            .tag(AppMainTab.realtime)
+            .tabItem { Label("Real-time เที่ยวรถ", systemImage: "truck.box.fill") }
+            .tag(AppMainTab.realtimeTrip)
+
+            NavigationStack {
+                realtimeBoard(mode: .sand)
+            }
+            .tabItem { Label("Real-time ร่อนทราย", systemImage: "drop.fill") }
+            .tag(AppMainTab.realtimeSand)
 
             NavigationStack {
                 tasksTab
@@ -182,7 +193,7 @@ struct DashboardShell: View {
 
     // MARK: - Realtime
 
-    private var realtimeTab: some View {
+    private func realtimeBoard(mode: RealtimeBoardMode) -> some View {
         loadingOr {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
@@ -191,7 +202,8 @@ struct DashboardShell: View {
                         employees: appState.employees,
                         settings: appState.settings,
                         transactionsRevision: appState.transactionsRevision,
-                        selectedTab: appState.selectedTab
+                        mode: mode,
+                        isRealtimeTabActive: isRealtimeTabActive
                     )
                 }
                 .padding(AppTheme.spaceLG)

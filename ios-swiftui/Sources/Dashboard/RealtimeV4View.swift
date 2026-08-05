@@ -170,12 +170,19 @@ struct RealtimeV4Snapshot: Sendable {
     }
 }
 
+enum RealtimeBoardMode: String, Sendable {
+    case trip
+    case sand
+}
+
 struct RealtimeV4View: View {
     let transactions: [Transaction]
     let employees: [Employee]
     let settings: AppSettings
     var transactionsRevision: Int = 0
-    var selectedTab: DashboardTab = .realtimeV4
+    var mode: RealtimeBoardMode = .trip
+    /// True when either Real-time bottom tab is selected — drives snapshot rebuilds.
+    var isRealtimeTabActive: Bool = true
 
     @State private var focusDate = Date()
     @State private var snapshot = RealtimeV4Snapshot.empty()
@@ -205,9 +212,28 @@ struct RealtimeV4View: View {
     private var sandUnit: CountRecordSandUnit? { snapshot.sandUnit }
     private var tripTotal: Int { snapshot.tripTotal }
     private var sandRounds: Int { snapshot.sandRounds }
-    private var statusLabel: String? { snapshot.statusLabel }
     private var efficiency: VehicleEfficiency { snapshot.efficiency }
     private var fleetWorkSpan: String? { snapshot.fleetWorkSpan }
+
+    private var modeStatusLabel: String? {
+        switch mode {
+        case .trip:
+            guard tripTotal > 0 || !tripUnits.isEmpty else { return nil }
+            return "\(tripUnits.count) คัน · \(CountRecordLogic.formatMetric(tripTotal)) เที่ยว"
+        case .sand:
+            guard let sand = sandUnit, sand.rounds > 0 else { return nil }
+            var sandText = "ร่อน \(CountRecordLogic.formatMetric(sand.rounds)) รอบ"
+            if sand.morning > 0 || sand.afternoon > 0 {
+                sandText += " (เช้า \(sand.morning) · บ่าย \(sand.afternoon))"
+            }
+            return sandText
+        }
+    }
+
+    private var modeActivityEvents: [CountRecordAnalytics.ActivityEvent] {
+        let want: CountRecordAnalytics.ActivityEvent.Kind = mode == .trip ? .trip : .sand
+        return snapshot.activityEvents.filter { $0.kind == want }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -235,12 +261,14 @@ struct RealtimeV4View: View {
             lastRefresh = Date()
         }
         .onChange(of: employees) { _, _ in scheduleRebuild() }
-        .onChange(of: tripTotal) { _, _ in triggerPulse() }
-        .onChange(of: sandRounds) { _, _ in triggerPulse() }
-        .onChange(of: selectedTab) { _, tab in
-            if tab == .realtimeV4 {
-                if pendingRebuild { scheduleRebuild(force: true) }
-            }
+        .onChange(of: tripTotal) { _, _ in
+            if mode == .trip { triggerPulse() }
+        }
+        .onChange(of: sandRounds) { _, _ in
+            if mode == .sand { triggerPulse() }
+        }
+        .onChange(of: isRealtimeTabActive) { _, active in
+            if active, pendingRebuild { scheduleRebuild(force: true) }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -277,7 +305,7 @@ struct RealtimeV4View: View {
     /// Coalesces rapid realtime/delta updates into one off-main snapshot build.
     private func scheduleRebuild(force: Bool = false) {
         let canBuild = force
-            || (selectedTab == .realtimeV4 && scenePhase == .active)
+            || (isRealtimeTabActive && scenePhase == .active)
         guard canBuild else {
             pendingRebuild = true
             return
@@ -358,11 +386,13 @@ struct RealtimeV4View: View {
                 }
                 .foregroundStyle(Color(hex: "#C7D2FE").opacity(0.9))
 
-                Text("Real-time (V.4)")
+                Text(mode == .trip ? "Real-time เที่ยวรถ" : "Real-time ร่อนทราย")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
 
-                Text("ติดตามการนับเที่ยวรถและร่อนทรายแบบสด")
+                Text(mode == .trip
+                     ? "ติดตามการนับเที่ยวรถแบบสด"
+                     : "ติดตามการร่อนทรายแบบสด")
                     .font(.subheadline)
                     .foregroundStyle(Color(hex: "#CBD5E1"))
 
@@ -382,8 +412,8 @@ struct RealtimeV4View: View {
 
                 healthStatusRow
 
-                if let statusLabel {
-                    Text(statusLabel)
+                if let modeStatusLabel {
+                    Text(modeStatusLabel)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color(hex: "#A5B4FC"))
                 }
@@ -521,19 +551,22 @@ struct RealtimeV4View: View {
 
     private var tripAnalytics: CountRecordAnalytics.ModeAnalytics { snapshot.tripAnalytics }
     private var sandAnalytics: CountRecordAnalytics.ModeAnalytics { snapshot.sandAnalytics }
-    private var activityEvents: [CountRecordAnalytics.ActivityEvent] { snapshot.activityEvents }
 
     private var liveBoard: some View {
         VStack(spacing: 0) {
             liveBoardHeader
             VStack(spacing: 16) {
-                tripPanel
-                sandPanel
+                switch mode {
+                case .trip:
+                    tripPanel
+                case .sand:
+                    sandPanel
+                }
                 RealtimeV4ActivityFeed(
-                    events: activityEvents,
+                    events: modeActivityEvents,
                     dayKey: focusDateStr,
-                    tripUnits: tripUnits,
-                    sandUnit: sandUnit
+                    tripUnits: mode == .trip ? tripUnits : [],
+                    sandUnit: mode == .sand ? sandUnit : nil
                 )
             }
             .padding(16)
@@ -572,18 +605,22 @@ struct RealtimeV4View: View {
                 }
 
                 HStack(spacing: 8) {
-                    metricChip(
-                        icon: "truck.box.fill",
-                        text: "\(CountRecordLogic.formatMetric(tripTotal)) เที่ยว",
-                        bg: Color.blue.opacity(0.12),
-                        fg: Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#BFDBFE"))
-                    )
-                    metricChip(
-                        icon: "drop.fill",
-                        text: "\(CountRecordLogic.formatMetric(sandRounds)) รอบ",
-                        bg: Color.pink.opacity(0.12),
-                        fg: Color(light: Color(hex: "#BE185D"), dark: Color(hex: "#FBCFE8"))
-                    )
+                    switch mode {
+                    case .trip:
+                        metricChip(
+                            icon: "truck.box.fill",
+                            text: "\(CountRecordLogic.formatMetric(tripTotal)) เที่ยว",
+                            bg: Color.blue.opacity(0.12),
+                            fg: Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#BFDBFE"))
+                        )
+                    case .sand:
+                        metricChip(
+                            icon: "drop.fill",
+                            text: "\(CountRecordLogic.formatMetric(sandRounds)) รอบ",
+                            bg: Color.pink.opacity(0.12),
+                            fg: Color(light: Color(hex: "#BE185D"), dark: Color(hex: "#FBCFE8"))
+                        )
+                    }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("โพล")
