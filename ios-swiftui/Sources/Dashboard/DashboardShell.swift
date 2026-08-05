@@ -44,13 +44,13 @@ struct DashboardShell: View {
             NavigationStack {
                 realtimeBoard(mode: .trip)
             }
-            .tabItem { Label("Real-time เที่ยวรถ", systemImage: "truck.box.fill") }
+            .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
             .tag(AppMainTab.realtimeTrip)
 
             NavigationStack {
                 realtimeBoard(mode: .sand)
             }
-            .tabItem { Label("Real-time ร่อนทราย", systemImage: "drop.fill") }
+            .tabItem { Label("ร่อนทราย", systemImage: "drop.fill") }
             .tag(AppMainTab.realtimeSand)
 
             NavigationStack {
