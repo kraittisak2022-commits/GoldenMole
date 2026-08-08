@@ -261,17 +261,7 @@ struct OpsMenuDestinationView: View {
         case .fuel:
             FuelHubView()
         case .events:
-            OpsFilteredRecordListView(
-                title: "เหตุการณ์",
-                emptyMessage: "ยังไม่มีเหตุการณ์ / นัดหมายวันนี้",
-                predicate: { t in
-                    t.category == "Calendar"
-                        || t.subCategory == "Reminder"
-                        || t.subCategory == "Holiday"
-                        || t.subCategory == "Appointment"
-                        || (t.category == "DailyLog" && (t.subCategory ?? "").localizedCaseInsensitiveContains("event"))
-                }
-            )
+            EventHubView()
         case .leave:
             OpsFilteredRecordListView(
                 title: "ลางาน",
