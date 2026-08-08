@@ -263,15 +263,7 @@ struct OpsMenuDestinationView: View {
         case .events:
             EventHubView()
         case .leave:
-            OpsFilteredRecordListView(
-                title: "ลางาน",
-                emptyMessage: "ยังไม่มีบันทึกลางาน",
-                predicate: { t in
-                    t.type == .leave
-                        || t.category == "Leave"
-                        || CalendarV3Logic.isLaborLeaveRecord(t)
-                }
-            )
+            LeaveHubView()
         case .advance:
             OpsFilteredRecordListView(
                 title: "เบิกเงิน",
