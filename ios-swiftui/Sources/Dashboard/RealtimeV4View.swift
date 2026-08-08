@@ -230,8 +230,9 @@ struct RealtimeV4View: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             heroHeader
+            healthStatusRow
             liveBoard
         }
         .onAppear {
@@ -362,57 +363,103 @@ struct RealtimeV4View: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - Hero (date picker only)
+
+    private var heroAccentColors: [Color] {
+        switch mode {
+        case .trip:
+            return [Color(hex: "#1D4ED8"), Color(hex: "#2563EB"), Color(hex: "#0891B2")]
+        case .sand:
+            return [Color(hex: "#BE185D"), Color(hex: "#DB2777"), Color(hex: "#A21CAF")]
+        }
+    }
 
     private var heroHeader: some View {
-        ZStack(alignment: .topLeading) {
+        HStack(spacing: 10) {
+            Button {
+                showDatePicker = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.18))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "calendar")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("กำลังดู")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(.white.opacity(0.72))
+                        HStack(spacing: 8) {
+                            Text(thaiDateShort(focusDateStr))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            if isToday {
+                                Text("วันนี้")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#ECFDF5"))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(Color.white.opacity(0.22)))
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .padding(8)
+                        .background(Circle().fill(Color.white.opacity(0.14)))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("เลือกวันที่กำลังดู")
+            .accessibilityHint("แตะเพื่อเลือกวันย้อนหลัง")
+
+            if !isToday {
+                Button {
+                    focusDate = Date()
+                } label: {
+                    Text("กลับวันนี้")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.18))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
             LinearGradient(
-                colors: [Color(hex: "#020617"), Color(hex: "#0F172A"), Color(hex: "#1E1B4B")],
+                colors: heroAccentColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Circle()
-                .fill(Color(hex: "#6366F1").opacity(0.22))
-                .frame(width: 160, height: 160)
-                .offset(x: 220, y: -40)
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: "waveform.path.ecg")
-                        .font(.caption.weight(.semibold))
-                    Text("OPERATIONS MONITOR")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.8)
-                }
-                .foregroundStyle(Color(hex: "#C7D2FE").opacity(0.9))
-
-                Text(mode == .trip ? "Real-time เที่ยวรถ" : "Real-time ร่อนทราย")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.white)
-
-                HStack(spacing: 8) {
-                    dateChip
-                    if !isToday {
-                        Button("กลับวันนี้") {
-                            focusDate = Date()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().strokeBorder(Color.white.opacity(0.25)).background(Capsule().fill(Color.white.opacity(0.1))))
-                        .foregroundStyle(.white)
-                    }
-                }
-
-                healthStatusRow
-            }
-            .padding(20)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+        )
+        .shadow(color: heroAccentColors.first?.opacity(0.28) ?? .clear, radius: 10, y: 4)
         .sheet(isPresented: $showDatePicker) {
             focusDatePickerSheet
         }
@@ -460,37 +507,6 @@ struct RealtimeV4View: View {
         }
         .buttonStyle(.plain)
         .disabled(action == nil)
-    }
-
-    private var dateChip: some View {
-        Button {
-            showDatePicker = true
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                    .font(.caption)
-                Text("กำลังดู: \(thaiDateShort(focusDateStr))")
-                    .font(.caption.weight(.semibold))
-                if isToday {
-                    Text("วันนี้")
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.emerald.opacity(0.3)))
-                        .foregroundStyle(Color(hex: "#A7F3D0"))
-                }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            .foregroundStyle(.white.opacity(0.92))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Color.white.opacity(0.1)))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("เลือกวันที่กำลังดู")
-        .accessibilityHint("แตะเพื่อเลือกวันย้อนหลัง")
     }
 
     private var focusDatePickerSheet: some View {
