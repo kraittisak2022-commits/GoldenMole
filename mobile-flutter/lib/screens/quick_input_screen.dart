@@ -8719,34 +8719,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final now = TimeOfDay.now();
     final seed = initial ?? now;
     var selected = DateTime(2000, 1, 1, seed.hour, seed.minute);
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = (screenW - 32).clamp(320.0, 440.0);
 
     return showDialog<TimeOfDay>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
             'เลือกเวลา',
+            textAlign: TextAlign.center,
             style: GoogleFonts.kanit(
+              fontSize: 26,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1A2433),
             ),
           ),
           content: SizedBox(
-            width: 280,
-            height: 220,
+            width: dialogW,
+            height: 340,
             child: CupertinoTheme(
               data: const CupertinoThemeData(
                 brightness: Brightness.light,
                 primaryColor: Color(0xFF1565C0),
                 textTheme: CupertinoTextThemeData(
                   dateTimePickerTextStyle: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF1A2433),
+                    height: 1.2,
                   ),
                 ),
               ),
@@ -8758,14 +8766,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
           actions: [
             TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(120, 52),
+                textStyle: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               onPressed: () => Navigator.pop(ctx),
-              child: Text('ยกเลิก', style: GoogleFonts.kanit()),
+              child: Text('ยกเลิก', style: GoogleFonts.kanit(fontSize: 18)),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF1565C0),
+                minimumSize: const Size(140, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
               onPressed: () => Navigator.pop(
                 ctx,
@@ -8773,7 +8793,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               child: Text(
                 'ยืนยัน',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                style: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
