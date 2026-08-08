@@ -25,6 +25,15 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
     var eventType: String?
     var eventPriority: String?
     var eventTime: String?
+    /// Labor / attendance / leave fields (optional — unused by count-record DailyLog rows).
+    var employeeIds: [String]? = nil
+    var laborStatus: String? = nil
+    var workType: String? = nil
+    var workTypeByEmployee: [String: String]? = nil
+    var leaveReason: String? = nil
+    var leaveDays: Double? = nil
+    var tripMorning: Double? = nil
+    var tripAfternoon: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, date, type, category, description, amount, note
@@ -44,6 +53,14 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         case eventType = "event_type"
         case eventPriority = "event_priority"
         case eventTime = "event_time"
+        case employeeIds = "employee_ids"
+        case laborStatus = "labor_status"
+        case workType = "work_type"
+        case workTypeByEmployee = "work_type_by_employee"
+        case leaveReason = "leave_reason"
+        case leaveDays = "leave_days"
+        case tripMorning = "trip_morning"
+        case tripAfternoon = "trip_afternoon"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -71,6 +88,14 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         try c.encodeIfPresent(eventType, forKey: .eventType)
         try c.encodeIfPresent(eventPriority, forKey: .eventPriority)
         try c.encodeIfPresent(eventTime, forKey: .eventTime)
+        try c.encodeIfPresent(employeeIds, forKey: .employeeIds)
+        try c.encodeIfPresent(laborStatus, forKey: .laborStatus)
+        try c.encodeIfPresent(workType, forKey: .workType)
+        try c.encodeIfPresent(workTypeByEmployee, forKey: .workTypeByEmployee)
+        try c.encodeIfPresent(leaveReason, forKey: .leaveReason)
+        try c.encodeIfPresent(leaveDays, forKey: .leaveDays)
+        try c.encodeIfPresent(tripMorning, forKey: .tripMorning)
+        try c.encodeIfPresent(tripAfternoon, forKey: .tripAfternoon)
     }
 }
 

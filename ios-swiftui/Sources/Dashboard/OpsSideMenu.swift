@@ -256,7 +256,7 @@ struct OpsMenuDestinationView: View {
         case .countRecord:
             CountRecordHubView()
         case .attendance:
-            OpsAttendanceDetailView()
+            AttendanceHubView()
         case .drumTrips:
             // Tab switch is handled by the shell; this is a fallback.
             CategoryReportScreen(type: .vehicle, titleOverride: "รถดรัมและเที่ยว")
