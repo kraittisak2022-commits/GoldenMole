@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,6 +16,7 @@ import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/attendance_sub_mode_picker.dart';
 import '../widgets/fuel_sub_mode_picker.dart';
+import '../widgets/fuel_time_picker_dialog.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
 import '../widgets/soft_sync_indicator.dart';
@@ -8714,95 +8714,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return '$hh:$mm';
   }
 
-  /// เลือกเวลาแบบ 24 ชม. ด้วย list เลื่อนชั่วโมง/นาที (ไม่มี AM/PM)
-  Future<TimeOfDay?> _pickFuelTimeOfDay({TimeOfDay? initial}) async {
-    final now = TimeOfDay.now();
-    final seed = initial ?? now;
-    var selected = DateTime(2000, 1, 1, seed.hour, seed.minute);
-    final screenW = MediaQuery.sizeOf(context).width;
-    final dialogW = (screenW - 32).clamp(320.0, 440.0);
-
-    return showDialog<TimeOfDay>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Text(
-            'เลือกเวลา',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF1A2433),
-            ),
-          ),
-          content: SizedBox(
-            width: dialogW,
-            height: 340,
-            child: CupertinoTheme(
-              data: const CupertinoThemeData(
-                brightness: Brightness.light,
-                primaryColor: Color(0xFF1565C0),
-                textTheme: CupertinoTextThemeData(
-                  dateTimePickerTextStyle: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A2433),
-                    height: 1.2,
-                  ),
-                ),
-              ),
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.time,
-                use24hFormat: true,
-                initialDateTime: selected,
-                onDateTimeChanged: (dt) => selected = dt,
-              ),
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.spaceBetween,
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: const Size(120, 52),
-                textStyle: GoogleFonts.kanit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('ยกเลิก', style: GoogleFonts.kanit(fontSize: 18)),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1565C0),
-                minimumSize: const Size(140, 52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: () => Navigator.pop(
-                ctx,
-                TimeOfDay(hour: selected.hour, minute: selected.minute),
-              ),
-              child: Text(
-                'ยืนยัน',
-                style: GoogleFonts.kanit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  /// เลือกเวลาแบบ 24 ชม. — คอลัมน์ชั่วโมง / นาที แยกชัด
+  Future<TimeOfDay?> _pickFuelTimeOfDay({TimeOfDay? initial}) {
+    return showFuelTimePickerDialog(context, initial: initial);
   }
 
   Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
