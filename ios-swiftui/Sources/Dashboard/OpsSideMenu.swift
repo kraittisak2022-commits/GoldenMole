@@ -265,16 +265,7 @@ struct OpsMenuDestinationView: View {
         case .leave:
             LeaveHubView()
         case .advance:
-            OpsFilteredRecordListView(
-                title: "เบิกเงิน",
-                emptyMessage: "ยังไม่มีรายการเบิกเงิน",
-                predicate: { t in
-                    let status = (t.laborStatus ?? "").lowercased()
-                    return status == "advance"
-                        || (t.advanceAmount ?? 0) > 0
-                        || t.subCategory == "Advance"
-                }
-            )
+            AdvanceHubView()
         }
     }
 }

@@ -40,6 +40,8 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
     var unitPrice: Double? = nil
     var fuelType: String? = nil
     var fuelMovement: String? = nil
+    /// Labor advance (เบิกเงิน)
+    var advanceAmount: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, date, type, category, description, amount, note, quantity, unit
@@ -70,6 +72,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         case unitPrice = "unit_price"
         case fuelType = "fuel_type"
         case fuelMovement = "fuel_movement"
+        case advanceAmount = "advance_amount"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -110,6 +113,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         try c.encodeIfPresent(unitPrice, forKey: .unitPrice)
         try c.encodeIfPresent(fuelType, forKey: .fuelType)
         try c.encodeIfPresent(fuelMovement, forKey: .fuelMovement)
+        try c.encodeIfPresent(advanceAmount, forKey: .advanceAmount)
     }
 }
 
