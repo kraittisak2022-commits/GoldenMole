@@ -36,6 +36,9 @@ struct RealtimeV4Snapshot: Sendable {
     let statusLabel: String?
     let efficiency: VehicleEfficiency
     let fleetWorkSpan: String?
+    /// Precomputed morning/afternoon fleet span labels for the trip summary hero.
+    let fleetMorningSpanLabel: String?
+    let fleetAfternoonSpanLabel: String?
     let tripAnalytics: CountRecordAnalytics.ModeAnalytics
     let sandAnalytics: CountRecordAnalytics.ModeAnalytics
     let activityEvents: [CountRecordAnalytics.ActivityEvent]
@@ -120,6 +123,7 @@ struct RealtimeV4Snapshot: Sendable {
                 .sorted { $0.rounds > $1.rounds }
                 .prefix(5)
         )
+        let periodSpans = CountRecordLogic.fleetPeriodSpanLabels(units: units, dayKey: dayKey)
 
         return RealtimeV4Snapshot(
             tripUnits: units,
@@ -140,6 +144,8 @@ struct RealtimeV4Snapshot: Sendable {
                 byDay: byDay
             ),
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
+            fleetMorningSpanLabel: periodSpans.morning,
+            fleetAfternoonSpanLabel: periodSpans.afternoon,
             tripAnalytics: tripAnalytics,
             sandAnalytics: sandAnalytics,
             activityEvents: CountRecordAnalytics.buildActivityFeed(
@@ -714,124 +720,64 @@ struct RealtimeV4View: View {
         }
     }
 
-    private var tripSummaryHero: some View {
-        let pct = CountRecordLogic.tripTarget > 0
-            ? min(Double(tripTotal) / Double(CountRecordLogic.tripTarget) * 100, 100)
-            : 0
-        let atTarget = tripTotal >= CountRecordLogic.tripTarget
+    private var tripMorningTotal: Int { tripUnits.reduce(0) { $0 + $1.morning } }
+    private var tripAfternoonTotal: Int { tripUnits.reduce(0) { $0 + $1.afternoon } }
+    private var tripOtTotal: Int { tripUnits.reduce(0) { $0 + $1.ot } }
 
-        return ZStack(alignment: .topLeading) {
+    private var tripSummaryHero: some View {
+        ZStack {
             LinearGradient(
                 colors: [Color(hex: "#2563EB"), Color(hex: "#2563EB"), Color(hex: "#4338CA")],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Circle()
-                .fill(Color.white.opacity(0.14))
-                .frame(width: 110, height: 110)
-                .offset(x: 240, y: -30)
+            VStack(spacing: 10) {
+                Text("รวมเที่ยวรถวันนี้")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.7))
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("รวมเที่ยวรถวันนี้")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(.white.opacity(0.7))
-                    Spacer()
-                    if let fleetWorkSpan {
-                        WorkSpanBadge(label: fleetWorkSpan, onDark: true)
-                    }
-                }
+                Text(CountRecordLogic.formatMetric(tripTotal))
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tripTotal)
+                    .modifier(ScoreFloatOverlay(value: tripTotal, dayKey: focusDateStr))
 
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(CountRecordLogic.formatMetric(tripTotal))
-                        .font(.system(size: 48, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tripTotal)
-                        .modifier(ScoreFloatOverlay(value: tripTotal, dayKey: focusDateStr))
-                    Text("เที่ยว")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.8))
-                }
+                Text("เที่ยว")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(2)
+                    .foregroundStyle(.white.opacity(0.8))
 
-                VStack(spacing: 4) {
-                    HStack {
-                        Label("เป้าหมาย", systemImage: "target")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Text("\(CountRecordLogic.formatMetric(tripTotal)) / \(CountRecordLogic.formatMetric(CountRecordLogic.tripTarget)) · \(Int(pct.rounded()))%")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.2))
-                            Capsule()
-                                .fill(atTarget ? Color(hex: "#6EE7B7") : Color.white)
-                                .frame(width: geo.size.width * CGFloat(pct / 100))
+                PeriodPill(
+                    morning: tripMorningTotal,
+                    afternoon: tripAfternoonTotal,
+                    ot: tripOtTotal,
+                    onDark: true
+                )
+
+                if snapshot.fleetMorningSpanLabel != nil || snapshot.fleetAfternoonSpanLabel != nil {
+                    VStack(spacing: 6) {
+                        if let morning = snapshot.fleetMorningSpanLabel {
+                            WorkSpanBadge(label: morning, onDark: true)
+                        }
+                        if let afternoon = snapshot.fleetAfternoonSpanLabel {
+                            WorkSpanBadge(label: afternoon, onDark: true)
                         }
                     }
-                    .frame(height: 8)
-                }
-
-                HStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Label("จำนวนคิว", systemImage: "shippingbox.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.6))
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(CountRecordLogic.formatMetric(tripTotal * CountRecordLogic.queuePerTrip))
-                                .font(.title2.weight(.black))
-                                .foregroundStyle(.white)
-                            Text("คิว")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white.opacity(0.75))
-                        }
-                        Text("\(CountRecordLogic.queuePerTrip) คิว / 1 เที่ยว")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.55))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 10)
-
-                    Divider().background(Color.white.opacity(0.2))
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Label("เฉลี่ย/คัน", systemImage: "speedometer")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.6))
-                            Spacer(minLength: 0)
-                            EfficiencyBadge(efficiency: efficiency)
-                        }
-                        Text(String(format: "%.1f เที่ยว/คัน", efficiency.perVehToday))
-                            .font(.headline.weight(.black))
-                            .foregroundStyle(.white)
-                        Text("\(efficiency.countToday) คันที่นับ")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.55))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 10)
-                }
-                .padding(.top, 8)
-                .overlay(alignment: .top) {
-                    Divider().background(Color.white.opacity(0.15))
                 }
 
                 HStack(spacing: 4) {
-                    Spacer(minLength: 0)
                     Text("แตะเพื่อดูรายละเอียด")
                         .font(.system(size: 10, weight: .semibold))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                 }
                 .foregroundStyle(.white.opacity(0.7))
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
-            .padding(16)
+            .padding(.vertical, 22)
+            .padding(.horizontal, 16)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }

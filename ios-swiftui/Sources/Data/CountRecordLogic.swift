@@ -371,6 +371,52 @@ enum CountRecordLogic {
         return formatWorkSpanLabel(computeWorkSpan(lapTimes: allLaps, dayKey: dayKey))
     }
 
+    /// Split lap stamps into morning (hour < 12) and afternoon (hour >= 12), matching `lapPeriods`.
+    static func splitLapsByPeriod(_ lapTimes: [String]) -> (morning: [String], afternoon: [String]) {
+        var morning: [String] = []
+        var afternoon: [String] = []
+        for lap in lapTimes {
+            guard let h = lapHour(lap) else { continue }
+            if h < 12 {
+                morning.append(lap)
+            } else {
+                afternoon.append(lap)
+            }
+        }
+        return (morning, afternoon)
+    }
+
+    /// Clock display with a period separator, e.g. `08.31`.
+    static func formatClockDot(_ clock: String) -> String {
+        clock.replacingOccurrences(of: ":", with: ".")
+    }
+
+    /// e.g. `ตอนเช้า เริ่ม 08.31 ถึง 12.01` or `ตอนเช้า เริ่ม 08.31` when only one lap.
+    static func formatPeriodSpanLabel(prefix: String, span: CountRecordWorkSpan) -> String? {
+        guard let start = span.startClock else { return nil }
+        let startDot = formatClockDot(start)
+        if let end = span.endClock, end != start {
+            return "\(prefix) เริ่ม \(startDot) ถึง \(formatClockDot(end))"
+        }
+        return "\(prefix) เริ่ม \(startDot)"
+    }
+
+    static func fleetPeriodSpanLabels(
+        units: [CountRecordTripUnit],
+        dayKey: String
+    ) -> (morning: String?, afternoon: String?) {
+        let split = splitLapsByPeriod(units.flatMap(\.lapTimes))
+        let morningLabel = formatPeriodSpanLabel(
+            prefix: "ตอนเช้า",
+            span: computeWorkSpan(lapTimes: split.morning, dayKey: dayKey)
+        )
+        let afternoonLabel = formatPeriodSpanLabel(
+            prefix: "ตอนบ่าย",
+            span: computeWorkSpan(lapTimes: split.afternoon, dayKey: dayKey)
+        )
+        return (morningLabel, afternoonLabel)
+    }
+
     static func lunchOverlapSeconds(start: TimeInterval, end: TimeInterval) -> TimeInterval {
         guard end > start else { return 0 }
         // Lunch window is local to the Bangkok civil day of `start` (same as Calendar-based path).
