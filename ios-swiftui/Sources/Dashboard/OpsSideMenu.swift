@@ -54,10 +54,7 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
 
     /// When set, selecting the item switches the main tab instead of opening a sheet.
     var switchesToTab: AppMainTab? {
-        switch self {
-        case .drumTrips: return .realtimeTrip
-        default: return nil
-        }
+        nil
     }
 }
 
@@ -258,8 +255,7 @@ struct OpsMenuDestinationView: View {
         case .attendance:
             AttendanceHubView()
         case .drumTrips:
-            // Tab switch is handled by the shell; this is a fallback.
-            CategoryReportScreen(type: .vehicle, titleOverride: "รถดรัมและเที่ยว")
+            DrumTripHubView()
         case .macro:
             OpsMacroVehicleReportView()
         case .fuel:

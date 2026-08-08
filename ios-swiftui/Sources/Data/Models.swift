@@ -261,6 +261,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
     let tripCount: Double?
     let tripMorning: Double?
     let tripAfternoon: Double?
+    let tripBillingMode: String?
     let cubicPerTrip: Double?
     let totalCubic: Double?
     let perCarTrips: Double?
@@ -308,6 +309,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
         case tripCount = "trip_count"
         case tripMorning = "trip_morning"
         case tripAfternoon = "trip_afternoon"
+        case tripBillingMode = "trip_billing_mode"
         case cubicPerTrip = "cubic_per_trip"
         case totalCubic = "total_cubic"
         case perCarTrips = "per_car_trips"
@@ -367,6 +369,7 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
         tripCount = FlexibleNumber.decodeIfPresent(c, forKey: .tripCount)
         tripMorning = FlexibleNumber.decodeIfPresent(c, forKey: .tripMorning)
         tripAfternoon = FlexibleNumber.decodeIfPresent(c, forKey: .tripAfternoon)
+        tripBillingMode = try c.decodeIfPresent(String.self, forKey: .tripBillingMode)
         cubicPerTrip = FlexibleNumber.decodeIfPresent(c, forKey: .cubicPerTrip)
         totalCubic = FlexibleNumber.decodeIfPresent(c, forKey: .totalCubic)
         perCarTrips = FlexibleNumber.decodeIfPresent(c, forKey: .perCarTrips)
