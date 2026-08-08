@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecordListView: View {
     let transactions: [Transaction]
+    var navigationTitleText: String = "รายการบันทึก"
 
     @State private var query = ""
     @State private var typeFilter: TypeFilter = .all
@@ -65,7 +66,7 @@ struct RecordListView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("รายการบันทึก")
+        .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
     }
 

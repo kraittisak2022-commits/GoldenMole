@@ -6,6 +6,7 @@ import SwiftUI
 /// in a report leaves the Home tab's filter alone.
 struct CategoryReportScreen: View {
     let type: CategoryReportType
+    var titleOverride: String? = nil
 
     @Environment(AppState.self) private var appState
     @State private var scope = ReportDateScope()
@@ -59,7 +60,7 @@ struct CategoryReportScreen: View {
             .scrollContentBackground(.hidden)
         }
         .background(DashboardBackground())
-        .navigationTitle(type.title)
+        .navigationTitle(titleOverride ?? type.title)
         .navigationBarTitleDisplayMode(.inline)
     }
 

@@ -24,6 +24,9 @@ struct DashboardShell: View {
     @State private var mainTab: AppMainTab = .realtimeTrip
     @State private var homeSegment: HomeSegment = .overview
     @State private var showProfile = false
+    @State private var showOpsMenu = false
+    @State private var opsMenuDrag: CGFloat = 0
+    @State private var opsDestination: OpsMenuItem?
 
     private var isRealtimeTabActive: Bool {
         mainTab == .realtimeTrip || mainTab == .realtimeSand
@@ -34,39 +37,69 @@ struct DashboardShell: View {
     }
 
     var body: some View {
-        TabView(selection: $mainTab) {
-            NavigationStack {
-                homeTab
-            }
-            .tabItem { Label("หน้าหลัก", systemImage: "square.grid.2x2.fill") }
-            .tag(AppMainTab.home)
+        ZStack(alignment: .trailing) {
+            TabView(selection: $mainTab) {
+                NavigationStack {
+                    homeTab
+                }
+                .tabItem { Label("หน้าหลัก", systemImage: "square.grid.2x2.fill") }
+                .tag(AppMainTab.home)
 
-            NavigationStack {
-                realtimeBoard(mode: .sand)
-            }
-            .tabItem { Label("ร่อนทราย", systemImage: "drop.fill") }
-            .tag(AppMainTab.realtimeSand)
+                NavigationStack {
+                    realtimeBoard(mode: .sand)
+                }
+                .tabItem { Label("ร่อนทราย", systemImage: "drop.fill") }
+                .tag(AppMainTab.realtimeSand)
 
-            NavigationStack {
-                realtimeBoard(mode: .trip)
-            }
-            .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
-            .tag(AppMainTab.realtimeTrip)
+                NavigationStack {
+                    realtimeBoard(mode: .trip)
+                }
+                .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
+                .tag(AppMainTab.realtimeTrip)
 
-            NavigationStack {
-                tasksTab
-            }
-            .tabItem { Label("งาน", systemImage: "checklist") }
-            .badge(taskStore.inboxCount)
-            .tag(AppMainTab.tasks)
+                NavigationStack {
+                    tasksTab
+                }
+                .tabItem { Label("งาน", systemImage: "checklist") }
+                .badge(taskStore.inboxCount)
+                .tag(AppMainTab.tasks)
 
-            NavigationStack {
-                calendarTab
+                NavigationStack {
+                    calendarTab
+                }
+                .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
+                .tag(AppMainTab.calendar)
             }
-            .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
-            .tag(AppMainTab.calendar)
+            .tint(AppTheme.brand)
+
+            // Invisible right-edge strip — swipe left to open the ops menu.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Color.clear
+                    .frame(width: 24)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(opsEdgeOpenGesture)
+                    .accessibilityLabel("เปิดเมนูงานประจำวัน")
+                    .accessibilityHint("ปัดซ้ายจากขอบขวาเพื่อเปิดเมนู")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction {
+                        openOpsMenu()
+                    }
+            }
+            .allowsHitTesting(!showOpsMenu)
+            .zIndex(10)
+
+            if showOpsMenu || opsMenuDrag > 0 {
+                OpsSideMenuOverlay(
+                    isPresented: $showOpsMenu,
+                    dragOffset: $opsMenuDrag,
+                    onSelect: handleOpsMenuSelect
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
         }
-        .tint(AppTheme.brand)
         .task {
             await appState.refresh()
         }
@@ -88,6 +121,46 @@ struct DashboardShell: View {
             .environment(auth)
             .environment(appState)
         }
+        .sheet(item: $opsDestination) { item in
+            NavigationStack {
+                OpsMenuDestinationView(item: item)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("ปิด") { opsDestination = nil }
+                                .fontWeight(.semibold)
+                        }
+                    }
+            }
+            .environment(appState)
+            .environment(auth)
+        }
+    }
+
+    private var opsEdgeOpenGesture: some Gesture {
+        DragGesture(minimumDistance: 28, coordinateSpace: .local)
+            .onEnded { value in
+                // Swipe left from the right edge.
+                let shouldOpen = value.translation.width < -48
+                    || value.predictedEndTranslation.width < -90
+                if shouldOpen {
+                    openOpsMenu()
+                }
+            }
+    }
+
+    private func openOpsMenu() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            showOpsMenu = true
+            opsMenuDrag = 0
+        }
+    }
+
+    private func handleOpsMenuSelect(_ item: OpsMenuItem) {
+        if let tab = item.switchesToTab {
+            mainTab = tab
+            return
+        }
+        opsDestination = item
     }
 
     // MARK: - Home
