@@ -223,7 +223,6 @@ struct RealtimeV4View: View {
     private var tripTotal: Int { snapshot.tripTotal }
     private var sandRounds: Int { snapshot.sandRounds }
     private var efficiency: VehicleEfficiency { snapshot.efficiency }
-    private var fleetWorkSpan: String? { snapshot.fleetWorkSpan }
 
     private var modeStatusLabel: String? {
         switch mode {
@@ -306,8 +305,11 @@ struct RealtimeV4View: View {
             FleetTripDetailSheet(
                 tripUnits: tripUnits,
                 tripTotal: tripTotal,
-                fleetWorkSpan: fleetWorkSpan,
+                morningSpanLabel: snapshot.fleetMorningSpanLabel,
+                afternoonSpanLabel: snapshot.fleetAfternoonSpanLabel,
                 efficiency: efficiency,
+                leaderboard: snapshot.leaderboard,
+                analytics: tripAnalytics,
                 dayKey: focusDateStr
             )
         }
@@ -716,10 +718,6 @@ struct RealtimeV4View: View {
                                 .onTapGesture { selectedVehicle = unit }
                         }
                     }
-                    tripLeaderboard
-                    if tripAnalytics.rounds > 0 {
-                        RealtimeV4AnalyticsPanel(analytics: tripAnalytics, accent: Color(hex: "#38BDF8"))
-                    }
                 }
             }
         }
@@ -862,67 +860,6 @@ struct RealtimeV4View: View {
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(tripBlue.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    private var tripLeaderboard: some View {
-        let ranked = snapshot.leaderboard
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("บันทึกล่าสุด")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(RealtimeV4Palette.textMuted)
-            if ranked.isEmpty {
-                Text("ยังไม่มีเวลาประทับ")
-                    .font(.caption)
-                    .foregroundStyle(RealtimeV4Palette.inkFaint)
-            } else {
-                ForEach(Array(ranked.enumerated()), id: \.element.id) { rank, unit in
-                    HStack(spacing: 8) {
-                        if rank == 0 {
-                            Image(systemName: "trophy.fill").foregroundStyle(Color(hex: "#FBBF24"))
-                        } else if rank <= 2 {
-                            Image(systemName: "medal.fill")
-                                .foregroundStyle(rank == 1 ? Color(hex: "#94A3B8") : Color(hex: "#D97706"))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(unit.vehicleId)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(RealtimeV4Palette.ink)
-                            if let last = unit.lapTimes.last {
-                                Text(CountRecordLogic.formatLapClock(last) ?? last)
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(RealtimeV4Palette.inkMuted)
-                            }
-                        }
-                        Spacer()
-                        Text("\(unit.rounds) เที่ยว")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color(hex: "#2563EB")))
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(rank == 0 ? Color(hex: "#F59E0B").opacity(0.14) : RealtimeV4Palette.cardSoft)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(rank == 0 ? Color(hex: "#FCD34D").opacity(0.5) : .clear, lineWidth: 1.5)
-                    )
-                }
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(RealtimeV4Palette.card)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
     }
 
@@ -1410,8 +1347,11 @@ private struct VehicleDetailSheet: View {
 private struct FleetTripDetailSheet: View {
     let tripUnits: [CountRecordTripUnit]
     let tripTotal: Int
-    let fleetWorkSpan: String?
+    let morningSpanLabel: String?
+    let afternoonSpanLabel: String?
     let efficiency: VehicleEfficiency
+    let leaderboard: [CountRecordTripUnit]
+    let analytics: CountRecordAnalytics.ModeAnalytics
     let dayKey: String
     @Environment(\.dismiss) private var dismiss
     @State private var allRounds: [FleetRoundRow] = []
@@ -1462,10 +1402,19 @@ private struct FleetTripDetailSheet: View {
                         ("OT", "\(otTotal)")
                     ])
 
-                    if let fleetWorkSpan {
-                        Label(fleetWorkSpan, systemImage: "clock")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                    if morningSpanLabel != nil || afternoonSpanLabel != nil {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let morningSpanLabel {
+                                Label(morningSpanLabel, systemImage: "sun.max.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                            }
+                            if let afternoonSpanLabel {
+                                Label(afternoonSpanLabel, systemImage: "sunset.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -1487,6 +1436,12 @@ private struct FleetTripDetailSheet: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 14).fill(RealtimeV4Palette.cardSoft))
+
+                    recentLeaderboardCard
+
+                    if analytics.rounds > 0 {
+                        RealtimeV4AnalyticsPanel(analytics: analytics, accent: Color(hex: "#38BDF8"))
+                    }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("แยกรายคัน")
@@ -1613,6 +1568,66 @@ private struct FleetTripDetailSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var recentLeaderboardCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("บันทึกล่าสุด")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(RealtimeV4Palette.textMuted)
+            if leaderboard.isEmpty {
+                Text("ยังไม่มีเวลาประทับ")
+                    .font(.caption)
+                    .foregroundStyle(RealtimeV4Palette.inkFaint)
+            } else {
+                ForEach(Array(leaderboard.enumerated()), id: \.element.id) { rank, unit in
+                    HStack(spacing: 8) {
+                        if rank == 0 {
+                            Image(systemName: "trophy.fill").foregroundStyle(Color(hex: "#FBBF24"))
+                        } else if rank <= 2 {
+                            Image(systemName: "medal.fill")
+                                .foregroundStyle(rank == 1 ? Color(hex: "#94A3B8") : Color(hex: "#D97706"))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(unit.vehicleId)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(RealtimeV4Palette.ink)
+                            if let last = unit.lapTimes.last {
+                                Text(CountRecordLogic.formatLapClock(last) ?? last)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(RealtimeV4Palette.inkMuted)
+                            }
+                        }
+                        Spacer()
+                        Text("\(unit.rounds) เที่ยว")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color(hex: "#2563EB")))
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(rank == 0 ? Color(hex: "#F59E0B").opacity(0.14) : RealtimeV4Palette.cardSoft)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(rank == 0 ? Color(hex: "#FCD34D").opacity(0.5) : .clear, lineWidth: 1.5)
+                    )
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(RealtimeV4Palette.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
+        )
     }
 
     nonisolated private static func buildAllRounds(units: [CountRecordTripUnit], dayKey: String) -> [FleetRoundRow] {
