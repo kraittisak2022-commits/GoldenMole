@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8695,27 +8696,99 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     onChanged?.call();
   }
 
-  Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
-    final initial = TimeOfDay.now();
-    final t = await showTimePicker(
+  TimeOfDay? _parseFuelTimeOfDay(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    final parts = s.split(RegExp(r'[:.]'));
+    if (parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  String _formatFuelTimeOfDay(TimeOfDay t) {
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  /// เลือกเวลาแบบ 24 ชม. ด้วย list เลื่อนชั่วโมง/นาที (ไม่มี AM/PM)
+  Future<TimeOfDay?> _pickFuelTimeOfDay({TimeOfDay? initial}) async {
+    final now = TimeOfDay.now();
+    final seed = initial ?? now;
+    var selected = DateTime(2000, 1, 1, seed.hour, seed.minute);
+
+    return showDialog<TimeOfDay>(
       context: context,
-      initialTime: initial,
-      initialEntryMode: TimePickerEntryMode.inputOnly,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(
-              context,
-            ).colorScheme.copyWith(primary: const Color(0xFF1565C0)),
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-          child: child ?? const SizedBox.shrink(),
+          title: Text(
+            'เลือกเวลา',
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A2433),
+            ),
+          ),
+          content: SizedBox(
+            width: 280,
+            height: 220,
+            child: CupertinoTheme(
+              data: const CupertinoThemeData(
+                brightness: Brightness.light,
+                primaryColor: Color(0xFF1565C0),
+                textTheme: CupertinoTextThemeData(
+                  dateTimePickerTextStyle: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A2433),
+                  ),
+                ),
+              ),
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.time,
+                use24hFormat: true,
+                initialDateTime: selected,
+                onDateTimeChanged: (dt) => selected = dt,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('ยกเลิก', style: GoogleFonts.kanit()),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1565C0),
+              ),
+              onPressed: () => Navigator.pop(
+                ctx,
+                TimeOfDay(hour: selected.hour, minute: selected.minute),
+              ),
+              child: Text(
+                'ยืนยัน',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
         );
       },
     );
-    if (t == null) return;
-    final hh = t.hour.toString().padLeft(2, '0');
-    final mm = t.minute.toString().padLeft(2, '0');
-    final value = '$hh:$mm';
+  }
+
+  Future<void> _pickFuelTime(_FuelVehicleDraft row) async {
+    final initial = _parseFuelTimeOfDay(row.timeController.text) ??
+        _parseFuelTimeOfDay(row.time) ??
+        TimeOfDay.now();
+    final t = await _pickFuelTimeOfDay(initial: initial);
+    if (t == null || !mounted) return;
+    final value = _formatFuelTimeOfDay(t);
     setState(() {
       row.time = value;
       row.timeController.text = value;
@@ -10073,25 +10146,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _pickFuelTimeInto(TextEditingController controller) async {
-    final t = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      initialEntryMode: TimePickerEntryMode.inputOnly,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(
-              context,
-            ).colorScheme.copyWith(primary: const Color(0xFF1565C0)),
-          ),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-    );
+    final initial =
+        _parseFuelTimeOfDay(controller.text) ?? TimeOfDay.now();
+    final t = await _pickFuelTimeOfDay(initial: initial);
     if (t == null || !mounted) return;
-    final hh = t.hour.toString().padLeft(2, '0');
-    final mm = t.minute.toString().padLeft(2, '0');
-    setState(() => controller.text = '$hh:$mm');
+    setState(() => controller.text = _formatFuelTimeOfDay(t));
   }
 
   void _recalcFuelStockInAmount() {
