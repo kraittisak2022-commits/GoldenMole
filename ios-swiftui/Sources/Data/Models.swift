@@ -436,6 +436,8 @@ struct AppSettings: Codable, Sendable, Equatable {
     let landGroups: [String]
     let employeePositions: [String]?
     let fuelOpeningStockLiters: FuelStock?
+    /// From `app_settings.app_defaults.vehicleDefaultDrivers` (Flutter parity).
+    let vehicleDefaultDrivers: [String: String]
 
     enum CodingKeys: String, CodingKey {
         case cars, locations
@@ -449,6 +451,7 @@ struct AppSettings: Codable, Sendable, Equatable {
         case landGroups = "land_groups"
         case employeePositions = "employee_positions"
         case fuelOpeningStockLiters = "fuel_opening_stock"
+        case vehicleDefaultDrivers = "vehicle_default_drivers"
     }
 
     static let fallback = AppSettings(
@@ -463,8 +466,32 @@ struct AppSettings: Codable, Sendable, Equatable {
         locations: [],
         landGroups: [],
         employeePositions: [],
-        fuelOpeningStockLiters: nil
+        fuelOpeningStockLiters: nil,
+        vehicleDefaultDrivers: [:]
     )
+}
+
+/// Nested JSON in `app_settings.app_defaults`.
+struct AppDefaultsBlob: Decodable, Sendable, Equatable {
+    let vehicleDefaultDrivers: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case vehicleDefaultDrivers
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let direct = try? c.decodeIfPresent([String: String].self, forKey: .vehicleDefaultDrivers) {
+            vehicleDefaultDrivers = direct
+            return
+        }
+        // Coerce mixed JSON values to strings.
+        if let raw = try? c.decodeIfPresent([String: FlexibleStringValue].self, forKey: .vehicleDefaultDrivers) {
+            vehicleDefaultDrivers = raw.mapValues(\.value)
+            return
+        }
+        vehicleDefaultDrivers = nil
+    }
 }
 
 struct FuelStock: Codable, Sendable, Equatable {
@@ -477,7 +504,7 @@ struct FuelStock: Codable, Sendable, Equatable {
     }
 }
 
-struct AppSettingsRow: Codable, Sendable {
+struct AppSettingsRow: Decodable, Sendable {
     let id: String
     let appName: String?
     let appSubtext: String?
@@ -491,6 +518,7 @@ struct AppSettingsRow: Codable, Sendable {
     let landGroups: [String]?
     let employeePositions: [String]?
     let fuelOpeningStock: FuelStock?
+    let appDefaults: AppDefaultsBlob?
 
     enum CodingKeys: String, CodingKey {
         case id, cars, locations
@@ -504,6 +532,7 @@ struct AppSettingsRow: Codable, Sendable {
         case landGroups = "land_groups"
         case employeePositions = "employee_positions"
         case fuelOpeningStock = "fuel_opening_stock"
+        case appDefaults = "app_defaults"
     }
 
     func toAppSettings() -> AppSettings {
@@ -519,7 +548,8 @@ struct AppSettingsRow: Codable, Sendable {
             locations: locations ?? [],
             landGroups: landGroups ?? [],
             employeePositions: employeePositions,
-            fuelOpeningStockLiters: fuelOpeningStock
+            fuelOpeningStockLiters: fuelOpeningStock,
+            vehicleDefaultDrivers: appDefaults?.vehicleDefaultDrivers ?? [:]
         )
     }
 }

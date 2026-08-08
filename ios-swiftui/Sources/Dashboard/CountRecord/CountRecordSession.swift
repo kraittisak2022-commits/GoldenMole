@@ -127,10 +127,16 @@ final class CountRecordSession {
             skipExternalReload -= 1
             return
         }
+        // Don't clobber in-flight local edits / saves (Flutter preserve-local parity).
+        if !force {
+            let hasLocalTrip = tripUnits.contains { $0.dirty || $0.busy }
+            let hasLocalSand = sandUnit.map { $0.dirty || $0.busy } ?? false
+            if hasLocalTrip || hasLocalSand { return }
+        }
         dayKey = DashboardAggregations.todayYMD()
         let dayTx = appState.transactions.filter { String($0.date.prefix(10)) == dayKey }
 
-        let dirtyVehicles = Set(tripUnits.filter(\.dirty).map(\.vehicleId))
+        let protectedVehicles = Set(tripUnits.filter { $0.dirty || $0.busy }.map(\.vehicleId))
         let built = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: dayTx,
@@ -139,7 +145,7 @@ final class CountRecordSession {
 
         var nextTrips: [CountRecordTripDraft] = []
         for u in built {
-            if dirtyVehicles.contains(u.vehicleId),
+            if protectedVehicles.contains(u.vehicleId),
                let local = tripUnits.first(where: { $0.vehicleId == u.vehicleId }) {
                 nextTrips.append(local)
                 continue
@@ -157,8 +163,9 @@ final class CountRecordSession {
                 )
             )
         }
-        // Keep local-only dirty units not yet on server
-        for local in tripUnits where local.dirty && !nextTrips.contains(where: { $0.vehicleId == local.vehicleId }) {
+        // Keep local-only units not yet mirrored from server rows
+        for local in tripUnits where (local.dirty || local.busy || !local.persisted)
+            && !nextTrips.contains(where: { $0.vehicleId == local.vehicleId }) {
             nextTrips.append(local)
         }
         tripUnits = nextTrips.sorted {
@@ -166,7 +173,8 @@ final class CountRecordSession {
             return $0.vehicleId.localizedStandardCompare($1.vehicleId) == .orderedAscending
         }
 
-        if sandUnit?.dirty != true {
+        let protectSand = sandUnit.map { $0.dirty || $0.busy || ($0.rounds > 0 && !$0.persisted) } ?? false
+        if !protectSand {
             if let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: dayTx) {
                 sandUnit = CountRecordSandDraft(
                     id: sand.id,
@@ -204,12 +212,12 @@ final class CountRecordSession {
     }
 
     func defaultDriverId(for vehicleId: String, appState: AppState) -> String {
-        // Infer from recent trip history for this vehicle
-        let recent = appState.transactions
-            .filter { CountRecordLogic.isCountRecordVehicleRow($0) && ($0.vehicleId ?? "") == vehicleId }
-            .compactMap { $0.driverId?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return recent.first ?? ""
+        CountRecordVehicleDefaults.resolveDriverId(
+            vehicleId: vehicleId,
+            drivers: drivers(from: appState.employees),
+            tripHistory: appState.transactions,
+            vehicleDefaultDrivers: appState.settings.vehicleDefaultDrivers
+        ) ?? ""
     }
 
     struct VehiclePick: Identifiable, Equatable {

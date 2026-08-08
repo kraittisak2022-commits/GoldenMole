@@ -21,6 +21,13 @@ final class CountRecordOfflineSync {
     @ObservationIgnored private var service: SupabaseService?
     @ObservationIgnored private weak var appState: AppState?
     @ObservationIgnored private var backoffSeconds: UInt64 = 2
+    @ObservationIgnored private var pathOnline = true
+    @ObservationIgnored private var serverReachable = true
+    @ObservationIgnored private var probeFailStreak = 0
+
+    /// Snapshot of pending/failed ops for UI lists.
+    var pendingOps: [PendingOp] = []
+    var failedOps: [PendingOp] = []
 
     private init() {
         refreshCounts()
@@ -31,6 +38,11 @@ final class CountRecordOfflineSync {
         self.appState = appState
         startPathMonitor()
         scheduleCycle(immediate: true)
+    }
+
+    /// True when OS path is up and recent Supabase probe succeeded.
+    private func refreshOnlineFlag() {
+        isOnline = pathOnline && serverReachable
     }
 
     func stop() {
@@ -47,7 +59,7 @@ final class CountRecordOfflineSync {
             appState?.upsertTransaction(local)
         }
 
-        if isOnline, let service {
+        if pathOnline, let service, await probeServer() {
             do {
                 let toSend = wasPersisted ? payload.withoutCreatedAt() : payload
                 let saved = try await service.upsertTransaction(toSend)
@@ -69,7 +81,7 @@ final class CountRecordOfflineSync {
     func delete(id: String) async -> Bool {
         appState?.removeTransaction(id: id)
 
-        if isOnline, let service {
+        if pathOnline, let service, await probeServer() {
             do {
                 try await service.deleteTransaction(id: id)
                 removeQueued(for: id)
@@ -158,14 +170,34 @@ final class CountRecordOfflineSync {
             Task { @MainActor in
                 guard let self else { return }
                 let online = path.status == .satisfied
-                let wasOffline = !self.isOnline
-                self.isOnline = online
+                let wasOffline = !self.pathOnline
+                self.pathOnline = online
+                self.refreshOnlineFlag()
                 if online && wasOffline {
                     self.scheduleCycle(immediate: true)
                 }
             }
         }
         monitor.start(queue: DispatchQueue(label: "countrecord.path"))
+    }
+
+    /// Lightweight Supabase reachability probe (Flutter parity).
+    private func probeServer() async -> Bool {
+        guard pathOnline, let service else { return false }
+        do {
+            _ = try await service.fetchSettings()
+            probeFailStreak = 0
+            serverReachable = true
+            refreshOnlineFlag()
+            return true
+        } catch {
+            probeFailStreak += 1
+            if probeFailStreak >= 2 {
+                serverReachable = false
+                refreshOnlineFlag()
+            }
+            return false
+        }
     }
 
     private func scheduleCycle(immediate: Bool) {
@@ -181,7 +213,15 @@ final class CountRecordOfflineSync {
     }
 
     private func runCycle() async {
-        guard let service, isOnline, !isSyncing else { return }
+        guard let service, !isSyncing else { return }
+        guard pathOnline else { return }
+        let reachable = await probeServer()
+        guard reachable else {
+            backoffSeconds = min(30, max(2, backoffSeconds * 2))
+            scheduleCycle(immediate: false)
+            return
+        }
+
         var queue = loadQueue()
         guard !queue.isEmpty else {
             backoffSeconds = 2
@@ -214,10 +254,14 @@ final class CountRecordOfflineSync {
                 }
             } catch {
                 newlyFailed.append(op)
+                probeFailStreak += 1
+                if probeFailStreak >= 2 {
+                    serverReachable = false
+                    refreshOnlineFlag()
+                }
             }
         }
 
-        // Keep unprocessed (cancelled mid-loop) + leave failed in failed list
         saveQueue(stillPending)
         if !newlyFailed.isEmpty {
             var failed = loadFailed()
@@ -231,10 +275,13 @@ final class CountRecordOfflineSync {
             saveFailed(failed)
         }
 
-        refreshCounts()
         if uploaded > 0 {
+            probeFailStreak = 0
+            serverReachable = true
+            refreshOnlineFlag()
             backoffSeconds = 2
         }
+        refreshCounts()
         if pendingCount > 0 || (!newlyFailed.isEmpty && isOnline) {
             if uploaded == 0 && !newlyFailed.isEmpty {
                 backoffSeconds = min(30, max(2, backoffSeconds * 2))
@@ -264,8 +311,10 @@ final class CountRecordOfflineSync {
     }
 
     private func refreshCounts() {
-        pendingCount = loadQueue().count
-        failedCount = loadFailed().count
+        pendingOps = loadQueue()
+        failedOps = loadFailed()
+        pendingCount = pendingOps.count
+        failedCount = failedOps.count
     }
 
     private func loadQueue() -> [PendingOp] {

@@ -116,22 +116,25 @@ struct CountRecordTripPanel: View {
                 periodChip("เย็น", periods.ot, Color(hex: "#E65100"))
             }
 
-            Button {
-                onRecord(unit)
-            } label: {
-                Text(buttonLabel(unit))
-                    .font(.subheadline.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(accent)
-            .disabled(!unit.canRecord)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 3).onEnded { _ in
-                    onLongPressUndo(unit)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let remaining = cooldownSecondsLeft(unit, now: context.date)
+                Button {
+                    onRecord(unit)
+                } label: {
+                    Text(buttonLabel(unit, cooldownLeft: remaining))
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                 }
-            )
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+                .disabled(!unit.canRecord || remaining > 0)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 3).onEnded { _ in
+                        onLongPressUndo(unit)
+                    }
+                )
+            }
         }
         .padding(14)
         .background(
@@ -144,9 +147,14 @@ struct CountRecordTripPanel: View {
         )
     }
 
-    private func buttonLabel(_ unit: CountRecordTripDraft) -> String {
+    private func cooldownSecondsLeft(_ unit: CountRecordTripDraft, now: Date) -> Int {
+        guard let until = unit.cooldownUntil else { return 0 }
+        return max(0, Int(ceil(until.timeIntervalSince(now))))
+    }
+
+    private func buttonLabel(_ unit: CountRecordTripDraft, cooldownLeft: Int) -> String {
         if unit.busy { return "กำลังบันทึก…" }
-        if unit.isCoolingDown { return "รอ 3 วิ…" }
+        if cooldownLeft > 0 { return "รอ \(cooldownLeft) วิ…" }
         if unit.isSupport { return "ชัพพอต" }
         if unit.isBroken { return "รถเสีย" }
         return "แตะ +1 เที่ยว"

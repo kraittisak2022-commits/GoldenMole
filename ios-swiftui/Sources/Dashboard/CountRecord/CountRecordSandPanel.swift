@@ -24,36 +24,42 @@ struct CountRecordSandPanel: View {
                 }
             }
 
-            Button(action: onRecord) {
-                VStack(spacing: 6) {
-                    Text("\(unit?.rounds ?? 0)")
-                        .font(.system(size: 64, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-                    Text(sandButtonLabel(unit))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 36)
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#AD1457"), Color(hex: "#C2185B")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let remaining: Int = {
+                    guard let until = unit?.cooldownUntil else { return 0 }
+                    return max(0, Int(ceil(until.timeIntervalSince(context.date))))
+                }()
+                Button(action: onRecord) {
+                    VStack(spacing: 6) {
+                        Text("\(unit?.rounds ?? 0)")
+                            .font(.system(size: 64, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
+                        Text(sandButtonLabel(unit, cooldownLeft: remaining))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: "#AD1457"), Color(hex: "#C2185B")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(unit?.busy == true || remaining > 0)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 3).onEnded { _ in
+                        onLongPressUndo()
+                    }
                 )
             }
-            .buttonStyle(.plain)
-            .disabled(unit?.busy == true || unit?.isCoolingDown == true)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 3).onEnded { _ in
-                    onLongPressUndo()
-                }
-            )
             .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.7), trigger: unit?.rounds ?? 0)
 
             if let recent = unit?.recentLaps, !recent.isEmpty {
@@ -90,9 +96,9 @@ struct CountRecordSandPanel: View {
         )
     }
 
-    private func sandButtonLabel(_ unit: CountRecordSandDraft?) -> String {
+    private func sandButtonLabel(_ unit: CountRecordSandDraft?, cooldownLeft: Int) -> String {
         if unit?.busy == true { return "กำลังบันทึก…" }
-        if unit?.isCoolingDown == true { return "รอ 3 วิ…" }
+        if cooldownLeft > 0 { return "รอ \(cooldownLeft) วิ…" }
         return "แตะเพื่อ +1 รอบ · กดค้างเลิกทำ"
     }
 }

@@ -233,28 +233,41 @@ struct CountRecordFailedQueueSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                Text("รายการซิงค์ไม่สำเร็จ: \(sync.failedCount)")
-                    .font(.headline)
-                Text("รออัปโหลด: \(sync.pendingCount)")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.inkMuted)
-                Button("ลองใหม่ทั้งหมด") {
-                    sync.retryFailed()
-                    dismiss()
+            List {
+                Section("สถานะ") {
+                    LabeledContent("รออัปโหลด", value: "\(sync.pendingCount)")
+                    LabeledContent("ล้มเหลว", value: "\(sync.failedCount)")
+                    LabeledContent("เครือข่าย", value: sync.isOnline ? "พร้อม" : "ออฟไลน์/เซิร์ฟเวอร์ไม่ตอบ")
                 }
-                .buttonStyle(.borderedProminent)
-                Button("ทิ้งรายการที่ล้มเหลว", role: .destructive) {
-                    sync.discardFailed()
-                    dismiss()
+                if !sync.pendingOps.isEmpty {
+                    Section("คิวที่รอ") {
+                        ForEach(sync.pendingOps, id: \.transactionId) { op in
+                            opRow(op)
+                        }
+                    }
                 }
-                Button("ซิงค์คิวที่รอ") {
-                    sync.syncNow()
-                    dismiss()
+                if !sync.failedOps.isEmpty {
+                    Section("ล้มเหลว") {
+                        ForEach(sync.failedOps, id: \.transactionId) { op in
+                            opRow(op)
+                        }
+                    }
                 }
-                .buttonStyle(.bordered)
+                Section {
+                    Button("ลองใหม่ทั้งหมด") {
+                        sync.retryFailed()
+                        dismiss()
+                    }
+                    Button("ซิงค์คิวที่รอ") {
+                        sync.syncNow()
+                        dismiss()
+                    }
+                    Button("ทิ้งรายการที่ล้มเหลว", role: .destructive) {
+                        sync.discardFailed()
+                        dismiss()
+                    }
+                }
             }
-            .padding()
             .navigationTitle("คิวออฟไลน์")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -263,7 +276,27 @@ struct CountRecordFailedQueueSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+
+    private func opRow(_ op: CountRecordOfflineSync.PendingOp) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(opLabel(op))
+                .font(.subheadline.weight(.semibold))
+            Text(op.transactionId)
+                .font(.caption2.monospaced())
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(1)
+        }
+    }
+
+    private func opLabel(_ op: CountRecordOfflineSync.PendingOp) -> String {
+        switch op {
+        case .upsert(let payload, _):
+            return "อัปโหลด · \(payload.subCategory ?? payload.category)"
+        case .delete:
+            return "ลบรายการ"
+        }
     }
 }
 
@@ -391,6 +424,7 @@ struct CountRecordMenuShell<Content: View>: View {
     @State private var dimmed = false
     @State private var sleeping = false
     @State private var tick = Date()
+    @State private var savedBrightness: CGFloat?
 
     private let dimAfter: TimeInterval = 60
     private let sleepAfter: TimeInterval = 600
@@ -423,11 +457,17 @@ struct CountRecordMenuShell<Content: View>: View {
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            if savedBrightness == nil {
+                savedBrightness = UIScreen.main.brightness
+            }
             bump()
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            restoreBrightness()
         }
+        .onChange(of: dimmed) { _, _ in applyBrightness() }
+        .onChange(of: sleeping) { _, _ in applyBrightness() }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
             tick = now
             let idle = now.timeIntervalSince(lastActivity)
@@ -460,5 +500,23 @@ struct CountRecordMenuShell<Content: View>: View {
             sleeping = false
         }
         lastActivity = Date()
+        restoreBrightness()
+    }
+
+    private func applyBrightness() {
+        let base = savedBrightness ?? UIScreen.main.brightness
+        if sleeping {
+            UIScreen.main.brightness = 0.06
+        } else if dimmed {
+            UIScreen.main.brightness = max(0.12, base * 0.35)
+        } else {
+            restoreBrightness()
+        }
+    }
+
+    private func restoreBrightness() {
+        if let savedBrightness {
+            UIScreen.main.brightness = savedBrightness
+        }
     }
 }
