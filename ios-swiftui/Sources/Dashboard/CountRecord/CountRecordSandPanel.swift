@@ -5,6 +5,7 @@ struct CountRecordSandPanel: View {
     let onRecord: () -> Void
     let onLongPressUndo: () -> Void
     let onDeleteLap: (String) -> Void
+    let onEditLaps: () -> Void
 
     var body: some View {
         let unit = session.sandUnit
@@ -22,6 +23,9 @@ struct CountRecordSandPanel: View {
                         .background(Color(hex: "#AD1457").opacity(0.15), in: Capsule())
                         .foregroundStyle(Color(hex: "#AD1457"))
                 }
+                Button("แก้ไขรอบ") { onEditLaps() }
+                    .font(.caption.weight(.semibold))
+                    .disabled((unit?.lapTimes.isEmpty) ?? true)
             }
 
             TimelineView(.periodic(from: .now, by: 1)) { context in

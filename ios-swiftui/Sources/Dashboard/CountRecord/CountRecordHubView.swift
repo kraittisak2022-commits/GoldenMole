@@ -93,6 +93,63 @@ struct CountRecordHubView: View {
             CountRecordFailedQueueSheet(sync: sync)
         }
         .sheet(isPresented: Binding(
+            get: { session.lapEditorTripUnitId != nil },
+            set: { if !$0 { session.lapEditorTripUnitId = nil } }
+        )) {
+            if let id = session.lapEditorTripUnitId {
+                CountRecordLapEditorSheet(
+                    session: session,
+                    tripUnitId: id,
+                    onDelete: { index in
+                        Task {
+                            await session.removeTripLap(
+                                unitId: id,
+                                at: index,
+                                appState: appState,
+                                adminName: adminName
+                            )
+                        }
+                    },
+                    onUpdate: { index, hour, minute, second in
+                        Task {
+                            await session.updateTripLap(
+                                unitId: id,
+                                at: index,
+                                hour: hour,
+                                minute: minute,
+                                second: second,
+                                appState: appState,
+                                adminName: adminName
+                            )
+                        }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $session.showSandLapEditor) {
+            CountRecordLapEditorSheet(
+                session: session,
+                tripUnitId: nil,
+                onDelete: { index in
+                    Task {
+                        await session.removeSandLap(at: index, appState: appState, adminName: adminName)
+                    }
+                },
+                onUpdate: { index, hour, minute, second in
+                    Task {
+                        await session.updateSandLap(
+                            at: index,
+                            hour: hour,
+                            minute: minute,
+                            second: second,
+                            appState: appState,
+                            adminName: adminName
+                        )
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: Binding(
             get: { session.editUnitId != nil },
             set: { if !$0 { session.editUnitId = nil } }
         )) {
@@ -259,6 +316,7 @@ struct CountRecordHubView: View {
             },
             onAddVehicle: { session.showAddVehicle = true },
             onEdit: { unit in session.editUnitId = unit.id },
+            onEditLaps: { unit in session.lapEditorTripUnitId = unit.id },
             onRemove: { unit in confirmRemoveId = unit.id }
         )
     }
@@ -270,7 +328,8 @@ struct CountRecordHubView: View {
                 Task { await session.recordSand(appState: appState, adminName: adminName) }
             },
             onLongPressUndo: { confirmLongPressSand = true },
-            onDeleteLap: { stamp in confirmDeleteLap = stamp }
+            onDeleteLap: { stamp in confirmDeleteLap = stamp },
+            onEditLaps: { session.showSandLapEditor = true }
         )
     }
 

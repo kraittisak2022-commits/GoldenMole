@@ -332,6 +332,36 @@ enum CountRecordLogic {
         return String(format: "%02d/%02d %02d:%02d:%02d", d, m, h, min, s)
     }
 
+    /// Build stamp for a dayKey using edited Bangkok clock components.
+    static func formatLapStamp(dayKey: String, hour: Int, minute: Int, second: Int) -> String? {
+        let parts = dayKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        let month = parts[1]
+        let day = parts[2]
+        guard hour >= 0, hour < 24, minute >= 0, minute < 60, second >= 0, second < 60,
+              month >= 1, month <= 12, day >= 1, day <= 31
+        else { return nil }
+        return String(format: "%02d/%02d %02d:%02d:%02d", day, month, hour, minute, second)
+    }
+
+    /// Parse `HH`, `mm`, `ss` from a lap stamp (ignores date part).
+    static func lapClockComponents(_ stamp: String) -> (hour: Int, minute: Int, second: Int)? {
+        let s = stamp.trimmingCharacters(in: .whitespacesAndNewlines)
+        let timePart: String
+        if let space = s.firstIndex(of: " ") {
+            timePart = String(s[s.index(after: space)...])
+        } else {
+            timePart = s
+        }
+        let hms = timePart.split(separator: ":").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard hms.count >= 2 else { return nil }
+        let hour = hms[0]
+        let minute = hms[1]
+        let second = hms.count > 2 ? hms[2] : 0
+        guard hour >= 0, hour < 24, minute >= 0, minute < 60, second >= 0, second < 60 else { return nil }
+        return (hour, minute, second)
+    }
+
     static func formatLapClock(_ stamp: String) -> String? {
         let s = stamp.trimmingCharacters(in: .whitespacesAndNewlines)
         let timePart: String

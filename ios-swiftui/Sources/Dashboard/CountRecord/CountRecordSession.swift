@@ -91,6 +91,9 @@ final class CountRecordSession {
     var showShare = false
     var pendingUndo: CountRecordUndoAction?
     var editUnitId: String?
+    /// Opens lap editor: trip unit id, or `nil` means sand.
+    var lapEditorTripUnitId: String?
+    var showSandLapEditor = false
 
     private(set) var dayKey: String
     private var skipExternalReload = 0
@@ -551,6 +554,161 @@ final class CountRecordSession {
             await persistTrip(at: idx, adminName: adminName, clearDirty: true)
         }
         flash("อัปเดตคิว/เที่ยวแล้ว")
+    }
+
+    // MARK: - Lap detail editing (save to DB)
+
+    /// Remove a specific trip lap by stamp (or index if duplicates) and persist.
+    func removeTripLap(
+        unitId: String,
+        at index: Int,
+        appState: AppState,
+        adminName: String
+    ) async {
+        guard ensureToday() else { return }
+        guard let idx = tripUnits.firstIndex(where: { $0.id == unitId }) else { return }
+        var unit = tripUnits[idx]
+        guard !unit.busy, unit.lapTimes.indices.contains(index) else { return }
+        let removed = unit.lapTimes.remove(at: index)
+        unit.rounds = unit.lapTimes.count
+        unit.busy = true
+        unit.dirty = true
+        tripUnits[idx] = unit
+        skipExternalReload += 1
+
+        let result = await CountRecordWriter.saveTrip(
+            id: unit.id,
+            dateYmd: dayKey,
+            vehicleId: unit.vehicleId,
+            driverId: unit.driverId,
+            rounds: unit.rounds,
+            lapTimes: unit.lapTimes,
+            adminName: adminName,
+            wasPersisted: unit.persisted,
+            workDetails: unit.workDetails,
+            isSupport: unit.isSupport
+        )
+        if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
+            tripUnits[i].persisted = !result.deleted || unit.isSupport
+            tripUnits[i].busy = false
+            tripUnits[i].dirty = false
+            flash(result.queued ? "ลบรอบ \(removed) (รอซิงค์)" : "ลบรอบ \(removed)")
+        }
+    }
+
+    /// Replace trip lap stamp at index and persist to DB.
+    func updateTripLap(
+        unitId: String,
+        at index: Int,
+        hour: Int,
+        minute: Int,
+        second: Int,
+        appState: AppState,
+        adminName: String
+    ) async {
+        guard ensureToday() else { return }
+        guard let idx = tripUnits.firstIndex(where: { $0.id == unitId }) else { return }
+        guard let newStamp = CountRecordLogic.formatLapStamp(
+            dayKey: dayKey, hour: hour, minute: minute, second: second
+        ) else {
+            flash("เวลาไม่ถูกต้อง", error: true)
+            return
+        }
+        var unit = tripUnits[idx]
+        guard !unit.busy, unit.lapTimes.indices.contains(index) else { return }
+        unit.lapTimes[index] = newStamp
+        unit.rounds = max(unit.rounds, unit.lapTimes.count)
+        unit.busy = true
+        unit.dirty = true
+        tripUnits[idx] = unit
+        skipExternalReload += 1
+
+        let result = await CountRecordWriter.saveTrip(
+            id: unit.id,
+            dateYmd: dayKey,
+            vehicleId: unit.vehicleId,
+            driverId: unit.driverId,
+            rounds: unit.rounds,
+            lapTimes: unit.lapTimes,
+            adminName: adminName,
+            wasPersisted: unit.persisted,
+            workDetails: unit.workDetails,
+            isSupport: unit.isSupport
+        )
+        if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
+            tripUnits[i].persisted = true
+            tripUnits[i].busy = false
+            tripUnits[i].dirty = false
+            flash(result.queued ? "แก้เวลาเป็น \(newStamp) (รอซิงค์)" : "แก้เวลาเป็น \(newStamp)")
+        }
+    }
+
+    func removeSandLap(at index: Int, appState: AppState, adminName: String) async {
+        guard ensureToday() else { return }
+        guard var unit = sandUnit, !unit.busy, unit.lapTimes.indices.contains(index) else { return }
+        let removed = unit.lapTimes.remove(at: index)
+        unit.rounds = unit.lapTimes.count
+        unit.busy = true
+        unit.dirty = true
+        sandUnit = unit
+        skipExternalReload += 1
+
+        let result = await CountRecordWriter.saveSand(
+            id: unit.id,
+            dateYmd: dayKey,
+            rounds: unit.rounds,
+            lapTimes: unit.lapTimes,
+            adminName: adminName,
+            wasPersisted: unit.persisted
+        )
+        if result.deleted {
+            unit.persisted = false
+            unit.id = CountRecordWriter.newTransactionId(suffix: "sand")
+        } else {
+            unit.persisted = true
+        }
+        unit.busy = false
+        unit.dirty = false
+        sandUnit = unit
+        flash(result.queued ? "ลบรอบ \(removed) (รอซิงค์)" : "ลบรอบ \(removed)")
+    }
+
+    func updateSandLap(
+        at index: Int,
+        hour: Int,
+        minute: Int,
+        second: Int,
+        appState: AppState,
+        adminName: String
+    ) async {
+        guard ensureToday() else { return }
+        guard let newStamp = CountRecordLogic.formatLapStamp(
+            dayKey: dayKey, hour: hour, minute: minute, second: second
+        ) else {
+            flash("เวลาไม่ถูกต้อง", error: true)
+            return
+        }
+        guard var unit = sandUnit, !unit.busy, unit.lapTimes.indices.contains(index) else { return }
+        unit.lapTimes[index] = newStamp
+        unit.rounds = max(unit.rounds, unit.lapTimes.count)
+        unit.busy = true
+        unit.dirty = true
+        sandUnit = unit
+        skipExternalReload += 1
+
+        let result = await CountRecordWriter.saveSand(
+            id: unit.id,
+            dateYmd: dayKey,
+            rounds: unit.rounds,
+            lapTimes: unit.lapTimes,
+            adminName: adminName,
+            wasPersisted: unit.persisted
+        )
+        unit.persisted = !result.deleted
+        unit.busy = false
+        unit.dirty = false
+        sandUnit = unit
+        flash(result.queued ? "แก้เวลาเป็น \(newStamp) (รอซิงค์)" : "แก้เวลาเป็น \(newStamp)")
     }
 
     private func persistTrip(at idx: Int, adminName: String, clearDirty: Bool) async {

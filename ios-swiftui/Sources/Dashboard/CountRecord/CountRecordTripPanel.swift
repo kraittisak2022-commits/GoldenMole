@@ -7,6 +7,7 @@ struct CountRecordTripPanel: View {
     let onLongPressUndo: (CountRecordTripDraft) -> Void
     let onAddVehicle: () -> Void
     let onEdit: (CountRecordTripDraft) -> Void
+    let onEditLaps: (CountRecordTripDraft) -> Void
     let onRemove: (CountRecordTripDraft) -> Void
 
     private var columns: [GridItem] {
@@ -71,6 +72,7 @@ struct CountRecordTripPanel: View {
                 }
                 Spacer(minLength: 4)
                 Menu {
+                    Button("แก้ไขรอบ / เวลา…") { onEditLaps(unit) }
                     Button("จัดการรถ…") { onEdit(unit) }
                     Button("ลบคัน", role: .destructive) { onRemove(unit) }
                 } label: {
