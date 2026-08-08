@@ -9827,20 +9827,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (_hasUnsavedModuleChanges) {
         final discard = await _confirmDiscardUnsavedChanges();
         if (!discard || !mounted) return;
+        // ยอมทิ้ง — เคลียร์ dirty ก่อน ไม่งั้น PopScope กันออกต่อ
+        _captureModuleFormBaseline();
       }
       _releaseKeyboardFocus();
       setState(() {
         if (_isFuelMode) _fuelSubMode = null;
         if (_isAttendanceMode) _attendanceSection = null;
       });
+      // baseline หลังออกจากเมนูย่อย เพื่อให้กดกลับอีกครั้งออกหน้าแรกได้
+      _captureModuleFormBaseline();
       return;
     }
     if (_hasUnsavedModuleChanges) {
       final discard = await _confirmDiscardUnsavedChanges();
       if (!discard || !mounted) return;
+      // ต้อง sync baseline ก่อน pop — canPop ยัง false อยู่ถ้า dirty ค้าง
+      _captureModuleFormBaseline();
     }
     if (!mounted) return;
-    Navigator.maybePop(context);
+    // ใช้ pop ตรงๆ — maybePop จะติด PopScope.canPop=false แล้ววนถามซ้ำ
+    Navigator.of(context).pop();
   }
 
   /// เมนูที่เตือนเมื่อกดย้อนกลับทั้งที่ยังไม่ได้บันทึก
