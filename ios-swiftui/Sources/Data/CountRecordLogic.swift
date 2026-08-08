@@ -401,11 +401,11 @@ enum CountRecordLogic {
         return "\(prefix) เริ่ม \(startDot)"
     }
 
-    static func fleetPeriodSpanLabels(
-        units: [CountRecordTripUnit],
+    static func periodSpanLabels(
+        lapTimes: [String],
         dayKey: String
     ) -> (morning: String?, afternoon: String?) {
-        let split = splitLapsByPeriod(units.flatMap(\.lapTimes))
+        let split = splitLapsByPeriod(lapTimes)
         let morningLabel = formatPeriodSpanLabel(
             prefix: "ตอนเช้า",
             span: computeWorkSpan(lapTimes: split.morning, dayKey: dayKey)
@@ -415,6 +415,13 @@ enum CountRecordLogic {
             span: computeWorkSpan(lapTimes: split.afternoon, dayKey: dayKey)
         )
         return (morningLabel, afternoonLabel)
+    }
+
+    static func fleetPeriodSpanLabels(
+        units: [CountRecordTripUnit],
+        dayKey: String
+    ) -> (morning: String?, afternoon: String?) {
+        periodSpanLabels(lapTimes: units.flatMap(\.lapTimes), dayKey: dayKey)
     }
 
     static func lunchOverlapSeconds(start: TimeInterval, end: TimeInterval) -> TimeInterval {

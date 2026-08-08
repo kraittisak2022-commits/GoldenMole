@@ -44,6 +44,8 @@ struct RealtimeV4Snapshot: Sendable {
     let activityEvents: [CountRecordAnalytics.ActivityEvent]
     /// Precomputed so view bodies never call parseLapStamp / computeWorkSpan.
     let sandWorkSpan: String?
+    let sandMorningSpanLabel: String?
+    let sandAfternoonSpanLabel: String?
     let sandHours: Double?
     let tripHours: Double?
     let vehicleWorkSpans: [String: String]
@@ -115,6 +117,7 @@ struct RealtimeV4Snapshot: Sendable {
         let sandWorkSpan = CountRecordLogic.formatWorkSpanLabel(
             CountRecordLogic.computeWorkSpan(lapTimes: sandLaps, dayKey: dayKey)
         )
+        let sandPeriodSpans = CountRecordLogic.periodSpanLabels(lapTimes: sandLaps, dayKey: dayKey)
         let sandHours = CountRecordLogic.activeDurationHours(lapTimes: sandLaps, dayKey: dayKey)
         let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripAnalytics.lapTimes, dayKey: dayKey)
         let leaderboard = Array(
@@ -155,6 +158,8 @@ struct RealtimeV4Snapshot: Sendable {
                 limit: 40
             ),
             sandWorkSpan: sandWorkSpan,
+            sandMorningSpanLabel: sandPeriodSpans.morning,
+            sandAfternoonSpanLabel: sandPeriodSpans.afternoon,
             sandHours: sandHours,
             tripHours: tripHours,
             vehicleWorkSpans: vehicleWorkSpans,
@@ -199,7 +204,6 @@ struct RealtimeV4View: View {
     @State private var livePing = false
     @State private var selectedVehicle: CountRecordTripUnit?
     @State private var showSandDetail = false
-    @State private var showSandRounds = false
     @State private var showFleetDetail = false
     @State private var pendingRebuild = false
     @State private var recentEventTimes: [Date] = []
@@ -289,7 +293,13 @@ struct RealtimeV4View: View {
         }
         .sheet(isPresented: $showSandDetail) {
             if let sand = sandUnit {
-                SandDetailSheet(sand: sand, dayKey: focusDateStr, analytics: sandAnalytics)
+                SandDetailSheet(
+                    sand: sand,
+                    dayKey: focusDateStr,
+                    analytics: sandAnalytics,
+                    morningSpanLabel: snapshot.sandMorningSpanLabel,
+                    afternoonSpanLabel: snapshot.sandAfternoonSpanLabel
+                )
             }
         }
         .sheet(isPresented: $showFleetDetail) {
@@ -300,11 +310,6 @@ struct RealtimeV4View: View {
                 efficiency: efficiency,
                 dayKey: focusDateStr
             )
-        }
-        .sheet(isPresented: $showSandRounds) {
-            if let sand = sandUnit {
-                SandRoundsSheet(sand: sand, dayKey: focusDateStr)
-            }
         }
     }
 
@@ -935,11 +940,9 @@ struct RealtimeV4View: View {
                     sandHero(sand)
                         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .onTapGesture { showSandDetail = true }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint("แตะเพื่อดูรายละเอียดร่อนทราย")
                     sandKPI(sand)
-                    sandRecentLaps(sand)
-                    if sandAnalytics.rounds > 0 {
-                        RealtimeV4AnalyticsPanel(analytics: sandAnalytics, accent: Color(hex: "#F472B6"))
-                    }
                 }
             } else {
                 emptyState(icon: "drop", title: "ยังไม่มีรอบทราย", subtitle: "รอการนับร่อนทรายจากมือถือ")
@@ -948,8 +951,7 @@ struct RealtimeV4View: View {
     }
 
     private func sandHero(_ sand: CountRecordSandUnit) -> some View {
-        let span = snapshot.sandWorkSpan
-        return ZStack {
+        ZStack {
             LinearGradient(
                 colors: [Color(hex: "#DB2777"), Color(hex: "#E11D48"), Color(hex: "#A21CAF")],
                 startPoint: .topLeading,
@@ -967,16 +969,15 @@ struct RealtimeV4View: View {
                     .tracking(2)
                     .foregroundStyle(.white.opacity(0.8))
                 PeriodPill(morning: sand.morning, afternoon: sand.afternoon, ot: sand.ot, onDark: true)
-                if let span {
-                    WorkSpanBadge(label: span, onDark: true)
-                }
-                if let last = sand.lapTimes.last {
-                    Label(CountRecordLogic.formatLapClock(last) ?? last, systemImage: "clock")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.black.opacity(0.15)))
+                if snapshot.sandMorningSpanLabel != nil || snapshot.sandAfternoonSpanLabel != nil {
+                    VStack(spacing: 6) {
+                        if let morning = snapshot.sandMorningSpanLabel {
+                            WorkSpanBadge(label: morning, onDark: true)
+                        }
+                        if let afternoon = snapshot.sandAfternoonSpanLabel {
+                            WorkSpanBadge(label: afternoon, onDark: true)
+                        }
+                    }
                 }
             }
             .padding(.vertical, 22)
@@ -1065,76 +1066,6 @@ struct RealtimeV4View: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 12).fill(fill))
-    }
-
-    private func sandRecentLaps(_ sand: CountRecordSandUnit) -> some View {
-        let start = max(0, sand.lapTimes.count - CountRecordLogic.sandRecentLaps)
-        let recent = Array(sand.lapTimes.enumerated()).filter { $0.offset >= start }
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("รอบล่าสุด")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.2)
-                    .foregroundStyle(RealtimeV4Palette.textMuted)
-                Spacer()
-                if !sand.lapTimes.isEmpty {
-                    HStack(spacing: 4) {
-                        Text("ดูทั้งหมด")
-                            .font(.system(size: 11, weight: .bold))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .foregroundStyle(RealtimeV4Palette.sandLabel)
-                }
-            }
-            if recent.isEmpty {
-                Text("ยังไม่มีเวลาประทับ")
-                    .font(.caption)
-                    .foregroundStyle(RealtimeV4Palette.inkFaint)
-            } else {
-                FlexibleChipWrap {
-                    ForEach(recent, id: \.offset) { item in
-                        let roundNo = item.offset + 1
-                        let latest = roundNo == sand.lapTimes.count
-                        HStack(spacing: 6) {
-                            Text("รอบ \(roundNo)")
-                                .foregroundStyle(latest ? Color(hex: "#FCE7F3") : RealtimeV4Palette.sandLabel)
-                            Text(CountRecordLogic.formatLapClock(item.element) ?? item.element)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(latest ? .white.opacity(0.9) : RealtimeV4Palette.inkMuted)
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(latest ? Color(hex: "#DB2777") : RealtimeV4Palette.cardSoft)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(latest ? Color.clear : Color(hex: "#EC4899").opacity(0.3), lineWidth: 1)
-                        )
-                        .shadow(color: latest ? Color(hex: "#DB2777").opacity(0.25) : .clear, radius: 4, y: 2)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(RealtimeV4Palette.card)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(RealtimeV4Palette.border, lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture {
-            guard !sand.lapTimes.isEmpty else { return }
-            showSandRounds = true
-        }
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("แตะเพื่อดูรอบทั้งหมด")
     }
 
     // MARK: - Shared shells
@@ -1850,13 +1781,11 @@ private struct SandDetailSheet: View {
     let sand: CountRecordSandUnit
     let dayKey: String
     let analytics: CountRecordAnalytics.ModeAnalytics
+    let morningSpanLabel: String?
+    let afternoonSpanLabel: String?
     @Environment(\.dismiss) private var dismiss
+    @State private var showSandRounds = false
 
-    private var workSpan: String? {
-        CountRecordLogic.formatWorkSpanLabel(
-            CountRecordLogic.computeWorkSpan(lapTimes: sand.lapTimes, dayKey: dayKey)
-        )
-    }
     private var hours: Double? { CountRecordLogic.activeDurationHours(lapTimes: sand.lapTimes, dayKey: dayKey) }
     private var perHour: Double? { hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil } }
 
@@ -1883,10 +1812,25 @@ private struct SandDetailSheet: View {
                         ("คงเหลือ", "\(max(0, CountRecordLogic.sandTarget - sand.rounds))")
                     ])
 
-                    if let workSpan {
-                        Label(workSpan, systemImage: "clock")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                    if morningSpanLabel != nil || afternoonSpanLabel != nil {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let morningSpanLabel {
+                                Label(morningSpanLabel, systemImage: "sun.max.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                            }
+                            if let afternoonSpanLabel {
+                                Label(afternoonSpanLabel, systemImage: "sunset.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                            }
+                        }
+                    }
+
+                    recentLapsCard
+
+                    if analytics.rounds > 0 {
+                        RealtimeV4AnalyticsPanel(analytics: analytics, accent: Color(hex: "#F472B6"))
                     }
 
                     LapTimeList(title: "เวลาประทับทุกรอบ", lapTimes: sand.lapTimes)
@@ -1903,6 +1847,79 @@ private struct SandDetailSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showSandRounds) {
+            SandRoundsSheet(sand: sand, dayKey: dayKey)
+        }
+    }
+
+    private var recentLapsCard: some View {
+        let start = max(0, sand.lapTimes.count - CountRecordLogic.sandRecentLaps)
+        let recent = Array(sand.lapTimes.enumerated()).filter { $0.offset >= start }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("รอบล่าสุด")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundStyle(RealtimeV4Palette.textMuted)
+                Spacer()
+                if !sand.lapTimes.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("ดูทั้งหมด")
+                            .font(.system(size: 11, weight: .bold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(RealtimeV4Palette.sandLabel)
+                }
+            }
+            if recent.isEmpty {
+                Text("ยังไม่มีเวลาประทับ")
+                    .font(.caption)
+                    .foregroundStyle(RealtimeV4Palette.inkFaint)
+            } else {
+                FlexibleChipWrap {
+                    ForEach(recent, id: \.offset) { item in
+                        let roundNo = item.offset + 1
+                        let latest = roundNo == sand.lapTimes.count
+                        HStack(spacing: 6) {
+                            Text("รอบ \(roundNo)")
+                                .foregroundStyle(latest ? Color(hex: "#FCE7F3") : RealtimeV4Palette.sandLabel)
+                            Text(CountRecordLogic.formatLapClock(item.element) ?? item.element)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(latest ? .white.opacity(0.9) : RealtimeV4Palette.inkMuted)
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(latest ? Color(hex: "#DB2777") : RealtimeV4Palette.cardSoft)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(latest ? Color.clear : Color(hex: "#EC4899").opacity(0.3), lineWidth: 1)
+                        )
+                        .shadow(color: latest ? Color(hex: "#DB2777").opacity(0.25) : .clear, radius: 4, y: 2)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(RealtimeV4Palette.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            guard !sand.lapTimes.isEmpty else { return }
+            showSandRounds = true
+        }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("แตะเพื่อดูรอบทั้งหมด")
     }
 }
 
