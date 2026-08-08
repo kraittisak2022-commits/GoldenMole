@@ -57,6 +57,7 @@ final class AppState {
         let coordinator = RealtimeSyncCoordinator(service: dataService, appState: self)
         syncCoordinator = coordinator
         coordinator.start()
+        CountRecordOfflineSync.shared.configure(service: dataService, appState: self)
     }
 
     func loadInitial() async {

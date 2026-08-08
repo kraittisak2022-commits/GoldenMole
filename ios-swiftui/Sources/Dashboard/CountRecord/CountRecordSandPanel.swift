@@ -3,7 +3,8 @@ import SwiftUI
 struct CountRecordSandPanel: View {
     let session: CountRecordSession
     let onRecord: () -> Void
-    let onUndo: () -> Void
+    let onLongPressUndo: () -> Void
+    let onDeleteLap: (String) -> Void
 
     var body: some View {
         let unit = session.sandUnit
@@ -13,12 +14,14 @@ struct CountRecordSandPanel: View {
                     .font(.headline)
                     .foregroundStyle(Color(hex: "#AD1457"))
                 Spacer()
-                Button(action: onUndo) {
-                    Label("เลิกทำรอบล่าสุด", systemImage: "arrow.uturn.backward")
-                        .font(.caption.weight(.semibold))
+                if let combo = unit?.comboCount, combo > 1 {
+                    Text("×\(combo)")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "#AD1457").opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color(hex: "#AD1457"))
                 }
-                .buttonStyle(.bordered)
-                .disabled(unit?.busy == true || (unit?.rounds ?? 0) <= 0)
             }
 
             Button(action: onRecord) {
@@ -26,7 +29,8 @@ struct CountRecordSandPanel: View {
                     Text("\(unit?.rounds ?? 0)")
                         .font(.system(size: 64, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text(unit?.busy == true ? "กำลังบันทึก…" : "แตะเพื่อ +1 รอบ")
+                        .contentTransition(.numericText())
+                    Text(sandButtonLabel(unit))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.9))
                 }
@@ -44,12 +48,17 @@ struct CountRecordSandPanel: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(unit?.busy == true)
+            .disabled(unit?.busy == true || unit?.isCoolingDown == true)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 3).onEnded { _ in
+                    onLongPressUndo()
+                }
+            )
             .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.7), trigger: unit?.rounds ?? 0)
 
             if let recent = unit?.recentLaps, !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("รอบล่าสุด")
+                    Text("รอบล่าสุด · กดค้างเพื่อลบ")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.inkMuted)
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -61,6 +70,9 @@ struct CountRecordSandPanel: View {
                                     .padding(.vertical, 6)
                                     .background(Color(hex: "#AD1457").opacity(0.12), in: Capsule())
                                     .foregroundStyle(Color(hex: "#AD1457"))
+                                    .onLongPressGesture {
+                                        onDeleteLap(stamp)
+                                    }
                             }
                         }
                     }
@@ -76,5 +88,11 @@ struct CountRecordSandPanel: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color(hex: "#AD1457").opacity(0.25), lineWidth: 1)
         )
+    }
+
+    private func sandButtonLabel(_ unit: CountRecordSandDraft?) -> String {
+        if unit?.busy == true { return "กำลังบันทึก…" }
+        if unit?.isCoolingDown == true { return "รอ 3 วิ…" }
+        return "แตะเพื่อ +1 รอบ · กดค้างเลิกทำ"
     }
 }

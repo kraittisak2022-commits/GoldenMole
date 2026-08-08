@@ -142,8 +142,17 @@ struct OpsSideMenuOverlay: View {
 }
 
 struct OpsSideMenuPanel: View {
+    @Environment(AppState.self) private var appState
     let onSelect: (OpsMenuItem) -> Void
     let onClose: () -> Void
+
+    private var countRecordStatus: String? {
+        CountRecordLogic.menuStatusLabel(
+            dayKey: DashboardAggregations.todayYMD(),
+            transactions: appState.transactions,
+            employees: appState.employees
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -187,11 +196,19 @@ struct OpsSideMenuPanel: View {
                                             .fill(item.accent.opacity(0.14))
                                     )
 
-                                Text(item.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.ink)
-                                    .multilineTextAlignment(.leading)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(AppTheme.ink)
+                                        .multilineTextAlignment(.leading)
+                                    if item == .countRecord, let status = countRecordStatus {
+                                        Text(status)
+                                            .font(.caption2)
+                                            .foregroundStyle(AppTheme.inkMuted)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Image(systemName: "chevron.right")
                                     .font(.caption.weight(.bold))

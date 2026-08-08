@@ -4,8 +4,16 @@ struct CountRecordTripPanel: View {
     let session: CountRecordSession
     let employees: [Employee]
     let onRecord: (CountRecordTripDraft) -> Void
-    let onUndo: (CountRecordTripDraft) -> Void
+    let onLongPressUndo: (CountRecordTripDraft) -> Void
     let onAddVehicle: () -> Void
+    let onEdit: (CountRecordTripDraft) -> Void
+    let onRemove: (CountRecordTripDraft) -> Void
+
+    private var columns: [GridItem] {
+        let count = session.tripUnits.count
+        if count <= 2 { return [GridItem(.flexible())] }
+        return [GridItem(.flexible()), GridItem(.flexible())]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -14,6 +22,10 @@ struct CountRecordTripPanel: View {
                     .font(.headline)
                     .foregroundStyle(Color(hex: "#1565C0"))
                 Spacer()
+                let total = session.tripUnits.reduce(0) { $0 + $1.rounds }
+                Text("\(total) เที่ยว")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.inkMuted)
                 Button(action: onAddVehicle) {
                     Label("เพิ่มคัน", systemImage: "plus.circle.fill")
                         .font(.subheadline.weight(.semibold))
@@ -29,61 +41,97 @@ struct CountRecordTripPanel: View {
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
             } else {
-                ForEach(session.tripUnits) { unit in
-                    tripCard(unit)
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(Array(session.tripUnits.enumerated()), id: \.element.id) { index, unit in
+                        tripCard(unit, colorIndex: index)
+                    }
                 }
             }
         }
     }
 
-    private func tripCard(_ unit: CountRecordTripDraft) -> some View {
+    private func tripCard(_ unit: CountRecordTripDraft, colorIndex: Int) -> some View {
+        let accent = Color(hex: CountRecordLogic.vehicleColors[colorIndex % CountRecordLogic.vehicleColors.count])
         let periods = unit.periodSplit
         let driver = CountRecordLogic.driverDisplayName(unit.driverId, employees: employees)
+        let goal = CountRecordPrefs.tripGoal
+        let progress = goal > 0 ? min(1, Double(unit.rounds) / Double(goal)) : 0
+
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(unit.vehicleId)
                         .font(.headline)
                         .foregroundStyle(AppTheme.ink)
-                    Text("คนขับ: \(driver)")
+                        .lineLimit(1)
+                    Text(driver)
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
+                        .lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 4)
+                Menu {
+                    Button("จัดการรถ…") { onEdit(unit) }
+                    Button("ลบคัน", role: .destructive) { onRemove(unit) }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+            }
+
+            HStack(spacing: 6) {
+                if unit.isSupport {
+                    badge("ชัพพอต", AppTheme.slate)
+                }
+                if unit.isBroken {
+                    badge("รถเสีย", AppTheme.expense)
+                }
+                if unit.comboCount > 1 {
+                    badge("×\(unit.comboCount)", accent)
+                }
+                if goal > 0 && unit.rounds >= goal {
+                    badge("ครบเป้า", Color(hex: "#C9A227"))
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(unit.rounds)")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(hex: "#1565C0"))
+                    .foregroundStyle(accent)
+                    .contentTransition(.numericText())
                 Text("เที่ยว")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
+                Spacer()
             }
 
-            HStack(spacing: 8) {
+            if goal > 0 {
+                ProgressView(value: progress)
+                    .tint(unit.rounds >= goal ? Color(hex: "#C9A227") : accent)
+            }
+
+            HStack(spacing: 6) {
                 periodChip("เช้า", periods.morning, Color(hex: "#1565C0"))
                 periodChip("บ่าย", periods.afternoon, Color(hex: "#2E7D32"))
                 periodChip("เย็น", periods.ot, Color(hex: "#E65100"))
-                Spacer()
-                Button {
-                    onUndo(unit)
-                } label: {
-                    Label("เลิกทำ", systemImage: "arrow.uturn.backward")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .disabled(unit.busy || unit.rounds <= 0)
             }
 
             Button {
                 onRecord(unit)
             } label: {
-                Text(unit.busy ? "กำลังบันทึก…" : "แตะเพื่อ +1 เที่ยว")
+                Text(buttonLabel(unit))
                     .font(.subheadline.weight(.bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color(hex: "#1565C0"))
-            .disabled(unit.busy)
+            .tint(accent)
+            .disabled(!unit.canRecord)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 3).onEnded { _ in
+                    onLongPressUndo(unit)
+                }
+            )
         }
         .padding(14)
         .background(
@@ -92,8 +140,16 @@ struct CountRecordTripPanel: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+                .strokeBorder(accent.opacity(0.35), lineWidth: 1.5)
         )
+    }
+
+    private func buttonLabel(_ unit: CountRecordTripDraft) -> String {
+        if unit.busy { return "กำลังบันทึก…" }
+        if unit.isCoolingDown { return "รอ 3 วิ…" }
+        if unit.isSupport { return "ชัพพอต" }
+        if unit.isBroken { return "รถเสีย" }
+        return "แตะ +1 เที่ยว"
     }
 
     private func periodChip(_ title: String, _ value: Int, _ color: Color) -> some View {
@@ -102,6 +158,15 @@ struct CountRecordTripPanel: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(color.opacity(0.12), in: Capsule())
+            .foregroundStyle(color)
+    }
+
+    private func badge(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.15), in: Capsule())
             .foregroundStyle(color)
     }
 }
