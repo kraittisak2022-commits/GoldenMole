@@ -257,7 +257,7 @@ struct OpsMenuDestinationView: View {
         case .drumTrips:
             DrumTripHubView()
         case .macro:
-            OpsMacroVehicleReportView()
+            MacroVehicleHubView()
         case .fuel:
             CategoryReportScreen(type: .fuel)
         case .events:
