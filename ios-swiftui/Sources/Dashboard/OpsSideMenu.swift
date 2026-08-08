@@ -259,7 +259,7 @@ struct OpsMenuDestinationView: View {
         case .macro:
             MacroVehicleHubView()
         case .fuel:
-            CategoryReportScreen(type: .fuel)
+            FuelHubView()
         case .events:
             OpsFilteredRecordListView(
                 title: "เหตุการณ์",

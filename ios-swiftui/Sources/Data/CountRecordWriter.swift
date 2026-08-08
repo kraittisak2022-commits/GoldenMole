@@ -34,9 +34,15 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
     var leaveDays: Double? = nil
     var tripMorning: Double? = nil
     var tripAfternoon: Double? = nil
+    /// Fuel fields
+    var quantity: Double? = nil
+    var unit: String? = nil
+    var unitPrice: Double? = nil
+    var fuelType: String? = nil
+    var fuelMovement: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, date, type, category, description, amount, note
+        case id, date, type, category, description, amount, note, quantity, unit
         case subCategory = "sub_category"
         case vehicleId = "vehicle_id"
         case driverId = "driver_id"
@@ -61,6 +67,9 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         case leaveDays = "leave_days"
         case tripMorning = "trip_morning"
         case tripAfternoon = "trip_afternoon"
+        case unitPrice = "unit_price"
+        case fuelType = "fuel_type"
+        case fuelMovement = "fuel_movement"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,6 +105,11 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         try c.encodeIfPresent(leaveDays, forKey: .leaveDays)
         try c.encodeIfPresent(tripMorning, forKey: .tripMorning)
         try c.encodeIfPresent(tripAfternoon, forKey: .tripAfternoon)
+        try c.encodeIfPresent(quantity, forKey: .quantity)
+        try c.encodeIfPresent(unit, forKey: .unit)
+        try c.encodeIfPresent(unitPrice, forKey: .unitPrice)
+        try c.encodeIfPresent(fuelType, forKey: .fuelType)
+        try c.encodeIfPresent(fuelMovement, forKey: .fuelMovement)
     }
 }
 
