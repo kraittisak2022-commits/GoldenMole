@@ -73,6 +73,8 @@ class CountRecordOfflineSync {
   RealtimeChannel? _realtimeChannel;
   String? _realtimeDateFilter;
   VoidCallback? _onRemoteDataChanged;
+  /// ผู้ฟังเพิ่มเติม (เช่น Quick Input) — ไม่ทับ callback ของ Dashboard
+  final Map<Object, VoidCallback> _remoteChangeListeners = {};
 
   /// จำนวนรายการค้างในคิว — ให้ UI ฟังค่าแทนการตั้ง timer polling เอง
   final ValueNotifier<int> pendingCountListenable = ValueNotifier<int>(0);
@@ -1138,6 +1140,27 @@ class CountRecordOfflineSync {
     }
   }
 
+  /// ลงทะเบียนฟัง remote change โดยไม่ทับ callback หลักของ Dashboard
+  void addRemoteChangeListener(Object key, VoidCallback onRemoteChange) {
+    _remoteChangeListeners[key] = onRemoteChange;
+  }
+
+  void removeRemoteChangeListener(Object key) {
+    _remoteChangeListeners.remove(key);
+  }
+
+  void _notifyRemoteChangeListeners() {
+    _onRemoteDataChanged?.call();
+    final listeners = List<VoidCallback>.from(_remoteChangeListeners.values);
+    for (final cb in listeners) {
+      try {
+        cb();
+      } catch (e, st) {
+        debugPrint('CountRecordOfflineSync remote listener: $e\n$st');
+      }
+    }
+  }
+
   Future<void> _restartRealtime(SupabaseClient client) async {
     await _realtimeChannel?.unsubscribe();
     _realtimeChannel = null;
@@ -1159,7 +1182,7 @@ class CountRecordOfflineSync {
             debugPrint(
               'CountRecordOfflineSync realtime: ${payload.eventType}',
             );
-            _onRemoteDataChanged?.call();
+            _notifyRemoteChangeListeners();
           },
         )
         .subscribe();
@@ -1266,6 +1289,7 @@ class CountRecordOfflineSync {
     _onAutoSynced = null;
     _onServerReachabilityChanged = null;
     _onRemoteDataChanged = null;
+    _remoteChangeListeners.clear();
     _schedulerRunning = false;
     _publishSyncState(activity: SyncActivity.idle);
   }

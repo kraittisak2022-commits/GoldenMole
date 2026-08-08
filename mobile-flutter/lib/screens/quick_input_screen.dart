@@ -133,7 +133,7 @@ const _kFuelPinnedVehiclePatterns = <({String model, String nickname})>[
 enum _IuEntryKind { expense, income }
 
 class _QuickInputScreenState extends State<QuickInputScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const List<_LaborWorkCategory> _laborCategories = [
     _LaborWorkCategory(
       id: 'wash_old',
@@ -262,6 +262,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   late final Animation<double> _contentFade;
   late final Animation<Offset> _contentSlide;
   Timer? _uiRebuildDebounce;
+  Timer? _remoteRefreshDebounce;
+  Timer? _pollFallbackTimer;
+  static const Duration _remoteRefreshDebounceDelay =
+      Duration(milliseconds: 300);
+  static const Duration _pollFallbackInterval = Duration(seconds: 12);
   bool _saving = false;
   String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
@@ -780,6 +785,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final pageTitle = widget.appBarTitle?.trim();
     final category = widget.initialCategory?.trim();
     MobileErrorScreenTracker.set(
@@ -861,10 +867,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       unawaited(_loadAttWorkCardHeight());
     }
     _otGroups.add(_OtGroupDraft.empty());
+    CountRecordOfflineSync.instance.addRemoteChangeListener(
+      this,
+      _onRemoteTransactionsChanged,
+    );
+    _startPollFallback();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _loadModuleTransactions();
     });
+  }
+
+  /// เครื่องอื่นแก้ transactions → รีเฟรชเมื่อฟอร์มไม่ dirty
+  void _onRemoteTransactionsChanged() {
+    if (!mounted) return;
+    _scheduleRemoteModuleRefresh();
+  }
+
+  void _scheduleRemoteModuleRefresh() {
+    _remoteRefreshDebounce?.cancel();
+    _remoteRefreshDebounce = Timer(_remoteRefreshDebounceDelay, () {
+      if (!mounted || _saving || _hasUnsavedModuleChanges) return;
+      unawaited(_loadModuleTransactions(forceRefresh: true));
+    });
+  }
+
+  void _startPollFallback() {
+    _pollFallbackTimer?.cancel();
+    _pollFallbackTimer = Timer.periodic(_pollFallbackInterval, (_) {
+      if (!mounted || _saving || _hasUnsavedModuleChanges) return;
+      if (widget.serverOnlineHint == false) return;
+      unawaited(_loadModuleTransactions(forceRefresh: true));
+    });
+  }
+
+  void _stopPollFallback() {
+    _pollFallbackTimer?.cancel();
+    _pollFallbackTimer = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPollFallback();
+      if (!_saving && !_hasUnsavedModuleChanges) {
+        unawaited(_loadModuleTransactions(forceRefresh: true));
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _stopPollFallback();
+    }
   }
 
   String _quickYmd(DateTime d) {
@@ -1990,8 +2043,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    CountRecordOfflineSync.instance.removeRemoteChangeListener(this);
     _employeesLoadProgressTimer?.cancel();
     _uiRebuildDebounce?.cancel();
+    _remoteRefreshDebounce?.cancel();
+    _stopPollFallback();
     _entranceController.dispose();
     _amountController.dispose();
     _descriptionController.dispose();

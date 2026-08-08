@@ -169,6 +169,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _offlineDebounceTimer;
   /// ตั้งปลุกที่เที่ยงคืน — สลับ `_selectedDay` เป็นวันใหม่เมื่อแอปค้างข้ามคืน
   Timer? _midnightRolloverTimer;
+  /// debounce Realtime — กันยิงถี่ตอนมีหลายแถวเปลี่ยนพร้อมกัน
+  Timer? _remoteRefreshDebounce;
+  /// poll สำรองเมื่อ Realtime พลาด (เท่าเว็บ ~12 วิ)
+  Timer? _pollFallbackTimer;
+  static const Duration _remoteRefreshDebounceDelay =
+      Duration(milliseconds: 300);
+  static const Duration _pollFallbackInterval = Duration(seconds: 12);
 
   void _applyServerReachability(bool online, {bool force = false}) {
     if (!mounted) return;
@@ -210,9 +217,31 @@ class _DashboardScreenState extends State<DashboardScreen>
       dateYmd: _dateKey(_selectedDay),
       onRemoteChange: () {
         if (!mounted) return;
-        unawaited(_refreshHomeDataInPlace());
+        _scheduleRemoteRefresh();
       },
     );
+  }
+
+  /// Realtime จากเครื่องอื่น → ดึงเน็ต (รวมตอนเปิดเมนูนับจำนวน)
+  void _scheduleRemoteRefresh() {
+    _remoteRefreshDebounce?.cancel();
+    _remoteRefreshDebounce = Timer(_remoteRefreshDebounceDelay, () {
+      if (!mounted) return;
+      unawaited(_refreshHomeSilently(tryNetwork: true));
+    });
+  }
+
+  void _startPollFallback() {
+    _pollFallbackTimer?.cancel();
+    _pollFallbackTimer = Timer.periodic(_pollFallbackInterval, (_) {
+      if (!mounted || !_serverOnline) return;
+      unawaited(_refreshHomeSilently(tryNetwork: true));
+    });
+  }
+
+  void _stopPollFallback() {
+    _pollFallbackTimer?.cancel();
+    _pollFallbackTimer = null;
   }
 
   void _applyPayloadQuietly(_HomePayload next) {
@@ -271,11 +300,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
+  /// ดึงจากเซิร์ฟเวอร์เสมอ เพื่อรับการแก้จากเครื่องอื่น (แม้เปิดเมนูนับจำนวนอยู่)
   Future<void> _refreshHomeDataInPlace() async {
-    if (_countAndRecordMenuOpen) {
-      await _refreshAfterCountRecordChange();
-      return;
-    }
     await _refreshHomeSilently(tryNetwork: true);
   }
 
@@ -305,6 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     CountRecordOfflineSync.instance.syncState.addListener(_onSyncStateChanged);
     _configureTransactionRealtime();
+    _startPollFallback();
     _scheduleMidnightRollover();
   }
 
@@ -371,6 +398,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     CountRecordOfflineSync.instance.stopAutoSync();
     _offlineDebounceTimer?.cancel();
     _midnightRolloverTimer?.cancel();
+    _remoteRefreshDebounce?.cancel();
+    _stopPollFallback();
     super.dispose();
   }
 
@@ -379,7 +408,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (state == AppLifecycleState.resumed) {
       // เช็คว่าข้ามวันระหว่างพักเบื้องหลังไหม — สลับเป็นวันนี้ + ตั้ง timer ใหม่
       _handleDayRollover();
+      _startPollFallback();
       unawaited(_syncCountRecordQueueThenRefresh());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _stopPollFallback();
     }
   }
 
