@@ -166,4 +166,7 @@ final class AppState {
         }
         marketLoading = false
     }
+
+    /// Supabase client for online count-record writes (nil when not configured).
+    var supabaseService: SupabaseService? { dataService }
 }

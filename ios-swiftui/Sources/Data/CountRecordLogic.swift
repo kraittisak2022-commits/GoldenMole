@@ -321,6 +321,17 @@ enum CountRecordLogic {
         return bangkokEpochSeconds(year: yy, month: month, day: day, hour: hour, minute: minute, second: second)
     }
 
+    /// Lap stamp matching Flutter: `dd/MM HH:mm:ss` (Bangkok civil clock).
+    static func formatLapStamp(_ date: Date = Date()) -> String {
+        let cal = DashboardAggregations.gregorian
+        let d = cal.component(.day, from: date)
+        let m = cal.component(.month, from: date)
+        let h = cal.component(.hour, from: date)
+        let min = cal.component(.minute, from: date)
+        let s = cal.component(.second, from: date)
+        return String(format: "%02d/%02d %02d:%02d:%02d", d, m, h, min, s)
+    }
+
     static func formatLapClock(_ stamp: String) -> String? {
         let s = stamp.trimmingCharacters(in: .whitespacesAndNewlines)
         let timePart: String

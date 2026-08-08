@@ -220,4 +220,32 @@ final class SupabaseService: ObservableObject {
             throw DataServiceError.fetchFailed(error.localizedDescription)
         }
     }
+
+    // MARK: - Transactions (count-record writes)
+
+    /// Upserts a DailyLog trip/sand row and returns the stored transaction.
+    func upsertTransaction(_ payload: TransactionWritePayload) async throws -> Transaction {
+        do {
+            let data = try await client.from("transactions")
+                .upsert(payload, onConflict: "id")
+                .select()
+                .single()
+                .execute()
+                .data
+            return try Self.jsonDecoder.decode(Transaction.self, from: data)
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func deleteTransaction(id: String) async throws {
+        do {
+            _ = try await client.from("transactions")
+                .delete()
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
 }

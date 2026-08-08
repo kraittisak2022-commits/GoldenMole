@@ -237,7 +237,7 @@ struct OpsMenuDestinationView: View {
     var body: some View {
         switch item {
         case .countRecord:
-            CategoryReportScreen(type: .sand, titleOverride: "บันทึกและนับจำนวน")
+            CountRecordHubView()
         case .attendance:
             OpsAttendanceDetailView()
         case .drumTrips:
