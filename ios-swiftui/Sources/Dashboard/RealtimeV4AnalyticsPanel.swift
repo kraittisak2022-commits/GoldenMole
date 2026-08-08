@@ -4,9 +4,13 @@ import SwiftUI
 struct RealtimeV4AnalyticsPanel: View {
     let analytics: CountRecordAnalytics.ModeAnalytics
     var accent: Color = AppTheme.info
+    /// When true, charts are always visible (no expand/collapse toggle).
+    var chartsAlwaysExpanded: Bool = false
     @State private var showDetail = false
     /// Charts stay off-screen by default — mounting 6–8 Chart views while scrolling caused freezes.
     @State private var showCharts = false
+
+    private var chartsVisible: Bool { chartsAlwaysExpanded || showCharts }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -44,30 +48,32 @@ struct RealtimeV4AnalyticsPanel: View {
             } else {
                 statTiles
                 // Charts are expensive during scroll — keep collapsed until the user expands
-                // or opens the detail sheet (full charts live there via PaceDetailSheet).
-                if showCharts {
+                // unless `chartsAlwaysExpanded` (e.g. sand detail sheet).
+                if chartsVisible {
                     bentoGrid
                 }
-                Button {
-                    withAnimation(.snappy(duration: 0.25)) {
-                        showCharts.toggle()
+                if !chartsAlwaysExpanded {
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) {
+                            showCharts.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: showCharts ? "chevron.up" : "chart.xyaxis.line")
+                                .font(.caption.weight(.bold))
+                            Text(showCharts ? "ซ่อนกราฟวิเคราะห์" : "แสดงกราฟวิเคราะห์")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(accent.opacity(0.12))
+                        )
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: showCharts ? "chevron.up" : "chart.xyaxis.line")
-                            .font(.caption.weight(.bold))
-                        Text(showCharts ? "ซ่อนกราฟวิเคราะห์" : "แสดงกราฟวิเคราะห์")
-                            .font(.caption.weight(.bold))
-                    }
-                    .foregroundStyle(accent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(accent.opacity(0.12))
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(14)

@@ -224,21 +224,6 @@ struct RealtimeV4View: View {
     private var sandRounds: Int { snapshot.sandRounds }
     private var efficiency: VehicleEfficiency { snapshot.efficiency }
 
-    private var modeStatusLabel: String? {
-        switch mode {
-        case .trip:
-            guard tripTotal > 0 || !tripUnits.isEmpty else { return nil }
-            return "\(tripUnits.count) คัน · \(CountRecordLogic.formatMetric(tripTotal)) เที่ยว"
-        case .sand:
-            guard let sand = sandUnit, sand.rounds > 0 else { return nil }
-            var sandText = "ร่อน \(CountRecordLogic.formatMetric(sand.rounds)) รอบ"
-            if sand.morning > 0 || sand.afternoon > 0 {
-                sandText += " (เช้า \(sand.morning) · บ่าย \(sand.afternoon))"
-            }
-            return sandText
-        }
-    }
-
     private var modeActivityEvents: [CountRecordAnalytics.ActivityEvent] {
         let want: CountRecordAnalytics.ActivityEvent.Kind = mode == .trip ? .trip : .sand
         return snapshot.activityEvents.filter { $0.kind == want }
@@ -297,7 +282,8 @@ struct RealtimeV4View: View {
                     dayKey: focusDateStr,
                     analytics: sandAnalytics,
                     morningSpanLabel: snapshot.sandMorningSpanLabel,
-                    afternoonSpanLabel: snapshot.sandAfternoonSpanLabel
+                    afternoonSpanLabel: snapshot.sandAfternoonSpanLabel,
+                    activityEvents: modeActivityEvents
                 )
             }
         }
@@ -403,12 +389,6 @@ struct RealtimeV4View: View {
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
 
-                if mode == .sand {
-                    Text("ติดตามการร่อนทรายแบบสด")
-                        .font(.subheadline)
-                        .foregroundStyle(Color(hex: "#CBD5E1"))
-                }
-
                 HStack(spacing: 8) {
                     dateChip
                     if !isToday {
@@ -424,12 +404,6 @@ struct RealtimeV4View: View {
                 }
 
                 healthStatusRow
-
-                if mode == .sand, let modeStatusLabel {
-                    Text(modeStatusLabel)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color(hex: "#A5B4FC"))
-                }
             }
             .padding(20)
         }
@@ -572,15 +546,15 @@ struct RealtimeV4View: View {
                 switch mode {
                 case .trip:
                     tripPanel
+                    RealtimeV4ActivityFeed(
+                        events: modeActivityEvents,
+                        dayKey: focusDateStr,
+                        tripUnits: tripUnits,
+                        sandUnit: nil
+                    )
                 case .sand:
                     sandPanel
                 }
-                RealtimeV4ActivityFeed(
-                    events: modeActivityEvents,
-                    dayKey: focusDateStr,
-                    tripUnits: mode == .trip ? tripUnits : [],
-                    sandUnit: mode == .sand ? sandUnit : nil
-                )
             }
             .padding(16)
             .background(
@@ -1805,6 +1779,7 @@ private struct SandDetailSheet: View {
     let analytics: CountRecordAnalytics.ModeAnalytics
     let morningSpanLabel: String?
     let afternoonSpanLabel: String?
+    let activityEvents: [CountRecordAnalytics.ActivityEvent]
     @Environment(\.dismiss) private var dismiss
     @State private var showSandRounds = false
 
@@ -1851,11 +1826,20 @@ private struct SandDetailSheet: View {
 
                     recentLapsCard
 
-                    if analytics.rounds > 0 {
-                        RealtimeV4AnalyticsPanel(analytics: analytics, accent: Color(hex: "#F472B6"))
-                    }
+                    RealtimeV4ActivityFeed(
+                        events: activityEvents,
+                        dayKey: dayKey,
+                        tripUnits: [],
+                        sandUnit: sand
+                    )
 
-                    LapTimeList(title: "เวลาประทับทุกรอบ", lapTimes: sand.lapTimes)
+                    if analytics.rounds > 0 {
+                        RealtimeV4AnalyticsPanel(
+                            analytics: analytics,
+                            accent: Color(hex: "#F472B6"),
+                            chartsAlwaysExpanded: true
+                        )
+                    }
                 }
                 .padding(20)
             }
