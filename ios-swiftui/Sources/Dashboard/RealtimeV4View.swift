@@ -296,6 +296,7 @@ struct RealtimeV4View: View {
                 efficiency: efficiency,
                 leaderboard: snapshot.leaderboard,
                 analytics: tripAnalytics,
+                activityEvents: modeActivityEvents,
                 dayKey: focusDateStr
             )
         }
@@ -546,12 +547,6 @@ struct RealtimeV4View: View {
                 switch mode {
                 case .trip:
                     tripPanel
-                    RealtimeV4ActivityFeed(
-                        events: modeActivityEvents,
-                        dayKey: focusDateStr,
-                        tripUnits: tripUnits,
-                        sandUnit: nil
-                    )
                 case .sand:
                     sandPanel
                 }
@@ -1333,6 +1328,7 @@ private struct FleetTripDetailSheet: View {
     let efficiency: VehicleEfficiency
     let leaderboard: [CountRecordTripUnit]
     let analytics: CountRecordAnalytics.ModeAnalytics
+    let activityEvents: [CountRecordAnalytics.ActivityEvent]
     let dayKey: String
     @Environment(\.dismiss) private var dismiss
     @State private var allRounds: [FleetRoundRow] = []
@@ -1419,6 +1415,13 @@ private struct FleetTripDetailSheet: View {
                     .background(RoundedRectangle(cornerRadius: 14).fill(RealtimeV4Palette.cardSoft))
 
                     recentLeaderboardCard
+
+                    RealtimeV4ActivityFeed(
+                        events: activityEvents,
+                        dayKey: dayKey,
+                        tripUnits: tripUnits,
+                        sandUnit: nil
+                    )
 
                     if analytics.rounds > 0 {
                         RealtimeV4AnalyticsPanel(analytics: analytics, accent: Color(hex: "#38BDF8"))
