@@ -100,11 +100,12 @@ final class MainThreadWatchdog {
         loopTask = Task.detached(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 let sent = ContinuousClock.now
-                await MainActor.run {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
                     let elapsed = sent.duration(to: ContinuousClock.now)
                     let ms = Double(elapsed.components.seconds) * 1000
                         + Double(elapsed.components.attoseconds) / 1e15
-                    self?.notePing(latencyMs: ms)
+                    self.notePing(latencyMs: ms)
                 }
                 try? await Task.sleep(nanoseconds: Self.pingIntervalMs * 1_000_000)
             }

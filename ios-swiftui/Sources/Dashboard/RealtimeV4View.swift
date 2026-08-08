@@ -1115,13 +1115,13 @@ private struct ScoreFloatOverlay: ViewModifier {
                 lastValue = value
                 lastDayKey = dayKey
             }
-            .onChange(of: dayKey) { newKey in
+            .onChange(of: dayKey) { _, newKey in
                 lastDayKey = newKey
                 lastValue = value
                 popupDelta = nil
                 floatAway = false
             }
-            .onChange(of: value) { newValue in
+            .onChange(of: value) { _, newValue in
                 handleValueChange(newValue)
             }
     }
@@ -1902,7 +1902,7 @@ private struct SandDetailSheet: View {
                     .font(.caption)
                     .foregroundStyle(RealtimeV4Palette.inkFaint)
             } else {
-                FlexibleChipWrap {
+                FlexibleChipWrap(spacing: 6) {
                     ForEach(recent, id: \.offset) { item in
                         let roundNo = item.offset + 1
                         let latest = roundNo == sand.lapTimes.count
@@ -2112,18 +2112,6 @@ private struct EfficiencyBadge: View {
         .font(.system(size: 9, weight: .bold))
         .lineLimit(2)
         .minimumScaleFactor(0.8)
-    }
-}
-
-/// Simple wrapping layout for sand lap chips (iOS 16-friendly).
-private struct FlexibleChipWrap<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        // Use LazyVGrid as a stable wrap substitute for iOS 16.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
-            content
-        }
     }
 }
 

@@ -51,7 +51,13 @@ final class RealtimeSyncCoordinator {
             for await action in deletes { await self?.handleDelete(action.oldRecord) }
         })
 
-        Task { await channel.subscribe() }
+        Task {
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                // Fallback poll loop still covers missed realtime events.
+            }
+        }
         startFallback()
     }
 
