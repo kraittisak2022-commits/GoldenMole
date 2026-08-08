@@ -42,16 +42,16 @@ struct DashboardShell: View {
             .tag(AppMainTab.home)
 
             NavigationStack {
-                realtimeBoard(mode: .trip)
-            }
-            .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
-            .tag(AppMainTab.realtimeTrip)
-
-            NavigationStack {
                 realtimeBoard(mode: .sand)
             }
             .tabItem { Label("ร่อนทราย", systemImage: "drop.fill") }
             .tag(AppMainTab.realtimeSand)
+
+            NavigationStack {
+                realtimeBoard(mode: .trip)
+            }
+            .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
+            .tag(AppMainTab.realtimeTrip)
 
             NavigationStack {
                 tasksTab
