@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Memoized bundle of Overview analytics (expense-focused + mobile ops) — built off the main thread.
+/// Memoized bundle of Overview analytics — kept for mobile ops KPIs on the home summary.
 struct OverviewSnapshot: Sendable {
     let expenseTotal: Double
     let prevExpenseTotal: Double
@@ -144,7 +144,7 @@ struct OverviewSnapshot: Sendable {
     }
 }
 
-// MARK: - View
+// MARK: - View (ops summary only — no business analytics)
 
 struct OverviewHubView: View {
     let transactions: [Transaction]
@@ -157,57 +157,20 @@ struct OverviewHubView: View {
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var todayOps = TodayOpsSnapshot.empty
     @State private var rebuildTask: Task<Void, Never>?
-    @State private var showShare = false
-    @State private var jumpTarget: OverviewSection?
-    @State private var activeJump: OverviewSection = .today
-
-    private enum OverviewSection: String, CaseIterable, Identifiable, Hashable {
-        case today = "วันนี้"
-        case mobileOps = "งานจากแอพ"
-        case expense = "รายจ่าย"
-        case sand = "ทราย"
-        case compare = "เปรียบเทียบ"
-        case quality = "คุณภาพ"
-        var id: String { rawValue }
-
-        var eyebrow: String {
-            switch self {
-            case .today: return "TODAY"
-            case .mobileOps: return "MOBILE"
-            case .expense: return "EXPENSE"
-            case .sand: return "SAND"
-            case .compare: return "COMPARE"
-            case .quality: return "QUALITY"
-            }
-        }
-    }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
-                    heroCard
-                    jumpChips(proxy: proxy)
-
-                    todayOpsSection.id(OverviewSection.today)
-                    mobileOpsSection.id(OverviewSection.mobileOps)
-                    expenseSection.id(OverviewSection.expense)
-                    sandSection.id(OverviewSection.sand)
-                    compareSection.id(OverviewSection.compare)
-                    qualitySection.id(OverviewSection.quality)
-                }
-                .padding(AppTheme.spaceLG)
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+                greetingHeader
+                todayHighlightCard
+                opsMetricGrid
+                drumVehiclesCard
+                periodRangeCard
+                staffCard
             }
-            .scrollContentBackground(.hidden)
-            .onChange(of: jumpTarget) { _, target in
-                guard let target else { return }
-                activeJump = target
-                withAnimation(.easeInOut(duration: 0.35)) {
-                    proxy.scrollTo(target, anchor: .top)
-                }
-                jumpTarget = nil
-            }
+            .padding(AppTheme.spaceLG)
         }
+        .scrollContentBackground(.hidden)
         .onAppear { scheduleRebuild() }
         .onDisappear {
             rebuildTask?.cancel()
@@ -218,9 +181,6 @@ struct OverviewHubView: View {
         .onChange(of: allTransactions.count) { _, _ in scheduleRebuild() }
         .onChange(of: employees.count) { _, _ in scheduleRebuild() }
         .onChange(of: settings.cars) { _, _ in scheduleRebuild() }
-        .sheet(isPresented: $showShare) {
-            ShareSheet(items: [snapshot.csvText])
-        }
     }
 
     private func scheduleRebuild() {
@@ -255,13 +215,18 @@ struct OverviewHubView: View {
         }
     }
 
-    // MARK: - Header / chips
+    // MARK: - Header
 
     private var greetingDisplay: String {
         let raw = (greetingName ?? settings.appName).trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { return settings.appName }
         if raw.hasPrefix("คุณ") { return raw }
         return "คุณ\(raw)"
+    }
+
+    private var todayLabel: String {
+        let key = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
+        return DashboardAggregations.thaiDateLong(key)
     }
 
     private var periodLabel: String {
@@ -272,295 +237,145 @@ struct OverviewHubView: View {
         return "\(start) – \(end)"
     }
 
-    private var heroCard: some View {
-        ZStack(alignment: .topLeading) {
-            LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Circle()
-                .fill(Color.white.opacity(0.14))
-                .frame(width: 160, height: 160)
-                .blur(radius: 28)
-                .offset(x: 220, y: -50)
-
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("ภาพรวมธุรกิจ")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.6)
-                            .foregroundStyle(.white.opacity(0.75))
-                        Text("สวัสดี \(greetingDisplay)")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text(periodLabel)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    Spacer(minLength: 8)
-                    Button {
-                        showShare = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color.white.opacity(0.16)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(snapshot.csvText.isEmpty)
-                    .opacity(snapshot.csvText.isEmpty ? 0.45 : 1)
-                    .accessibilityLabel("ส่งออก CSV")
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(DashboardAggregations.formatCurrency(snapshot.expenseTotal))
-                        .font(.system(size: 34, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                    if let delta = compactDelta(snapshot.expenseTotal, snapshot.prevExpenseTotal) {
-                        Text(delta)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule().fill(
-                                    (snapshot.expenseTotal >= snapshot.prevExpenseTotal
-                                     ? AppTheme.expense : AppTheme.income).opacity(0.35)
-                                )
-                            )
-                    }
-                }
-
-                Text("รายจ่ายรวมช่วงนี้")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-
-                HStack(spacing: 10) {
-                    heroMiniStat(
-                        title: "เฉลี่ย/วัน",
-                        value: DashboardAggregations.formatCurrency(
-                            snapshot.numDays > 0 ? snapshot.expenseTotal / Double(snapshot.numDays) : 0
-                        ),
-                        tint: Color(hex: "#FECACA")
-                    )
-                    heroMiniStat(
-                        title: "บันทึกจากแอพ",
-                        value: "\(snapshot.mobileRange.recordCount)",
-                        tint: Color(hex: "#A7F3D0")
-                    )
-                }
+    private var greetingHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("สวัสดี \(greetingDisplay)")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(todayLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
-            .padding(20)
+            Spacer(minLength: 8)
+            Image(systemName: "sun.max.fill")
+                .font(.title2)
+                .foregroundStyle(AppTheme.brand)
+                .frame(width: 48, height: 48)
+                .background(AppTheme.brandSoft, in: Circle())
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
-    }
-
-    private func heroMiniStat(title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.12)))
-    }
-
-    private func jumpChips(proxy _: ScrollViewProxy) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(OverviewSection.allCases) { section in
-                    let isActive = activeJump == section
-                    Button {
-                        jumpTarget = section
-                    } label: {
-                        Text(section.rawValue)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(isActive ? .white : AppTheme.brand)
-                            .background(
-                                Capsule().fill(isActive ? AppTheme.brand : AppTheme.surfaceSoft)
-                            )
-                            .overlay(
-                                Capsule().strokeBorder(
-                                    isActive ? Color.clear : AppTheme.brand.opacity(0.35),
-                                    lineWidth: 1
-                                )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(6)
+        .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppTheme.surface.opacity(0.7))
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 12, y: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
     }
 
-    private func sectionEyebrow(_ section: OverviewSection, title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(section.eyebrow)
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.4)
-                .foregroundStyle(AppTheme.brand)
-            Text(title)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(AppTheme.inkMuted)
-        }
-    }
+    // MARK: - Today highlight
 
-    // MARK: - Today ops
-
-    private var todayOpsSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(
-                .today,
-                title: "สรุปวันนี้",
-                subtitle: todayOps.dayKey.isEmpty
-                    ? "น้ำมัน · ค่าแรง · รถ · พนักงาน"
-                    : DashboardAggregations.thaiDateLong(todayOps.dayKey)
-            )
-
-            HStack(spacing: 12) {
-                fuelStockCard(
-                    title: "ดีเซลคงเหลือ",
-                    liters: todayOps.dieselLiters,
-                    systemImage: "fuelpump.fill",
-                    accent: AppTheme.fuel
-                )
-                fuelStockCard(
-                    title: "เบนซินคงเหลือ",
-                    liters: todayOps.benzineLiters,
-                    systemImage: "drop.fill",
-                    accent: AppTheme.warning
-                )
+    private var todayHighlightCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("สรุปวันนี้", systemImage: "sparkles")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("ปฏิบัติการ")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.brand.opacity(0.12), in: Capsule())
+                    .foregroundStyle(AppTheme.brand)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "ค่าแรงวันนี้",
-                    value: DashboardAggregations.formatCurrency(todayOps.laborBaht),
-                    subtitle: "มาทำงาน \(todayOps.presentCount) คน",
-                    accent: AppTheme.labor,
-                    systemImage: "person.2.fill"
+            HStack(spacing: 10) {
+                stockPill(
+                    title: "ดีเซล",
+                    value: "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
+                    accent: AppTheme.fuel,
+                    icon: "fuelpump.fill"
                 )
-                KPITile(
-                    title: "ใช้รถวันนี้",
-                    value: DashboardAggregations.formatCurrency(todayOps.vehicleBaht),
-                    subtitle: "ค่าเที่ยว / ค่าขับ",
-                    accent: AppTheme.vehicle,
-                    systemImage: "car.fill"
+                stockPill(
+                    title: "เบนซิน",
+                    value: "\(DashboardAggregations.formatNumber(todayOps.benzineLiters)) L",
+                    accent: AppTheme.warning,
+                    icon: "drop.fill"
                 )
             }
 
             HStack(spacing: 10) {
-                attendanceChip(count: todayOps.presentCount, title: "มาทำงาน", color: AppTheme.income)
-                attendanceChip(count: todayOps.leaveCount, title: "ลา", color: AppTheme.warning)
-                attendanceChip(count: todayOps.absentCount, title: "ขาด", color: AppTheme.expense)
+                moneyPill(
+                    title: "ค่าแรง",
+                    value: DashboardAggregations.formatCurrency(todayOps.laborBaht),
+                    detail: "มา \(todayOps.presentCount) คน",
+                    accent: AppTheme.labor
+                )
+                moneyPill(
+                    title: "ใช้รถ",
+                    value: DashboardAggregations.formatCurrency(todayOps.vehicleBaht),
+                    detail: "ค่าเที่ยว / ค่าขับ",
+                    accent: AppTheme.vehicle
+                )
             }
 
-            SectionCard("พนักงานวันนี้", systemImage: "person.crop.rectangle.stack.fill") {
-                if todayOps.staffRows.isEmpty {
-                    EmptyStateView(
-                        title: "ยังไม่มีพนักงานท่าทราย / แม็คโคร",
-                        message: "นับเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครจากเมนูพนักงาน",
-                        systemImage: "person.slash"
-                    )
-                } else {
-                    let working = todayOps.staffRows.filter { $0.status == .work }
-                    let onLeave = todayOps.staffRows.filter { $0.status == .leave }
-                    let absent = todayOps.staffRows.filter { $0.status == .absent }
-
-                    if !working.isEmpty {
-                        staffGroupHeader("มาทำงาน · ทำอะไรบ้าง", count: working.count, color: AppTheme.income)
-                        ForEach(working) { row in
-                            staffRowView(row)
-                        }
-                    }
-                    if !onLeave.isEmpty {
-                        if !working.isEmpty { Divider().padding(.vertical, 4) }
-                        staffGroupHeader("ลางาน", count: onLeave.count, color: AppTheme.warning)
-                        ForEach(onLeave) { row in
-                            staffRowView(row)
-                        }
-                    }
-                    if !absent.isEmpty {
-                        if !working.isEmpty || !onLeave.isEmpty { Divider().padding(.vertical, 4) }
-                        staffGroupHeader("ขาดงาน", count: absent.count, color: AppTheme.expense)
-                        ForEach(absent.prefix(12)) { row in
-                            staffRowView(row)
-                        }
-                        if absent.count > 12 {
-                            Text("และอีก \(absent.count - 12) คน")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.inkMuted)
-                        }
-                    }
-                }
+            HStack(spacing: 8) {
+                attendanceStat(count: todayOps.presentCount, title: "มาทำงาน", color: AppTheme.income)
+                attendanceStat(count: todayOps.leaveCount, title: "ลา", color: AppTheme.warning)
+                attendanceStat(count: todayOps.absentCount, title: "ขาด", color: AppTheme.expense)
             }
         }
+        .padding(18)
+        .background(summaryCardBackground)
     }
 
-    private func fuelStockCard(title: String, liters: Double, systemImage: String, accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        LinearGradient(colors: [accent, accent.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
+    private func stockPill(title: String, value: String, accent: Color, icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(
+                    LinearGradient(colors: [accent, accent.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(AppTheme.inkMuted)
+                Text(value)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            Text("\(DashboardAggregations.formatNumber(liters)) L")
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func moneyPill(title: String, value: String, detail: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+            Text(value)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
-            Text("คงเหลือในสต็อก")
+            Text(detail)
                 .font(.caption2)
-                .foregroundStyle(AppTheme.inkMuted)
+                .foregroundStyle(accent)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
+        .background(AppTheme.surfaceSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(accent)
+                .frame(width: 3)
+                .padding(.vertical, 12)
+        }
     }
 
-    private func attendanceChip(count: Int, title: String, color: Color) -> some View {
+    private func attendanceStat(count: Int, title: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text("\(count)")
                 .font(.title3.weight(.bold))
@@ -571,14 +386,262 @@ struct OverviewHubView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                .fill(color.opacity(0.1))
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Ops metrics
+
+    private var opsMetricGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("งานจากแอพ · วันนี้")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                SummaryMetricCard(
+                    title: "เที่ยวรถ",
+                    value: "\(snapshot.mobileToday.tripRounds)",
+                    unit: "เที่ยว",
+                    detail: "\(snapshot.mobileToday.tripVehicles) คัน · \(DashboardAggregations.formatNumber(snapshot.mobileToday.tripCubic)) คิว",
+                    accent: AppTheme.vehicle,
+                    systemImage: "truck.box.fill"
+                )
+                SummaryMetricCard(
+                    title: "ร่อนทราย",
+                    value: "\(snapshot.mobileToday.sandRounds)",
+                    unit: "รอบ",
+                    detail: "ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileToday.sandWashedCubic)) คิว",
+                    accent: AppTheme.sand,
+                    systemImage: "drop.fill"
+                )
+                SummaryMetricCard(
+                    title: "เช็คชื่อ",
+                    value: "\(snapshot.mobileToday.presentCount)",
+                    unit: "คน",
+                    detail: "ลา \(snapshot.mobileToday.leaveCount) · ขาด \(snapshot.mobileToday.absentCount)",
+                    accent: AppTheme.labor,
+                    systemImage: "person.3.fill"
+                )
+                SummaryMetricCard(
+                    title: "แม็คโคร",
+                    value: "\(snapshot.mobileToday.macroUsageCount)",
+                    unit: "ครั้ง",
+                    detail: "\(snapshot.mobileToday.macroVehicles) คัน",
+                    accent: Color(hex: "#0F766E"),
+                    systemImage: "hammer.fill"
+                )
+                SummaryMetricCard(
+                    title: "น้ำมันเข้า",
+                    value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters),
+                    unit: "L",
+                    detail: "ออก \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelOutLiters)) L",
+                    accent: AppTheme.fuel,
+                    systemImage: "fuelpump.fill"
+                )
+                SummaryMetricCard(
+                    title: "ลางาน",
+                    value: "\(snapshot.mobileToday.leaveCount)",
+                    unit: "คน",
+                    detail: "วันนี้",
+                    accent: AppTheme.warning,
+                    systemImage: "calendar.badge.minus"
+                )
+            }
+        }
+    }
+
+    // MARK: - Drum vehicles
+
+    private var todayDrumTripRows: [DrumTripRow] {
+        let dayKey = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
+        let units = CountRecordLogic.buildTripUnits(
+            dayKey: dayKey,
+            transactions: allTransactions,
+            employees: employees
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                .strokeBorder(color.opacity(0.25), lineWidth: 1)
-        )
+        .filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) && $0.rounds > 0 }
+
+        var byVehicle: [String: DrumTripRow] = [:]
+        for unit in units {
+            let key = unit.vehicleId
+            if var existing = byVehicle[key] {
+                existing.rounds += unit.rounds
+                existing.morning += unit.morning
+                existing.afternoon += max(0, unit.afternoon - unit.ot)
+                if existing.driverLabel == "ยังไม่ระบุ", unit.driverLabel != "ยังไม่ระบุ" {
+                    existing.driverLabel = unit.driverLabel
+                }
+                byVehicle[key] = existing
+            } else {
+                byVehicle[key] = DrumTripRow(
+                    id: key,
+                    vehicleName: unit.vehicleId,
+                    driverLabel: unit.driverLabel,
+                    rounds: unit.rounds,
+                    morning: unit.morning,
+                    afternoon: max(0, unit.afternoon - unit.ot)
+                )
+            }
+        }
+        return byVehicle.values.sorted {
+            if $0.rounds != $1.rounds { return $0.rounds > $1.rounds }
+            return $0.vehicleName.localizedStandardCompare($1.vehicleName) == .orderedAscending
+        }
+    }
+
+    private var drumVehiclesCard: some View {
+        let rows = todayDrumTripRows
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(
+                    rows.isEmpty ? "รถดรัมวันนี้" : "รถดรัม · \(rows.count) คัน",
+                    systemImage: "cylinder.split.1x2"
+                )
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                Spacer()
+            }
+
+            if rows.isEmpty {
+                Text("วันนี้ยังไม่มีรถดรัม")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    if index > 0 { Divider() }
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.vehicleName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.ink)
+                                .lineLimit(1)
+                            Text(row.driverLabel)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.inkMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(row.rounds) เที่ยว")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppTheme.warning)
+                            if row.morning > 0 || row.afternoon > 0 {
+                                Text("เช้า \(row.morning) · บ่าย \(row.afternoon)")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.inkMuted)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding(18)
+        .background(summaryCardBackground)
+    }
+
+    private struct DrumTripRow: Identifiable {
+        let id: String
+        let vehicleName: String
+        var driverLabel: String
+        var rounds: Int
+        var morning: Int
+        var afternoon: Int
+    }
+
+    // MARK: - Period range
+
+    private var periodRangeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("รวมช่วงที่เลือก")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(periodLabel)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            periodRow("เที่ยวรถ", "\(snapshot.mobileRange.tripRounds) เที่ยว · \(snapshot.mobileRange.tripVehicles) คัน")
+            periodRow("ร่อนทราย", "\(snapshot.mobileRange.sandRounds) รอบ · ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileRange.sandWashedCubic)) คิว")
+            periodRow("เช็คชื่อ", "เฉลี่ย \(snapshot.mobileRange.presentCount) คน/วัน · \(snapshot.mobileRange.attendanceDays) วัน")
+            periodRow("แม็คโคร", "\(snapshot.mobileRange.macroUsageCount) ครั้ง · \(snapshot.mobileRange.macroVehicles) คัน")
+            periodRow(
+                "น้ำมัน",
+                "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelInLiters)) L · ออก \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelOutLiters)) L"
+            )
+        }
+        .padding(18)
+        .background(summaryCardBackground)
+    }
+
+    private func periodRow(_ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(AppTheme.brand)
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Staff
+
+    private var staffCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("พนักงานวันนี้", systemImage: "person.crop.rectangle.stack.fill")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+
+            if todayOps.staffRows.isEmpty {
+                EmptyStateView(
+                    title: "ยังไม่มีพนักงานท่าทราย / แม็คโคร",
+                    message: "นับเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครจากเมนูพนักงาน",
+                    systemImage: "person.slash"
+                )
+            } else {
+                let working = todayOps.staffRows.filter { $0.status == .work }
+                let onLeave = todayOps.staffRows.filter { $0.status == .leave }
+                let absent = todayOps.staffRows.filter { $0.status == .absent }
+
+                if !working.isEmpty {
+                    staffGroupHeader("มาทำงาน · ทำอะไรบ้าง", count: working.count, color: AppTheme.income)
+                    ForEach(working) { row in
+                        staffRowView(row)
+                    }
+                }
+                if !onLeave.isEmpty {
+                    if !working.isEmpty { Divider().padding(.vertical, 4) }
+                    staffGroupHeader("ลางาน", count: onLeave.count, color: AppTheme.warning)
+                    ForEach(onLeave) { row in
+                        staffRowView(row)
+                    }
+                }
+                if !absent.isEmpty {
+                    if !working.isEmpty || !onLeave.isEmpty { Divider().padding(.vertical, 4) }
+                    staffGroupHeader("ขาดงาน", count: absent.count, color: AppTheme.expense)
+                    ForEach(absent.prefix(12)) { row in
+                        staffRowView(row)
+                    }
+                    if absent.count > 12 {
+                        Text("และอีก \(absent.count - 12) คน")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(summaryCardBackground)
     }
 
     private func staffGroupHeader(_ title: String, count: Int, color: Color) -> some View {
@@ -636,694 +699,94 @@ struct OverviewHubView: View {
         }
     }
 
-    // MARK: - Mobile ops summary
-
-    private var mobileOpsSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(
-                .mobileOps,
-                title: "สรุปงานจากแอพมือถือ",
-                subtitle: "วันนี้เป็นหลัก · รวมช่วงที่เลือกด้านล่าง"
+    private var summaryCardBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(AppTheme.surface)
+            .shadow(color: AppTheme.cardShadow, radius: 14, y: 5)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
             )
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "เที่ยวรถ",
-                    value: "\(snapshot.mobileToday.tripRounds) เที่ยว",
-                    subtitle: "\(snapshot.mobileToday.tripVehicles) คัน · \(DashboardAggregations.formatNumber(snapshot.mobileToday.tripCubic)) คิว",
-                    accent: AppTheme.vehicle,
-                    systemImage: "truck.box.fill"
-                )
-                KPITile(
-                    title: "ร่อนทราย",
-                    value: "\(snapshot.mobileToday.sandRounds) รอบ",
-                    subtitle: "ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileToday.sandWashedCubic)) คิว · ถังบ้าน \(DashboardAggregations.formatNumber(snapshot.mobileToday.drumsHome))",
-                    accent: AppTheme.sand,
-                    systemImage: "drop.fill"
-                )
-                KPITile(
-                    title: "เช็คชื่อ",
-                    value: "\(snapshot.mobileToday.presentCount) คน",
-                    subtitle: "ลา \(snapshot.mobileToday.leaveCount) · ขาด \(snapshot.mobileToday.absentCount)",
-                    accent: AppTheme.labor,
-                    systemImage: "person.3.fill"
-                )
-                KPITile(
-                    title: "แม็คโคร",
-                    value: "\(snapshot.mobileToday.macroUsageCount) ครั้ง",
-                    subtitle: "\(snapshot.mobileToday.macroVehicles) คัน",
-                    accent: AppTheme.purple,
-                    systemImage: "hammer.fill"
-                )
-                KPITile(
-                    title: "น้ำมัน",
-                    value: "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters)) L",
-                    subtitle: "ออก \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelOutLiters)) L",
-                    accent: AppTheme.fuel,
-                    systemImage: "fuelpump.fill"
-                )
-                KPITile(
-                    title: "ลางาน",
-                    value: "\(snapshot.mobileToday.leaveCount) คน",
-                    subtitle: "วันนี้",
-                    accent: AppTheme.warning,
-                    systemImage: "calendar.badge.minus"
-                )
-            }
-
-            drumVehiclesCard
-
-            SectionCard("รวมช่วง \(periodLabel)", systemImage: "app.badge.fill", subtitle: "ยอดรวมจากแอพมือถือ") {
-                mobileRangeBullet(
-                    "เที่ยวรถ",
-                    "\(snapshot.mobileRange.tripRounds) เที่ยว · \(snapshot.mobileRange.tripVehicles) คัน · \(DashboardAggregations.formatNumber(snapshot.mobileRange.tripCubic)) คิว"
-                )
-                mobileRangeBullet(
-                    "ร่อนทราย",
-                    "\(snapshot.mobileRange.sandRounds) รอบ · ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileRange.sandWashedCubic)) คิว"
-                )
-                mobileRangeBullet(
-                    "เช็คชื่อ",
-                    "เฉลี่ย \(snapshot.mobileRange.presentCount) คน/วัน · \(snapshot.mobileRange.attendanceDays) วันที่มีเช็คชื่อ"
-                )
-                mobileRangeBullet(
-                    "รถดรัม",
-                    "\(snapshot.mobileRange.drumVehicles) คัน · เช้า \(snapshot.mobileRange.tripMorning) · บ่าย \(snapshot.mobileRange.tripAfternoon)"
-                )
-                mobileRangeBullet(
-                    "แม็คโคร",
-                    "\(snapshot.mobileRange.macroUsageCount) ครั้ง · \(snapshot.mobileRange.macroVehicles) คัน"
-                )
-                mobileRangeBullet(
-                    "น้ำมัน",
-                    "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelInLiters)) L · ออก \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelOutLiters)) L"
-                )
-                mobileRangeBullet(
-                    "ลางาน",
-                    "\(snapshot.mobileRange.leaveCount) คน-วัน · บันทึก \(snapshot.mobileRange.recordCount) รายการ"
-                )
-            }
-        }
-    }
-
-    /// Today's drum / dump trip units (excludes macro), aggregated by vehicle name.
-    private var todayDrumTripRows: [DrumTripRow] {
-        let dayKey = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
-        let units = CountRecordLogic.buildTripUnits(
-            dayKey: dayKey,
-            transactions: allTransactions,
-            employees: employees
-        )
-        .filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) && $0.rounds > 0 }
-
-        var byVehicle: [String: DrumTripRow] = [:]
-        for unit in units {
-            let key = unit.vehicleId
-            if var existing = byVehicle[key] {
-                existing.rounds += unit.rounds
-                existing.morning += unit.morning
-                existing.afternoon += max(0, unit.afternoon - unit.ot)
-                if existing.driverLabel == "ยังไม่ระบุ", unit.driverLabel != "ยังไม่ระบุ" {
-                    existing.driverLabel = unit.driverLabel
-                }
-                byVehicle[key] = existing
-            } else {
-                byVehicle[key] = DrumTripRow(
-                    id: key,
-                    vehicleName: unit.vehicleId,
-                    driverLabel: unit.driverLabel,
-                    rounds: unit.rounds,
-                    morning: unit.morning,
-                    afternoon: max(0, unit.afternoon - unit.ot)
-                )
-            }
-        }
-        return byVehicle.values.sorted {
-            if $0.rounds != $1.rounds { return $0.rounds > $1.rounds }
-            return $0.vehicleName.localizedStandardCompare($1.vehicleName) == .orderedAscending
-        }
-    }
-
-    private var drumVehiclesCard: some View {
-        let rows = todayDrumTripRows
-        return SectionCard(
-            rows.isEmpty ? "รถดรัม" : "รถดรัม · \(rows.count) คัน",
-            systemImage: "cylinder.split.1x2"
-        ) {
-            if rows.isEmpty {
-                Text("วันนี้ยังไม่มีรถดรัม")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.inkMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
-            } else {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 { Divider().padding(.vertical, 2) }
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.vehicleName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.ink)
-                                .lineLimit(1)
-                            Text(row.driverLabel)
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.inkMuted)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(row.rounds) เที่ยว")
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(AppTheme.warning)
-                            if row.morning > 0 || row.afternoon > 0 {
-                                Text("เช้า \(row.morning) · บ่าย \(row.afternoon)")
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.inkMuted)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-    }
-
-    private struct DrumTripRow: Identifiable {
-        let id: String
-        let vehicleName: String
-        var driverLabel: String
-        var rounds: Int
-        var morning: Int
-        var afternoon: Int
-    }
-
-    private func mobileRangeBullet(_ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 6))
-                .foregroundStyle(AppTheme.brand)
-                .padding(.top, 5)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    // MARK: - Expense analytics
-
-    private var expenseSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(.expense, title: "รายจ่ายและแนวโน้ม", subtitle: "โครงสร้าง · รายวัน · รายสัปดาห์ · ต่อรถ")
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                KPITile(
-                    title: "เฉลี่ย/สัปดาห์",
-                    value: DashboardAggregations.formatCurrency(
-                        snapshot.expenseTotal / max(1, Double(snapshot.numDays) / 7)
-                    ),
-                    accent: AppTheme.warning,
-                    systemImage: "chart.bar",
-                    trend: expenseTrendSeries
-                )
-                KPITile(
-                    title: "วันในช่วง",
-                    value: "\(snapshot.numDays)",
-                    subtitle: "vs เมื่อวาน \(snapshot.dayChangePct)%",
-                    accent: AppTheme.info,
-                    systemImage: "calendar",
-                    deltaText: dayChangeChip
-                )
-            }
-
-            SectionCard("โครงสร้างต้นทุน", systemImage: "circle.grid.cross.fill") {
-                if snapshot.costSlices.isEmpty {
-                    EmptyStateView(title: "ไม่มีรายจ่ายในช่วงนี้", systemImage: "tray")
-                } else {
-                    HStack(alignment: .center, spacing: 16) {
-                        DonutChartView(slices: snapshot.costSlices)
-                            .frame(width: 140, height: 140)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(snapshot.costSlices) { slice in
-                                HStack {
-                                    Circle().fill(Color(hex: slice.colorHex)).frame(width: 8, height: 8)
-                                    Text(slice.label).font(.caption).foregroundStyle(AppTheme.ink)
-                                    Spacer()
-                                    Text(DashboardAggregations.formatCurrency(slice.value))
-                                        .font(.caption.bold())
-                                        .foregroundStyle(AppTheme.ink)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            SectionCard("รายจ่ายรายวัน", systemImage: "chart.bar.fill") {
-                HStack {
-                    Spacer(minLength: 0)
-                    PillBadge(
-                        text: DashboardAggregations.formatCurrency(
-                            snapshot.dailyBreakdown.map(\.total).reduce(0, +)
-                        ),
-                        color: AppTheme.expense
-                    )
-                }
-                BarChartView(
-                    labels: snapshot.dailyBreakdown.map(\.label),
-                    values: snapshot.dailyBreakdown.map(\.total),
-                    barColor: AppTheme.expense
-                )
-                if !snapshot.dailyBreakdown.isEmpty {
-                    Divider().padding(.vertical, 4)
-                    dailyBreakdownTable
-                }
-            }
-
-            SectionCard("เปรียบเทียบรายสัปดาห์", systemImage: "calendar.badge.clock") {
-                if snapshot.weeklyBuckets.isEmpty {
-                    EmptyStateView(title: "ไม่มีข้อมูล", systemImage: "calendar")
-                } else {
-                    HStack {
-                        Spacer(minLength: 0)
-                        PillBadge(
-                            text: DashboardAggregations.formatCurrency(
-                                snapshot.weeklyBuckets.map(\.total).reduce(0, +)
-                            ),
-                            color: AppTheme.purple
-                        )
-                    }
-                    BarChartView(
-                        labels: snapshot.weeklyBuckets.map(\.label),
-                        values: snapshot.weeklyBuckets.map(\.total),
-                        barColor: AppTheme.purple
-                    )
-                    ForEach(snapshot.weeklyBuckets) { week in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(week.label).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
-                                Spacer()
-                                Text(DashboardAggregations.formatCurrency(week.total)).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
-                            }
-                            Text("ค่าแรง \(DashboardAggregations.formatCurrency(week.labor)) · น้ำมัน \(DashboardAggregations.formatCurrency(week.fuel)) · รถ \(DashboardAggregations.formatCurrency(week.vehicle)) · ที่ดิน \(DashboardAggregations.formatCurrency(week.land))")
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.inkMuted)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-
-            if !snapshot.vehicleCosts.isEmpty {
-                SectionCard("ต้นทุนต่อรถ", systemImage: "car.fill", subtitle: "น้ำมัน + ซ่อมบำรุง (สูงสุด 5 คัน)") {
-                    let maxTotal = max(snapshot.vehicleCosts.map(\.total).max() ?? 1, 1)
-                    ForEach(snapshot.vehicleCosts) { row in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(row.name).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
-                                Spacer()
-                                Text(DashboardAggregations.formatCurrency(row.total)).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
-                            }
-                            GeometryReader { geo in
-                                Capsule()
-                                    .fill(AppTheme.surfaceSoft)
-                                    .overlay(alignment: .leading) {
-                                        Capsule()
-                                            .fill(AppTheme.vehicle)
-                                            .frame(width: geo.size.width * CGFloat(row.total / maxTotal))
-                                    }
-                            }
-                            .frame(height: 6)
-                            Text("น้ำมัน \(DashboardAggregations.formatCurrency(row.fuel)) · ซ่อม \(DashboardAggregations.formatCurrency(row.maintenance))")
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.inkMuted)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-
-            SectionCard("แนวโน้มรายจ่าย", systemImage: "chart.line.uptrend.xyaxis") {
-                if snapshot.dailyBreakdown.isEmpty {
-                    EmptyStateView(title: "ยังไม่มีข้อมูลรายวัน", systemImage: "chart.line.uptrend.xyaxis")
-                } else {
-                    LineChartView(
-                        labels: snapshot.dailyBreakdown.map(\.label),
-                        values: snapshot.dailyBreakdown.map(\.total),
-                        lineColor: AppTheme.expense
-                    )
-                }
-            }
-        }
-    }
-
-    private var dailyBreakdownTable: some View {
-        let rows = Array(snapshot.dailyBreakdown.suffix(10).reversed())
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("ตารางแยกหมวด (10 วันล่าสุด)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            ForEach(rows) { row in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(row.label).font(.caption.bold())
-                        Spacer()
-                        Text(DashboardAggregations.formatCurrency(row.total)).font(.caption.bold())
-                    }
-                    Text("แรง \(fmtShort(row.labor)) · น้ำมัน \(fmtShort(row.fuel)) · รถ \(fmtShort(row.vehicle)) · ซ่อม \(fmtShort(row.maintenance)) · ที่ดิน \(fmtShort(row.land))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-    }
-
-    // MARK: - Sand (V.1 full)
-
-    private var sandSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(.sand, title: "วิเคราะห์ทราย", subtitle: "ล้าง · ขน · ถัง · สะสม")
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                KPITile(
-                    title: "ล้างทรายรวม",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.washed)) คิว",
-                    subtitle: "เฉลี่ย \(DashboardAggregations.formatNumber(snapshot.sand.avgWashedPerDay)) คิว/วัน",
-                    accent: AppTheme.info,
-                    systemImage: "drop",
-                    trend: snapshot.sandSeriesWashed,
-                    deltaText: compactDelta(snapshot.sandCur.washed, snapshot.sandPrev.washed)
-                )
-                KPITile(
-                    title: "ขนทรายรวม",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.transported)) คิว",
-                    subtitle: "เฉลี่ย \(DashboardAggregations.formatNumber(snapshot.sand.avgTransportedPerDay)) คิว/วัน",
-                    accent: AppTheme.warning,
-                    systemImage: "truck.box",
-                    trend: snapshot.sandSeriesTransported,
-                    deltaText: compactDelta(snapshot.sandCur.transported, snapshot.sandPrev.transported)
-                )
-                KPITile(
-                    title: "ทรายคงเหลือ",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.remaining)) คิว",
-                    subtitle: "ล้าง − ขน",
-                    accent: snapshot.sand.remaining >= 0 ? AppTheme.income : AppTheme.expense,
-                    systemImage: "scalemass"
-                )
-                KPITile(
-                    title: "คาดการณ์",
-                    value: snapshot.sand.forecastLabel,
-                    subtitle: "ทรายพอล้างอีก",
-                    accent: AppTheme.purple,
-                    systemImage: "calendar"
-                )
-                KPITile(
-                    title: "ถังที่ได้",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.drumsObtained)) ถัง",
-                    accent: AppTheme.sand,
-                    systemImage: "archivebox.fill"
-                )
-                KPITile(
-                    title: "ล้างที่บ้าน",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.drumsHome)) ถัง",
-                    accent: Color(hex: "#e11d48"),
-                    systemImage: "house"
-                )
-                KPITile(
-                    title: "ถังคงเหลือ",
-                    value: "\(DashboardAggregations.formatNumber(snapshot.sand.drumsRemaining)) ถัง",
-                    subtitle: "สะสมสุทธิ (ได้ − ล้างบ้าน)",
-                    accent: Color(hex: "#0ea5e9"),
-                    systemImage: "cylinder.split.1x2"
-                )
-            }
-
-            SectionCard("ล้างทราย vs ขนทราย", systemImage: "chart.xyaxis.line") {
-                SandDualLineChart(
-                    labels: snapshot.sandSeriesLabels,
-                    washed: snapshot.sandSeriesWashed,
-                    transported: snapshot.sandSeriesTransported
-                )
-                .frame(height: 180)
-            }
-
-            SectionCard("เปรียบเทียบแท่ง: ล้าง vs ขน", systemImage: "chart.bar.xaxis") {
-                GroupedBarChartView(
-                    labels: snapshot.sandSeriesLabels,
-                    seriesA: snapshot.sandSeriesWashed,
-                    seriesB: snapshot.sandSeriesTransported,
-                    colorA: AppTheme.info,
-                    colorB: AppTheme.warning,
-                    labelA: "ล้าง",
-                    labelB: "ขน"
-                )
-            }
-
-            SectionCard("ทรายคงเหลือสะสม", systemImage: "chart.line.uptrend.xyaxis") {
-                LineChartView(
-                    labels: snapshot.sandSeriesLabels,
-                    values: snapshot.sandCumulative,
-                    lineColor: (snapshot.sandCumulative.last ?? 0) >= 0 ? AppTheme.income : AppTheme.expense
-                )
-                Text("เริ่มต้น: 0 คิว · ปัจจุบัน: \(DashboardAggregations.formatNumber(snapshot.sandCumulative.last ?? 0)) คิว")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            SectionCard("ถังที่ได้ vs ล้างที่บ้าน", systemImage: "archivebox") {
-                GroupedBarChartView(
-                    labels: snapshot.drums.labels,
-                    seriesA: snapshot.drums.obtained,
-                    seriesB: snapshot.drums.home,
-                    colorA: Color(hex: "#10b981"),
-                    colorB: Color(hex: "#e11d48"),
-                    labelA: "ถังที่ได้",
-                    labelB: "ล้างที่บ้าน"
-                )
-            }
-
-            SectionCard("จำนวนถังคงเหลือสะสม", systemImage: "chart.line.flattrend.xyaxis") {
-                LineChartView(
-                    labels: snapshot.drums.labels,
-                    values: snapshot.drums.remainingCumulative,
-                    lineColor: Color(hex: "#0ea5e9")
-                )
-                Text("เริ่มต้น: 0 ถัง · คงเหลือสะสม: \(DashboardAggregations.formatNumber(snapshot.drums.drumsRemaining)) ถัง")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: - Compare (period vs previous)
-
-    private var compareSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            sectionEyebrow(
-                .compare,
-                title: "เปรียบเทียบช่วงก่อน",
-                subtitle: "\(snapshot.prevFilter.start) ถึง \(snapshot.prevFilter.end)"
-            )
-
-            if !snapshot.alerts.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(snapshot.alerts) { alert in
-                            Text(alert.label)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(alertColor(alert.severity).opacity(0.15), in: Capsule())
-                                .foregroundStyle(alertColor(alert.severity))
-                        }
-                    }
-                }
-            }
-
-            SectionCard("สัญญาณที่ควรติดตาม", systemImage: "lightbulb.fill", subtitle: "ใช้ข้อมูล \(snapshot.txCount) รายการ") {
-                ForEach(Array(snapshot.insights.enumerated()), id: \.offset) { _, text in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "circle.fill")
-                            .font(.system(size: 6))
-                            .foregroundStyle(AppTheme.brand)
-                            .padding(.top, 5)
-                        Text(text)
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-
-            SectionCard("เทียบตัวเลขหลัก", systemImage: "arrow.left.arrow.right") {
-                comparisonRow("รายจ่ายรวม", snapshot.expenseTotal, snapshot.prevExpenseTotal, higherIsBetter: false)
-                comparisonRow("ทรายล้าง (คิว)", snapshot.sandCur.washed, snapshot.sandPrev.washed)
-                comparisonRow("ทรายขน (คิว)", snapshot.sandCur.transported, snapshot.sandPrev.transported)
-                comparisonRow("เที่ยวรถ", Double(snapshot.mobileRange.tripRounds), Double(snapshot.mobilePrev.tripRounds))
-                comparisonRow("ร่อนทราย (รอบ)", Double(snapshot.mobileRange.sandRounds), Double(snapshot.mobilePrev.sandRounds))
-                comparisonRow("วันที่เช็คชื่อ", Double(snapshot.mobileRange.attendanceDays), Double(snapshot.mobilePrev.attendanceDays))
-            }
-        }
-    }
-
-    // MARK: - Data quality
-
-    private var qualitySection: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(AppTheme.hairline, lineWidth: 6)
-                Circle()
-                    .trim(from: 0, to: CGFloat(min(max(snapshot.quality.coveragePct, 0), 100) / 100))
-                    .stroke(
-                        snapshot.quality.coveragePct >= 80 ? AppTheme.income
-                            : snapshot.quality.coveragePct >= 50 ? AppTheme.warning
-                            : AppTheme.expense,
-                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                Text("\(Int(round(snapshot.quality.coveragePct)))%")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-            }
-            .frame(width: 52, height: 52)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("คุณภาพข้อมูล")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(snapshot.quality.statusLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(
-                        snapshot.quality.coveragePct >= 80 ? AppTheme.income
-                            : snapshot.quality.coveragePct >= 50 ? AppTheme.warning
-                            : AppTheme.expense
-                    )
-            }
-
-            Spacer(minLength: 0)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(snapshot.quality.daysWithRecords)/\(snapshot.quality.totalDays) วัน")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Text("ทราย \(snapshot.quality.daysWithSand) วัน")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
-    }
-
-    // MARK: - Small UI helpers
-
-    private func comparisonRow(
-        _ title: String,
-        _ cur: Double,
-        _ prev: Double,
-        higherIsBetter: Bool = true
-    ) -> some View {
-        let improving = higherIsBetter ? (cur >= prev) : (cur <= prev)
-        return HStack {
-            Text(title).foregroundStyle(AppTheme.ink)
-            Spacer()
-            Text(DashboardAggregations.formatNumber(cur)).foregroundStyle(AppTheme.ink)
-            Text(deltaText(cur, prev))
-                .font(.caption)
-                .foregroundStyle(improving ? AppTheme.income : AppTheme.expense)
-        }
-        .font(.subheadline)
-        .padding(.vertical, 3)
-    }
-
-    private var expenseTrendSeries: [Double] {
-        snapshot.dailyBreakdown.map(\.total)
-    }
-
-    private var dayChangeChip: String? {
-        let pct = snapshot.dayChangePct
-        guard pct != 0 || !snapshot.dailyBreakdown.isEmpty else { return nil }
-        let sign = pct > 0 ? "+" : ""
-        return "\(sign)\(pct)%"
-    }
-
-    /// Compact delta for KPI chip, e.g. "+12%" / "-5%".
-    private func compactDelta(_ cur: Double, _ prev: Double) -> String? {
-        guard let pct = DashboardAggregations.pctChangeVsPrev(cur: cur, prev: prev) else { return nil }
-        let sign = pct >= 0 ? "+" : ""
-        return "\(sign)\(Int(round(pct)))%"
-    }
-
-    private func deltaText(_ cur: Double, _ prev: Double) -> String {
-        guard let pct = DashboardAggregations.pctChangeVsPrev(cur: cur, prev: prev) else {
-            return "ไม่มีฐานเทียบ"
-        }
-        let sign = pct >= 0 ? "+" : ""
-        return "\(sign)\(Int(round(pct)))% vs ช่วงก่อน"
-    }
-
-    private func alertColor(_ severity: OverviewAlert.Severity) -> Color {
-        switch severity {
-        case .red: return AppTheme.expense
-        case .amber: return AppTheme.warning
-        case .green: return AppTheme.income
-        }
-    }
-
-    private func fmtShort(_ v: Double) -> String {
-        if abs(v) < 0.005 { return "0" }
-        return DashboardAggregations.formatNumber(v)
     }
 }
 
-// MARK: - Dual line (washed vs transported)
+// MARK: - Summary metric card
 
-private struct SandDualLineChart: View {
-    let labels: [String]
-    let washed: [Double]
-    let transported: [Double]
+private struct SummaryMetricCard: View {
+    let title: String
+    let value: String
+    let unit: String
+    let detail: String
+    let accent: Color
+    let systemImage: String
 
     var body: some View {
-        GeometryReader { geo in
-            let maxV = max((washed + transported).max() ?? 1, 1)
-            let w = geo.size.width
-            let h = geo.size.height
-            let count = max(labels.count, 1)
-            ZStack(alignment: .topLeading) {
-                path(values: washed, color: AppTheme.info, maxV: maxV, w: w, h: h, count: count)
-                path(values: transported, color: AppTheme.warning, maxV: maxV, w: w, h: h, count: count)
-                HStack(spacing: 12) {
-                    Label("ล้าง", systemImage: "circle.fill").font(.caption2).foregroundStyle(AppTheme.info)
-                    Label("ขน", systemImage: "circle.fill").font(.caption2).foregroundStyle(AppTheme.warning)
-                }
-                .padding(.top, 4)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        LinearGradient(
+                            colors: [accent, accent.opacity(0.72)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-        }
-    }
 
-    private func path(values: [Double], color: Color, maxV: Double, w: CGFloat, h: CGFloat, count: Int) -> some View {
-        Path { p in
-            for (i, v) in values.enumerated() {
-                let x = count <= 1 ? w / 2 : CGFloat(i) / CGFloat(count - 1) * w
-                let y = h - CGFloat(v / maxV) * (h - 20) - 10
-                if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(unit)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
             }
+
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .stroke(color, lineWidth: 2.5)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 10, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(accent.opacity(0.18), lineWidth: 1)
+        )
+        .overlay(alignment: .top) {
+            LinearGradient(
+                colors: [accent.opacity(0.16), accent.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 36)
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 16,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 16,
+                    style: .continuous
+                )
+            )
+            .allowsHitTesting(false)
+        }
     }
 }
