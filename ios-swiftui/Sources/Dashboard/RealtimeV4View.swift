@@ -403,11 +403,11 @@ struct RealtimeV4View: View {
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
 
-                Text(mode == .trip
-                     ? "ติดตามการนับเที่ยวรถแบบสด"
-                     : "ติดตามการร่อนทรายแบบสด")
-                    .font(.subheadline)
-                    .foregroundStyle(Color(hex: "#CBD5E1"))
+                if mode == .sand {
+                    Text("ติดตามการร่อนทรายแบบสด")
+                        .font(.subheadline)
+                        .foregroundStyle(Color(hex: "#CBD5E1"))
+                }
 
                 HStack(spacing: 8) {
                     dateChip
@@ -425,7 +425,7 @@ struct RealtimeV4View: View {
 
                 healthStatusRow
 
-                if let modeStatusLabel {
+                if mode == .sand, let modeStatusLabel {
                     Text(modeStatusLabel)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color(hex: "#A5B4FC"))
@@ -756,7 +756,8 @@ struct RealtimeV4View: View {
                     morning: tripMorningTotal,
                     afternoon: tripAfternoonTotal,
                     ot: tripOtTotal,
-                    onDark: true
+                    onDark: true,
+                    eveningLabel: "เย็น"
                 )
 
                 if snapshot.fleetMorningSpanLabel != nil || snapshot.fleetAfternoonSpanLabel != nil {
@@ -1222,7 +1223,13 @@ private struct TripVehicleCard: View {
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(1.6)
                         .foregroundStyle(.white.opacity(0.75))
-                    PeriodPill(morning: unit.morning, afternoon: unit.afternoon, ot: unit.ot, onDark: true)
+                    PeriodPill(
+                        morning: unit.morning,
+                        afternoon: unit.afternoon,
+                        ot: unit.ot,
+                        onDark: true,
+                        eveningLabel: "เย็น"
+                    )
                 }
                 .frame(maxWidth: .infinity)
 
@@ -2010,6 +2017,8 @@ private struct PeriodPill: View {
     let afternoon: Int
     let ot: Int
     var onDark: Bool = false
+    /// Display label for the post-17:00 bucket (trip uses "เย็น"; sand keeps "OT").
+    var eveningLabel: String = "OT"
 
     private var afternoonDisplay: Int { max(0, afternoon - ot) }
     private var hasAny: Bool { morning > 0 || afternoonDisplay > 0 || ot > 0 }
@@ -2029,7 +2038,7 @@ private struct PeriodPill: View {
                          fg: onDark ? Color(hex: "#F0F9FF") : Color(hex: "#312E81"))
                 }
                 if ot > 0 {
-                    pill("moon.fill", "OT \(ot)",
+                    pill("moon.fill", "\(eveningLabel) \(ot)",
                          bg: onDark ? Color(hex: "#A78BFA").opacity(0.3) : Color(hex: "#EDE9FE"),
                          fg: onDark ? Color(hex: "#F5F3FF") : Color(hex: "#4C1D95"))
                 }
