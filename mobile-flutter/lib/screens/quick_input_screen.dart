@@ -8700,6 +8700,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final t = await showTimePicker(
       context: context,
       initialTime: initial,
+      initialEntryMode: TimePickerEntryMode.inputOnly,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -10075,6 +10076,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
+      initialEntryMode: TimePickerEntryMode.inputOnly,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
