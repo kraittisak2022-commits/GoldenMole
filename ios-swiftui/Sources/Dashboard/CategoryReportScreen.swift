@@ -48,7 +48,8 @@ struct CategoryReportScreen: View {
                             settings: appState.settings,
                             employees: appState.employees,
                             dateFilter: scope.filter,
-                            scopeTitle: scope.title
+                            scopeTitle: scope.title,
+                            stockTransactions: appState.transactions
                         )
                     } else {
                         emptyCard

@@ -341,18 +341,11 @@ struct OverviewHubView: View {
                     .foregroundStyle(AppTheme.inkMuted)
             }
 
-            HStack(spacing: 10) {
-                fuelStockChip(
-                    title: "ดีเซลคงเหลือ",
-                    value: "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
-                    accent: AppTheme.fuel
-                )
-                fuelStockChip(
-                    title: "เบนซินคงเหลือ",
-                    value: "\(DashboardAggregations.formatNumber(todayOps.benzineLiters)) L",
-                    accent: AppTheme.warning
-                )
-            }
+            fuelStockChip(
+                title: "ดีเซลคงเหลือ",
+                value: "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
+                accent: AppTheme.fuel
+            )
 
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -522,7 +515,7 @@ struct OverviewHubView: View {
                         title: "เพิ่มน้ำมัน",
                         value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters),
                         unit: "L",
-                        detail: "คงเหลือ ดีเซล \(DashboardAggregations.formatNumber(todayOps.dieselLiters)) / เบนซิน \(DashboardAggregations.formatNumber(todayOps.benzineLiters))",
+                        detail: "คงเหลือ \(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
                         accent: AppTheme.fuel,
                         systemImage: "arrow.down.to.line.circle.fill"
                     )

@@ -202,7 +202,6 @@ struct TodayOpsDetailScreen: View {
             return [
                 ("เข้าวันนี้", "\(DashboardAggregations.formatNumber(mobile.fuelInLiters)) L"),
                 ("ดีเซลคงเหลือ", "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L"),
-                ("เบนซินคงเหลือ", "\(DashboardAggregations.formatNumber(todayOps.benzineLiters)) L"),
             ]
         case .fuelWithdraw:
             return [

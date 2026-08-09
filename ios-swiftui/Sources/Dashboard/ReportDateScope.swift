@@ -113,6 +113,52 @@ struct ReportDateScope: Equatable {
     mutating func useRange(_ newPreset: DateRangePreset) {
         mode = .range
         preset = newPreset
+        if newPreset == .custom {
+            normalizeCustomRange()
+        }
+    }
+
+    /// Switch day/range mode and keep the selected dates coherent.
+    mutating func setMode(_ newMode: Mode) {
+        switch newMode {
+        case .day:
+            // Anchor day to the end of the prior range (or today).
+            if mode == .range {
+                let endKey = filter.end
+                if let parsed = Self.parseKey(endKey) {
+                    select(day: parsed)
+                } else {
+                    goToday()
+                }
+            } else {
+                mode = .day
+            }
+        case .range:
+            // Keep current day as the range end; default to 7-day window ending today.
+            let anchor = day
+            mode = .range
+            if preset == .custom {
+                customEnd = anchor
+                if customStart > customEnd {
+                    customStart = DashboardAggregations.gregorian.date(byAdding: .day, value: -6, to: customEnd)
+                        ?? customEnd
+                }
+                normalizeCustomRange()
+            } else {
+                preset = .days7
+            }
+        }
+    }
+
+    mutating func normalizeCustomRange() {
+        if customStart > customEnd {
+            swap(&customStart, &customEnd)
+        }
+        let earliest = Self.earliestDate
+        let today = Date()
+        if customStart < earliest { customStart = earliest }
+        if customEnd > today { customEnd = today }
+        if customStart > customEnd { customStart = customEnd }
     }
 
     // MARK: - Formatting
@@ -174,7 +220,7 @@ struct ReportDateBar: View {
             ForEach(ReportDateScope.Mode.allCases) { mode in
                 let isActive = scope.mode == mode
                 Button {
-                    withAnimation(.snappy(duration: 0.22)) { scope.mode = mode }
+                    withAnimation(.snappy(duration: 0.22)) { scope.setMode(mode) }
                 } label: {
                     Text(mode.label)
                         .font(.caption.weight(.bold))
@@ -324,7 +370,13 @@ struct ReportDateBar: View {
                 HStack(spacing: 8) {
                     DatePicker(
                         "เริ่ม",
-                        selection: $scope.customStart,
+                        selection: Binding(
+                            get: { scope.customStart },
+                            set: { newValue in
+                                scope.customStart = newValue
+                                scope.normalizeCustomRange()
+                            }
+                        ),
                         in: ReportDateScope.earliestDate...Date(),
                         displayedComponents: .date
                     )
@@ -332,7 +384,13 @@ struct ReportDateBar: View {
                     Text("–").foregroundStyle(mutedText)
                     DatePicker(
                         "สิ้นสุด",
-                        selection: $scope.customEnd,
+                        selection: Binding(
+                            get: { scope.customEnd },
+                            set: { newValue in
+                                scope.customEnd = newValue
+                                scope.normalizeCustomRange()
+                            }
+                        ),
                         in: ReportDateScope.earliestDate...Date(),
                         displayedComponents: .date
                     )

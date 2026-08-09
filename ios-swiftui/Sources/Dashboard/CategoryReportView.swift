@@ -101,14 +101,23 @@ enum CategoryReportType: CaseIterable, Identifiable {
                 hasData: hasData
             )
         case .fuel:
-            let total = dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
-            let liters = dayTx.reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            let used = dayTx
+                .filter { FuelLogic.isFuelExpense($0) && !FuelLogic.isStockIn($0) }
+                .reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            let inbound = dayTx
+                .filter { FuelLogic.isStockIn($0) }
+                .reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            let throughDay = transactions.filter { String($0.date.prefix(10)) <= dayKey }
+            let remaining = FuelLogic.computeBalance(
+                transactions: throughDay,
+                opening: settings.fuelOpeningStockLiters
+            ).diesel
             return CategoryHubSummary(
-                primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
-                secondary: liters != 0
-                    ? "\(DashboardAggregations.formatNumber(abs(liters))) ลิตร"
+                primary: "\(DashboardAggregations.formatNumber(remaining)) L คงเหลือ",
+                secondary: used > 0 || inbound > 0
+                    ? "ใช้ \(DashboardAggregations.formatNumber(used)) L · เข้า \(DashboardAggregations.formatNumber(inbound)) L"
                     : (dayTx.isEmpty ? "ยังไม่มีบันทึกวันนี้" : "มีการเคลื่อนไหวสต็อก"),
-                hasData: total > 0 || liters != 0 || !dayTx.isEmpty
+                hasData: remaining != 0 || used != 0 || inbound != 0 || !dayTx.isEmpty
             )
         case .land:
             let total = dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
@@ -149,12 +158,16 @@ struct CategoryReportView: View {
     let employees: [Employee]
     let dateFilter: DateFilter
     var scopeTitle: String = "ช่วงวันที่ที่เลือก"
+    /// Full ledger for fuel stock remaining (defaults to `transactions` when omitted).
+    var stockTransactions: [Transaction]? = nil
 
     @State private var expandedDate: String?
     @State private var sandPeriod: SandPeriod = .week
 
     /// A one-bar chart says nothing, so the daily breakdown is dropped in single-day mode.
     private var isSingleDay: Bool { dateFilter.start == dateFilter.end }
+
+    private var fuelStockSource: [Transaction] { stockTransactions ?? transactions }
 
     enum SandPeriod: String, CaseIterable {
         case week, month, year
@@ -183,13 +196,18 @@ struct CategoryReportView: View {
     }
 
     private var reportHeroBanner: some View {
-        let summary = type.hubSummary(
-            dayKey: dateFilter.end,
-            transactions: transactions,
-            employees: employees,
-            settings: settings
-        )
-        let banner = rangeBannerValues(fallback: summary)
+        let banner: CategoryHubSummary
+        if type == .fuel {
+            banner = fuelBannerSummary(scopePrefix: scopeTitle)
+        } else {
+            let summary = type.hubSummary(
+                dayKey: dateFilter.end,
+                transactions: transactions,
+                employees: employees,
+                settings: settings
+            )
+            banner = rangeBannerValues(fallback: summary)
+        }
 
         return HStack(alignment: .center, spacing: 14) {
             Image(systemName: type.systemImage)
@@ -257,13 +275,7 @@ struct CategoryReportView: View {
                 hasData: total > 0 || !transactions.isEmpty
             )
         case .fuel:
-            let total = transactions.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
-            let liters = transactions.reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
-            return CategoryHubSummary(
-                primary: DashboardAggregations.formatCurrency(total),
-                secondary: "\(scopeTitle) · \(DashboardAggregations.formatNumber(abs(liters))) ลิตร",
-                hasData: total > 0 || liters != 0
-            )
+            return fuelBannerSummary(scopePrefix: scopeTitle)
         case .land:
             let total = transactions.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
             return CategoryHubSummary(
@@ -450,29 +462,195 @@ struct CategoryReportView: View {
             .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
     }
 
-    // MARK: - Fuel
+    // MARK: - Fuel (liters only — no baht)
 
     private var fuelView: some View {
-        categoryExpenseView(
-            category: "Fuel",
-            total: fuelTotal,
-            slices: [
-                ("ดีเซล", fuelDiesel, "#ea580c"),
-                ("เบนซิน", fuelBenzine, "#f59e0b")
-            ],
-            dailyAmount: { date in DashboardAggregations.categoryExpense(transactions, category: "Fuel", date: date) },
-            extra: {
-                Text("รวม \(DashboardAggregations.formatNumber(fuelLiters)) ลิตร")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        let inbound = fuelLitersWhere { FuelLogic.isStockIn($0) }
+        let withdraw = fuelLitersWhere { FuelLogic.isWithdraw($0) }
+        let usage = fuelLitersWhere { FuelLogic.isVehicleUsage($0) }
+        let used = withdraw + usage
+        let remaining = fuelRemainingDiesel
+        let slices: [(String, Double, String)] = [
+            ("รับเข้า", inbound, "#0d9488"),
+            ("เบิก", withdraw, "#ea580c"),
+            ("ใช้รถแม็คโคร", usage, "#0F766E"),
+        ]
+
+        return VStack(alignment: .leading, spacing: 12) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                fuelStatChip(title: "น้ำมันคงเหลือ", value: remaining, unit: "L", accent: AppTheme.fuel)
+                fuelStatChip(title: isSingleDay ? "ใช้ไปวันนี้" : "ใช้ในช่วง", value: used, unit: "L", accent: AppTheme.expense)
             }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(Array(slices.enumerated()), id: \.offset) { _, slice in
+                    fuelStatChip(title: slice.0, value: slice.1, unit: "L", accent: Color(hex: slice.2))
+                }
+            }
+
+            let chartSlices = slices.compactMap { label, value, color -> ChartSlice? in
+                guard value > 0 else { return nil }
+                return ChartSlice(label: label, value: value, colorHex: color)
+            }
+            if !chartSlices.isEmpty {
+                SectionCard("สัดส่วน (ลิตร)", systemImage: "chart.pie.fill") {
+                    DonutChartView(slices: chartSlices).frame(height: 160)
+                }
+            }
+
+            dailyBarSection(amountForDate: { date in
+                transactions
+                    .filter {
+                        String($0.date.prefix(10)) == date
+                            && FuelLogic.isFuelExpense($0)
+                            && !FuelLogic.isStockIn($0)
+                    }
+                    .reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+            })
+
+            fuelDetailByDate()
+        }
+    }
+
+    private var fuelRemainingDiesel: Double {
+        let end = dateFilter.end
+        let throughEnd = fuelStockSource.filter { String($0.date.prefix(10)) <= end }
+        return FuelLogic.computeBalance(
+            transactions: throughEnd,
+            opening: settings.fuelOpeningStockLiters
+        ).diesel
+    }
+
+    private func fuelLitersWhere(_ pred: (Transaction) -> Bool) -> Double {
+        transactions
+            .filter { FuelLogic.isFuelExpense($0) && pred($0) }
+            .reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+    }
+
+    private func fuelBannerSummary(scopePrefix: String?) -> CategoryHubSummary {
+        let used = fuelLitersWhere { !FuelLogic.isStockIn($0) }
+        let inbound = fuelLitersWhere { FuelLogic.isStockIn($0) }
+        let remaining = fuelRemainingDiesel
+        let secondaryCore =
+            "ใช้ \(DashboardAggregations.formatNumber(used)) L · เข้า \(DashboardAggregations.formatNumber(inbound)) L"
+        let secondary = scopePrefix.map { "\($0) · \(secondaryCore)" } ?? secondaryCore
+        return CategoryHubSummary(
+            primary: "\(DashboardAggregations.formatNumber(remaining)) L คงเหลือ",
+            secondary: secondary,
+            hasData: remaining != 0 || used != 0 || inbound != 0 || !transactions.isEmpty
         )
     }
 
-    private var fuelTotal: Double { transactions.filter { $0.category == "Fuel" && $0.type == .expense }.reduce(0) { $0 + $1.amount } }
-    private var fuelDiesel: Double { transactions.filter { $0.category == "Fuel" && $0.fuelType == "Diesel" }.reduce(0) { $0 + $1.amount } }
-    private var fuelBenzine: Double { transactions.filter { $0.category == "Fuel" && $0.fuelType == "Benzine" }.reduce(0) { $0 + $1.amount } }
-    private var fuelLiters: Double { transactions.filter { $0.category == "Fuel" }.reduce(0) { $0 + ($1.quantity ?? 0) } }
+    private func fuelStatChip(title: String, value: Double, unit: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(1)
+            Text("\(DashboardAggregations.formatNumber(value)) \(unit)")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(accent.opacity(0.1))
+        )
+    }
+
+    private func fuelDetailByDate() -> some View {
+        let fuelRows = transactions.filter { FuelLogic.isFuelExpense($0) }
+        let grouped = Dictionary(grouping: fuelRows) { String($0.date.prefix(10)) }
+            .sorted { $0.key > $1.key }
+        return SectionCard(isSingleDay ? "รายละเอียด" : "รายละเอียดรายวัน", systemImage: "list.bullet") {
+            if grouped.isEmpty {
+                Text("ยังไม่มีรายการน้ำมันในช่วงนี้")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            } else {
+                ForEach(grouped, id: \.0) { date, txs in
+                    let dayLiters = txs.reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
+                    DisclosureGroup(isExpanded: Binding(
+                        get: { expandedDate == date },
+                        set: { expandedDate = $0 ? date : nil }
+                    )) {
+                        ForEach(txs.sorted(by: { ($0.createdAt ?? "") > ($1.createdAt ?? "") })) { t in
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(fuelRowTitle(t))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(AppTheme.ink)
+                                        .lineLimit(2)
+                                    Text(fuelRowSubtitle(t))
+                                        .font(.caption2)
+                                        .foregroundStyle(AppTheme.inkMuted)
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 8)
+                                Text("\(DashboardAggregations.formatNumber(DashboardAggregations.fuelTxToLiters(t))) L")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.fuel)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    } label: {
+                        HStack {
+                            Text(DashboardAggregations.thaiDateLong(date)).font(.subheadline)
+                            Spacer()
+                            Text("\(DashboardAggregations.formatNumber(dayLiters)) L")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppTheme.fuel)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fuelRowTitle(_ t: Transaction) -> String {
+        if FuelLogic.isVehicleUsage(t) {
+            let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return vid.isEmpty ? "ใช้รถแม็คโคร" : vid
+        }
+        if FuelLogic.isWithdraw(t) {
+            let purpose = (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if purpose == "machine" { return "เบิก · เติมเครื่องจักร" }
+            if purpose == "car" { return "เบิก · รถยนต์" }
+            if purpose == "generator" { return "เบิก · ปั่นไฟ" }
+            if !purpose.isEmpty { return "เบิก · \(purpose)" }
+            return "เบิกน้ำมัน"
+        }
+        if FuelLogic.isStockIn(t) {
+            return "รับเข้าถัง"
+        }
+        let desc = t.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        return desc.isEmpty ? "น้ำมัน" : desc
+    }
+
+    private func fuelRowSubtitle(_ t: Transaction) -> String {
+        var parts: [String] = []
+        if FuelLogic.isStockIn(t) {
+            parts.append("รับเข้า")
+        } else if FuelLogic.isWithdraw(t) {
+            parts.append("เบิก")
+        } else if FuelLogic.isVehicleUsage(t) {
+            parts.append("ใช้แม็คโคร")
+        }
+        let desc = FuelLogic.stripRecorder(t.description)
+        if !desc.isEmpty, desc != fuelRowTitle(t) {
+            parts.append(desc)
+        }
+        if let details = t.workDetails?.trimmingCharacters(in: .whitespacesAndNewlines), !details.isEmpty {
+            parts.append(FuelLogic.stripRecorder(details))
+        }
+        if let time = t.createdAt?.prefix(16), !time.isEmpty {
+            parts.append(String(time).replacingOccurrences(of: "T", with: " "))
+        }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
 
     // MARK: - Land
 
