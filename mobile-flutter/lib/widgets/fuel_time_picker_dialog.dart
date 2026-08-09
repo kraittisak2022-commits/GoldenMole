@@ -31,18 +31,35 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
   static const _ink = Color(0xFF1A2433);
   static const _muted = Color(0xFF64748B);
 
+  static const _hourPeriod = 24;
+  static const _minutePeriod = 60;
+  static const _loopCopies = 40;
+
+  static const _hourLoopSize = _hourPeriod * _loopCopies;
+  static const _minuteLoopSize = _minutePeriod * _loopCopies;
+
   late int _hour;
   late int _minute;
   late final FixedExtentScrollController _hourCtrl;
   late final FixedExtentScrollController _minuteCtrl;
+
+  /// ตำแหน่งเริ่มกลางลูป + ค่าตั้งต้น (หาร period ลงตัว)
+  static int _loopInitialItem(int loopSize, int period, int value) {
+    final mid = (loopSize ~/ 2) ~/ period * period;
+    return mid + value.clamp(0, period - 1);
+  }
 
   @override
   void initState() {
     super.initState();
     _hour = widget.initial.hour.clamp(0, 23);
     _minute = widget.initial.minute.clamp(0, 59);
-    _hourCtrl = FixedExtentScrollController(initialItem: _hour);
-    _minuteCtrl = FixedExtentScrollController(initialItem: _minute);
+    _hourCtrl = FixedExtentScrollController(
+      initialItem: _loopInitialItem(_hourLoopSize, _hourPeriod, _hour),
+    );
+    _minuteCtrl = FixedExtentScrollController(
+      initialItem: _loopInitialItem(_minuteLoopSize, _minutePeriod, _minute),
+    );
   }
 
   @override
@@ -63,7 +80,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
       text,
       textAlign: TextAlign.center,
       style: GoogleFonts.kanit(
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: FontWeight.w700,
         color: _muted,
         letterSpacing: 0.2,
@@ -74,12 +91,13 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
   Widget _wheel({
     required FixedExtentScrollController controller,
     required int itemCount,
-    required int selectedIndex,
-    required ValueChanged<int> onSelected,
+    required int period,
+    required int selectedValue,
+    required ValueChanged<int> onSelectedValue,
   }) {
     return CupertinoPicker.builder(
       scrollController: controller,
-      itemExtent: 52,
+      itemExtent: 68,
       magnification: 1.08,
       squeeze: 1.05,
       useMagnifier: true,
@@ -88,17 +106,18 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
       ),
       onSelectedItemChanged: (i) {
         AppHaptics.tap();
-        onSelected(i);
+        onSelectedValue(i % period);
       },
       childCount: itemCount,
       itemBuilder: (context, index) {
-        final selected = index == selectedIndex;
-        final label = index.toString().padLeft(2, '0');
+        final value = index % period;
+        final selected = value == selectedValue;
+        final label = value.toString().padLeft(2, '0');
         return Center(
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 120),
             style: GoogleFonts.kanit(
-              fontSize: selected ? 34 : 26,
+              fontSize: selected ? 42 : 32,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
               color: selected ? _ink : _muted.withValues(alpha: 0.5),
               height: 1,
@@ -125,7 +144,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
         'เลือกเวลา',
         textAlign: TextAlign.center,
         style: GoogleFonts.kanit(
-          fontSize: 24,
+          fontSize: 26,
           fontWeight: FontWeight.w800,
           color: _ink,
         ),
@@ -152,7 +171,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                   Text(
                     'เวลาที่เลือก',
                     style: GoogleFonts.kanit(
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: _muted,
                     ),
@@ -161,7 +180,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                   Text(
                     _preview,
                     style: GoogleFonts.kanit(
-                      fontSize: 48,
+                      fontSize: 56,
                       fontWeight: FontWeight.w800,
                       color: _accent,
                       height: 1.05,
@@ -181,7 +200,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
             ),
             const SizedBox(height: 6),
             Container(
-              height: 220,
+              height: 300,
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(18),
@@ -195,9 +214,10 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                       color: _accent.withValues(alpha: 0.04),
                       child: _wheel(
                         controller: _hourCtrl,
-                        itemCount: 24,
-                        selectedIndex: _hour,
-                        onSelected: (i) => setState(() => _hour = i),
+                        itemCount: _hourLoopSize,
+                        period: _hourPeriod,
+                        selectedValue: _hour,
+                        onSelectedValue: (v) => setState(() => _hour = v),
                       ),
                     ),
                   ),
@@ -207,7 +227,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                       child: Text(
                         ':',
                         style: GoogleFonts.kanit(
-                          fontSize: 32,
+                          fontSize: 40,
                           fontWeight: FontWeight.w800,
                           color: _accent,
                           height: 1,
@@ -218,9 +238,10 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                   Expanded(
                     child: _wheel(
                       controller: _minuteCtrl,
-                      itemCount: 60,
-                      selectedIndex: _minute,
-                      onSelected: (i) => setState(() => _minute = i),
+                      itemCount: _minuteLoopSize,
+                      period: _minutePeriod,
+                      selectedValue: _minute,
+                      onSelectedValue: (v) => setState(() => _minute = v),
                     ),
                   ),
                 ],
@@ -230,7 +251,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
             Text(
               'เลื่อนเลือกชั่วโมงและนาที (24 ชม.)',
               style: GoogleFonts.kanit(
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: _muted,
               ),
