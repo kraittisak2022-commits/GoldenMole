@@ -5,7 +5,7 @@ import 'soft_press_button.dart';
 
 /// เมนูย่อยของ «เช็คชื่อ»
 enum AttendanceSection {
-  /// พนักงานท่าทราย — ทำงาน / ครึ่งวัน / ลางาน / OT
+  /// พนักงานท่าทราย — ทำงาน / ครึ่งวัน / ลางาน
   sandYard,
 
   /// คนขับรถ — แม็คโคร / ดรัม / ลางาน
@@ -297,6 +297,10 @@ class _AttendanceModeOption extends StatelessWidget {
             ],
           );
 
+    // มือถือแนวตั้งอยู่ใน Column ไม่มี max height — ห้ามใช้
+    // CrossAxisAlignment.stretch โดยตรง (การ์ดสูงเป็นศูนย์ / แตะไม่ได้)
+    // IntrinsicHeight ให้แถบสีซ้ายสูงเต็มการ์ดโดยไม่พัง layout
+    final minH = vertical ? 0.0 : (isTablet ? 88.0 : 80.0);
     return SoftPressButton(
       onTap: onTap,
       size: SoftPressSize.large,
@@ -318,24 +322,29 @@ class _AttendanceModeOption extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(22),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 4, color: accent),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: vertical
-                        ? (isTablet ? 12 : 10)
-                        : (isTablet ? 18 : 14),
-                    vertical: vertical
-                        ? (isTablet ? 14 : 10)
-                        : (isTablet ? 16 : 13),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minH),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(width: 4, color: accent),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: vertical
+                            ? (isTablet ? 12 : 10)
+                            : (isTablet ? 18 : 14),
+                        vertical: vertical
+                            ? (isTablet ? 14 : 10)
+                            : (isTablet ? 16 : 13),
+                      ),
+                      child: body,
+                    ),
                   ),
-                  child: body,
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -739,7 +739,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('บันทึกการทำงาน');
   bool get _isOtMode => (widget.initialCategory ?? '').contains('OT');
 
-  /// เมนู «เช็คชื่อ» — กระดานลากรายชื่อ (เขียนลง Labor Attendance / Leave / OT)
+  /// เมนู «เช็คชื่อ» — กระดานลากรายชื่อ (เขียนลง Labor Attendance / Leave)
   bool get _isAttendanceMode => widget.initialCategory == 'เช็คชื่อ';
 
   _OtGroupDraft get _activeOtGroup {
@@ -12657,7 +12657,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// การ์ดกลุ่ม (ทำงาน / ครึ่งวัน / ลางาน / OT / แม็คโคร / ดรัม)
+  /// การ์ดกลุ่ม (ทำงาน / ครึ่งวัน / ลางาน / แม็คโคร / ดรัม)
   Widget _attendanceGroupedCard({
     required String title,
     required Color color,
@@ -13001,27 +13001,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'เช็คชื่อประจำวัน',
-            style: GoogleFonts.kanit(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F5FAF),
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'เลือกกลุ่มเพื่อเปิดกระดานเต็มจอ · ลากวางรายชื่อเหมือนเกม',
-            style: GoogleFonts.kanit(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF5C6B7F),
-              height: 1.35,
-            ),
-          ),
           _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 14),
           AttendanceSubModePicker(
             sandYardSummary: sandSummary,
             driverSummary: driverSummary,
