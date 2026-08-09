@@ -4,6 +4,12 @@ import SwiftUI
 struct FuelHubView: View {
     @Environment(AppState.self) private var appState
     @State private var session = FuelSession()
+    /// When set, open that form on first appear (home ops cards / deep links).
+    private let initialSubMode: FuelLogic.SubMode?
+
+    init(initialSubMode: FuelLogic.SubMode? = nil) {
+        self.initialSubMode = initialSubMode
+    }
 
     private var sync: CountRecordOfflineSync { .shared }
     private var accent: Color { AppTheme.fuel }
@@ -75,6 +81,9 @@ struct FuelHubView: View {
             Button("ยกเลิก", role: .cancel) { session.confirmDeleteId = nil }
         }
         .task {
+            if session.subMode == nil, let initialSubMode {
+                session.subMode = initialSubMode
+            }
             if let service = appState.supabaseService {
                 session.configureOffline(service: service, appState: appState)
             }

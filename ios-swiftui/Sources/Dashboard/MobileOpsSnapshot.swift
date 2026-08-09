@@ -23,6 +23,12 @@ struct MobileOpsMetrics: Sendable {
     var macroVehicles: Int = 0
     var fuelInLiters: Double = 0
     var fuelOutLiters: Double = 0
+    /// Stock-out withdraws (เบิกน้ำมัน) — liters today / range.
+    var fuelWithdrawLiters: Double = 0
+    var fuelWithdrawCount: Int = 0
+    /// Macro vehicle fuel usage (การใช้น้ำมันรถแม็คโคร).
+    var fuelMacroUsageLiters: Double = 0
+    var fuelMacroVehicles: Int = 0
     var recordCount: Int = 0
 
     static let empty = MobileOpsMetrics()
@@ -110,9 +116,13 @@ enum MobileOpsSnapshot {
         m.macroUsageCount = macroRows.count
         m.macroVehicles = Set(macroRows.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }).count
 
-        let fuel = fuelInOut(dayTx)
+        let fuel = fuelBreakdown(dayTx)
         m.fuelInLiters = fuel.inLiters
         m.fuelOutLiters = fuel.outLiters
+        m.fuelWithdrawLiters = fuel.withdrawLiters
+        m.fuelWithdrawCount = fuel.withdrawCount
+        m.fuelMacroUsageLiters = fuel.macroUsageLiters
+        m.fuelMacroVehicles = fuel.macroVehicles
 
         m.recordCount = dayTx.filter { isMobileAppRecord($0) }.count
         return m
@@ -147,6 +157,9 @@ enum MobileOpsSnapshot {
             total.macroUsageCount += dayM.macroUsageCount
             total.fuelInLiters += dayM.fuelInLiters
             total.fuelOutLiters += dayM.fuelOutLiters
+            total.fuelWithdrawLiters += dayM.fuelWithdrawLiters
+            total.fuelWithdrawCount += dayM.fuelWithdrawCount
+            total.fuelMacroUsageLiters += dayM.fuelMacroUsageLiters
             total.recordCount += dayM.recordCount
 
             if dayM.attendanceDays > 0 {
@@ -178,6 +191,12 @@ enum MobileOpsSnapshot {
         total.macroVehicles = Set(
             macroRows.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         ).count
+        total.fuelMacroVehicles = Set(
+            rangeTx
+                .filter { FuelLogic.isVehicleUsage($0) }
+                .compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        ).count
 
         return total
     }
@@ -196,18 +215,38 @@ enum MobileOpsSnapshot {
         return false
     }
 
-    nonisolated private static func fuelInOut(_ txs: [Transaction]) -> (inLiters: Double, outLiters: Double) {
+    nonisolated private static func fuelBreakdown(_ txs: [Transaction]) -> (
+        inLiters: Double,
+        outLiters: Double,
+        withdrawLiters: Double,
+        withdrawCount: Int,
+        macroUsageLiters: Double,
+        macroVehicles: Int
+    ) {
         var inn = 0.0
         var out = 0.0
-        for t in txs where t.category == "Fuel" && t.type == .expense {
+        var withdraw = 0.0
+        var withdrawCount = 0
+        var macroLiters = 0.0
+        var macroVehicleIds = Set<String>()
+        for t in txs where FuelLogic.isFuelExpense(t) {
             let liters = DashboardAggregations.fuelTxToLiters(t)
             guard liters != 0 else { continue }
-            if DashboardAggregations.inferFuelMovement(t) == "stock_in" {
+            if FuelLogic.isStockIn(t) {
                 inn += liters
-            } else {
-                out += liters
+                continue
+            }
+            out += liters
+            if FuelLogic.isWithdraw(t) {
+                withdraw += liters
+                withdrawCount += 1
+            } else if FuelLogic.isVehicleUsage(t) {
+                macroLiters += liters
+                if let vid = t.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines), !vid.isEmpty {
+                    macroVehicleIds.insert(vid)
+                }
             }
         }
-        return (inn, out)
+        return (inn, out, withdraw, withdrawCount, macroLiters, macroVehicleIds.count)
     }
 }

@@ -524,13 +524,45 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    CategoryReportScreen(type: .fuel)
+                    FuelHubView(initialSubMode: .stockIn)
                 } label: {
                     SummaryMetricCard(
-                        title: "น้ำมัน",
-                        value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelOutLiters),
+                        title: "เพิ่มน้ำมัน",
+                        value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters),
                         unit: "L",
-                        detail: "ใช้ไป · คงเหลือ ดีเซล \(DashboardAggregations.formatNumber(todayOps.dieselLiters)) / เบนซิน \(DashboardAggregations.formatNumber(todayOps.benzineLiters))",
+                        detail: "คงเหลือ ดีเซล \(DashboardAggregations.formatNumber(todayOps.dieselLiters)) / เบนซิน \(DashboardAggregations.formatNumber(todayOps.benzineLiters))",
+                        accent: AppTheme.fuel,
+                        systemImage: "arrow.down.to.line.circle.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    FuelHubView(initialSubMode: .withdraw)
+                } label: {
+                    SummaryMetricCard(
+                        title: "เบิกน้ำมัน",
+                        value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelWithdrawLiters),
+                        unit: "L",
+                        detail: snapshot.mobileToday.fuelWithdrawCount > 0
+                            ? "\(snapshot.mobileToday.fuelWithdrawCount) ครั้ง · วันนี้"
+                            : "วันนี้",
+                        accent: AppTheme.fuel,
+                        systemImage: "arrow.up.right.circle.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    FuelHubView(initialSubMode: .macroUsage)
+                } label: {
+                    SummaryMetricCard(
+                        title: "การใช้น้ำมันรถแม็คโคร",
+                        value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelMacroUsageLiters),
+                        unit: "L",
+                        detail: snapshot.mobileToday.fuelMacroVehicles > 0
+                            ? "\(snapshot.mobileToday.fuelMacroVehicles) คัน · วันนี้"
+                            : "วันนี้",
                         accent: AppTheme.fuel,
                         systemImage: "fuelpump.fill"
                     )
