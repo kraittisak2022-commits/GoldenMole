@@ -14650,15 +14650,15 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
   @override
   Widget build(BuildContext context) {
     final ls = widget.landscape;
-    final keyH = ls ? 56.0 : 72.0;
-    final gap = ls ? 8.0 : 10.0;
+    final keyH = ls ? 68.0 : 86.0;
+    final gap = ls ? 10.0 : 12.0;
     final radius = ls ? 14.0 : 16.0;
     const accent = Color(0xFF1565C0);
     const ink = Color(0xFF142033);
     const muted = Color(0xFF64748B);
 
     final keyStyle = GoogleFonts.kanit(
-      fontSize: ls ? 26.0 : 32.0,
+      fontSize: ls ? 32.0 : 40.0,
       fontWeight: FontWeight.w800,
       color: ink,
       height: 1,
@@ -14669,7 +14669,7 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
       color: muted,
     );
     final previewStyle = GoogleFonts.kanit(
-      fontSize: ls ? 34.0 : 42.0,
+      fontSize: ls ? 40.0 : 48.0,
       fontWeight: FontWeight.w800,
       color: accent,
       height: 1.05,
@@ -14850,7 +14850,7 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                         'ล้าง',
                         style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w800,
-                          fontSize: ls ? 16.0 : 18.0,
+                          fontSize: ls ? 18.0 : 22.0,
                           color: const Color(0xFFD64545),
                         ),
                       ),
@@ -14869,7 +14869,7 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                       onTap: _backspace,
                       child: Icon(
                         Icons.backspace_outlined,
-                        size: ls ? 24 : 28,
+                        size: ls ? 28 : 32,
                         color: accent,
                       ),
                     ),
@@ -14899,14 +14899,14 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: SizedBox(
-                    height: ls ? 54 : 64,
+                    height: ls ? 62 : 72,
                     width: double.infinity,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.check_rounded,
-                          size: ls ? 24 : 28,
+                          size: ls ? 26 : 30,
                           color: Colors.white,
                         ),
                         const SizedBox(width: 8),
@@ -14914,7 +14914,7 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                           'เสร็จสิ้น',
                           style: GoogleFonts.kanit(
                             fontWeight: FontWeight.w800,
-                            fontSize: ls ? 18.0 : 22.0,
+                            fontSize: ls ? 20.0 : 24.0,
                             color: Colors.white,
                           ),
                         ),
