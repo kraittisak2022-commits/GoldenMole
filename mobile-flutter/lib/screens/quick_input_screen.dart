@@ -2027,8 +2027,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isLaborAdvanceMode) {
-      // ไม่เติมฟอร์มจากคำขอเบิกที่บันทึกแล้ว — เปิดหน้ามาพร้อมส่งคำขอใหม่ทุกครั้ง
-      // (_moduleDayTransactions ยังโหลดไว้สำหรับส่วนประวัติรายวัน ถ้ามี)
+      // ไม่เติมฟอร์มจากคำขอเบิกที่บันทึกแล้ว — แต่ถอดคนที่ขอวันนี้แล้วออกจากรายการเลือก
+      final already = _advanceEmpIdsAlreadyRequestedOnSelectedDay();
+      _selectedAdvanceEmpIds.removeWhere(already.contains);
       return;
     }
 
@@ -4372,37 +4373,166 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  bool _isLaborAdvanceTransaction(AppTransaction t) {
+    final sc = (t.subCategory ?? '').trim().toLowerCase();
+    final ls = (t.laborStatus ?? '').trim().toLowerCase();
+    return t.category == 'Labor' && (sc == 'advance' || ls == 'advance');
+  }
+
+  List<AppTransaction> _advanceTxsOnSelectedDay() {
+    final ymd = _quickYmd(_selectedDate);
+    return [
+      for (final t in _moduleDayTransactions)
+        if (t.date.startsWith(ymd) && _isLaborAdvanceTransaction(t)) t,
+    ];
+  }
+
+  Set<String> _advanceEmpIdsAlreadyRequestedOnSelectedDay() {
+    final ids = <String>{};
+    for (final t in _advanceTxsOnSelectedDay()) {
+      ids.addAll(t.employeeIds);
+    }
+    return ids;
+  }
+
+  String? _validateLaborAdvanceForm() {
+    if (_selectedAdvanceEmpIds.isEmpty) {
+      return 'กรุณาเลือกพนักงาน';
+    }
+    final blocked = _selectedAdvanceEmpIds.where((id) {
+      final e = _employeesById[id];
+      return e != null && isExcludedFromAdvanceEmployeePicker(e);
+    }).toList();
+    if (blocked.isNotEmpty) {
+      return 'ไม่สามารถเบิกให้คนขับรถหรือรับจ้างรายวันได้';
+    }
+    final already = _advanceEmpIdsAlreadyRequestedOnSelectedDay();
+    final dupes = _selectedAdvanceEmpIds.where(already.contains).toList();
+    if (dupes.isNotEmpty) {
+      final names = dupes.map((id) {
+        final e = _employeesById[id];
+        return e != null ? _employeeUiDisplayName(e) : id;
+      }).join(', ');
+      return 'ส่งคำขอเบิกเงินวันนี้ไปแล้ว — $names';
+    }
+    final per =
+        double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
+    if (per <= 0) {
+      return 'กรุณากรอกจำนวนเงินที่ขอเบิกต่อคนให้มากกว่า 0';
+    }
+    if (_advancePaymentMethod == AdvanceGmMeta.transfer) {
+      if (_advanceBank.trim().isEmpty) {
+        return 'กรุณาเลือกธนาคาร';
+      }
+      if (_advanceAccountController.text.trim().isEmpty) {
+        return 'กรุณากรอกเลขบัญชี';
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _confirmAdvanceRequestSummary() async {
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final per =
+        double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
+    final n = _selectedAdvanceEmpIds.length;
+    final total = per * n;
+    final slotTh = _advancePayoutSlot == AdvanceGmMeta.evening
+        ? 'ช่วงเย็น'
+        : 'ช่วงกลางวัน';
+    final payTh = _advancePaymentMethod == AdvanceGmMeta.transfer
+        ? 'เงินโอน'
+        : 'เงินสด';
+    final names = _selectedAdvanceEmpIds.map((id) {
+      final e = _employeesById[id];
+      return e != null ? _employeeUiDisplayName(e) : id;
+    }).toList();
+    String money(num v) =>
+        v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2);
+    final lines = <String>[
+      'วันที่ ${_formatDate(_selectedDate)}',
+      'พนักงาน ${names.length} คน',
+      ...names.map((n) => '· $n'),
+      'จำนวนต่อคน ${money(per)} บาท',
+      'รวม ${money(total)} บาท',
+      'รับเงิน: $slotTh · $payTh',
+      if (_advancePaymentMethod == AdvanceGmMeta.transfer) ...[
+        'ธนาคาร ${_advanceBank.trim()}',
+        'เลขบัญชี ${_advanceAccountController.text.trim()}',
+      ],
+    ];
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.receipt_long_rounded,
+          size: 36,
+          color: Color(0xFFE65100),
+        ),
+        title: Text(
+          'สรุปคำขอเบิกเงิน',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            lines.join('\n'),
+            style: GoogleFonts.kanit(fontSize: 15, height: 1.45),
+          ),
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'แก้ไข',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ยืนยันส่งคำขอ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   Future<void> _saveLaborAdvanceEntry() async {
+    final preErr = _validateLaborAdvanceForm();
+    if (preErr != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(preErr, style: GoogleFonts.kanit()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final confirmed = await _confirmAdvanceRequestSummary();
+    if (!confirmed || !mounted) return;
+
     await _runSaveWithPopups(
       successMessage: 'ส่งคำขอเบิกเงินแล้ว',
       saveActionLabel: 'คำขอเบิกเงิน',
       saveButtonLabel: 'ส่งคำขอเบิกเงิน',
       body: () async {
-        if (_selectedAdvanceEmpIds.isEmpty) {
-          _failSave('กรุณาเลือกพนักงาน');
-        }
-        final blocked = _selectedAdvanceEmpIds.where((id) {
-          final e = _employeesById[id];
-          return e != null && isExcludedFromAdvanceEmployeePicker(e);
-        }).toList();
-        if (blocked.isNotEmpty) {
-          _failSave('ไม่สามารถเบิกให้คนขับรถหรือรับจ้างรายวันได้');
-        }
+        final err = _validateLaborAdvanceForm();
+        if (err != null) _failSave(err);
         final per =
             double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
-        if (per <= 0) {
-          _failSave('กรุณากรอกจำนวนเงินที่ขอเบิกต่อคนให้มากกว่า 0');
-        }
-        if (_advancePaymentMethod == AdvanceGmMeta.transfer) {
-          final bank = _advanceBank.trim();
-          final acct = _advanceAccountController.text.trim();
-          if (bank.isEmpty) {
-            _failSave('กรุณาเลือกธนาคาร', field: 'ธนาคาร');
-          }
-          if (acct.isEmpty) {
-            _failSave('กรุณากรอกเลขบัญชี', field: 'เลขบัญชี');
-          }
-        }
         final meta = AdvanceGmMeta(
           payoutSlot: _advancePayoutSlot,
           paymentMethod: _advancePaymentMethod,
@@ -4415,10 +4545,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final payTh = _advancePaymentMethod == AdvanceGmMeta.transfer
             ? 'เงินโอน'
             : 'เงินสด';
-        final y = _selectedDate.year.toString().padLeft(4, '0');
-        final m = _selectedDate.month.toString().padLeft(2, '0');
-        final d = _selectedDate.day.toString().padLeft(2, '0');
-        final ymd = '$y-$m-$d';
+        final ymd = _quickYmd(_selectedDate);
         final empIds = _selectedAdvanceEmpIds.toList();
         final ts = DateTime.now().millisecondsSinceEpoch;
         for (var i = 0; i < empIds.length; i++) {
@@ -11833,6 +11960,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const advDeep = Color(0xFFBF360C);
     const warmSurface = Color(0xFFFFF8F1);
     final employees = _employeesForAdvancePicker();
+    final alreadyRequested = _advanceEmpIdsAlreadyRequestedOnSelectedDay();
+    final alreadyNames = alreadyRequested.map((id) {
+      final e = _employeesById[id];
+      return e != null ? _employeeUiDisplayName(e) : id;
+    }).toList()
+      ..sort();
     final nSel = _selectedAdvanceEmpIds.length;
     final per =
         double.tryParse(_advanceAmountPerPersonController.text.trim()) ?? 0;
@@ -11981,6 +12114,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 children: [
                   _employeeDataLoadProgressBanner(),
                   const SizedBox(height: 4),
+                  if (alreadyNames.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFFCC80)),
+                      ),
+                      child: Text(
+                        'ส่งคำขอวันนี้แล้ว: ${alreadyNames.join(', ')} '
+                        '— ไม่สามารถส่งซ้ำสำหรับคนเหล่านี้',
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFBF360C),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   stepLabel(
                     '1',
                     'เลือกพนักงาน',
@@ -12022,6 +12177,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 id,
                               );
                               final name = _employeeUiDisplayName(e);
+                              final requested = alreadyRequested.contains(id);
                               return FilterChip(
                                 showCheckmark: false,
                                 label: Row(
@@ -12036,10 +12192,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       const SizedBox(width: 6),
                                     ],
                                     Text(
-                                      name,
+                                      requested ? '$name · ขอแล้ว' : name,
                                       style: GoogleFonts.kanit(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
+                                        color: requested
+                                            ? const Color(0xFF9E9E9E)
+                                            : null,
                                       ),
                                     ),
                                   ],
@@ -12049,20 +12208,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   alpha: 0.2,
                                 ),
                                 side: BorderSide(
-                                  color: selected
+                                  color: requested
+                                      ? const Color(0xFFBDBDBD)
+                                      : selected
                                       ? advPrimary
                                       : const Color(0xFFE0E0E0),
                                   width: selected ? 1.8 : 1,
                                 ),
-                                onSelected: (_) {
-                                  setState(() {
-                                    if (selected) {
-                                      _selectedAdvanceEmpIds.remove(id);
-                                    } else {
-                                      _selectedAdvanceEmpIds.add(id);
-                                    }
-                                  });
-                                },
+                                onSelected: requested
+                                    ? null
+                                    : (_) {
+                                        setState(() {
+                                          if (selected) {
+                                            _selectedAdvanceEmpIds.remove(id);
+                                          } else {
+                                            _selectedAdvanceEmpIds.add(id);
+                                          }
+                                        });
+                                      },
                               );
                             }).toList(),
                           ),
