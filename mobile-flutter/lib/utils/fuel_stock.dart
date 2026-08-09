@@ -2,7 +2,7 @@ import '../models/app_transaction.dart';
 import 'daily_module_transactions.dart';
 
 /// ความจุถังสต็อกน้ำมันที่หน้างาน (ลิตร)
-const double kFuelTankCapacityLiters = 9000;
+const double kFuelTankCapacityLiters = 12000;
 
 /// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
 /// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
