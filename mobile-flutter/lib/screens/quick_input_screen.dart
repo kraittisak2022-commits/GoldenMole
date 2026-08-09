@@ -25,6 +25,7 @@ import '../utils/app_haptics.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
+import '../utils/attendance_session_times.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/fuel_stock.dart';
 import '../utils/count_record_vehicle_defaults.dart';
@@ -726,9 +727,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ชิปที่เพิ่งวาง — ใช้เด้ง AnimatedScale ชั่วคราว
   final Set<String> _attendanceJustDroppedIds = <String>{};
 
+  /// เซสชันเวลา (work / macro_driver / drum) — เปิดตอนลากเข้า ปิดตอนลากออก
+  List<AttendanceWorkSession> _attendanceSessions = [];
+
   /// หน่วงก่อนเริ่มลากชื่อ — สั้นพอให้รู้สึกเหมือนแตะแล้วลากได้ทันที
   /// แต่ยังเหลือช่วงให้เลื่อนดูรายชื่อในพูลได้ตามปกติ
   static const _attDragDelay = Duration(milliseconds: 120);
+
+  String _attendanceNowHHmm() =>
+      AttendanceSessionTimes.formatHHmm(DateTime.now());
 
   final List<_GeneralSubJob> _generalSubJobs = [];
   final List<_OtGroupDraft> _otGroups = [];
@@ -1791,6 +1798,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _attendanceLegacyLaborTxId = null;
     _attendanceLegacyLeaveTxId = null;
     _attendanceJustDroppedIds.clear();
+    _attendanceSessions = [];
 
     void assign(String bucketId, String empId) {
       _attendanceAssignments[bucketId]?.add(empId);
@@ -1806,6 +1814,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final key in wa.keys) {
         final list = wa[key];
         if (list == null || list.isEmpty) continue;
+        if (key == AttendanceSessionTimes.key) {
+          for (final s in AttendanceSessionTimes.parseList(list)) {
+            if (s.role == AttendanceSessionTimes.roleWork) sand = true;
+            if (s.role == AttendanceSessionTimes.roleMacro ||
+                s.role == AttendanceSessionTimes.roleDrum) {
+              driver = true;
+            }
+          }
+          continue;
+        }
         if (_attSandWaKeys.contains(key)) sand = true;
         if (_attDriverWaKeys.contains(key)) driver = true;
       }
@@ -1893,9 +1911,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
 
         if (wa != null) {
+          final sessionRaw = wa[AttendanceSessionTimes.key];
+          if (sessionRaw != null && sessionRaw.isNotEmpty) {
+            _attendanceSessions.addAll(
+              AttendanceSessionTimes.parseList(sessionRaw),
+            );
+          }
+          // ครึ่งวันเดิม → รวมเข้าช่องทำงาน
           takeRole('work', 'att_work');
-          takeRole('half:morning', 'att_half_morning');
-          takeRole('half:afternoon', 'att_half_afternoon');
+          takeRole('half:morning', 'att_work');
+          takeRole('half:afternoon', 'att_work');
           takeRole('macro_driver', 'att_drv_macro');
           takeRole('drum', 'att_drv_drum');
           takeRole('drum:morning', 'att_drv_drum');
@@ -1909,11 +1934,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final isDriver = _employeesById[id] != null &&
               _attendanceIsDriver(_employeesById[id]!);
           if (isSandOnly) {
-            assign(wt == 'halfday' ? 'att_half_morning' : 'att_work', id);
+            assign('att_work', id);
           } else if (isDriverOnly) {
             assign(wt == 'halfday' ? 'att_drv_drum' : 'att_drv_macro', id);
           } else if (wt == 'halfday') {
-            assign(isDriver ? 'att_drv_drum' : 'att_half_morning', id);
+            assign(isDriver ? 'att_drv_drum' : 'att_work', id);
           } else if (isDriver) {
             assign('att_drv_macro', id);
           } else {
@@ -1922,6 +1947,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
       }
     }
+
+    // เซสชันที่ยังเปิดอยู่ → ต้องอยู่ในช่อง
+    for (final s in _attendanceSessions) {
+      if (!s.isOpen) continue;
+      final bucket = AttendanceSessionTimes.bucketForRole(s.role);
+      if (bucket != null) assign(bucket, s.empId);
+    }
+    // เคลียร์ช่องครึ่งวันเก่า (ถ้ามีค้าง)
+    _attendanceAssignments['att_half_morning']?.clear();
+    _attendanceAssignments['att_half_afternoon']?.clear();
   }
 
   void _hydrateFormsFromTransactions(
@@ -3779,10 +3814,53 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  /// รวม workAssignments + sessionTimes สำหรับบทบาทที่ระบุ
+  Map<String, List<String>> _attendanceBuildTimedAssignments({
+    required Map<String, Set<String>> inBoxByRole,
+    required Set<String> sessionRoles,
+  }) {
+    final assignments = <String, List<String>>{};
+    for (final e in inBoxByRole.entries) {
+      if (e.value.isNotEmpty) assignments[e.key] = e.value.toList();
+    }
+    // คนที่อยู่ในช่องแต่ยังไม่มีเซสชันเปิด → เปิดตอนบันทึก
+    final now = _attendanceNowHHmm();
+    var sessions = List<AttendanceWorkSession>.from(_attendanceSessions);
+    for (final e in inBoxByRole.entries) {
+      if (!sessionRoles.contains(e.key)) continue;
+      for (final empId in e.value) {
+        final hasOpen = sessions.any(
+          (s) => s.role == e.key && s.empId == empId && s.isOpen,
+        );
+        if (!hasOpen) {
+          sessions = AttendanceSessionTimes.openSession(
+            sessions: sessions,
+            role: e.key,
+            empId: empId,
+            startHHmm: now,
+          );
+        }
+      }
+    }
+    _attendanceSessions = sessions;
+    final encoded = AttendanceSessionTimes.encodeList(
+      AttendanceSessionTimes.forRoles(sessions, sessionRoles),
+    );
+    if (encoded.isNotEmpty) {
+      assignments[AttendanceSessionTimes.key] = encoded;
+    }
+    return assignments;
+  }
+
+  Set<String> _attendanceEmpIdsFromSessions(Set<String> roles) {
+    return {
+      for (final s in _attendanceSessions)
+        if (roles.contains(s.role)) s.empId,
+    };
+  }
+
   Future<void> _saveAttendanceSandYardEntry() async {
     final work = _attendanceAssignments['att_work']!.toSet();
-    final halfM = _attendanceAssignments['att_half_morning']!.toSet();
-    final halfA = _attendanceAssignments['att_half_afternoon']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
 
     // snapshot คนขับไว้เผื่อต้องแยกแถวรวมเก่า
@@ -3800,7 +3878,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (_employeesLoading) {
           _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
         }
-        final present = <String>{...work, ...halfM, ...halfA};
+        final sessionEmp = _attendanceEmpIdsFromSessions({
+          AttendanceSessionTimes.roleWork,
+        });
+        final present = <String>{...work, ...sessionEmp};
         if (present.isEmpty && genLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
@@ -3816,30 +3897,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           savingSand: true,
           sandPresent: present,
           sandLeave: genLeave,
+          sandWork: work,
           drvMacro: drvMacro,
           drvDrum: drvDrum,
           drvLeave: drvLeave,
         );
 
         if (present.isNotEmpty) {
-          final workType = <String, String>{};
-          for (final id in work) {
-            workType[id] = 'FullDay';
-          }
-          for (final id in halfM) {
-            workType[id] = 'HalfDay';
-          }
-          for (final id in halfA) {
-            workType[id] = 'HalfDay';
-          }
-          final assignments = <String, List<String>>{};
-          void put(String key, Set<String> s) {
-            if (s.isNotEmpty) assignments[key] = s.toList();
-          }
-
-          put('work', work);
-          put('half:morning', halfM);
-          put('half:afternoon', halfA);
+          final workType = <String, String>{
+            for (final id in present) id: 'FullDay',
+          };
+          final assignments = _attendanceBuildTimedAssignments(
+            inBoxByRole: {AttendanceSessionTimes.roleWork: work},
+            sessionRoles: {AttendanceSessionTimes.roleWork},
+          );
           final id = _attendanceLaborTxId ??
               _attendanceLegacyLaborTxId ??
               '${baseTs}_att_sand';
@@ -3919,8 +3990,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
 
     final work = _attendanceAssignments['att_work']!.toSet();
-    final halfM = _attendanceAssignments['att_half_morning']!.toSet();
-    final halfA = _attendanceAssignments['att_half_afternoon']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
 
     await _runSaveWithPopups(
@@ -3933,7 +4002,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (_employeesLoading) {
           _failSave('กำลังโหลดรายชื่อพนักงาน — รอสักครู่แล้วลองใหม่');
         }
-        final present = <String>{...drvMacro, ...drvDrum};
+        final sessionEmp = _attendanceEmpIdsFromSessions({
+          AttendanceSessionTimes.roleMacro,
+          AttendanceSessionTimes.roleDrum,
+        });
+        final present = <String>{...drvMacro, ...drvDrum, ...sessionEmp};
         if (present.isEmpty && drvLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
@@ -3947,31 +4020,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           date: date,
           baseTs: baseTs,
           savingSand: false,
-          sandPresent: {...work, ...halfM, ...halfA},
+          sandPresent: work,
           sandLeave: genLeave,
           sandWork: work,
-          sandHalfM: halfM,
-          sandHalfA: halfA,
           drvMacro: drvMacro,
           drvDrum: drvDrum,
           drvLeave: drvLeave,
         );
 
         if (present.isNotEmpty) {
-          final workType = <String, String>{};
-          for (final id in drvMacro) {
-            workType[id] = 'FullDay';
-          }
-          for (final id in drvDrum) {
-            workType[id] = 'FullDay';
-          }
-          final assignments = <String, List<String>>{};
-          void put(String key, Set<String> s) {
-            if (s.isNotEmpty) assignments[key] = s.toList();
-          }
-
-          put('macro_driver', drvMacro);
-          put('drum', drvDrum);
+          final workType = <String, String>{
+            for (final id in present) id: 'FullDay',
+          };
+          final assignments = _attendanceBuildTimedAssignments(
+            inBoxByRole: {
+              AttendanceSessionTimes.roleMacro: drvMacro,
+              AttendanceSessionTimes.roleDrum: drvDrum,
+            },
+            sessionRoles: {
+              AttendanceSessionTimes.roleMacro,
+              AttendanceSessionTimes.roleDrum,
+            },
+          );
           final id = _attendanceDriverLaborTxId ??
               _attendanceLegacyLaborTxId ??
               '${baseTs}_att_drv';
@@ -4059,8 +4129,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required Set<String> sandPresent,
     required Set<String> sandLeave,
     Set<String> sandWork = const {},
-    Set<String> sandHalfM = const {},
-    Set<String> sandHalfA = const {},
     required Set<String> drvMacro,
     required Set<String> drvDrum,
     required Set<String> drvLeave,
@@ -4070,15 +4138,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (legacyLabor == null && legacyLeave == null) return;
 
     if (savingSand) {
-      final otherPresent = <String>{...drvMacro, ...drvDrum};
+      final otherPresent = <String>{
+        ...drvMacro,
+        ...drvDrum,
+        ..._attendanceEmpIdsFromSessions({
+          AttendanceSessionTimes.roleMacro,
+          AttendanceSessionTimes.roleDrum,
+        }),
+      };
       if (_attendanceDriverLaborTxId == null && otherPresent.isNotEmpty) {
-        final workType = <String, String>{};
-        for (final id in otherPresent) {
-          workType[id] = 'FullDay';
-        }
-        final assignments = <String, List<String>>{};
-        if (drvMacro.isNotEmpty) assignments['macro_driver'] = drvMacro.toList();
-        if (drvDrum.isNotEmpty) assignments['drum'] = drvDrum.toList();
+        final workType = <String, String>{
+          for (final id in otherPresent) id: 'FullDay',
+        };
+        final assignments = _attendanceBuildTimedAssignments(
+          inBoxByRole: {
+            AttendanceSessionTimes.roleMacro: drvMacro,
+            AttendanceSessionTimes.roleDrum: drvDrum,
+          },
+          sessionRoles: {
+            AttendanceSessionTimes.roleMacro,
+            AttendanceSessionTimes.roleDrum,
+          },
+        );
         final id = '${baseTs}_att_drv_mig';
         _attendanceDriverLaborTxId = id;
         await _persist(
@@ -4123,31 +4204,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
       }
     } else {
-      final otherPresent = sandPresent;
+      final work = sandWork.isNotEmpty
+          ? sandWork
+          : _attendanceAssignments['att_work']!.toSet();
+      final otherPresent = <String>{
+        ...sandPresent,
+        ..._attendanceEmpIdsFromSessions({AttendanceSessionTimes.roleWork}),
+      };
       if (_attendanceLaborTxId == null && otherPresent.isNotEmpty) {
-        final work = sandWork.isNotEmpty
-            ? sandWork
-            : _attendanceAssignments['att_work']!.toSet();
-        final halfM = sandHalfM.isNotEmpty
-            ? sandHalfM
-            : _attendanceAssignments['att_half_morning']!.toSet();
-        final halfA = sandHalfA.isNotEmpty
-            ? sandHalfA
-            : _attendanceAssignments['att_half_afternoon']!.toSet();
-        final workType = <String, String>{};
-        for (final id in work) {
-          workType[id] = 'FullDay';
-        }
-        for (final id in halfM) {
-          workType[id] = 'HalfDay';
-        }
-        for (final id in halfA) {
-          workType[id] = 'HalfDay';
-        }
-        final assignments = <String, List<String>>{};
-        if (work.isNotEmpty) assignments['work'] = work.toList();
-        if (halfM.isNotEmpty) assignments['half:morning'] = halfM.toList();
-        if (halfA.isNotEmpty) assignments['half:afternoon'] = halfA.toList();
+        final workType = <String, String>{
+          for (final id in otherPresent) id: 'FullDay',
+        };
+        final assignments = _attendanceBuildTimedAssignments(
+          inBoxByRole: {AttendanceSessionTimes.roleWork: work},
+          sessionRoles: {AttendanceSessionTimes.roleWork},
+        );
         final id = '${baseTs}_att_sand_mig';
         _attendanceLaborTxId = id;
         await _persist(
@@ -12457,6 +12528,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return _attDriverIds;
   }
 
+  void _attendanceApplyTimedEnter(String bucketId, String empId) {
+    final role = AttendanceSessionTimes.roleForBucket(bucketId);
+    final now = _attendanceNowHHmm();
+    if (role == null) {
+      // ลางาน — ปิดเซสชันงานที่เปิดอยู่
+      _attendanceSessions = AttendanceSessionTimes.closeOpenForEmp(
+        sessions: _attendanceSessions,
+        empId: empId,
+        roles: AttendanceSessionTimes.timedRoles,
+        endHHmm: now,
+      );
+      return;
+    }
+    _attendanceSessions = AttendanceSessionTimes.openSession(
+      sessions: _attendanceSessions,
+      role: role,
+      empId: empId,
+      startHHmm: now,
+    );
+  }
+
+  void _attendanceApplyTimedLeave(String bucketId, String empId) {
+    final role = AttendanceSessionTimes.roleForBucket(bucketId);
+    if (role == null) return;
+    _attendanceSessions = AttendanceSessionTimes.closeOpenForEmp(
+      sessions: _attendanceSessions,
+      empId: empId,
+      roles: {role},
+      endHHmm: _attendanceNowHHmm(),
+    );
+  }
+
   void _attendanceAssignEmp(
     String bucketId,
     String empId,
@@ -12471,6 +12574,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _attendanceBucketExpanded[bucketId] = true;
       pickedPool.remove(empId);
       _attendanceJustDroppedIds.add(empId);
+      _attendanceApplyTimedEnter(bucketId, empId);
     });
     Future<void>.delayed(const Duration(milliseconds: 420), () {
       if (!mounted) return;
@@ -12481,10 +12585,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   void _attendanceRemoveEmp(String bucketId, String empId) {
     AppHaptics.tap();
     setState(() {
+      _attendanceApplyTimedLeave(bucketId, empId);
       _attendanceAssignments[bucketId]?.remove(empId);
       if (_attendanceAssignments[bucketId]?.isEmpty ?? true) {
         _attendanceBucketExpanded[bucketId] = false;
       }
+    });
+  }
+
+  void _attendanceDeleteClosedSession(int index) {
+    AppHaptics.tap();
+    setState(() {
+      _attendanceSessions = AttendanceSessionTimes.removeSessionAt(
+        sessions: _attendanceSessions,
+        index: index,
+      );
     });
   }
 
@@ -12500,6 +12615,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         _attendanceAssignments[bucketId]?.add(empId);
         _attendanceJustDroppedIds.add(empId);
+        _attendanceApplyTimedEnter(bucketId, empId);
       }
       _attendanceBucketExpanded[bucketId] = true;
       pickedPool.clear();
@@ -12514,6 +12630,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  String _attendanceActiveChipLabel(String empId, String bucketId) {
+    final emp = _employeesById[empId];
+    final name = emp == null ? empId : _employeeUiDisplayName(emp);
+    final role = AttendanceSessionTimes.roleForBucket(bucketId);
+    if (role == null) return name;
+    for (final s in _attendanceSessions) {
+      if (s.role == role && s.empId == empId && s.isOpen) {
+        return '$name · ${s.labelRange}';
+      }
+    }
+    return name;
+  }
+
   /// ช่องดรอปย่อยในการ์ดเช็คชื่อ (ว่าง = แสดง label, มีคน = ชิป)
   Widget _attendanceZone(
     _AttZoneDef z,
@@ -12522,7 +12651,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool expand = false,
   }) {
     final ids = _attendanceAssignments[z.bucketId] ?? <String>{};
+    final role = AttendanceSessionTimes.roleForBucket(z.bucketId);
+    final closedIndexes = <int>[];
+    if (role != null) {
+      for (var i = 0; i < _attendanceSessions.length; i++) {
+        final s = _attendanceSessions[i];
+        if (s.role == role && !s.isOpen) closedIndexes.add(i);
+      }
+    }
     final canMove = pickedPool.isNotEmpty;
+    final hasContent = ids.isNotEmpty || closedIndexes.isNotEmpty;
     final Widget body = DragTarget<String>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (d) =>
@@ -12553,7 +12691,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   width: hovering ? 1.6 : 1,
                 ),
               ),
-              child: ids.isEmpty
+              child: !hasContent
                   ? Center(
                       child: Text(
                         z.subLabel ?? 'วางที่นี่',
@@ -12569,6 +12707,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ids: ids,
                       color: color,
                       bucketId: z.bucketId,
+                      closedIndexes: closedIndexes,
                       scrollable: expand,
                     ),
             ),
@@ -12586,15 +12725,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required Set<String> ids,
     required Color color,
     required String bucketId,
+    required List<int> closedIndexes,
     required bool scrollable,
   }) {
-    final chips = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: ids.map((empId) {
-        final emp = _employeesById[empId];
-        final label = emp == null ? empId : _employeeUiDisplayName(emp);
-        return LongPressDraggable<String>(
+    final chips = <Widget>[];
+    for (final empId in ids) {
+      final label = _attendanceActiveChipLabel(empId, bucketId);
+      chips.add(
+        LongPressDraggable<String>(
           data: empId,
           delay: _attDragDelay,
           onDragStarted: () => AppHaptics.tap(),
@@ -12632,7 +12770,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           child: AnimatedScale(
             scale: _attendanceJustDroppedIds.contains(empId) ? 1.08 : 1.0,
             duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutBack,
+            curve: Curves.easeOutCubic,
             child: InputChip(
               labelPadding: const EdgeInsets.symmetric(horizontal: 8),
               padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
@@ -12647,17 +12785,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onDeleted: () => _attendanceRemoveEmp(bucketId, empId),
             ),
           ),
-        );
-      }).toList(),
-    );
-    if (!scrollable) return chips;
+        ),
+      );
+    }
+    for (final index in closedIndexes) {
+      final s = _attendanceSessions[index];
+      final emp = _employeesById[s.empId];
+      final name = emp == null ? s.empId : _employeeUiDisplayName(emp);
+      final label = '$name · ${s.labelRange}';
+      chips.add(
+        InputChip(
+          labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+          avatar: Icon(Icons.schedule_rounded, size: 18, color: color),
+          label: Text(
+            label,
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: const Color(0xFF334155),
+            ),
+          ),
+          backgroundColor: color.withValues(alpha: 0.10),
+          deleteIcon: const Icon(Icons.close_rounded, size: 18),
+          onDeleted: () => _attendanceDeleteClosedSession(index),
+        ),
+      );
+    }
+    final wrap = Wrap(spacing: 8, runSpacing: 8, children: chips);
+    if (!scrollable) return wrap;
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      child: chips,
+      child: wrap,
     );
   }
 
-  /// การ์ดกลุ่ม (ทำงาน / ครึ่งวัน / ลางาน / แม็คโคร / ดรัม)
+  /// การ์ดกลุ่ม (ทำงาน / ลางาน / แม็คโคร / ดรัม)
   Widget _attendanceGroupedCard({
     required String title,
     required Color color,
@@ -12975,16 +13138,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildAttendanceFormCard() {
     // หน้าเลือกเมนูย่อย — กระดานเต็มจออยู่ที่ _buildAttendanceFullscreenShell
     final workN = _attendanceAssignments['att_work']?.length ?? 0;
-    final halfN = (_attendanceAssignments['att_half_morning']?.length ?? 0) +
-        (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
     final leaveN = _attendanceAssignments['att_leave']?.length ?? 0;
     final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
     final drumN = _attendanceAssignments['att_drv_drum']?.length ?? 0;
     final drvLeaveN = _attendanceAssignments['att_drv_leave']?.length ?? 0;
 
-    final sandSummary = workN + halfN + leaveN == 0
+    final sandSummary = workN + leaveN == 0
         ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
-        : 'ทำงาน $workN · ครึ่งวัน $halfN · ลา $leaveN';
+        : 'ทำงาน $workN · ลา $leaveN';
     final driverSummary = macroN + drumN + drvLeaveN == 0
         ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
         : 'แม็คโคร $macroN · ดรัม $drumN · ลา $drvLeaveN';
@@ -13032,11 +13193,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _attendanceBoardSummary(AttendanceSection section) {
     if (section == AttendanceSection.sandYard) {
       final work = _attendanceAssignments['att_work']?.length ?? 0;
-      final half =
-          (_attendanceAssignments['att_half_morning']?.length ?? 0) +
-          (_attendanceAssignments['att_half_afternoon']?.length ?? 0);
       final leave = _attendanceAssignments['att_leave']?.length ?? 0;
-      return 'ทำงาน $work · ครึ่งวัน $half · ลา $leave';
+      return 'ทำงาน $work · ลา $leave';
     }
     final macro = _attendanceAssignments['att_drv_macro']?.length ?? 0;
     final drum = _attendanceAssignments['att_drv_drum']?.length ?? 0;
@@ -13178,24 +13336,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       ..sort(_compareAttendancePoolOrder);
 
     const workColor = Color(0xFF2FB6A6);
-    const halfColor = Color(0xFF3B9AE1);
     const leaveColor = Color(0xFFEF5D6E);
     const poolAccent = Color(0xFF7C4DFF);
 
     final workCard = _attendanceGroupedCard(
       title: '#ทำงาน',
       color: workColor,
-      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'ทำงานเต็มวัน')],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
-    );
-    final halfCard = _attendanceGroupedCard(
-      title: '#ครึ่งวัน',
-      color: halfColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_half_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(bucketId: 'att_half_afternoon', subLabel: 'ช่วงบ่าย'),
-      ],
+      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'วางชื่อที่นี่')],
       pickedPool: _attendanceGeneralPicked,
       equalHeightZones: true,
     );
@@ -13223,12 +13370,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _AttBoardCard(
           child: workCard,
           height: _attWorkCardHeight,
-          flex: 2,
+          flex: 3,
           onResize: _resizeAttWorkCard,
           onResizeEnd: _saveAttWorkCardHeight,
         ),
-        _AttBoardCard(child: halfCard, height: 260),
-        _AttBoardCard(child: leaveCard, height: 220),
+        _AttBoardCard(child: leaveCard, height: 220, flex: 2),
       ],
     );
   }
