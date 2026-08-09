@@ -365,6 +365,8 @@ class _FuelModeOption extends StatelessWidget {
             ],
           );
 
+    // IntrinsicHeight ให้ Row+stretch มีความสูงชัดใน ListView (unbounded)
+    // — ไม่งั้น release การ์ดยุบ/กดไม่ได้
     return SoftPressButton(
       onTap: onTap,
       size: SoftPressSize.large,
@@ -386,24 +388,26 @@ class _FuelModeOption extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(22),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 4, color: accent),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: vertical
-                        ? (isTablet ? 12 : 10)
-                        : (isTablet ? 18 : 14),
-                    vertical: vertical
-                        ? (isTablet ? 14 : 10)
-                        : (isTablet ? 16 : 13),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 4, color: accent),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: vertical
+                          ? (isTablet ? 12 : 10)
+                          : (isTablet ? 18 : 14),
+                      vertical: vertical
+                          ? (isTablet ? 14 : 10)
+                          : (isTablet ? 16 : 13),
+                    ),
+                    child: body,
                   ),
-                  child: body,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
