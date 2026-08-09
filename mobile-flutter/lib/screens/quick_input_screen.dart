@@ -902,6 +902,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _startPollFallback() {
     _pollFallbackTimer?.cancel();
+    // ลางานดึงธุรกรรมทั้งก้อน — ไม่ poll ทุก 12 วิ (พึ่ง realtime + resume)
+    if (_isLaborLeaveMode) return;
     _pollFallbackTimer = Timer.periodic(_pollFallbackInterval, (_) {
       if (!mounted || _saving || _hasUnsavedModuleChanges) return;
       if (widget.serverOnlineHint == false) return;
@@ -1345,7 +1347,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (!mounted || !isCurrentLoad()) return;
-    if (_moduleDayTransactions.isEmpty) {
+    // มีข้อมูลแล้ว → รีเฟรชเงียบ ไม่โชว์ «กำลังโหลดข้อมูล» / ไม่ซ่อนประวัติ
+    final hasCachedModule = cat == 'ลางาน'
+        ? _moduleDayAllTransactions.isNotEmpty
+        : _moduleDayTransactions.isNotEmpty;
+    if (!hasCachedModule) {
       setState(() {
         _moduleDayLoading = true;
         _moduleHistoryVisible = false;
@@ -1354,15 +1360,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
         _clearModuleFormFields();
       }
-    } else {
-      if (!mounted || !isCurrentLoad()) return;
-      setState(() => _moduleDayLoading = true);
     }
     if (!mounted || !isCurrentLoad()) return;
 
     try {
+      // ลางานไม่ forceServer ตลอด — เฉพาะเมื่อ forceRefresh (realtime/resume/ผู้ใช้ดึง)
       final forceServer = forceRefresh ||
-          cat == 'ลางาน' ||
           cat == 'จำนวนเที่ยวรถ' ||
           cat == 'การใช้รถแม็คโคร' ||
           cat.toUpperCase().contains('OT');
@@ -4250,6 +4253,67 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
+  /// ครึ่งวันจาก workDetails ของรายการลา (`leave_half:morning|afternoon`)
+  String? _leaveHalfPartFromTx(AppTransaction t) {
+    final wd = (t.workDetails ?? '').trim();
+    if (wd.contains(_leaveHalfMorningMeta)) return 'morning';
+    if (wd.contains(_leaveHalfAfternoonMeta)) return 'afternoon';
+    final days = t.leaveDays;
+    if (days != null && (days - 0.5).abs() < 1e-6) {
+      // ครึ่งวันเก่าไม่มี meta — ถือว่าซ้อนกับครึ่งใดก็ได้
+      return 'any';
+    }
+    return null;
+  }
+
+  /// ตรวจคนเดิมมีช่วงลาซ้อนกับรายการใหม่ — คืนข้อความ error หรือ null
+  String? _leaveOverlapConflictMessage({
+    required List<String> empIds,
+    required DateTime start,
+    required DateTime end,
+    required bool isHalfDay,
+    required String halfPart,
+    String? excludeTxId,
+  }) {
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    if (endDay.isBefore(startDay)) return null;
+
+    final sources = _moduleDayAllTransactions.isNotEmpty
+        ? _moduleDayAllTransactions
+        : _moduleDayTransactions;
+
+    for (final empId in empIds) {
+      final emp = _employeesById[empId];
+      final name = emp != null ? _employeeUiDisplayName(emp) : empId;
+      for (var d = startDay;
+          !d.isAfter(endDay);
+          d = d.add(const Duration(days: 1))) {
+        final ymd = _quickYmd(d);
+        for (final t in sources) {
+          if (excludeTxId != null && t.id == excludeTxId) continue;
+          if (!t.employeeIds.contains(empId)) continue;
+          if (!laborLeaveCoversCalendarDay(t, ymd)) continue;
+
+          final existingHalf = _leaveHalfPartFromTx(t);
+          if (isHalfDay) {
+            // คนละครึ่งของวันเดียวกันได้
+            if (existingHalf != null &&
+                existingHalf != 'any' &&
+                existingHalf != halfPart) {
+              continue;
+            }
+          } else if (existingHalf != null && existingHalf != 'any') {
+            // ลาเต็มวันซ้อนครึ่งวัน → บล็อก
+          }
+
+          return 'มีรายการลาของ $name ครอบคลุมวันที่ ${_formatDate(d)} แล้ว — ไม่บันทึกซ้ำ';
+        }
+      }
+    }
+    return null;
+  }
+
   Future<void> _saveLaborLeaveEntry() async {
     // เก็บค่าก่อน async — โหลดรายการวันอาจล้าง controller ระหว่างลายเซ็น/บันทึก
     final leaveEmpIds = _selectedLeaveEmpIds.toList();
@@ -4304,6 +4368,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
         } else if (days <= 0) {
           _failSave('กรุณาเลือกช่วงวันลาให้ถูกต้อง', field: 'ช่วงวันลา');
+        }
+        final overlap = _leaveOverlapConflictMessage(
+          empIds: leaveEmpIds,
+          start: leaveStartDate,
+          end: leaveIsHalfDay ? leaveStartDate : leaveEndDate,
+          isHalfDay: leaveIsHalfDay,
+          halfPart: leaveHalfPart,
+          excludeTxId: existingLeaveTxId,
+        );
+        if (overlap != null) {
+          _failSave(overlap, field: 'ช่วงวันลา');
         }
         final effectiveDays = leaveIsHalfDay ? 0.5 : days;
         final halfTh = leaveIsHalfDay
@@ -4681,23 +4756,102 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _leaveDaysController.text = '$_leaveRangeDays';
   }
 
-  /// เลือกช่วงวันลาจากปฏิทิน — ลาวันเดียวก็แตะวันเดิมซ้ำได้
+  /// เลือกช่วงวันลาจากปฏิทิน — แสดงเฉพาะเดือนปัจจุบัน + ตัวอักษรใหญ่
   Future<void> _pickLeaveDateRange() async {
     final now = DateTime.now();
-    final first = DateTime(2020);
-    final last = DateTime(now.year + 1, now.month, now.day);
+    final first = DateTime(now.year, now.month, 1);
+    final last = DateTime(now.year, now.month + 1, 0);
+    DateTime clampDay(DateTime d) {
+      final day = DateTime(d.year, d.month, d.day);
+      if (day.isBefore(first)) return first;
+      if (day.isAfter(last)) return last;
+      return day;
+    }
+
+    var rangeStart = clampDay(_leaveStartDate);
+    var rangeEnd = clampDay(
+      _leaveEndDate.isBefore(_leaveStartDate) ? _leaveStartDate : _leaveEndDate,
+    );
+    if (rangeEnd.isBefore(rangeStart)) rangeEnd = rangeStart;
+
     final picked = await showDateRangePicker(
       context: context,
-      initialDateRange: DateTimeRange(
-        start: _leaveStartDate,
-        end: _leaveEndDate.isBefore(_leaveStartDate)
-            ? _leaveStartDate
-            : _leaveEndDate,
-      ),
+      initialDateRange: DateTimeRange(start: rangeStart, end: rangeEnd),
       firstDate: first,
       lastDate: last,
-      helpText: 'เลือกวันเริ่มลา — วันสุดท้าย',
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      helpText: 'เลือกวันเริ่มลา — วันสุดท้าย (เดือนนี้)',
       saveText: 'ตกลง',
+      builder: (context, child) {
+        final base = Theme.of(context);
+        return Theme(
+          data: base.copyWith(
+            textTheme: base.textTheme.copyWith(
+              bodyLarge: GoogleFonts.kanit(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              bodyMedium: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+              titleLarge: GoogleFonts.kanit(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+              titleSmall: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              labelLarge: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: Colors.white,
+              headerHeadlineStyle: GoogleFonts.kanit(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A2433),
+              ),
+              headerHelpStyle: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF64748B),
+              ),
+              weekdayStyle: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF64748B),
+              ),
+              dayStyle: GoogleFonts.kanit(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A2433),
+              ),
+              rangeSelectionBackgroundColor:
+                  const Color(0xFF1565C0).withValues(alpha: 0.16),
+              todayForegroundColor: const WidgetStatePropertyAll(
+                Color(0xFF1565C0),
+              ),
+              dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.white;
+                }
+                return const Color(0xFF1A2433);
+              }),
+              dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFF1565C0);
+                }
+                return null;
+              }),
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
     if (picked == null || !mounted) return;
     setState(() {
