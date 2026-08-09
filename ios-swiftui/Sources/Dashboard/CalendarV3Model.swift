@@ -39,12 +39,16 @@ struct CalendarDayModel: Identifiable, Sendable {
     let machineLogs: [Transaction]
     let sandLogs: [Transaction]
     let eventLogs: [Transaction]
+    /// Count-record activity for the day (same marks as Realtime focus calendar).
+    let opsMark: CountRecordLogic.DayOpsMark
 
     var net: Double { income - expense }
     var hasFinance: Bool { income > 0 || expense > 0 }
     var hasHoliday: Bool { calendarRows.contains { $0.subCategory == "Holiday" } }
     var hasAppointment: Bool { calendarRows.contains { $0.subCategory == "Appointment" } }
     var hasReminder: Bool { calendarRows.contains { $0.subCategory == "Reminder" } }
+    var hasTripOps: Bool { opsMark == .tripOnly || opsMark == .both }
+    var hasSandOps: Bool { opsMark == .sandOnly || opsMark == .both }
 }
 
 enum CalendarV3Logic {
@@ -142,6 +146,11 @@ enum CalendarV3Logic {
         let roster = employees.filter(\.isHomeAttendancePool)
         let rosterIds = Set(roster.map(\.id))
         let totalEmployees = roster.count
+        let opsMarks = CountRecordLogic.dayOpsMarks(
+            inMonth: first,
+            transactions: transactions,
+            employees: employees
+        )
 
         return range.map { d in
             let dateStr = String(format: "%04d-%02d-%02d", year, month, d)
@@ -213,7 +222,8 @@ enum CalendarV3Logic {
                 financeTransactions: financeTrans,
                 machineLogs: machineLogs,
                 sandLogs: sandLogs,
-                eventLogs: eventLogs
+                eventLogs: eventLogs,
+                opsMark: opsMarks[dateStr] ?? .none
             )
         }
     }

@@ -20,6 +20,9 @@ struct CalendarV3View: View {
     private let weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]
     private let weekdayLabelsFull = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"]
 
+    private static let tripOpsColor = Color(hex: "#2563EB")
+    private static let sandOpsColor = Color(hex: "#DB2777")
+
     private var days: [CalendarDayModel] {
         CalendarV3Logic.buildDays(visibleMonth: visibleMonth, transactions: transactions, employees: employees)
     }
@@ -30,6 +33,8 @@ struct CalendarV3View: View {
     private var daysWithFinance: Int { days.filter(\.hasFinance).count }
     private var holidayDays: Int { days.filter(\.hasHoliday).count }
     private var attendanceDays: Int { days.filter { $0.presentCount > 0 || $0.leaveCount > 0 }.count }
+    private var tripOpsDays: Int { days.filter(\.hasTripOps).count }
+    private var sandOpsDays: Int { days.filter(\.hasSandOps).count }
 
     private var monthCategorySlices: [LedgerCategoryBucket] {
         let monthKeys = Set(days.map(\.date))
@@ -47,7 +52,12 @@ struct CalendarV3View: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: visibleMonth)
         .sheet(item: selectedDayBinding) { day in
-            DayDetailSheet(day: day, onClose: { selectedDay = nil })
+            DayDetailSheet(
+                day: day,
+                employees: employees,
+                transactions: transactions,
+                onClose: { selectedDay = nil }
+            )
         }
     }
 
@@ -59,61 +69,38 @@ struct CalendarV3View: View {
                 colors: [
                     Color(hex: "#042F36"),
                     AppTheme.brandDark,
-                    AppTheme.brand,
-                    AppTheme.cyan.opacity(0.72)
+                    AppTheme.brand
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color.white.opacity(0.12))
-                .frame(width: 170, height: 170)
-                .blur(radius: 28)
-                .offset(x: 220, y: -50)
-            Circle()
-                .fill(AppTheme.cyan.opacity(0.2))
-                .frame(width: 100, height: 100)
-                .blur(radius: 22)
-                .offset(x: -20, y: 110)
+                .fill(Color.white.opacity(0.1))
+                .frame(width: 140, height: 140)
+                .blur(radius: 24)
+                .offset(x: 210, y: -40)
 
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("OPS CALENDAR")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1.6)
-                        }
-                        .foregroundStyle(.white.opacity(0.7))
+            VStack(alignment: .leading, spacing: 14) {
+                Text(monthTitle)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
 
-                        Text("ปฏิทินการทำงาน")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text("แตะวันเพื่อดูแดชบอร์ดรายวัน · สรุปเดือนอยู่ด้านล่าง")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.68))
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "calendar")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 42, height: 42)
-                        .background(Circle().fill(Color.white.opacity(0.16)))
-                        .accessibilityHidden(true)
-                }
+                Text("แตะวันเพื่อดูสรุป · จุดฟ้า = เที่ยวรถ · จุดชมพู = ร่อนทราย")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
 
                 monthNavigation
             }
-            .padding(20)
+            .padding(18)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
+        .shadow(color: AppTheme.brand.opacity(0.28), radius: 14, y: 6)
     }
 
     // MARK: - Month navigation
@@ -126,25 +113,20 @@ struct CalendarV3View: View {
             .buttonStyle(.plain)
             .accessibilityLabel("เดือนก่อน")
 
-            VStack(spacing: 4) {
-                Text(monthTitle)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if !isCurrentMonth {
-                    Button { goThisMonth() } label: {
-                        Text("กลับเดือนนี้")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.white.opacity(0.18)))
-                    }
-                    .buttonStyle(.plain)
+            if !isCurrentMonth {
+                Button { goThisMonth() } label: {
+                    Text("เดือนนี้")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.18)))
                 }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            } else {
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
 
             Button { shiftMonth(1) } label: {
                 navCircle("chevron.right")
@@ -165,18 +147,10 @@ struct CalendarV3View: View {
     // MARK: - Calendar card
 
     private var calendarCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ตารางเดือน")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("เขียว = รายรับสุทธิ · แดง = รายจ่ายสุทธิ")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.inkMuted)
-                }
-                Spacer(minLength: 0)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ตารางเดือน")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
 
             legendStrip
             calendarGrid
@@ -194,12 +168,19 @@ struct CalendarV3View: View {
     }
 
     private var legendStrip: some View {
-        HStack(spacing: 10) {
-            legendChip(color: AppTheme.income, label: "รายรับสุทธิ")
-            legendChip(color: AppTheme.expense, label: "รายจ่ายสุทธิ")
-            legendChip(color: AppTheme.purple, label: "นัดหมาย")
-            legendChip(color: AppTheme.expense, label: "วันหยุด", systemImage: "party.popper")
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                legendChip(color: AppTheme.income, label: "รายรับ")
+                legendChip(color: AppTheme.expense, label: "รายจ่าย")
+                legendChip(color: AppTheme.purple, label: "นัดหมาย")
+                legendChip(color: AppTheme.expense, label: "วันหยุด")
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 10) {
+                legendChip(color: Self.tripOpsColor, label: "เที่ยวรถ")
+                legendChip(color: Self.sandOpsColor, label: "ร่อนทราย")
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -236,7 +217,7 @@ struct CalendarV3View: View {
             LazyVGrid(columns: columns, spacing: 4) {
                 ForEach(0..<leading, id: \.self) { i in
                     Color.clear
-                        .frame(minHeight: 62)
+                        .frame(minHeight: 68)
                         .id("blank-\(i)")
                         .accessibilityHidden(true)
                 }
@@ -265,7 +246,7 @@ struct CalendarV3View: View {
             withAnimation(.snappy(duration: 0.2)) { selectedDay = day.date }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top, spacing: 2) {
                     Text("\(day.day)")
                         .font(.system(size: 14, weight: isToday || isSelected ? .bold : .semibold))
@@ -277,6 +258,8 @@ struct CalendarV3View: View {
                     Spacer(minLength: 0)
                     indicatorDots(day, onSelected: isSelected)
                 }
+                opsMarkDots(day.opsMark, onSelected: isSelected)
+                    .frame(height: 6)
                 Spacer(minLength: 0)
                 if day.hasFinance {
                     Text(compactNet(day.net))
@@ -288,7 +271,7 @@ struct CalendarV3View: View {
                 }
             }
             .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(isSelected ? AppTheme.brand : style.background)
@@ -298,8 +281,8 @@ struct CalendarV3View: View {
                     .strokeBorder(
                         isSelected
                             ? Color.clear
-                            : (isToday ? AppTheme.brand.opacity(0.55) : style.border),
-                        lineWidth: isToday && !isSelected ? 1.5 : (day.hasFinance ? 1 : 0)
+                            : (isToday ? AppTheme.brand.opacity(0.7) : style.border),
+                        lineWidth: isToday && !isSelected ? 1.8 : (day.hasFinance || day.opsMark != .none ? 1 : 0)
                     )
             )
         }
@@ -327,8 +310,24 @@ struct CalendarV3View: View {
         .frame(height: 5)
     }
 
-    private func microDot(_ color: Color) -> some View {
-        Circle().fill(color).frame(width: 4, height: 4)
+    private func opsMarkDots(_ mark: CountRecordLogic.DayOpsMark, onSelected: Bool) -> some View {
+        HStack(spacing: 3) {
+            switch mark {
+            case .none:
+                Color.clear.frame(width: 5, height: 5)
+            case .tripOnly:
+                microDot(onSelected ? .white : Self.tripOpsColor, size: 5)
+            case .sandOnly:
+                microDot(onSelected ? .white : Self.sandOpsColor, size: 5)
+            case .both:
+                microDot(onSelected ? .white : Self.tripOpsColor, size: 5)
+                microDot(onSelected ? .white.opacity(0.85) : Self.sandOpsColor, size: 5)
+            }
+        }
+    }
+
+    private func microDot(_ color: Color, size: CGFloat = 4) -> some View {
+        Circle().fill(color).frame(width: size, height: size)
     }
 
     private func accessibilityLabel(_ day: CalendarDayModel) -> String {
@@ -339,6 +338,12 @@ struct CalendarV3View: View {
         if day.hasAppointment { parts.append("มีนัดหมาย") }
         if day.presentCount > 0 { parts.append("มาทำงาน \(day.presentCount)") }
         if day.leaveCount > 0 { parts.append("ลา \(day.leaveCount)") }
+        switch day.opsMark {
+        case .none: break
+        case .tripOnly: parts.append("มีเที่ยวรถ")
+        case .sandOnly: parts.append("มีร่อนทราย")
+        case .both: parts.append("มีเที่ยวรถและร่อนทราย")
+        }
         return parts.joined(separator: ", ")
     }
 
@@ -399,6 +404,11 @@ struct CalendarV3View: View {
                 miniStat(title: "วันในเดือน", value: "\(days.count)")
             }
 
+            HStack(spacing: 8) {
+                miniStat(title: "วันมีเที่ยวรถ", value: "\(tripOpsDays)", accent: Self.tripOpsColor)
+                miniStat(title: "วันมีร่อนทราย", value: "\(sandOpsDays)", accent: Self.sandOpsColor)
+            }
+
             if !monthCategorySlices.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("แยกตามหมวด")
@@ -452,11 +462,11 @@ struct CalendarV3View: View {
         )
     }
 
-    private func miniStat(title: String, value: String) -> some View {
+    private func miniStat(title: String, value: String, accent: Color? = nil) -> some View {
         VStack(spacing: 3) {
             Text(value)
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(accent ?? AppTheme.ink)
             Text(title)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(AppTheme.inkMuted)
@@ -465,7 +475,11 @@ struct CalendarV3View: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppTheme.surfaceSoft)
+                .fill(accent?.opacity(0.1) ?? AppTheme.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder((accent ?? Color.clear).opacity(0.25), lineWidth: accent == nil ? 0 : 1)
         )
     }
 
@@ -524,15 +538,20 @@ struct CalendarV3View: View {
     }
 
     private func shiftMonth(_ delta: Int) {
-        visibleMonth = DashboardAggregations.gregorian.date(byAdding: .month, value: delta, to: visibleMonth) ?? visibleMonth
-        selectedDay = nil
+        let next = DashboardAggregations.gregorian.date(byAdding: .month, value: delta, to: visibleMonth) ?? visibleMonth
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            visibleMonth = next
+            selectedDay = nil
+        }
     }
 
     private func goThisMonth() {
         let cal = DashboardAggregations.gregorian
         let comps = cal.dateComponents([.year, .month], from: Date())
-        visibleMonth = cal.date(from: comps) ?? Date()
-        selectedDay = nil
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            visibleMonth = cal.date(from: comps) ?? Date()
+            selectedDay = nil
+        }
     }
 }
 
@@ -649,10 +668,26 @@ private struct LedgerCategoryBucket: Identifiable {
 
 private struct DayDetailSheet: View {
     let day: CalendarDayModel
+    let employees: [Employee]
     let onClose: () -> Void
+
+    private static let tripOpsColor = Color(hex: "#2563EB")
+    private static let sandOpsColor = Color(hex: "#DB2777")
 
     private var ledgerBuckets: [LedgerCategoryBucket] {
         LedgerCategoryBucket.group(day.financeTransactions)
+    }
+
+    private var tripUnits: [CountRecordTripUnit] {
+        CountRecordLogic.buildTripUnits(
+            dayKey: day.date,
+            transactions: day.financeTransactions,
+            employees: employees
+        )
+    }
+
+    private var sandUnit: CountRecordSandUnit? {
+        CountRecordLogic.buildSandUnit(dayKey: day.date, transactions: day.financeTransactions)
     }
 
     var body: some View {
@@ -660,6 +695,7 @@ private struct DayDetailSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                     header
+                    if day.opsMark != .none { realtimeOpsSection }
                     financeDashboard
                     if !day.calendarRows.isEmpty { calendarSection }
                     attendanceSection
@@ -691,21 +727,12 @@ private struct DayDetailSheet: View {
     private var header: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.75)],
+                colors: [AppTheme.brandDark, AppTheme.brand],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Circle()
-                .fill(Color.white.opacity(0.12))
-                .frame(width: 120, height: 120)
-                .blur(radius: 20)
-                .offset(x: 240, y: -30)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("DAY DASHBOARD")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundStyle(.white.opacity(0.7))
                 Text(longThaiDate(day.date))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
@@ -716,8 +743,78 @@ private struct DayDetailSheet: View {
             .padding(18)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.28), radius: 14, y: 6)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: AppTheme.brand.opacity(0.24), radius: 12, y: 5)
+    }
+
+    // MARK: Realtime ops summary
+
+    private var realtimeOpsSection: some View {
+        let trips = tripUnits
+        let tripTotal = trips.reduce(0) { $0 + $1.rounds }
+        let tripMorning = trips.reduce(0) { $0 + $1.morning }
+        let tripAfternoon = trips.reduce(0) { $0 + $1.afternoon }
+        let sand = sandUnit
+
+        return SectionCard("ปฏิบัติการวันนี้", systemImage: "wrench.and.screwdriver.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                if day.hasTripOps, tripTotal > 0 {
+                    opsSummaryCard(
+                        title: "เที่ยวรถ",
+                        icon: "truck.box.fill",
+                        tint: Self.tripOpsColor,
+                        primary: "\(trips.count) คัน · \(CountRecordLogic.formatMetric(tripTotal)) เที่ยว",
+                        secondary: "เช้า \(tripMorning) · บ่าย \(tripAfternoon)"
+                    )
+                }
+                if day.hasSandOps, let sand, sand.rounds > 0 {
+                    opsSummaryCard(
+                        title: "ร่อนทราย",
+                        icon: "drop.fill",
+                        tint: Self.sandOpsColor,
+                        primary: "\(CountRecordLogic.formatMetric(sand.rounds)) รอบ",
+                        secondary: "เช้า \(sand.morning) · บ่าย \(sand.afternoon)"
+                    )
+                }
+            }
+        }
+    }
+
+    private func opsSummaryCard(
+        title: String,
+        icon: String,
+        tint: Color,
+        primary: String,
+        secondary: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(tint))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(primary)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(secondary)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.22), lineWidth: 1)
+        )
     }
 
     // MARK: Finance KPIs
