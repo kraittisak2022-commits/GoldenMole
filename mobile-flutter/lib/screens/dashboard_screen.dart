@@ -2021,214 +2021,309 @@ class _HomeHeaderCompact extends StatelessWidget {
   final ValueChanged<AppLocale> onLocaleChanged;
 
   static const _teal = Color(0xFF0D98A5);
+  static const _tealMid = Color(0xFF0A7A88);
   static const _tealDark = Color(0xFF0A6270);
+  static const _ink = Color(0xFF142033);
+  static const _muted = Color(0xFF64748B);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final changeDayHint =
+        locale == AppLocale.zh ? '点按更改日期' : 'แตะเพื่อเปลี่ยนวัน';
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE3ECF2)),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
+            color: _teal.withValues(alpha: 0.10),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
             color: _DailyHomeContentState._kPanelShadowColor,
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            blurRadius: 14,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              height: 3,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF00C4D4), _teal],
+        borderRadius: BorderRadius.circular(24),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFFFFF), Color(0xFFF3FAFB)],
+            ),
+            border: Border.fromBorderSide(
+              BorderSide(color: Color(0xFFD7E8ED)),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: 5,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0xFF00C4D4), _teal, _tealMid],
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: _teal.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: AppLogo(size: 36),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l10n.dailyLogTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: const Color(0xFF152535),
-                                letterSpacing: -0.3,
-                                height: 1.15,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _teal.withValues(alpha: 0.22),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _teal.withValues(alpha: 0.14),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              appName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFF7A8FA0),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SegmentedButton<AppLocale>(
-                        segments: [
-                          ButtonSegment(
-                            value: AppLocale.th,
-                            label: Text(
-                              AppLocale.th.shortLabel,
-                              style: const TextStyle(fontSize: 12),
-                            ),
+                            ],
                           ),
-                          ButtonSegment(
-                            value: AppLocale.zh,
-                            label: Text(
-                              AppLocale.zh.shortLabel,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ],
-                        selected: {locale},
-                        onSelectionChanged: (next) {
-                          if (next.isEmpty) return;
-                          onLocaleChanged(next.first);
-                        },
-                        style: ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          padding: const WidgetStatePropertyAll(
-                            EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          ),
-                          minimumSize: const WidgetStatePropertyAll(
-                            Size(28, 32),
+                          child: const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: AppLogo(size: 40),
                           ),
                         ),
-                      ),
-                      SoftPressButton(
-                        onTap: () => onRefresh(),
-                        size: SoftPressSize.small,
-                        borderRadius: 11,
-                        liftWhenIdle: true,
-                        child: const Padding(
-                          padding: EdgeInsets.all(6),
-                          child: Icon(
-                            Icons.refresh_rounded,
-                            color: Color(0xFF546E7A),
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  SoftPressButton(
-                    onTap: onPickDay,
-                    size: SoftPressSize.medium,
-                    borderRadius: 16,
-                    isDarkSurface: false,
-                    liftWhenIdle: true,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [Color(0xFFE8F8FA), Color(0xFFF4FCFD)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFB8E4EA)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: _teal.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Icon(
-                                  Icons.calendar_month_rounded,
-                                  color: _teal,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                selectedDateLabel,
-                                maxLines: 2,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l10n.dailyLogTitle,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                  color: _tealDark,
-                                  height: 1.25,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 24,
+                                  color: _ink,
+                                  letterSpacing: -0.4,
+                                  height: 1.1,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Text(
+                                appName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _muted,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F8FA),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFDCE6EE),
                             ),
-                            const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: _teal,
-                              size: 24,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SegmentedButton<AppLocale>(
+                                  segments: [
+                                    ButtonSegment(
+                                      value: AppLocale.th,
+                                      label: Text(
+                                        AppLocale.th.shortLabel,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    ButtonSegment(
+                                      value: AppLocale.zh,
+                                      label: Text(
+                                        AppLocale.zh.shortLabel,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  selected: {locale},
+                                  onSelectionChanged: (next) {
+                                    if (next.isEmpty) return;
+                                    onLocaleChanged(next.first);
+                                  },
+                                  style: ButtonStyle(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: const WidgetStatePropertyAll(
+                                      EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                    ),
+                                    minimumSize: const WidgetStatePropertyAll(
+                                      Size(30, 34),
+                                    ),
+                                  ),
+                                ),
+                                SoftPressButton(
+                                  onTap: () => onRefresh(),
+                                  size: SoftPressSize.small,
+                                  borderRadius: 10,
+                                  liftWhenIdle: true,
+                                  hitPadding: EdgeInsets.zero,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(7),
+                                    child: Icon(
+                                      Icons.refresh_rounded,
+                                      color: Color(0xFF546E7A),
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SoftPressButton(
+                      onTap: onPickDay,
+                      size: SoftPressSize.medium,
+                      borderRadius: 18,
+                      isDarkSurface: false,
+                      liftWhenIdle: true,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFE6F7F9), Color(0xFFF7FCFD)],
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(0xFFA9DCE4),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _teal.withValues(alpha: 0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
                             ),
                           ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                          child: Row(
+                            children: [
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [_teal, _tealMid],
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _teal.withValues(alpha: 0.28),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(11),
+                                  child: Icon(
+                                    Icons.calendar_month_rounded,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      selectedDateLabel,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 18,
+                                        color: _tealDark,
+                                        height: 1.2,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      changeDayHint,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12.5,
+                                        color: _muted.withValues(alpha: 0.95),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: _teal,
+                                size: 28,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _HeaderStatChip(
-                        icon: Icons.access_time_filled_rounded,
-                        label: '${l10n.latestPrefix} $lastLabel',
-                      ),
-                      _LiveClockChip(l10n: l10n),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _HeaderStatChip(
+                          icon: Icons.access_time_filled_rounded,
+                          label: '${l10n.latestPrefix} $lastLabel',
+                        ),
+                        _LiveClockChip(l10n: l10n),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
