@@ -11,10 +11,10 @@ Color _iconTint(Color accent) {
 }
 
 const _cardDepthShadow = SoftPressDepthShadow(
-  color: Color(0x0A0F172A),
-  blurRadius: 8,
-  offsetY: 2,
-  pressedBlurRadius: 3,
+  color: Color(0x180F172A),
+  blurRadius: 17,
+  offsetY: 6,
+  pressedBlurRadius: 4,
   pressedOffsetY: 1,
 );
 
@@ -176,6 +176,17 @@ class RecordModuleCard extends StatelessWidget {
         final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
             DevicePerf.isConstrainedDevice;
 
+        // เครื่องช้า: SoftPress ไม่ใส่ depthShadow — ใส่เงาที่การ์ดแทนให้ยังดูนูน
+        final surfaceShadow = useLiteChrome
+            ? const [
+                BoxShadow(
+                  color: Color(0x180F172A),
+                  blurRadius: 14,
+                  offset: Offset(0, 5),
+                ),
+              ]
+            : null;
+
         final shapedCard = SizedBox(
           width: cardW,
           height: cardH,
@@ -184,6 +195,7 @@ class RecordModuleCard extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: borderColor, width: 1),
+              boxShadow: surfaceShadow,
             ),
             child: Stack(
               fit: StackFit.expand,
