@@ -128,10 +128,13 @@ class CountRecordTutorial {
   }
 
   /// แสดงครั้งแรกเมื่อเปิดเมนู (ข้ามถ้าดูแล้ว)
+  /// บันทึกทันทีที่เปิดครั้งแรก — กันโผล่ซ้ำทุกครั้งแม้กดปิดโดยไม่จบคู่มือ
   static Future<void> showIfFirstTime(BuildContext context) async {
     if (await CountRecordTutorialStore.hasCompleted()) return;
     if (!context.mounted) return;
-    await show(context);
+    await CountRecordTutorialStore.markCompleted();
+    if (!context.mounted) return;
+    await show(context, markCompleteOnFinish: false);
   }
 }
 
@@ -234,7 +237,8 @@ class _CountRecordTutorialDialogState extends State<_CountRecordTutorialDialog> 
                   const Spacer(),
                   IconButton(
                     tooltip: 'ปิด',
-                    onPressed: () => _finish(markComplete: false),
+                    onPressed: () =>
+                        _finish(markComplete: widget.markCompleteOnFinish),
                     icon: const Icon(Icons.close_rounded),
                     color: const Color(0xFF78909C),
                   ),

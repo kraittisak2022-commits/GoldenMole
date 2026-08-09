@@ -355,6 +355,10 @@ struct CountRecordTutorialView: View {
             }
             .navigationTitle("วิธีใช้")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                // จำทันทีที่เปิดครั้งแรก — กันโผล่ซ้ำทุกครั้งแม้ปัดปิดชีต
+                if markComplete { CountRecordPrefs.tutorialCompleted = true }
+            }
         }
     }
 
