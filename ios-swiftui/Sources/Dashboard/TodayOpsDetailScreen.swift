@@ -470,11 +470,15 @@ struct TodayOpsDetailScreen: View {
 
     private func macroSubtitle(_ t: Transaction) -> String {
         var parts: [String] = []
-        if let wt = t.workType, !wt.isEmpty { parts.append(wt) }
-        if let sub = t.subCategory, !sub.isEmpty { parts.append(sub) }
-        let desc = t.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !desc.isEmpty { parts.append(desc) }
-        return parts.isEmpty ? "วันนี้" : parts.joined(separator: " · ")
+        parts.append(MacroVehicleLogic.WorkType.from(raw: t.workType).label)
+        let details = MacroVehicleLogic.stripRecorderSuffix(t.workDetails ?? "")
+        let tags = MacroVehicleLogic.parseWorkTags(details)
+        if !tags.isEmpty {
+            parts.append(contentsOf: tags)
+        } else if !details.isEmpty {
+            parts.append(details)
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func fuelTitle(_ t: Transaction) -> String {

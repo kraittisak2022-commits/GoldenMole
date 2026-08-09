@@ -165,6 +165,7 @@ struct OverviewHubView: View {
                 todayHighlightCard
                 opsMetricGrid
                 drumVehiclesCard
+                macroVehiclesCard
                 periodRangeCard
                 staffCard
             }
@@ -270,18 +271,9 @@ struct OverviewHubView: View {
 
     private var todayHighlightCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("สรุปวันนี้", systemImage: "sparkles")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Spacer()
-                Text("ปฏิบัติการ")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(AppTheme.brand.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AppTheme.brand)
-            }
+            Label("สรุปวันนี้", systemImage: "sparkles")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
 
             NavigationLink {
                 CategoryReportScreen(type: .fuel)
@@ -462,7 +454,7 @@ struct OverviewHubView: View {
 
     private var opsMetricGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("งานจากแอพ · วันนี้")
+            Text("สรุปงานวันนี้")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -693,6 +685,110 @@ struct OverviewHubView: View {
         var rounds: Int
         var morning: Int
         var afternoon: Int
+    }
+
+    // MARK: - Macro vehicles
+
+    private struct MacroVehicleRow: Identifiable {
+        let id: String
+        let vehicleName: String
+        let driverLabel: String
+        let dayLabel: String
+        let workLabels: [String]
+    }
+
+    private var todayMacroVehicleRows: [MacroVehicleRow] {
+        let dayKey = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
+        let byVehicle = MacroVehicleLogic.dayRowsByVehicle(
+            dayKey: dayKey,
+            transactions: allTransactions
+        )
+        return byVehicle.values
+            .map { tx in
+                let vid = (tx.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let details = MacroVehicleLogic.stripRecorderSuffix(tx.workDetails ?? "")
+                let tags = MacroVehicleLogic.parseWorkTags(details)
+                let workLabels = tags.isEmpty
+                    ? (details.isEmpty ? [] : [details])
+                    : tags
+                return MacroVehicleRow(
+                    id: vid.isEmpty ? tx.id : vid,
+                    vehicleName: vid.isEmpty ? "แม็คโคร" : vid,
+                    driverLabel: CountRecordLogic.driverDisplayName(tx.driverId ?? "", employees: employees),
+                    dayLabel: MacroVehicleLogic.WorkType.from(raw: tx.workType).label,
+                    workLabels: workLabels
+                )
+            }
+            .sorted {
+                $0.vehicleName.localizedStandardCompare($1.vehicleName) == .orderedAscending
+            }
+    }
+
+    private var macroVehiclesCard: some View {
+        let rows = todayMacroVehicleRows
+        let accent = Color(hex: "#0F766E")
+        return NavigationLink {
+            TodayOpsDetailScreen(kind: .macro)
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label(
+                        rows.isEmpty ? "รถแม็คโครวันนี้" : "รถแม็คโคร · \(rows.count) คัน",
+                        systemImage: "hammer.fill"
+                    )
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+
+                if rows.isEmpty {
+                    Text("วันนี้ยังไม่มีรถแม็คโคร")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        if index > 0 { Divider() }
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.vehicleName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(AppTheme.ink)
+                                        .lineLimit(2)
+                                    Text(row.driverLabel)
+                                        .font(.caption)
+                                        .foregroundStyle(AppTheme.inkMuted)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Text(row.dayLabel)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(accent)
+                            }
+                            if row.workLabels.isEmpty {
+                                Text("ยังไม่ระบุงาน")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.inkMuted)
+                            } else {
+                                Text(row.workLabels.joined(separator: " · "))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppTheme.inkSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .padding(18)
+            .background(summaryCardBackground)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("แตะเพื่อดูรายละเอียดรถแม็คโคร")
     }
 
     // MARK: - Period range
