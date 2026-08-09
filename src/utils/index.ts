@@ -94,6 +94,13 @@ export function computeFuelStockBalances(
         }
         if (t.subCategory === FUEL_TRANSFER_SUB_CATEGORY || t.subCategory === FUEL_SAND_SIEVE_SUB_CATEGORY) {
             bucket.withdraw += liters;
+            // เติมเครื่องจักรผ่านโอนหลัก→สำรอง: นับโควตา machine บนถังนั้น
+            if (
+                t.subCategory === FUEL_TRANSFER_SUB_CATEGORY &&
+                String(t.workType ?? '').trim().toLowerCase() === 'machine'
+            ) {
+                bucket.machineWithdraw += liters;
+            }
             continue;
         }
         if (t.vehicleId) bucket.vehicleUsage += liters;

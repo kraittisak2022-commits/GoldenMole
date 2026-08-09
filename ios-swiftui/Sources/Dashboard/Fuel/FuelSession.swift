@@ -7,6 +7,8 @@ struct FuelVehicleDraft: Identifiable, Equatable, Sendable {
     var vehicleId: String
     var liters: Double = 0
     var time: String = ""
+    /// Default ถังสำรอง (ปั่นไฟ); legacy แถวไม่มี fuel_tank = main ตอน hydrate
+    var fuelTank: String = FuelLogic.tankReserve
 
     var isPersisted: Bool {
         !(txId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -139,15 +141,20 @@ final class FuelSession {
                     row.txId = tx.id
                     row.liters = tx.quantity ?? 0
                     row.time = FuelLogic.stripRecorder(tx.workDetails ?? "")
+                    let rawTank = (tx.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    row.fuelTank = rawTank.isEmpty ? FuelLogic.tankMain : FuelLogic.normalizeTank(tx.fuelTank)
                 } else if force {
                     row.txId = nil
                     row.liters = 0
                     row.time = ""
+                    row.fuelTank = FuelLogic.tankReserve
                 }
             } else if let tx = byVehicle[car], row.txId == nil {
                 row.txId = tx.id
                 row.liters = tx.quantity ?? 0
                 row.time = FuelLogic.stripRecorder(tx.workDetails ?? "")
+                let rawTank = (tx.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                row.fuelTank = rawTank.isEmpty ? FuelLogic.tankMain : FuelLogic.normalizeTank(tx.fuelTank)
             }
             next.append(row)
         }
@@ -247,21 +254,44 @@ final class FuelSession {
             }
             isSaving = true
             defer { isSaving = false }
-            let existing = (withdraw.txId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let id = existing.isEmpty ? FuelWriter.newId(suffix: "fuel_wd") : existing
-            let payload = FuelWriter.withdrawPayload(
-                id: id,
-                dateYmd: dayKey,
-                liters: withdraw.liters,
-                purpose: withdraw.purpose,
-                otherText: withdraw.otherText.trimmingCharacters(in: .whitespacesAndNewlines),
-                time: withdraw.time.trimmingCharacters(in: .whitespacesAndNewlines),
-                omitCreatedAt: !existing.isEmpty
-            )
+            let time = withdraw.time.trimmingCharacters(in: .whitespacesAndNewlines)
+            let liters = withdraw.liters
             skipExternalReload += 1
-            _ = await FuelWriter.persist(payload: payload, wasPersisted: !existing.isEmpty)
-            clearWithdrawForm()
-            setOk("บันทึกเบิกน้ำมันสำเร็จ")
+            if withdraw.purpose == .machine {
+                if liters > dieselBalance + 1e-9 {
+                    throw FuelSaveError.liters
+                }
+                let reserveRoom = FuelLogic.tankCapacityReserveLiters - reserveDieselBalance
+                if liters > reserveRoom + 1e-9 {
+                    throw FuelSaveError.liters
+                }
+                let pair = FuelWriter.transferToReservePayloads(
+                    dateYmd: dayKey,
+                    liters: liters,
+                    time: time,
+                    omitCreatedAt: false
+                )
+                _ = await FuelWriter.persist(payload: pair.out, wasPersisted: false)
+                _ = await FuelWriter.persist(payload: pair.in, wasPersisted: false)
+                clearWithdrawForm()
+                setOk("เติมถังสำรองสำเร็จ")
+            } else {
+                let existing = (withdraw.txId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let id = existing.isEmpty ? FuelWriter.newId(suffix: "fuel_wd") : existing
+                let payload = FuelWriter.withdrawPayload(
+                    id: id,
+                    dateYmd: dayKey,
+                    liters: liters,
+                    purpose: withdraw.purpose,
+                    otherText: withdraw.otherText.trimmingCharacters(in: .whitespacesAndNewlines),
+                    time: time,
+                    omitCreatedAt: !existing.isEmpty,
+                    fuelTank: FuelLogic.tankMain
+                )
+                _ = await FuelWriter.persist(payload: payload, wasPersisted: !existing.isEmpty)
+                clearWithdrawForm()
+                setOk("บันทึกเบิกน้ำมันสำเร็จ")
+            }
             reload(appState: appState, force: true)
         } catch {
             setError(error.localizedDescription)
@@ -293,7 +323,8 @@ final class FuelSession {
                     vehicleId: row.vehicleId,
                     liters: row.liters,
                     time: row.time.trimmingCharacters(in: .whitespacesAndNewlines),
-                    omitCreatedAt: !existing.isEmpty
+                    omitCreatedAt: !existing.isEmpty,
+                    fuelTank: FuelLogic.normalizeTank(row.fuelTank)
                 )
                 _ = await FuelWriter.persist(payload: payload, wasPersisted: !existing.isEmpty)
             }

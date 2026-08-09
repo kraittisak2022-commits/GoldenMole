@@ -9,10 +9,7 @@ enum FuelSubMode {
   /// รถน้ำมันมาเติมเข้าถังหลัก
   stockIn,
 
-  /// โอนจากถังหลักไปถังสำรอง
-  transferToReserve,
-
-  /// เบิกน้ำมันออกจากถังสต็อก
+  /// เบิกน้ำมันออกจากถังสต็อก (รวมเติมถังสำรองเมื่อเลือกเติมเครื่องจักร)
   withdraw,
 
   /// บันทึกการใช้น้ำมันรถแม็คโคร
@@ -52,7 +49,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       vsync: this,
       duration: Duration(milliseconds: _lite ? 300 : 560),
     );
-    _staggerAnims = List.generate(5, (index) {
+    _staggerAnims = List.generate(4, (index) {
       final start = (0.06 + index * 0.12).clamp(0.0, 0.72);
       final end = (start + (_lite ? 0.22 : 0.32)).clamp(0.0, 1.0);
       return CurvedAnimation(
@@ -191,18 +188,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       vertical: useColumns,
       onTap: () => widget.onSelect(FuelSubMode.stockIn),
     );
-    final transfer = _FuelModeOption(
-      title: 'เติมถังสำรอง',
-      subtitle: 'โอนจากถังหลัก → สำรอง',
-      icon: Icons.swap_horiz_rounded,
-      accent: const Color(0xFF6A1B9A),
-      iconTileColor: const Color(0xFFF3E5F5),
-      vertical: useColumns,
-      onTap: () => widget.onSelect(FuelSubMode.transferToReserve),
-    );
     final withdraw = _FuelModeOption(
       title: 'เบิกน้ำมัน',
-      subtitle: 'เบิกดีเซลออกจากถัง',
+      subtitle: 'เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก',
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
       iconTileColor: const Color(0xFFFFF3E0),
@@ -211,7 +199,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final macro = _FuelModeOption(
       title: 'การใช้น้ำมันรถแม็คโคร',
-      subtitle: 'เลือกถังหลักหรือสำรอง',
+      subtitle: 'ค่าเริ่มต้นหักจากถังสำรอง',
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),
       iconTileColor: const Color(0xFFE3F2FD),
@@ -253,31 +241,14 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
 
     final options = useColumns
-        ? Column(
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                height: isTablet ? 200 : 180,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: _staggerTile(1, stockIn)),
-                    SizedBox(width: gap),
-                    Expanded(child: _staggerTile(2, transfer)),
-                  ],
-                ),
-              ),
-              SizedBox(height: gap),
-              SizedBox(
-                height: isTablet ? 200 : 180,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: _staggerTile(3, withdraw)),
-                    SizedBox(width: gap),
-                    Expanded(child: _staggerTile(4, macro)),
-                  ],
-                ),
-              ),
+              Expanded(child: _staggerTile(1, stockIn)),
+              SizedBox(width: gap),
+              Expanded(child: _staggerTile(2, withdraw)),
+              SizedBox(width: gap),
+              Expanded(child: _staggerTile(3, macro)),
             ],
           )
         : Column(
@@ -285,11 +256,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             children: [
               _staggerTile(1, stockIn),
               SizedBox(height: gap),
-              _staggerTile(2, transfer),
+              _staggerTile(2, withdraw),
               SizedBox(height: gap),
-              _staggerTile(3, withdraw),
-              SizedBox(height: gap),
-              _staggerTile(4, macro),
+              _staggerTile(3, macro),
             ],
           );
 
@@ -298,7 +267,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       children: [
         header,
         SizedBox(height: gap),
-        options,
+        useColumns
+            ? SizedBox(height: isTablet ? 220 : 200, child: options)
+            : options,
       ],
     );
   }

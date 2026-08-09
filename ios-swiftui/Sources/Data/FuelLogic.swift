@@ -18,7 +18,6 @@ enum FuelLogic {
 
     enum SubMode: String, CaseIterable, Identifiable, Sendable {
         case stockIn
-        case transferToReserve
         case withdraw
         case macroUsage
 
@@ -27,7 +26,6 @@ enum FuelLogic {
         var title: String {
             switch self {
             case .stockIn: return "เพิ่มน้ำมัน"
-            case .transferToReserve: return "เติมถังสำรอง"
             case .withdraw: return "เบิกน้ำมัน"
             case .macroUsage: return "การใช้น้ำมันรถแม็คโคร"
             }
@@ -36,16 +34,14 @@ enum FuelLogic {
         var subtitle: String {
             switch self {
             case .stockIn: return "รถน้ำมันมาเติมเข้าถังหลัก"
-            case .transferToReserve: return "โอนจากถังหลักไปถังสำรอง"
-            case .withdraw: return "เบิกออกจากถังสต็อก"
-            case .macroUsage: return "บันทึกลิตรต่อคันแม็คโคร"
+            case .withdraw: return "เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก"
+            case .macroUsage: return "ค่าเริ่มต้นหักจากถังสำรอง"
             }
         }
 
         var systemImage: String {
             switch self {
             case .stockIn: return "arrow.down.to.line.circle.fill"
-            case .transferToReserve: return "arrow.left.arrow.right.circle.fill"
             case .withdraw: return "arrow.up.right.circle.fill"
             case .macroUsage: return "fuelpump.fill"
             }
@@ -62,7 +58,7 @@ enum FuelLogic {
 
         var label: String {
             switch self {
-            case .machine: return "เติมเครื่องจักร"
+            case .machine: return "เติมเครื่องจักร (ถังสำรอง)"
             case .car: return "รถยนต์"
             case .generator: return "เครื่องปั่นไฟเล็ก"
             case .other: return "อื่นๆ"
@@ -187,6 +183,9 @@ enum FuelLogic {
                 }
             } else if isTransfer(t) || isSandSieve(t) {
                 b.withdraw += lit
+                if isTransfer(t), (t.workType ?? "").lowercased() == "machine" {
+                    b.machineWithdraw += lit
+                }
             } else if isVehicleUsage(t) {
                 b.vehicleUsage += lit
             }
@@ -232,6 +231,8 @@ enum FuelLogic {
             let lit = liters(of: t)
             guard lit > 0 else { continue }
             if isWithdraw(t), (t.workType ?? "").lowercased() == "machine" {
+                machineWithdraw += lit
+            } else if isTransfer(t), (t.workType ?? "").lowercased() == "machine" {
                 machineWithdraw += lit
             } else if isVehicleUsage(t) {
                 vehicleUsage += lit

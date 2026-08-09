@@ -253,8 +253,11 @@ struct FuelHubView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 formCard {
-                    Text("เบิกน้ำมันออกจากถัง (ดีเซล)")
+                    Text("เบิกน้ำมัน (ดีเซล)")
                         .font(.headline)
+                    Text("เติมเครื่องจักร = โอนเข้าถังสำรอง · อื่นๆ = หักจากถังหลัก")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
                     stepperField(title: "ลิตร", value: $session.withdraw.liters, step: 1, range: 0...50_000)
                     timeField(title: "เวลา", text: $session.withdraw.time)
 
@@ -377,6 +380,25 @@ struct FuelHubView: View {
                 .foregroundStyle(AppTheme.ink)
 
             if let draft {
+                Text("หักจากถัง")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                HStack(spacing: 8) {
+                    tankChip(
+                        title: "ถังสำรอง",
+                        hint: "ปั่นไฟ",
+                        selected: FuelLogic.normalizeTank(draft.fuelTank) == FuelLogic.tankReserve
+                    ) {
+                        session.updateVehicle(car) { $0.fuelTank = FuelLogic.tankReserve }
+                    }
+                    tankChip(
+                        title: "ถังหลัก",
+                        hint: "พล่าม",
+                        selected: FuelLogic.normalizeTank(draft.fuelTank) == FuelLogic.tankMain
+                    ) {
+                        session.updateVehicle(car) { $0.fuelTank = FuelLogic.tankMain }
+                    }
+                }
                 HStack(spacing: 12) {
                     stepperField(
                         title: "ลิตร",
@@ -423,6 +445,31 @@ struct FuelHubView: View {
     }
 
     // MARK: - Shared bits
+
+    private func tankChip(
+        title: String,
+        hint: String,
+        selected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(selected ? Color.white.opacity(0.85) : AppTheme.inkMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .foregroundStyle(selected ? Color.white : AppTheme.ink)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(selected ? accent : AppTheme.surfaceSoft)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     private func statusBanner(_ session: FuelSession) -> some View {
         Group {

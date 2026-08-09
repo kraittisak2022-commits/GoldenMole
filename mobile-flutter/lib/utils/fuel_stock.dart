@@ -52,7 +52,7 @@ String fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose purpose) {
 String fuelWithdrawPurposeLabelOf(FuelWithdrawPurpose purpose) {
   switch (purpose) {
     case FuelWithdrawPurpose.machine:
-      return 'เติมเครื่องจักร';
+      return 'เติมเครื่องจักร (ถังสำรอง)';
     case FuelWithdrawPurpose.car:
       return 'รถยนต์';
     case FuelWithdrawPurpose.generator:
@@ -225,6 +225,11 @@ FuelStockBalance computeFuelStockBalance(
     if (isFuelSandSieveRow(t) || isFuelTransferRow(t)) {
       // Transfer stock_out / SandSieve — หักเต็มจากถังนั้น
       bucket.withdraw += liters;
+      // เติมเครื่องจักรผ่านโอนหลัก→สำรอง: นับโควตา machine บนถังหลัก
+      if (isFuelTransferRow(t) &&
+          (t.workType ?? '').trim().toLowerCase() == 'machine') {
+        bucket.machineWithdraw += liters;
+      }
       continue;
     }
     if (isFuelVehicleUsageRow(t)) {
@@ -291,6 +296,11 @@ fuelMachineReconcileForDay(
     if (liters <= 0) continue;
     if (isFuelWithdrawRow(t)) {
       if (fuelWithdrawPurposeCode(t) == 'machine') machineWithdraw += liters;
+      continue;
+    }
+    if (isFuelTransferRow(t) &&
+        (t.workType ?? '').trim().toLowerCase() == 'machine') {
+      machineWithdraw += liters;
       continue;
     }
     if (isFuelVehicleUsageRow(t)) vehicleUsage += liters;
