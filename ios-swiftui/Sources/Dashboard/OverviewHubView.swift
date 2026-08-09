@@ -468,7 +468,7 @@ struct OverviewHubView: View {
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 NavigationLink {
-                    CategoryReportScreen(type: .vehicle)
+                    TodayOpsDetailScreen(kind: .trips)
                 } label: {
                     SummaryMetricCard(
                         title: "เที่ยวรถ",
@@ -482,7 +482,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    CategoryReportScreen(type: .sand)
+                    TodayOpsDetailScreen(kind: .sand)
                 } label: {
                     SummaryMetricCard(
                         title: "ร่อนทราย",
@@ -496,7 +496,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    AttendanceHubView()
+                    TodayOpsDetailScreen(kind: .attendance)
                 } label: {
                     SummaryMetricCard(
                         title: "เช็คชื่อ",
@@ -510,7 +510,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    MacroVehicleHubView()
+                    TodayOpsDetailScreen(kind: .macro)
                 } label: {
                     SummaryMetricCard(
                         title: "แม็คโคร",
@@ -524,7 +524,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    FuelHubView(initialSubMode: .stockIn)
+                    TodayOpsDetailScreen(kind: .fuelStockIn)
                 } label: {
                     SummaryMetricCard(
                         title: "เพิ่มน้ำมัน",
@@ -538,7 +538,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    FuelHubView(initialSubMode: .withdraw)
+                    TodayOpsDetailScreen(kind: .fuelWithdraw)
                 } label: {
                     SummaryMetricCard(
                         title: "เบิกน้ำมัน",
@@ -554,7 +554,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    FuelHubView(initialSubMode: .macroUsage)
+                    TodayOpsDetailScreen(kind: .fuelMacroUsage)
                 } label: {
                     SummaryMetricCard(
                         title: "การใช้น้ำมันรถแม็คโคร",
@@ -570,7 +570,7 @@ struct OverviewHubView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    LeaveHubView()
+                    TodayOpsDetailScreen(kind: .leave)
                 } label: {
                     SummaryMetricCard(
                         title: "ลางาน",
