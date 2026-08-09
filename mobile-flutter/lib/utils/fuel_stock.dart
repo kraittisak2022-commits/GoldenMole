@@ -5,8 +5,8 @@ import 'daily_module_transactions.dart';
 const double kFuelTankCapacityLiters = 9000;
 
 /// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
-/// พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
-const String kFuelStockCutoverYmd = '2026-08-01';
+/// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
+const String kFuelStockCutoverYmd = '2026-08-05';
 
 /// `subCategory` ของแถวรับน้ำมันเข้าถัง (รถน้ำมันมาเติม)
 const String kFuelStockInSubCategory = 'StockIn';

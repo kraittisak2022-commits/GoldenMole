@@ -23,9 +23,9 @@ export const FUEL_WITHDRAW_SUB_CATEGORY = 'Withdraw';
 
 /**
  * วันตัดยอดสต็อกน้ำมัน — ก่อนวันนี้ถือว่าเหลือ 0 (ถูกใช้หมดแล้ว)
- * พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
+ * ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
  */
-export const FUEL_STOCK_CUTOVER_YMD = '2026-08-01';
+export const FUEL_STOCK_CUTOVER_YMD = '2026-08-05';
 
 type FuelDayBucket = { stockIn: number; withdraw: number; machineWithdraw: number; vehicleUsage: number };
 
