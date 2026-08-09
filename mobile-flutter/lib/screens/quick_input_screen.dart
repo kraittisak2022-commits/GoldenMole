@@ -8423,24 +8423,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'บันทึกล้างทราย',
-            style: GoogleFonts.kanit(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F5FAF),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'บันทึกทีละส่วนได้ เช่น กรอกคิวเช้าก่อน แล้วกลับมาเพิ่มคิวบ่ายภายหลัง',
-            style: GoogleFonts.kanit(
-              fontSize: 13,
-              height: 1.35,
-              color: const Color(0xFF5A6B7F),
-            ),
-          ),
-          const SizedBox(height: 12),
           periodRow(
             title: 'ช่วงเช้า',
             icon: Icons.wb_sunny_outlined,
@@ -9138,25 +9120,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'บันทึกรถดรัมและจำนวนเที่ยว',
-              style: GoogleFonts.kanit(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF0F5FAF),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'บันทึกทีละคัน — เลือกรถที่บันทึกแล้วในวันนี้จะโหลดข้อมูลมาแก้ไขอัตโนมัติ หรือแตะการ์ดด้านล่าง — ช่วงเช้า/บ่าย ไม่บังคับ (ว่าง = 0)',
-              style: GoogleFonts.kanit(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.black54,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 10),
             _VehicleTripRowsBoard(
               rows: _vehicleTripDrafts,
               cars: _vehicleTripCars(),
@@ -9594,27 +9557,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'บันทึกการใช้รถแม็คโคร',
-                style: GoogleFonts.kanit(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F5FAF),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'แตะเลือกคนขับและงานของแต่ละคัน — เปลี่ยนงานระหว่างวันได้ '
-                'แล้วกดอัปเดตคันนั้น',
-                style: GoogleFonts.kanit(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black54,
-                  height: 1.35,
-                ),
-              ),
               if (macroCars.isEmpty) ...[
-                const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -13804,24 +13747,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'บันทึก OT',
-            style: GoogleFonts.kanit(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F5FAF),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'บันทึกทีละกลุ่ม — กรอกคนและชั่วโมง OT แล้วกดบันทึก จากนั้นกรอกกลุ่มถัดไปได้',
-            style: GoogleFonts.kanit(
-              fontSize: 13,
-              color: const Color(0xFF5B6D83),
-            ),
-          ),
           if (savedToday > 0) ...[
-            const SizedBox(height: 8),
             DecoratedBox(
               decoration: BoxDecoration(
                 color: const Color(0xFFE8F5E9),
@@ -13843,6 +13769,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
             ),
+            const SizedBox(height: 8),
           ],
           _employeeDataLoadProgressBanner(),
           const SizedBox(height: 10),
@@ -14054,26 +13981,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange.shade700,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'เหตุการณ์สำคัญประจำวัน',
-                    style: GoogleFonts.kanit(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFFE65100),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             Text(
               'ประเภท',
               style: GoogleFonts.kanit(
