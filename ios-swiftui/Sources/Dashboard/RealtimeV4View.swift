@@ -47,7 +47,11 @@ struct RealtimeV4Snapshot: Sendable {
     let sandMorningSpanLabel: String?
     let sandAfternoonSpanLabel: String?
     let sandHours: Double?
+    let sandMorningHours: Double?
+    let sandAfternoonHours: Double?
     let tripHours: Double?
+    let tripMorningHours: Double?
+    let tripAfternoonHours: Double?
     let vehicleWorkSpans: [String: String]
     let leaderboard: [CountRecordTripUnit]
     let isLight: Bool
@@ -119,7 +123,15 @@ struct RealtimeV4Snapshot: Sendable {
         )
         let sandPeriodSpans = CountRecordLogic.periodSpanLabels(lapTimes: sandLaps, dayKey: dayKey)
         let sandHours = CountRecordLogic.activeDurationHours(lapTimes: sandLaps, dayKey: dayKey)
-        let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripAnalytics.lapTimes, dayKey: dayKey)
+        let sandSplit = CountRecordLogic.splitLapsByPeriod(sandLaps)
+        let sandMorningHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.morning, dayKey: dayKey)
+        let sandAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.afternoon, dayKey: dayKey)
+
+        let tripLaps = tripAnalytics.lapTimes
+        let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripLaps, dayKey: dayKey)
+        let tripSplit = CountRecordLogic.splitLapsByPeriod(tripLaps)
+        let tripMorningHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.morning, dayKey: dayKey)
+        let tripAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
         let leaderboard = Array(
             units
                 .filter { !$0.lapTimes.isEmpty }
@@ -161,7 +173,11 @@ struct RealtimeV4Snapshot: Sendable {
             sandMorningSpanLabel: sandPeriodSpans.morning,
             sandAfternoonSpanLabel: sandPeriodSpans.afternoon,
             sandHours: sandHours,
+            sandMorningHours: sandMorningHours,
+            sandAfternoonHours: sandAfternoonHours,
             tripHours: tripHours,
+            tripMorningHours: tripMorningHours,
+            tripAfternoonHours: tripAfternoonHours,
             vehicleWorkSpans: vehicleWorkSpans,
             leaderboard: leaderboard,
             isLight: light
@@ -773,6 +789,14 @@ struct RealtimeV4View: View {
                 )
             }
 
+            workHoursBlock(
+                titleColor: tripBlueLabel,
+                cellFill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22)),
+                total: snapshot.tripHours,
+                morning: snapshot.tripMorningHours,
+                afternoon: snapshot.tripAfternoonHours
+            )
+
             VStack(spacing: 4) {
                 HStack {
                     Text("เป้าหมาย (คิว)")
@@ -902,6 +926,14 @@ struct RealtimeV4View: View {
                 )
             }
 
+            workHoursBlock(
+                titleColor: RealtimeV4Palette.sandLabel,
+                cellFill: RealtimeV4Palette.sandCellFill,
+                total: snapshot.sandHours,
+                morning: snapshot.sandMorningHours,
+                afternoon: snapshot.sandAfternoonHours
+            )
+
             VStack(spacing: 4) {
                 HStack {
                     Text("เป้าหมาย")
@@ -940,6 +972,46 @@ struct RealtimeV4View: View {
         )
     }
 
+    /// Total + morning + afternoon active work hours (lunch deducted on full-day total).
+    private func workHoursBlock(
+        titleColor: Color,
+        cellFill: Color,
+        total: Double?,
+        morning: Double?,
+        afternoon: Double?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("เวลาทำงานจริง")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(titleColor)
+            HStack(spacing: 8) {
+                kpiCell(
+                    title: "รวม",
+                    value: Self.formatWorkHours(total),
+                    labelColor: titleColor,
+                    fill: cellFill
+                )
+                kpiCell(
+                    title: "เช้า",
+                    value: Self.formatWorkHours(morning),
+                    labelColor: titleColor,
+                    fill: cellFill
+                )
+                kpiCell(
+                    title: "บ่าย",
+                    value: Self.formatWorkHours(afternoon),
+                    labelColor: titleColor,
+                    fill: cellFill
+                )
+            }
+        }
+    }
+
+    private static func formatWorkHours(_ hours: Double?) -> String {
+        guard let hours, hours > 0, hours.isFinite else { return "—" }
+        return CountRecordAnalytics.formatDurationHours(hours)
+    }
+
     private func kpiCell(
         title: String,
         value: String,
@@ -952,6 +1024,8 @@ struct RealtimeV4View: View {
                 .foregroundStyle(labelColor)
             Text(value)
                 .font(.title3.weight(.black))
+                .minimumScaleFactor(0.65)
+                .lineLimit(1)
                 .foregroundStyle(RealtimeV4Palette.ink)
         }
         .frame(maxWidth: .infinity)
