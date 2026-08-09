@@ -9,6 +9,7 @@ struct CountRecordTripPanel: View {
     let onEdit: (CountRecordTripDraft) -> Void
     let onEditLaps: (CountRecordTripDraft) -> Void
     let onRemove: (CountRecordTripDraft) -> Void
+    let onOpenSettings: () -> Void
 
     private var columns: [GridItem] {
         let count = session.tripUnits.count
@@ -27,6 +28,13 @@ struct CountRecordTripPanel: View {
                 Text("\(total) เที่ยว")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(AppTheme.inkMuted)
+                Button(action: onOpenSettings) {
+                    Label("ตั้งค่า", systemImage: "gearshape")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(Color(hex: "#1565C0"))
+                .accessibilityLabel("ตั้งค่านับจำนวน")
                 Button(action: onAddVehicle) {
                     Label("เพิ่มคัน", systemImage: "plus.circle.fill")
                         .font(.subheadline.weight(.semibold))

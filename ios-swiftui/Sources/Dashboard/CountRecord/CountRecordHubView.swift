@@ -4,6 +4,7 @@ import SwiftUI
 struct CountRecordHubView: View {
     @Environment(AppState.self) private var appState
     @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
 
     @State private var session = CountRecordSession()
     @State private var confirmLongPressTripId: String?
@@ -35,31 +36,29 @@ struct CountRecordHubView: View {
         }
         .navigationTitle("บันทึกและนับจำนวน")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            if session.mode != nil {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        session.showTutorial = true
-                    } label: {
-                        Image(systemName: "questionmark.circle")
-                    }
-                    Button {
-                        shareImage = nil
-                        session.showShare = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    Button {
-                        session.showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    Button("โหมด") {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    if session.mode != nil {
                         session.mode = nil
                         CountRecordPrefs.setWorkMode(nil, for: session.dayKey)
                         session.statusMessage = nil
+                    } else {
+                        dismiss()
                     }
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
+                .accessibilityLabel("ย้อนกลับ")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("ปิด")
             }
         }
         .onAppear {
@@ -317,7 +316,8 @@ struct CountRecordHubView: View {
             onAddVehicle: { session.showAddVehicle = true },
             onEdit: { unit in session.editUnitId = unit.id },
             onEditLaps: { unit in session.lapEditorTripUnitId = unit.id },
-            onRemove: { unit in confirmRemoveId = unit.id }
+            onRemove: { unit in confirmRemoveId = unit.id },
+            onOpenSettings: { session.showSettings = true }
         )
     }
 

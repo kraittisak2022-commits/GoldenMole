@@ -120,9 +120,6 @@ final class CountRecordSession {
             mode = saved
         }
         loadFromAppState(appState, force: true)
-        if !CountRecordPrefs.tutorialCompleted {
-            showTutorial = true
-        }
     }
 
     func loadFromAppState(_ appState: AppState, force: Bool = false) {
