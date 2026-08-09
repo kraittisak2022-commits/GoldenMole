@@ -2299,77 +2299,79 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       setState(() => _fuelOpeningStock = opening);
     }
 
+    final sync = CountRecordOfflineSync.instance;
+    // แคชก่อน — แถวแม็คโคร/คนขับเริ่มต้นขึ้นทันทีหลังเข้าแดชบอร์ด
+    final cachedCars = await sync.readCachedCars();
+    final cachedDrivers = await sync.readCachedVehicleDefaultDrivers();
+    final cachedOpening = await sync.readCachedFuelOpeningStock();
+    await applyCars(cachedCars);
+    await applyDefaultDrivers(cachedDrivers);
+    await applyOpeningStock(cachedOpening);
+
     if (_isOfflineCapableCategory && !widget.serverOnlineHint) {
-      await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
-      await applyDefaultDrivers(
-        await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
-      );
-      await applyOpeningStock(
-        await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
-      );
       return;
     }
 
-    try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('app_settings')
-          .select('cars, app_defaults, fuel_opening_stock')
-          .eq('id', 'default')
-          .limit(1);
-      if (rows.isEmpty) {
-        await applyDefaultDrivers(
-          await CountRecordOfflineSync.instance
-              .readCachedVehicleDefaultDrivers(),
-        );
-        await applyOpeningStock(
-          await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
-        );
-        return;
-      }
-      final openingRaw = rows.first['fuel_opening_stock'];
-      if (openingRaw is Map) {
-        final opening = CountRecordOfflineSync.parseFuelOpeningStock(openingRaw);
-        await CountRecordOfflineSync.instance.cacheFuelOpeningStock(opening);
-        await applyOpeningStock(opening);
-      } else {
-        await applyOpeningStock(
-          await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
-        );
-      }
-      final raw = rows.first['cars'];
-      final cars = <String>[
-        if (raw is List)
-          ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
-      ];
-      if (cars.isNotEmpty) {
-        await CountRecordOfflineSync.instance.cacheCars(cars);
-      }
-      await applyCars(cars);
+    final hadCarsCache = cachedCars.isNotEmpty;
 
-      final appDefaults = rows.first['app_defaults'];
-      var defaults =
-          await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers();
-      if (appDefaults is Map) {
-        final parsed = CountRecordOfflineSync.parseVehicleDefaultDrivers(
-          appDefaults['vehicleDefaultDrivers'],
-        );
-        if (parsed.isNotEmpty) {
-          defaults = parsed;
-          await CountRecordOfflineSync.instance
-              .cacheVehicleDefaultDrivers(defaults);
+    Future<void> refreshFromNetwork() async {
+      try {
+        final client = Supabase.instance.client;
+        final rows = await client
+            .from('app_settings')
+            .select('cars, app_defaults, fuel_opening_stock')
+            .eq('id', 'default')
+            .limit(1);
+        if (rows.isEmpty) {
+          if (!hadCarsCache) {
+            await applyDefaultDrivers(await sync.readCachedVehicleDefaultDrivers());
+            await applyOpeningStock(await sync.readCachedFuelOpeningStock());
+          }
+          return;
         }
+        final openingRaw = rows.first['fuel_opening_stock'];
+        if (openingRaw is Map) {
+          final opening =
+              CountRecordOfflineSync.parseFuelOpeningStock(openingRaw);
+          await sync.cacheFuelOpeningStock(opening);
+          await applyOpeningStock(opening);
+        } else if (!hadCarsCache) {
+          await applyOpeningStock(await sync.readCachedFuelOpeningStock());
+        }
+        final raw = rows.first['cars'];
+        final cars = <String>[
+          if (raw is List)
+            ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
+        ];
+        if (cars.isNotEmpty) {
+          await sync.cacheCars(cars);
+          await applyCars(cars);
+        }
+        final appDefaults = rows.first['app_defaults'];
+        var defaults = await sync.readCachedVehicleDefaultDrivers();
+        if (appDefaults is Map) {
+          final parsed = CountRecordOfflineSync.parseVehicleDefaultDrivers(
+            appDefaults['vehicleDefaultDrivers'],
+          );
+          if (parsed.isNotEmpty) {
+            defaults = parsed;
+            await sync.cacheVehicleDefaultDrivers(defaults);
+          }
+        }
+        await applyDefaultDrivers(defaults);
+      } catch (_) {
+        if (hadCarsCache) return;
+        await applyCars(await sync.readCachedCars());
+        await applyDefaultDrivers(await sync.readCachedVehicleDefaultDrivers());
+        await applyOpeningStock(await sync.readCachedFuelOpeningStock());
       }
-      await applyDefaultDrivers(defaults);
-    } catch (_) {
-      await applyCars(await CountRecordOfflineSync.instance.readCachedCars());
-      await applyDefaultDrivers(
-        await CountRecordOfflineSync.instance.readCachedVehicleDefaultDrivers(),
-      );
-      await applyOpeningStock(
-        await CountRecordOfflineSync.instance.readCachedFuelOpeningStock(),
-      );
     }
+
+    if (hadCarsCache) {
+      unawaited(refreshFromNetwork());
+      return;
+    }
+    await refreshFromNetwork();
   }
 
   Future<void> _loadAppExpenseIncomeTypes() async {
