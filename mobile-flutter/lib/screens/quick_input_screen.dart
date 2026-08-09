@@ -2161,33 +2161,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _isMacroVehicleMode ||
       _isAttendanceMode;
 
+  void _applyEmployeeList(List<Employee> list) {
+    final sorted = List<Employee>.from(list)
+      ..sort((a, b) {
+        return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
+          b.nickname.isNotEmpty ? b.nickname : b.name,
+        );
+      });
+    _employees = sorted;
+    _employeesById = {for (final e in sorted) e.id: e};
+    _driverEmployees = sorted
+        .where((e) => !e.inactive)
+        .where(_isDriverEmployee)
+        .toList();
+    if (_isMacroVehicleMode) {
+      _syncMacroVehicleDraftsFromMacroCars();
+    }
+    _employeesLoading = false;
+    _employeesLoadPercent = 0;
+  }
+
   Future<void> _loadEmployees({bool forceRefresh = false}) async {
     _employeesLoadProgressTimer?.cancel();
     _employeesLoadProgressTimer = null;
     final showPct = _showsEmployeeLoadingUi;
 
     if (!forceRefresh) {
-      final cached = await LocalDataCache.readEmployeesAny();
-      if (cached != null && cached.isNotEmpty && mounted) {
-        final list = List<Employee>.from(cached);
-        list.sort((a, b) {
-          return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
-            b.nickname.isNotEmpty ? b.nickname : b.name,
-          );
-        });
-        setState(() {
-          _employees = list;
-          _employeesById = {for (final e in list) e.id: e};
-          _driverEmployees = list
-              .where((e) => !e.inactive)
-              .where(_isDriverEmployee)
-              .toList();
-          if (_isMacroVehicleMode) {
-            _syncMacroVehicleDraftsFromMacroCars();
-          }
-          _employeesLoading = false;
-          _employeesLoadPercent = 0;
-        });
+      // รวมแคชแดชบอร์ด (CountRecordOfflineSync) + LocalDataCache
+      final merged =
+          await CountRecordOfflineSync.instance.mergedEmployeeSources();
+      if (merged.isNotEmpty && mounted) {
+        final localOnly = await LocalDataCache.readEmployeesAny();
+        if (localOnly == null || localOnly.isEmpty) {
+          // เติม LocalDataCache จากแคชแดชบอร์ด — รอบถัดไป/EmployeeService ใช้ได้
+          unawaited(LocalDataCache.writeEmployees(merged));
+        }
+        setState(() => _applyEmployeeList(merged));
       }
     }
 
@@ -2195,22 +2204,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       unawaited(
         widget.employeeService.fetchEmployees(forceRefresh: false).then((list) {
           if (!mounted || list.isEmpty) return;
-          list.sort((a, b) {
-            return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
-              b.nickname.isNotEmpty ? b.nickname : b.name,
-            );
-          });
-          setState(() {
-            _employees = list;
-            _employeesById = {for (final e in list) e.id: e};
-            _driverEmployees = list
-                .where((e) => !e.inactive)
-                .where(_isDriverEmployee)
-                .toList();
-            if (_isMacroVehicleMode) {
-              _syncMacroVehicleDraftsFromMacroCars();
-            }
-          });
+          setState(() => _applyEmployeeList(list));
+          unawaited(
+            CountRecordOfflineSync.instance.cacheEmployees(list),
+          );
         }),
       );
       return;
@@ -2239,11 +2236,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final list = await widget.employeeService.fetchEmployees(
         forceRefresh: forceRefresh,
       );
-      list.sort((a, b) {
-        return (a.nickname.isNotEmpty ? a.nickname : a.name).compareTo(
-          b.nickname.isNotEmpty ? b.nickname : b.name,
-        );
-      });
       _employeesLoadProgressTimer?.cancel();
       _employeesLoadProgressTimer = null;
       if (!mounted) return;
@@ -2252,19 +2244,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       if (!mounted) return;
-      setState(() {
-        _employees = list;
-        _employeesById = {for (final e in list) e.id: e};
-        _driverEmployees = list
-            .where((e) => !e.inactive)
-            .where(_isDriverEmployee)
-            .toList();
-        if (_isMacroVehicleMode) {
-          _syncMacroVehicleDraftsFromMacroCars();
-        }
-        _employeesLoading = false;
-        _employeesLoadPercent = 0;
-      });
+      setState(() => _applyEmployeeList(list));
+      unawaited(CountRecordOfflineSync.instance.cacheEmployees(list));
       if (_isSandWashMode &&
           (_moduleDayTransactions.isNotEmpty ||
               _moduleDayAllTransactions.isNotEmpty)) {
