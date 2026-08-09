@@ -52,7 +52,10 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
     );
 
     const fuelStock = useMemo(
-        () => (type === 'Fuel' ? computeFuelStockBalances(transactions, settings.fuelOpeningStockLiters) : { Diesel: 0, Benzine: 0 }),
+        () =>
+            type === 'Fuel'
+                ? computeFuelStockBalances(transactions, settings.fuelOpeningStockLiters)
+                : { Diesel: 0, Benzine: 0, DieselReserve: 0, BenzineReserve: 0 },
         [type, transactions, settings.fuelOpeningStockLiters]
     );
 
@@ -315,18 +318,29 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
                             <div className={`rounded-xl p-4 border ${fuelStock.Diesel < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ดีเซล</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังหลัก · ดีเซล</p>
                                 <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round(fuelStock.Diesel * 10) / 10}</p>
+                                <p className="text-[11px] text-slate-400 mt-1">ความจุ 12,000 ลิตร</p>
                                 {fuelStock.Diesel < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบยอดยกมาหรือรายการรับเข้า</p>}
                             </div>
+                            <div className={`rounded-xl p-4 border ${(fuelStock.DieselReserve ?? 0) < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังสำรอง · ดีเซล</p>
+                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round((fuelStock.DieselReserve ?? 0) * 10) / 10}</p>
+                                <p className="text-[11px] text-slate-400 mt-1">ความจุ 1,000 ลิตร</p>
+                                {(fuelStock.DieselReserve ?? 0) < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบการโอน/การใช้</p>}
+                            </div>
                             <div className={`rounded-xl p-4 border ${fuelStock.Benzine < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">เบนซิน</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังหลัก · เบนซิน</p>
                                 <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round(fuelStock.Benzine * 10) / 10}</p>
                                 {fuelStock.Benzine < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบยอดยกมาหรือรายการรับเข้า</p>}
                             </div>
+                            <div className={`rounded-xl p-4 border ${(fuelStock.BenzineReserve ?? 0) < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังสำรอง · เบนซิน</p>
+                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round((fuelStock.BenzineReserve ?? 0) * 10) / 10}</p>
+                            </div>
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">
-                            คำนวณจาก: ยอดยกมา + รับเข้าสต็อก − ใช้/เติมรถ (รวมรายการจากเมนูน้ำมันและ Daily Wizard)
+                            ถังหลัก: ยอดยกมา + รับเข้า − เบิก/ใช้ · ถังสำรอง: โอนจากถังหลัก − ใช้แม็คโคร/ร่อนทราย
                         </p>
                     </Card>
 

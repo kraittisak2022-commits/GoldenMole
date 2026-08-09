@@ -6,28 +6,31 @@ import 'soft_press_button.dart';
 
 /// เมนูย่อยของ «น้ำมัน»
 enum FuelSubMode {
-  /// รถน้ำมันมาเติมเข้าถังสต็อก
+  /// รถน้ำมันมาเติมเข้าถังหลัก
   stockIn,
+
+  /// โอนจากถังหลักไปถังสำรอง
+  transferToReserve,
 
   /// เบิกน้ำมันออกจากถังสต็อก
   withdraw,
 
-  /// บันทึกการใช้น้ำมันรถแม็คโคร (เหมือนเดิม)
+  /// บันทึกการใช้น้ำมันรถแม็คโคร
   macroUsage,
 }
 
-/// ขั้นเลือกเมนูย่อยก่อนเข้าฟอร์มน้ำมัน — แสดงระดับน้ำมันในถังด้านบน
+/// ขั้นเลือกเมนูย่อยก่อนเข้าฟอร์มน้ำมัน — แสดงระดับน้ำมัน 2 ถังด้านบน
 class FuelSubModePicker extends StatefulWidget {
   const FuelSubModePicker({
     super.key,
     required this.onSelect,
-    required this.dieselLiters,
-    this.capacityLiters = kFuelTankCapacityLiters,
+    required this.mainDieselLiters,
+    required this.reserveDieselLiters,
   });
 
   final ValueChanged<FuelSubMode> onSelect;
-  final double dieselLiters;
-  final double capacityLiters;
+  final double mainDieselLiters;
+  final double reserveDieselLiters;
 
   @override
   State<FuelSubModePicker> createState() => _FuelSubModePickerState();
@@ -49,8 +52,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       vsync: this,
       duration: Duration(milliseconds: _lite ? 300 : 560),
     );
-    _staggerAnims = List.generate(4, (index) {
-      final start = (0.08 + index * 0.14).clamp(0.0, 0.72);
+    _staggerAnims = List.generate(5, (index) {
+      final start = (0.06 + index * 0.12).clamp(0.0, 0.72);
       final end = (start + (_lite ? 0.22 : 0.32)).clamp(0.0, 1.0);
       return CurvedAnimation(
         parent: _entrance,
@@ -85,16 +88,21 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
   }
 
-  Widget _tankGauge(bool isTablet) {
-    final capacity = widget.capacityLiters <= 0 ? 1.0 : widget.capacityLiters;
-    final ratio = (widget.dieselLiters / capacity).clamp(0.0, 1.0);
+  Widget _singleGauge({
+    required String title,
+    required double liters,
+    required double capacity,
+    required bool isTablet,
+  }) {
+    final cap = capacity <= 0 ? 1.0 : capacity;
+    final ratio = (liters / cap).clamp(0.0, 1.0);
     final low = ratio <= 0.15;
     final barColor = low ? const Color(0xFFD14343) : _brandTeal;
     return Container(
-      padding: EdgeInsets.all(isTablet ? 16 : 14),
+      padding: EdgeInsets.all(isTablet ? 14 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFFF4F8FD),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: low ? const Color(0xFFF5C2C2) : const Color(0xFFBFD8F4),
         ),
@@ -106,37 +114,36 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             children: [
               Icon(
                 Icons.propane_tank_outlined,
-                size: isTablet ? 26 : 22,
+                size: isTablet ? 22 : 20,
                 color: barColor,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'น้ำมันคงเหลือในถัง',
+                  title,
                   style: TextStyle(
-                    fontSize: isTablet ? 16 : 14.5,
+                    fontSize: isTablet ? 14.5 : 13,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF334155),
                   ),
                 ),
               ),
               Text(
-                '${formatFuelLiters(widget.dieselLiters)} / '
-                '${formatFuelLiters(capacity)} ลิตร',
+                '${formatFuelLiters(liters)} / ${formatFuelLiters(cap)} L',
                 style: TextStyle(
-                  fontSize: isTablet ? 18 : 16,
+                  fontSize: isTablet ? 15 : 13.5,
                   fontWeight: FontWeight.w800,
                   color: barColor,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: ratio,
-              minHeight: isTablet ? 12 : 10,
+              minHeight: isTablet ? 10 : 8,
               backgroundColor: const Color(0xFFDDE7F3),
               valueColor: AlwaysStoppedAnimation<Color>(barColor),
             ),
@@ -146,26 +153,56 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
   }
 
+  Widget _tankGauges(bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _singleGauge(
+          title: 'ถังหลัก',
+          liters: widget.mainDieselLiters,
+          capacity: kFuelTankCapacityMainLiters,
+          isTablet: isTablet,
+        ),
+        SizedBox(height: isTablet ? 10 : 8),
+        _singleGauge(
+          title: 'ถังสำรอง',
+          liters: widget.reserveDieselLiters,
+          capacity: kFuelTankCapacityReserveLiters,
+          isTablet: isTablet,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final isLandscape = size.width > size.height;
     final useColumns = isTablet && isLandscape;
-    final gap = isTablet ? 16.0 : 12.0;
+    final gap = isTablet ? 14.0 : 10.0;
 
     final stockIn = _FuelModeOption(
       title: 'เพิ่มน้ำมัน',
-      subtitle: 'เติมดีเซลเข้าถังสต็อก',
+      subtitle: 'เติมดีเซลเข้าถังหลัก',
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF2E7D32),
       iconTileColor: const Color(0xFFE8F5E9),
       vertical: useColumns,
       onTap: () => widget.onSelect(FuelSubMode.stockIn),
     );
+    final transfer = _FuelModeOption(
+      title: 'เติมถังสำรอง',
+      subtitle: 'โอนจากถังหลัก → สำรอง',
+      icon: Icons.swap_horiz_rounded,
+      accent: const Color(0xFF6A1B9A),
+      iconTileColor: const Color(0xFFF3E5F5),
+      vertical: useColumns,
+      onTap: () => widget.onSelect(FuelSubMode.transferToReserve),
+    );
     final withdraw = _FuelModeOption(
       title: 'เบิกน้ำมัน',
-      subtitle: 'เบิกดีเซลออกจากถังสต็อก',
+      subtitle: 'เบิกดีเซลออกจากถัง',
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
       iconTileColor: const Color(0xFFFFF3E0),
@@ -174,7 +211,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final macro = _FuelModeOption(
       title: 'การใช้น้ำมันรถแม็คโคร',
-      subtitle: 'บันทึกรายคันที่เติมวันนี้',
+      subtitle: 'เลือกถังหลักหรือสำรอง',
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),
       iconTileColor: const Color(0xFFE3F2FD),
@@ -191,7 +228,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             'จะบันทึกน้ำมันอะไร?',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: isTablet ? 30.0 : 25.0,
+              fontSize: isTablet ? 28.0 : 24.0,
               fontWeight: FontWeight.w800,
               height: 1.1,
               letterSpacing: -0.5,
@@ -210,20 +247,37 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             ),
           ),
           const SizedBox(height: 12),
-          _tankGauge(isTablet),
+          _tankGauges(isTablet),
         ],
       ),
     );
 
     final options = useColumns
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        ? Column(
             children: [
-              Expanded(child: _staggerTile(1, stockIn)),
-              SizedBox(width: gap),
-              Expanded(child: _staggerTile(2, withdraw)),
-              SizedBox(width: gap),
-              Expanded(child: _staggerTile(3, macro)),
+              SizedBox(
+                height: isTablet ? 200 : 180,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _staggerTile(1, stockIn)),
+                    SizedBox(width: gap),
+                    Expanded(child: _staggerTile(2, transfer)),
+                  ],
+                ),
+              ),
+              SizedBox(height: gap),
+              SizedBox(
+                height: isTablet ? 200 : 180,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _staggerTile(3, withdraw)),
+                    SizedBox(width: gap),
+                    Expanded(child: _staggerTile(4, macro)),
+                  ],
+                ),
+              ),
             ],
           )
         : Column(
@@ -231,9 +285,11 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             children: [
               _staggerTile(1, stockIn),
               SizedBox(height: gap),
-              _staggerTile(2, withdraw),
+              _staggerTile(2, transfer),
               SizedBox(height: gap),
-              _staggerTile(3, macro),
+              _staggerTile(3, withdraw),
+              SizedBox(height: gap),
+              _staggerTile(4, macro),
             ],
           );
 
@@ -242,10 +298,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       children: [
         header,
         SizedBox(height: gap),
-        // แนวตั้ง (แท็บเล็ตแนวนอน): ให้สูงพอกับเนื้อหา + FittedBox ในแต่ละการ์ดกัน overflow
-        useColumns
-            ? SizedBox(height: isTablet ? 240 : 220, child: options)
-            : options,
+        options,
       ],
     );
   }
@@ -274,22 +327,22 @@ class _FuelModeOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = vertical
-        ? (isTablet ? 72.0 : 64.0)
-        : (isTablet ? 64.0 : 56.0);
+        ? (isTablet ? 64.0 : 56.0)
+        : (isTablet ? 58.0 : 52.0);
     final iconSize = iconBox * 0.52;
     final titleSize = vertical
-        ? (isTablet ? 21.0 : 19.0)
-        : (isTablet ? 23.0 : 21.0);
+        ? (isTablet ? 18.0 : 17.0)
+        : (isTablet ? 21.0 : 19.0);
     final subtitleSize = vertical
-        ? (isTablet ? 14.5 : 13.5)
-        : (isTablet ? 15.0 : 14.0);
+        ? (isTablet ? 13.0 : 12.5)
+        : (isTablet ? 14.0 : 13.0);
 
     final iconTile = Container(
       width: iconBox,
       height: iconBox,
       decoration: BoxDecoration(
         color: iconTileColor,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Icon(icon, color: accent, size: iconSize),
     );
@@ -312,7 +365,7 @@ class _FuelModeOption extends StatelessWidget {
             color: const Color(0xFF1A2433),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           subtitle,
           textAlign: vertical ? TextAlign.center : TextAlign.start,
@@ -339,14 +392,8 @@ class _FuelModeOption extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   iconTile,
-                  SizedBox(height: isTablet ? 12 : 8),
-                  textBlock,
                   SizedBox(height: isTablet ? 10 : 8),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    color: accent.withValues(alpha: 0.85),
-                    size: isTablet ? 26 : 22,
-                  ),
+                  textBlock,
                 ],
               ),
             ),
@@ -354,23 +401,20 @@ class _FuelModeOption extends StatelessWidget {
         : Row(
             children: [
               iconTile,
-              SizedBox(width: isTablet ? 18 : 14),
+              SizedBox(width: isTablet ? 16 : 12),
               Expanded(child: textBlock),
-              const SizedBox(width: 8),
               Icon(
                 Icons.chevron_right_rounded,
                 color: accent.withValues(alpha: 0.9),
-                size: isTablet ? 32 : 28,
+                size: isTablet ? 28 : 26,
               ),
             ],
           );
 
-    // IntrinsicHeight ให้ Row+stretch มีความสูงชัดใน ListView (unbounded)
-    // — ไม่งั้น release การ์ดยุบ/กดไม่ได้
     return SoftPressButton(
       onTap: onTap,
       size: SoftPressSize.large,
-      borderRadius: 22,
+      borderRadius: 20,
       isDarkSurface: false,
       liftWhenIdle: true,
       depthShadow: SoftPressDepthShadow(
@@ -383,11 +427,11 @@ class _FuelModeOption extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFE7ECF3)),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           child: IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -397,11 +441,11 @@ class _FuelModeOption extends StatelessWidget {
                   child: Padding(
                     padding: EdgeInsets.symmetric(
                       horizontal: vertical
-                          ? (isTablet ? 12 : 10)
-                          : (isTablet ? 18 : 14),
+                          ? (isTablet ? 10 : 8)
+                          : (isTablet ? 16 : 12),
                       vertical: vertical
-                          ? (isTablet ? 14 : 10)
-                          : (isTablet ? 16 : 13),
+                          ? (isTablet ? 12 : 10)
+                          : (isTablet ? 14 : 12),
                     ),
                     child: body,
                   ),

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     work_details TEXT,
     fuel_type TEXT,
     fuel_movement TEXT,
+    fuel_tank TEXT,
     payroll_period JSONB,
     payroll_snapshot JSONB,
     machine_id TEXT,
@@ -147,6 +148,7 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS inactive BOOLEAN NOT NULL DEFAULT
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS line_user_id TEXT;
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_movement TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fuel_tank TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS work_type_by_employee JSONB;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS work_assignments JSONB;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS custom_work_categories JSONB DEFAULT '[]'::jsonb;

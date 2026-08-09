@@ -499,6 +499,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (vid.isNotEmpty) row.vehicleId = vid;
     final ft = (t.fuelType ?? 'Diesel').trim();
     row.fuelType = ft.isEmpty ? 'Diesel' : ft;
+    row.fuelTank = normalizeFuelTank(t.fuelTank);
     final lit = t.quantity ?? 0;
     if (lit > 0) {
       row.liters = _strNum(lit);
@@ -586,9 +587,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     benzine: 0.0,
   );
   FuelStockBalance _fuelStock = const FuelStockBalance(
-    diesel: 0,
-    benzine: 0,
+    mainDiesel: 0,
+    reserveDiesel: 0,
   );
+  /// ถังที่ใช้ตอนเบิกน้ำมัน (default = หลัก)
+  String _fuelWithdrawTank = kFuelTankMain;
+  final _fuelTransferLitersController = TextEditingController();
+  final _fuelTransferTimeController = TextEditingController();
   final _fuelStockInLitersController = TextEditingController();
   final _fuelStockInPricePerLiterController = TextEditingController();
   final _fuelStockInAmountController = TextEditingController();
@@ -2119,6 +2124,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelWithdrawLitersController.dispose();
     _fuelWithdrawTimeController.dispose();
     _fuelWithdrawOtherController.dispose();
+    _fuelTransferLitersController.dispose();
+    _fuelTransferTimeController.dispose();
     _laborWorkDetailsController.dispose();
     _attendanceGeneralPoolScroll.dispose();
     _attendanceDriverPoolScroll.dispose();
@@ -3572,6 +3579,96 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             unitPrice: pricePerLiter > 0 ? pricePerLiter : null,
             fuelType: fuelType,
             fuelMovement: 'stock_in',
+            fuelTank: kFuelTankMain,
+            workDetails: _appendRecorder(time),
+          ),
+        );
+        await _refreshFuelStock();
+      },
+    );
+  }
+
+  /// โอนน้ำมันจากถังหลัก → ถังสำรอง (คู่แถว Transfer)
+  Future<void> _saveFuelTransferToReserveEntry() async {
+    final liters =
+        double.tryParse(_fuelTransferLitersController.text.trim()) ?? 0;
+    final time = _fuelTransferTimeController.text.trim();
+    await _runSaveWithPopups(
+      successMessage: 'โอนน้ำมันเข้าถังสำรองสำเร็จ',
+      saveActionLabel: 'เติมถังสำรอง',
+      saveButtonLabel: 'บันทึกโอนน้ำมัน',
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        _fuelTransferLitersController.clear();
+        _fuelTransferTimeController.clear();
+      },
+      body: () async {
+        if (liters <= 0) {
+          _failSave(
+            'กรุณาระบุจำนวนลิตรให้มากกว่า 0',
+            field: 'จำนวนลิตรที่โอน',
+          );
+        }
+        if (time.isEmpty) {
+          _failSave('กรุณาระบุเวลาที่โอน', field: 'เวลาที่โอน');
+        }
+        if (liters > _fuelStock.mainDiesel + 1e-9) {
+          _failSave(
+            'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(_fuelStock.mainDiesel)} ลิตร)',
+            field: 'จำนวนลิตรที่โอน',
+          );
+        }
+        final reserveRoom =
+            kFuelTankCapacityReserveLiters - _fuelStock.reserveDiesel;
+        if (liters > reserveRoom + 1e-9) {
+          _failSave(
+            'ถังสำรองว่างเหลือ ${formatFuelLiters(reserveRoom < 0 ? 0 : reserveRoom)} ลิตร',
+            field: 'จำนวนลิตรที่โอน',
+          );
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final pairNote = 'xfer:$ts';
+        await _persist(
+          AppTransaction(
+            id: '${ts}_fuel_xfer_out',
+            date: date,
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelTransferSubCategory,
+            description: _appendRecorder(
+              'โอนออกถังหลัก → สำรอง: ${formatFuelLiters(liters)} ลิตร',
+            ),
+            amount: 0,
+            note: pairNote,
+            quantity: liters,
+            unit: 'L',
+            fuelType: 'Diesel',
+            fuelMovement: 'stock_out',
+            fuelTank: kFuelTankMain,
+            workDetails: _appendRecorder(time),
+          ),
+        );
+        await _persist(
+          AppTransaction(
+            id: '${ts}_fuel_xfer_in',
+            date: date,
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelTransferSubCategory,
+            description: _appendRecorder(
+              'รับเข้าถังสำรองจากถังหลัก: ${formatFuelLiters(liters)} ลิตร',
+            ),
+            amount: 0,
+            note: pairNote,
+            quantity: liters,
+            unit: 'L',
+            fuelType: 'Diesel',
+            fuelMovement: 'stock_in',
+            fuelTank: kFuelTankReserve,
             workDetails: _appendRecorder(time),
           ),
         );
@@ -3635,6 +3732,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             unit: 'L',
             fuelType: fuelType,
             fuelMovement: 'stock_out',
+            fuelTank: normalizeFuelTank(_fuelWithdrawTank),
             workType: fuelWithdrawPurposeCodeOf(purpose),
             workDetails: _appendRecorder(time),
           ),
@@ -3688,6 +3786,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _failSave('กรุณาระบุเวลาเติมน้ำมัน ($vehicle)');
           }
           row.fuelType = 'Diesel';
+          final tank = normalizeFuelTank(row.fuelTank);
+          final tankLabel = fuelTankIsReserve(tank)
+              ? 'ปั่นไฟ/สำรอง'
+              : 'พล่าม/หลัก';
           final txId =
               row.txId ??
               '${DateTime.now().millisecondsSinceEpoch}_fuel_out_$i';
@@ -3700,7 +3802,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               category: 'Fuel',
               subCategory: 'VehicleUsage',
               description: _appendRecorder(
-                'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร (${row.fuelType == 'Diesel' ? 'ดีเซล' : 'เบนซิน'})',
+                'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร '
+                '(ดีเซล · $tankLabel)',
               ),
               amount: 0,
               note: _activeSignatureNote,
@@ -3708,6 +3811,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               unit: 'L',
               fuelType: row.fuelType,
               fuelMovement: 'stock_out',
+              fuelTank: tank,
               vehicleId: vehicle,
               workDetails: _appendRecorder(row.time.trim()),
             ),
@@ -10101,6 +10205,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 10),
+          Text(
+            'หักจากถัง',
+            style: GoogleFonts.kanit(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF546E7A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          _buildFuelTankChoiceChips(
+            selected: row.fuelTank,
+            onChanged: (tank) => setState(() => row.fuelTank = tank),
+          ),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -10232,7 +10350,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final liters = row.litersController.text.trim();
         final time = row.timeController.text.trim();
         if (liters.isEmpty && time.isEmpty) continue;
-        put(row.vehicleId, '${row.fuelType}|$liters|$time');
+        put(row.vehicleId, '${row.fuelType}|${row.fuelTank}|$liters|$time');
       }
       put(
         'stockIn',
@@ -10332,11 +10450,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final mode = _fuelSubMode;
     final child = mode == null
         ? FuelSubModePicker(
-            dieselLiters: _fuelStock.diesel,
+            mainDieselLiters: _fuelStock.mainDiesel,
+            reserveDieselLiters: _fuelStock.reserveDiesel,
             onSelect: (selected) => setState(() => _fuelSubMode = selected),
           )
         : switch (mode) {
             FuelSubMode.stockIn => _buildFuelStockInFormCard(),
+            FuelSubMode.transferToReserve => _buildFuelTransferFormCard(),
             FuelSubMode.withdraw => _buildFuelWithdrawFormCard(),
             FuelSubMode.macroUsage => _buildFuelFormCard(),
           };
@@ -10353,13 +10473,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// แบนเนอร์คงเหลือในถัง — ใช้ร่วมทุกฟอร์มย่อยของน้ำมัน
-  Widget _buildFuelStockBanner({double? pendingDelta}) {
-    final current = _fuelStock.diesel;
-    final preview = current + (pendingDelta ?? 0);
-    final over = preview > kFuelTankCapacityLiters;
-    final negative = preview < 0;
-    final warn = over || negative;
+  /// แบนเนอร์คงเหลือ 2 ถัง — ใช้ร่วมทุกฟอร์มย่อยของน้ำมัน
+  Widget _buildFuelStockBanner({
+    double? pendingMainDelta,
+    double? pendingReserveDelta,
+    @Deprecated('Use pendingMainDelta') double? pendingDelta,
+  }) {
+    final mainDelta = pendingMainDelta ?? pendingDelta;
+    final main = _fuelStock.mainDiesel;
+    final reserve = _fuelStock.reserveDiesel;
+    final mainPreview = main + (mainDelta ?? 0);
+    final reservePreview = reserve + (pendingReserveDelta ?? 0);
+    final overMain = mainPreview > kFuelTankCapacityMainLiters;
+    final overReserve = reservePreview > kFuelTankCapacityReserveLiters;
+    final negMain = mainPreview < 0;
+    final negReserve = reservePreview < 0;
+    final warn = overMain || overReserve || negMain || negReserve;
+
+    Widget line(String title, double current, double capacity, double? pending) {
+      final preview = current + (pending ?? 0);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$title ${formatFuelLiters(current)} / '
+            '${formatFuelLiters(capacity)} ลิตร',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w800,
+              fontSize: 15.5,
+              color: const Color(0xFF0F5FAF),
+            ),
+          ),
+          if (pending != null && pending != 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              'หลังบันทึก: ${formatFuelLiters(preview)} ลิตร',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: warn
+                    ? const Color(0xFFD14343)
+                    : const Color(0xFF37474F),
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -10372,34 +10535,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'คงเหลือในถัง ${formatFuelLiters(current)} / '
-            '${formatFuelLiters(kFuelTankCapacityLiters)} ลิตร',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w800,
-              fontSize: 17,
-              color: const Color(0xFF0F5FAF),
-            ),
+          line('ถังหลัก', main, kFuelTankCapacityMainLiters, mainDelta),
+          const SizedBox(height: 8),
+          line(
+            'ถังสำรอง',
+            reserve,
+            kFuelTankCapacityReserveLiters,
+            pendingReserveDelta,
           ),
-          if (pendingDelta != null && pendingDelta != 0) ...[
+          if (overMain || overReserve) ...[
             const SizedBox(height: 4),
             Text(
-              'หลังบันทึกรายการนี้: ${formatFuelLiters(preview)} ลิตร',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-                color: warn
-                    ? const Color(0xFFD14343)
-                    : const Color(0xFF37474F),
-              ),
-            ),
-          ],
-          if (over) ...[
-            const SizedBox(height: 4),
-            Text(
-              'เกินความจุถัง ${formatFuelLiters(kFuelTankCapacityLiters)} ลิตร',
+              'เกินความจุถัง',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
@@ -10408,7 +10555,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ],
-          if (negative) ...[
+          if (negMain || negReserve) ...[
             const SizedBox(height: 4),
             Text(
               'เบิกมากกว่าน้ำมันที่มีในถัง',
@@ -10470,7 +10617,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'รถน้ำมันมาเติมดีเซลเข้าถังสต็อก — กรอกจำนวนลิตรและเวลา '
+            'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
             '(ราคาใส่ทีหลังได้)',
             style: GoogleFonts.kanit(
               fontSize: 13,
@@ -10480,7 +10627,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 14),
-          _buildFuelStockBanner(pendingDelta: liters),
+          _buildFuelStockBanner(pendingMainDelta: liters),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
@@ -10621,6 +10768,164 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  Widget _buildFuelTankChoiceChips({
+    required String selected,
+    required ValueChanged<String> onChanged,
+  }) {
+    Widget chip(String tank, String label, String hint) {
+      final on = normalizeFuelTank(selected) == tank;
+      return Expanded(
+        child: Material(
+          color: on ? const Color(0xFFE3F2FD) : const Color(0xFFF8FAFD),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => onChanged(tank),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: on ? const Color(0xFF1565C0) : const Color(0xFFE1E8F0),
+                  width: on ? 1.6 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.kanit(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: on
+                          ? const Color(0xFF0D47A1)
+                          : const Color(0xFF546E7A),
+                    ),
+                  ),
+                  Text(
+                    hint,
+                    style: GoogleFonts.kanit(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF78909C),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        chip(kFuelTankMain, 'ถังหลัก', 'เติมที่พล่าม'),
+        const SizedBox(width: 8),
+        chip(kFuelTankReserve, 'ถังสำรอง', 'เครื่องปั่นไฟ'),
+      ],
+    );
+  }
+
+  Widget _buildFuelTransferFormCard() {
+    final liters =
+        double.tryParse(_fuelTransferLitersController.text.trim()) ?? 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'เติมถังสำรอง',
+            style: GoogleFonts.kanit(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF6A1B9A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'โอนดีเซลจากถังหลักไปถังสำรอง (ความจุ 1,000 ลิตร)',
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.black54,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _buildFuelStockBanner(
+            pendingMainDelta: liters > 0 ? -liters : 0,
+            pendingReserveDelta: liters > 0 ? liters : 0,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _fuelTransferLitersController,
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _fuelTransferLitersController,
+              label: 'จำนวนลิตรที่โอนเข้าถังสำรอง',
+              allowDecimal: true,
+              maxDecimalPlaces: 2,
+              onChanged: (_) => _scheduleUiRefresh(),
+            ),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'จำนวนลิตรที่โอน',
+              prefixIcon: Icon(Icons.swap_horiz_rounded),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _fuelTransferTimeController,
+            readOnly: true,
+            onTap: () => _pickFuelTimeInto(_fuelTransferTimeController),
+            style: GoogleFonts.kanit(
+              color: const Color(0xFF1D2A3A),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'เวลาที่โอน',
+              prefixIcon: Icon(Icons.schedule_rounded),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveFuelTransferToReserveEntry,
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: Text(
+                'บันทึกโอนเข้าถังสำรอง',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(62),
+                backgroundColor: const Color(0xFF6A1B9A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFuelWithdrawFormCard() {
     final liters =
         double.tryParse(_fuelWithdrawLitersController.text.trim()) ?? 0;
@@ -10735,26 +11040,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 14),
-          _buildFuelStockBanner(pendingDelta: liters > 0 ? -liters : 0),
+          _buildFuelStockBanner(
+            pendingMainDelta: !fuelTankIsReserve(_fuelWithdrawTank) && liters > 0
+                ? -liters
+                : 0,
+            pendingReserveDelta: fuelTankIsReserve(_fuelWithdrawTank) && liters > 0
+                ? -liters
+                : 0,
+          ),
           const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFFFCC80)),
-              ),
-              child: Text(
-                'ดีเซล',
-                style: GoogleFonts.kanit(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFFEF6C00),
-                ),
-              ),
+          Text(
+            'หักจากถัง',
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF546E7A),
             ),
+          ),
+          const SizedBox(height: 8),
+          _buildFuelTankChoiceChips(
+            selected: _fuelWithdrawTank,
+            onChanged: (tank) => setState(() => _fuelWithdrawTank = tank),
           ),
           const SizedBox(height: 14),
           Row(
@@ -17493,6 +17799,8 @@ class _FuelVehicleDraft {
   String? txId;
   String vehicleId = '';
   String fuelType = 'Diesel';
+  /// main | reserve — default ถังหลัก (พล่าม)
+  String fuelTank = kFuelTankMain;
   String liters = '';
   String time = '';
   final TextEditingController litersController;

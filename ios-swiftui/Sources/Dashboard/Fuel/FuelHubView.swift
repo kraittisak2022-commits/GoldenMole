@@ -99,7 +99,10 @@ struct FuelHubView: View {
     private func picker(_ session: FuelSession) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                tankGauge(diesel: session.dieselBalance)
+                tankGauge(
+                    mainDiesel: session.dieselBalance,
+                    reserveDiesel: session.reserveDieselBalance
+                )
 
                 Text("เลือกเมนูน้ำมัน")
                     .font(.title2.weight(.bold))
@@ -154,34 +157,38 @@ struct FuelHubView: View {
         }
     }
 
-    private func tankGauge(diesel: Double) -> some View {
-        let pct = min(1, max(0, diesel / FuelLogic.tankCapacityLiters))
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("ถังดีเซล")
-                    .font(.headline)
-                Spacer()
-                Text("\(FuelLogic.formatLiters(diesel)) / \(FuelLogic.formatLiters(FuelLogic.tankCapacityLiters)) L")
-                    .font(.subheadline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(accent)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(AppTheme.surfaceSoft)
-                    Capsule()
-                        .fill(accent)
-                        .frame(width: max(8, geo.size.width * pct))
+    private func tankGauge(mainDiesel: Double, reserveDiesel: Double) -> some View {
+        func row(title: String, liters: Double, capacity: Double) -> some View {
+            let pct = min(1, max(0, liters / capacity))
+            return VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\(FuelLogic.formatLiters(liters)) / \(FuelLogic.formatLiters(capacity)) L")
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .foregroundStyle(accent)
                 }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(AppTheme.surfaceSoft)
+                        Capsule()
+                            .fill(accent)
+                            .frame(width: max(8, geo.size.width * pct))
+                    }
+                }
+                .frame(height: 12)
             }
-            .frame(height: 14)
-            if diesel < 0 {
+        }
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("สต็อกดีเซล")
+                .font(.headline)
+            row(title: "ถังหลัก", liters: mainDiesel, capacity: FuelLogic.tankCapacityMainLiters)
+            row(title: "ถังสำรอง", liters: reserveDiesel, capacity: FuelLogic.tankCapacityReserveLiters)
+            if mainDiesel < 0 || reserveDiesel < 0 {
                 Text("คงเหลือติดลบ — ตรวจสอบรายการเบิก/ใช้รถ")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.expense)
-            } else if diesel > FuelLogic.tankCapacityLiters {
-                Text("เกินความจุถัง — ตรวจสอบรายการรับเข้า")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.warning)
             }
         }
         .padding(16)

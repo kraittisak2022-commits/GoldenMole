@@ -38,6 +38,7 @@ class AppTransaction {
     this.location,
     this.fuelType,
     this.fuelMovement,
+    this.fuelTank,
     this.tripCount,
     this.tripMorning,
     this.tripAfternoon,
@@ -99,6 +100,8 @@ class AppTransaction {
   final String? location;
   final String? fuelType;
   final String? fuelMovement;
+  /// ถังน้ำมัน: `main` | `reserve` (null/legacy = main)
+  final String? fuelTank;
   final double? tripCount;
   final double? tripMorning;
   final double? tripAfternoon;
@@ -178,6 +181,7 @@ class AppTransaction {
       location: row['location']?.toString(),
       fuelType: row['fuel_type']?.toString(),
       fuelMovement: row['fuel_movement']?.toString(),
+      fuelTank: row['fuel_tank']?.toString(),
       tripCount: _toDouble(row['trip_count']),
       tripMorning: _toDouble(row['trip_morning']),
       tripAfternoon: _toDouble(row['trip_afternoon']),
@@ -256,6 +260,7 @@ class AppTransaction {
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)
         'fuel_movement': fuelMovement,
+      if (fuelTank != null && fuelTank!.isNotEmpty) 'fuel_tank': fuelTank,
       if (tripCount != null) 'trip_count': tripCount,
       if (tripMorning != null) 'trip_morning': tripMorning,
       if (tripAfternoon != null) 'trip_afternoon': tripAfternoon,
@@ -331,6 +336,7 @@ class AppTransaction {
       if (fuelType != null && fuelType!.isNotEmpty) 'fuel_type': fuelType,
       if (fuelMovement != null && fuelMovement!.isNotEmpty)
         'fuel_movement': fuelMovement,
+      if (fuelTank != null && fuelTank!.isNotEmpty) 'fuel_tank': fuelTank,
       if (tripCount != null) 'trip_count': tripCount,
       if (tripMorning != null) 'trip_morning': tripMorning,
       if (tripAfternoon != null) 'trip_afternoon': tripAfternoon,
@@ -394,6 +400,7 @@ class AppTransaction {
     String? location,
     String? fuelType,
     String? fuelMovement,
+    String? fuelTank,
     double? tripCount,
     double? tripMorning,
     double? tripAfternoon,
@@ -450,6 +457,7 @@ class AppTransaction {
       location: location ?? this.location,
       fuelType: fuelType ?? this.fuelType,
       fuelMovement: fuelMovement ?? this.fuelMovement,
+      fuelTank: fuelTank ?? this.fuelTank,
       tripCount: tripCount ?? this.tripCount,
       tripMorning: tripMorning ?? this.tripMorning,
       tripAfternoon: tripAfternoon ?? this.tripAfternoon,

@@ -73,6 +73,7 @@ final class FuelSession {
     var withdraw = FuelWithdrawDraft()
     var vehicleDrafts: [FuelVehicleDraft] = []
     var dieselBalance: Double = 0
+    var reserveDieselBalance: Double = 0
     var dayStockInRows: [Transaction] = []
     var dayWithdrawRows: [Transaction] = []
     var statusMessage: String?
@@ -102,7 +103,8 @@ final class FuelSession {
             transactions: appState.transactions,
             opening: appState.settings.fuelOpeningStockLiters
         )
-        dieselBalance = balance.diesel
+        dieselBalance = balance.mainDiesel
+        reserveDieselBalance = balance.reserveDiesel
 
         let dayRows = FuelLogic.dayFuelRows(dayKey: dayKey, transactions: appState.transactions)
         dayStockInRows = dayRows.filter(FuelLogic.isStockIn)

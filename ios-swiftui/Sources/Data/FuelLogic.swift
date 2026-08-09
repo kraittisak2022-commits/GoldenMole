@@ -1,14 +1,24 @@
 import Foundation
 
-/// Flutter «น้ำมัน» helpers (`fuel_stock.dart` + classifiers).
+/// Flutter «น้ำมัน» helpers (`fuel_stock.dart` + classifiers) — dual tank parity.
 enum FuelLogic {
-    static let tankCapacityLiters: Double = 9000
+    static let tankCapacityMainLiters: Double = 12000
+    static let tankCapacityReserveLiters: Double = 1000
+    /// ความเข้ากันได้ — ถังหลัก
+    static let tankCapacityLiters: Double = tankCapacityMainLiters
+
+    static let tankMain = "main"
+    static let tankReserve = "reserve"
     static let stockInSubCategory = "StockIn"
     static let withdrawSubCategory = "Withdraw"
+    static let transferSubCategory = "Transfer"
+    static let sandSieveSubCategory = "SandSieve"
     static let vehicleUsageSubCategory = "VehicleUsage"
+    static let sandSieveLitersPerHour: Double = 18
 
     enum SubMode: String, CaseIterable, Identifiable, Sendable {
         case stockIn
+        case transferToReserve
         case withdraw
         case macroUsage
 
@@ -17,6 +27,7 @@ enum FuelLogic {
         var title: String {
             switch self {
             case .stockIn: return "เพิ่มน้ำมัน"
+            case .transferToReserve: return "เติมถังสำรอง"
             case .withdraw: return "เบิกน้ำมัน"
             case .macroUsage: return "การใช้น้ำมันรถแม็คโคร"
             }
@@ -24,7 +35,8 @@ enum FuelLogic {
 
         var subtitle: String {
             switch self {
-            case .stockIn: return "รถน้ำมันมาเติมเข้าถัง"
+            case .stockIn: return "รถน้ำมันมาเติมเข้าถังหลัก"
+            case .transferToReserve: return "โอนจากถังหลักไปถังสำรอง"
             case .withdraw: return "เบิกออกจากถังสต็อก"
             case .macroUsage: return "บันทึกลิตรต่อคันแม็คโคร"
             }
@@ -33,6 +45,7 @@ enum FuelLogic {
         var systemImage: String {
             switch self {
             case .stockIn: return "arrow.down.to.line.circle.fill"
+            case .transferToReserve: return "arrow.left.arrow.right.circle.fill"
             case .withdraw: return "arrow.up.right.circle.fill"
             case .macroUsage: return "fuelpump.fill"
             }
@@ -68,8 +81,17 @@ enum FuelLogic {
     }
 
     struct Balance: Equatable, Sendable {
-        var diesel: Double
-        var benzine: Double
+        var mainDiesel: Double
+        var reserveDiesel: Double
+        var mainBenzine: Double
+        var reserveBenzine: Double
+
+        var diesel: Double { mainDiesel }
+        var benzine: Double { mainBenzine }
+
+        func diesel(forTank tank: String?) -> Double {
+            normalizeTank(tank) == tankReserve ? reserveDiesel : mainDiesel
+        }
     }
 
     struct DayReconcile: Equatable, Sendable {
@@ -85,6 +107,12 @@ enum FuelLogic {
     static func formatLiters(_ v: Double) -> String {
         if abs(v - v.rounded()) < 1e-9 { return String(Int(v.rounded())) }
         return String(format: "%.2f", v)
+    }
+
+    static func normalizeTank(_ raw: String?) -> String {
+        let v = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if v == tankReserve || v == "สำรอง" { return tankReserve }
+        return tankMain
     }
 
     static func isFuelExpense(_ t: Transaction) -> Bool {
@@ -107,6 +135,16 @@ enum FuelLogic {
         return !isStockIn(t)
     }
 
+    static func isTransfer(_ t: Transaction) -> Bool {
+        guard isFuelExpense(t) else { return false }
+        return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == transferSubCategory
+    }
+
+    static func isSandSieve(_ t: Transaction) -> Bool {
+        guard isFuelExpense(t) else { return false }
+        return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == sandSieveSubCategory
+    }
+
     static func isVehicleUsage(_ t: Transaction) -> Bool {
         guard isFuelExpense(t), !isStockIn(t) else { return false }
         let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,7 +155,7 @@ enum FuelLogic {
     /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 5 ส.ค. 2569)
     static let stockCutoverYmd = "2026-08-05"
 
-    /// Flutter `computeFuelStockBalance` parity (daily reconcile machine vs macro usage).
+    /// Flutter `computeFuelStockBalance` parity (dual tank + machine reconcile).
     static func computeBalance(
         transactions: [Transaction],
         opening: FuelStock?
@@ -133,12 +171,12 @@ enum FuelLogic {
         for t in transactions {
             guard isFuelExpense(t) else { continue }
             let day = String(t.date.prefix(10))
-            // ตัดยอด: ไม่นับรายการก่อนวันตัด
             guard day >= stockCutoverYmd else { continue }
             let lit = liters(of: t)
             guard lit > 0 else { continue }
             let isBenzine = (t.fuelType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "benzine"
-            let key = "\(day)|\(isBenzine ? "B" : "D")"
+            let tank = normalizeTank(t.fuelTank)
+            let key = "\(day)|\(tank)|\(isBenzine ? "B" : "D")"
             var b = buckets[key] ?? Bucket()
             if isStockIn(t) {
                 b.stockIn += lit
@@ -147,31 +185,50 @@ enum FuelLogic {
                 if (t.workType ?? "").lowercased() == "machine" {
                     b.machineWithdraw += lit
                 }
+            } else if isTransfer(t) || isSandSieve(t) {
+                b.withdraw += lit
             } else if isVehicleUsage(t) {
                 b.vehicleUsage += lit
             }
             buckets[key] = b
         }
 
-        var diesel = opening?.diesel ?? 0
-        var benzine = opening?.benzine ?? 0
+        var mainDiesel = opening?.diesel ?? 0
+        var mainBenzine = opening?.benzine ?? 0
+        var reserveDiesel = 0.0
+        var reserveBenzine = 0.0
         for (key, b) in buckets {
             let excess = b.vehicleUsage - b.machineWithdraw
             let delta = b.stockIn - b.withdraw - max(0, excess)
-            if key.hasSuffix("|B") {
-                benzine += delta
+            let isReserve = key.contains("|\(tankReserve)|")
+            let isBenzine = key.hasSuffix("|B")
+            if isReserve {
+                if isBenzine { reserveBenzine += delta } else { reserveDiesel += delta }
+            } else if isBenzine {
+                mainBenzine += delta
             } else {
-                diesel += delta
+                mainDiesel += delta
             }
         }
-        return Balance(diesel: diesel, benzine: benzine)
+        return Balance(
+            mainDiesel: mainDiesel,
+            reserveDiesel: reserveDiesel,
+            mainBenzine: mainBenzine,
+            reserveBenzine: reserveBenzine
+        )
     }
 
-    static func machineReconcile(dayKey: String, transactions: [Transaction]) -> DayReconcile {
+    static func machineReconcile(
+        dayKey: String,
+        transactions: [Transaction],
+        tank: String? = nil
+    ) -> DayReconcile {
+        let filterTank = tank.map { normalizeTank($0) }
         var machineWithdraw = 0.0
         var vehicleUsage = 0.0
         for t in transactions {
             guard String(t.date.prefix(10)) == dayKey, isFuelExpense(t) else { continue }
+            if let filterTank, normalizeTank(t.fuelTank) != filterTank { continue }
             let lit = liters(of: t)
             guard lit > 0 else { continue }
             if isWithdraw(t), (t.workType ?? "").lowercased() == "machine" {
@@ -208,5 +265,9 @@ enum FuelLogic {
         transactions
             .filter { String($0.date.prefix(10)) == dayKey && isFuelExpense($0) }
             .sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+    }
+
+    static func sandSieveTxId(dateYmd: String) -> String {
+        "\(dateYmd.trimmingCharacters(in: .whitespacesAndNewlines))_fuel_sand_sieve"
     }
 }

@@ -1,8 +1,18 @@
 import '../models/app_transaction.dart';
 import 'daily_module_transactions.dart';
 
-/// ความจุถังสต็อกน้ำมันที่หน้างาน (ลิตร)
-const double kFuelTankCapacityLiters = 12000;
+/// ความจุถังสต็อกน้ำมันหลัก (ลิตร)
+const double kFuelTankCapacityMainLiters = 12000;
+
+/// ความจุถังสต็อกน้ำมันสำรอง (ลิตร)
+const double kFuelTankCapacityReserveLiters = 1000;
+
+/// alias ความเข้ากันได้ — หมายถึงถังหลัก
+const double kFuelTankCapacityLiters = kFuelTankCapacityMainLiters;
+
+/// รหัสถัง: หลัก / สำรอง
+const String kFuelTankMain = 'main';
+const String kFuelTankReserve = 'reserve';
 
 /// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
 /// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
@@ -13,6 +23,15 @@ const String kFuelStockInSubCategory = 'StockIn';
 
 /// `subCategory` ของแถวเบิกน้ำมันออกจากถัง
 const String kFuelWithdrawSubCategory = 'Withdraw';
+
+/// `subCategory` ของคู่แถวโอนหลัก→สำรอง
+const String kFuelTransferSubCategory = 'Transfer';
+
+/// `subCategory` ของการใช้น้ำมันเครื่องร่อนทราย (อัตโนมัติ)
+const String kFuelSandSieveSubCategory = 'SandSieve';
+
+/// อัตราใช้น้ำมันเครื่องร่อนทราย (ลิตร/ชั่วโมง)
+const double kFuelSandSieveLitersPerHour = 18;
 
 /// วัตถุประสงค์การเบิกน้ำมันออกจากถัง
 enum FuelWithdrawPurpose { machine, car, generator, other }
@@ -61,6 +80,22 @@ FuelWithdrawPurpose? fuelWithdrawPurposeFromCode(String? code) {
 bool fuelTypeIsBenzine(String? fuelType) =>
     (fuelType ?? '').trim().toLowerCase() == 'benzine';
 
+/// normalize รหัสถัง — ค่าว่าง/legacy = ถังหลัก
+String normalizeFuelTank(String? raw) {
+  final v = (raw ?? '').trim().toLowerCase();
+  if (v == kFuelTankReserve || v == 'สำรอง') return kFuelTankReserve;
+  return kFuelTankMain;
+}
+
+bool fuelTankIsReserve(String? raw) => normalizeFuelTank(raw) == kFuelTankReserve;
+
+String fuelTankLabelOf(String? raw) =>
+    fuelTankIsReserve(raw) ? 'ถังสำรอง' : 'ถังหลัก';
+
+double fuelTankCapacityOf(String? raw) => fuelTankIsReserve(raw)
+    ? kFuelTankCapacityReserveLiters
+    : kFuelTankCapacityMainLiters;
+
 /// ปริมาณน้ำมันของแถวเป็นลิตร — รองรับหน่วยแกลลอนเหมือน `fuelTxToLiters` บนเว็บ
 double fuelTxLiters(AppTransaction t) {
   final q = (t.quantity ?? 0).toDouble();
@@ -89,6 +124,16 @@ bool isFuelWithdrawRow(AppTransaction t) {
   return !isFuelStockInRow(t);
 }
 
+bool isFuelTransferRow(AppTransaction t) {
+  if (!_isFuelExpenseRow(t)) return false;
+  return (t.subCategory ?? '').trim() == kFuelTransferSubCategory;
+}
+
+bool isFuelSandSieveRow(AppTransaction t) {
+  if (!_isFuelExpenseRow(t)) return false;
+  return (t.subCategory ?? '').trim() == kFuelSandSieveSubCategory;
+}
+
 /// รหัสวัตถุประสงค์ของแถวเบิกน้ำมัน (`machine` | `car` | `generator` | `other`)
 String? fuelWithdrawPurposeCode(AppTransaction t) {
   if (!isFuelWithdrawRow(t)) return null;
@@ -97,13 +142,37 @@ String? fuelWithdrawPurposeCode(AppTransaction t) {
 }
 
 class FuelStockBalance {
-  const FuelStockBalance({required this.diesel, required this.benzine});
+  const FuelStockBalance({
+    required this.mainDiesel,
+    required this.reserveDiesel,
+    this.mainBenzine = 0,
+    this.reserveBenzine = 0,
+  });
 
-  final double diesel;
-  final double benzine;
+  final double mainDiesel;
+  final double reserveDiesel;
+  final double mainBenzine;
+  final double reserveBenzine;
 
-  double forFuelType(String? fuelType) =>
-      fuelTypeIsBenzine(fuelType) ? benzine : diesel;
+  /// ความเข้ากันได้ — ดีเซลถังหลัก
+  double get diesel => mainDiesel;
+
+  /// ความเข้ากันได้ — เบนซินถังหลัก
+  double get benzine => mainBenzine;
+
+  double dieselForTank(String? tank) =>
+      fuelTankIsReserve(tank) ? reserveDiesel : mainDiesel;
+
+  double benzineForTank(String? tank) =>
+      fuelTankIsReserve(tank) ? reserveBenzine : mainBenzine;
+
+  double forFuelType(String? fuelType, {String? tank}) {
+    final reserve = fuelTankIsReserve(tank);
+    if (fuelTypeIsBenzine(fuelType)) {
+      return reserve ? reserveBenzine : mainBenzine;
+    }
+    return reserve ? reserveDiesel : mainDiesel;
+  }
 }
 
 class _FuelDayBucket {
@@ -113,31 +182,35 @@ class _FuelDayBucket {
   double vehicleUsage = 0;
 }
 
-/// คงเหลือในถัง = ยกมา + รับเข้า − เบิกออก − ส่วนที่เติมรถเกินโควตา «เติมเครื่องจักร» ของวันนั้น
+/// คงเหลือแยกถังหลัก/สำรอง
 ///
-/// น้ำมันที่ลงบันทึกการใช้รถแม็คโครถือว่าเบิกไปแล้วในกล่อง «เติมเครื่องจักร»
-/// จึงหักกลบกันรายวันเพื่อไม่ให้ตัดสต็อกซ้ำ ส่วนที่เกินโควตายังตัดสต็อกตามจริง
+/// ต่อวันต่อถังต่อชนิดน้ำมัน:
+/// `delta = stockIn − withdraw − max(0, vehicleUsage − machineWithdraw)`
 ///
 /// รายการก่อน [kFuelStockCutoverYmd] ไม่ถูกนับ — ยอดก่อนหน้า = 0
+/// แถวไม่มี `fuelTank` → ถือเป็นถังหลัก
 FuelStockBalance computeFuelStockBalance(
   Iterable<AppTransaction> transactions, {
   double openingDiesel = 0,
   double openingBenzine = 0,
+  double openingReserveDiesel = 0,
+  double openingReserveBenzine = 0,
 }) {
   final buckets = <String, _FuelDayBucket>{};
-  _FuelDayBucket bucketFor(String date, bool benzine) => buckets.putIfAbsent(
-    '$date|${benzine ? 'B' : 'D'}',
-    () => _FuelDayBucket(),
-  );
+  _FuelDayBucket bucketFor(String date, String tank, bool benzine) =>
+      buckets.putIfAbsent(
+        '$date|$tank|${benzine ? 'B' : 'D'}',
+        () => _FuelDayBucket(),
+      );
 
   for (final t in transactions) {
     if (!_isFuelExpenseRow(t)) continue;
     final day = t.date.trim();
-    // ตัดยอด: ไม่นับรายการก่อนวันตัด (ยอดก่อนหน้า = 0)
     if (day.compareTo(kFuelStockCutoverYmd) < 0) continue;
     final liters = fuelTxLiters(t);
     if (liters <= 0) continue;
-    final bucket = bucketFor(day, fuelTypeIsBenzine(t.fuelType));
+    final tank = normalizeFuelTank(t.fuelTank);
+    final bucket = bucketFor(day, tank, fuelTypeIsBenzine(t.fuelType));
     if (isFuelStockInRow(t)) {
       bucket.stockIn += liters;
       continue;
@@ -149,38 +222,71 @@ FuelStockBalance computeFuelStockBalance(
       }
       continue;
     }
+    if (isFuelSandSieveRow(t) || isFuelTransferRow(t)) {
+      // Transfer stock_out / SandSieve — หักเต็มจากถังนั้น
+      bucket.withdraw += liters;
+      continue;
+    }
     if (isFuelVehicleUsageRow(t)) {
       bucket.vehicleUsage += liters;
+      continue;
+    }
+    // catch-all stock_out ที่ไม่ใช่ vehicle
+    final mov = (t.fuelMovement ?? '').trim().toLowerCase();
+    if (mov == 'stock_out') {
+      bucket.withdraw += liters;
     }
   }
 
-  var diesel = openingDiesel;
-  var benzine = openingBenzine;
+  var mainDiesel = openingDiesel;
+  var mainBenzine = openingBenzine;
+  var reserveDiesel = openingReserveDiesel;
+  var reserveBenzine = openingReserveBenzine;
   for (final entry in buckets.entries) {
     final b = entry.value;
     final excess = b.vehicleUsage - b.machineWithdraw;
     final delta = b.stockIn - b.withdraw - (excess > 0 ? excess : 0);
-    if (entry.key.endsWith('|B')) {
-      benzine += delta;
+    final parts = entry.key.split('|');
+    final tank = parts.length >= 2 ? parts[1] : kFuelTankMain;
+    final isBenzine = entry.key.endsWith('|B');
+    if (tank == kFuelTankReserve) {
+      if (isBenzine) {
+        reserveBenzine += delta;
+      } else {
+        reserveDiesel += delta;
+      }
+    } else if (isBenzine) {
+      mainBenzine += delta;
     } else {
-      diesel += delta;
+      mainDiesel += delta;
     }
   }
-  return FuelStockBalance(diesel: diesel, benzine: benzine);
+  return FuelStockBalance(
+    mainDiesel: mainDiesel,
+    reserveDiesel: reserveDiesel,
+    mainBenzine: mainBenzine,
+    reserveBenzine: reserveBenzine,
+  );
 }
 
 /// ยอดกระทบกันของวันเดียว — เบิกเพื่อเครื่องจักร vs ที่ลงบันทึกใช้รถแล้ว
+/// [tank] null = รวมทุกถัง; ระบุแล้วคิดเฉพาะถังนั้น
 ({double machineWithdraw, double vehicleUsage, double remaining})
 fuelMachineReconcileForDay(
   String dayKey,
-  Iterable<AppTransaction> transactions,
-) {
+  Iterable<AppTransaction> transactions, {
+  String? tank,
+}) {
   final day = dayKey.trim();
+  final filterTank = tank == null ? null : normalizeFuelTank(tank);
   var machineWithdraw = 0.0;
   var vehicleUsage = 0.0;
   for (final t in transactions) {
     if (t.date.trim() != day) continue;
     if (!_isFuelExpenseRow(t)) continue;
+    if (filterTank != null && normalizeFuelTank(t.fuelTank) != filterTank) {
+      continue;
+    }
     final liters = fuelTxLiters(t);
     if (liters <= 0) continue;
     if (isFuelWithdrawRow(t)) {
@@ -202,3 +308,6 @@ String formatFuelLiters(double liters) {
   if (liters % 1 == 0) return liters.toStringAsFixed(0);
   return liters.toStringAsFixed(2);
 }
+
+/// id คงที่ของแถวใช้น้ำมันร่อนทรายอัตโนมัติรายวัน
+String fuelSandSieveTxId(String dateYmd) => '${dateYmd.trim()}_fuel_sand_sieve';

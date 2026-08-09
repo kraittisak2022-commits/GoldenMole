@@ -73,6 +73,8 @@ export interface Transaction {
     workDetails?: string; // Added for Vehicle/General work details
     fuelType?: 'Diesel' | 'Benzine';
     fuelMovement?: 'stock_in' | 'stock_out';
+    /** ถังน้ำมัน: main | reserve (ว่าง/legacy = main) */
+    fuelTank?: 'main' | 'reserve' | string;
     payrollPeriod?: { start: string; end: string; };
     payrollSnapshot?: PayrollSnapshot;
     payrollLockAction?: 'unlock' | 'relock';

@@ -77,7 +77,7 @@ const TRANSACTION_TABLE_COLUMNS = new Set([
     'quantity', 'unit', 'unit_price', 'project_id', 'mileage', 'image_url', 'location',
     'labor_status', 'work_type', 'work_type_by_employee', 'work_assignments', 'custom_work_categories',
     'ot_amount', 'advance_amount', 'special_amount', 'ot_hours', 'ot_description',
-    'leave_reason', 'leave_days', 'note', 'work_details', 'fuel_type', 'fuel_movement',
+    'leave_reason', 'leave_days', 'note', 'work_details', 'fuel_type', 'fuel_movement', 'fuel_tank',
     'payroll_period', 'payroll_snapshot', 'payroll_lock_action', 'unlocked_by_admin_id',
     'unlocked_by_admin_name', 'unlocked_at',
     'machine_id', 'machine_hours', 'machine_work_type',

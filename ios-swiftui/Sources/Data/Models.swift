@@ -258,6 +258,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
     let workDetails: String?
     let fuelType: String?
     let fuelMovement: String?
+    let fuelTank: String?
     let machineId: String?
     let machineHours: Double?
     let tripCount: Double?
@@ -306,6 +307,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         case workDetails = "work_details"
         case fuelType = "fuel_type"
         case fuelMovement = "fuel_movement"
+        case fuelTank = "fuel_tank"
         case machineId = "machine_id"
         case machineHours = "machine_hours"
         case tripCount = "trip_count"
@@ -366,6 +368,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         workDetails = try c.decodeIfPresent(String.self, forKey: .workDetails)
         fuelType = try c.decodeIfPresent(String.self, forKey: .fuelType)
         fuelMovement = try c.decodeIfPresent(String.self, forKey: .fuelMovement)
+        fuelTank = try c.decodeIfPresent(String.self, forKey: .fuelTank)
         machineId = try c.decodeIfPresent(String.self, forKey: .machineId)
         machineHours = FlexibleNumber.decodeIfPresent(c, forKey: .machineHours)
         tripCount = FlexibleNumber.decodeIfPresent(c, forKey: .tripCount)
@@ -442,6 +445,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         try c.encodeIfPresent(workDetails, forKey: .workDetails)
         try c.encodeIfPresent(fuelType, forKey: .fuelType)
         try c.encodeIfPresent(fuelMovement, forKey: .fuelMovement)
+        try c.encodeIfPresent(fuelTank, forKey: .fuelTank)
         try c.encodeIfPresent(machineId, forKey: .machineId)
         try c.encodeIfPresent(machineHours, forKey: .machineHours)
         try c.encodeIfPresent(tripCount, forKey: .tripCount)

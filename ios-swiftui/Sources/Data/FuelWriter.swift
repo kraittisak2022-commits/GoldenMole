@@ -50,7 +50,8 @@ enum FuelWriter {
             unit: "L",
             unitPrice: (unitPrice ?? 0) > 0 ? unitPrice : nil,
             fuelType: "Diesel",
-            fuelMovement: "stock_in"
+            fuelMovement: "stock_in",
+            fuelTank: FuelLogic.tankMain
         )
     }
 
@@ -61,7 +62,8 @@ enum FuelWriter {
         purpose: FuelLogic.WithdrawPurpose,
         otherText: String,
         time: String,
-        omitCreatedAt: Bool
+        omitCreatedAt: Bool,
+        fuelTank: String = FuelLogic.tankMain
     ) -> TransactionWritePayload {
         let label = purpose.label
         let descPrefix = purpose == .other
@@ -103,7 +105,8 @@ enum FuelWriter {
             unit: "L",
             unitPrice: nil,
             fuelType: "Diesel",
-            fuelMovement: "stock_out"
+            fuelMovement: "stock_out",
+            fuelTank: fuelTank
         )
     }
 
@@ -113,7 +116,8 @@ enum FuelWriter {
         vehicleId: String,
         liters: Double,
         time: String,
-        omitCreatedAt: Bool
+        omitCreatedAt: Bool,
+        fuelTank: String = FuelLogic.tankMain
     ) -> TransactionWritePayload {
         TransactionWritePayload(
             id: id,
@@ -151,7 +155,8 @@ enum FuelWriter {
             unit: "L",
             unitPrice: nil,
             fuelType: "Diesel",
-            fuelMovement: "stock_out"
+            fuelMovement: "stock_out",
+            fuelTank: fuelTank
         )
     }
 

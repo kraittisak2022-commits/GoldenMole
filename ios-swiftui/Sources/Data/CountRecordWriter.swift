@@ -40,6 +40,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
     var unitPrice: Double? = nil
     var fuelType: String? = nil
     var fuelMovement: String? = nil
+    var fuelTank: String? = nil
     /// Labor advance (เบิกเงิน)
     var advanceAmount: Double? = nil
 
@@ -72,6 +73,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         case unitPrice = "unit_price"
         case fuelType = "fuel_type"
         case fuelMovement = "fuel_movement"
+        case fuelTank = "fuel_tank"
         case advanceAmount = "advance_amount"
     }
 
@@ -113,6 +115,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         try c.encodeIfPresent(unitPrice, forKey: .unitPrice)
         try c.encodeIfPresent(fuelType, forKey: .fuelType)
         try c.encodeIfPresent(fuelMovement, forKey: .fuelMovement)
+        try c.encodeIfPresent(fuelTank, forKey: .fuelTank)
         try c.encodeIfPresent(advanceAmount, forKey: .advanceAmount)
     }
 }

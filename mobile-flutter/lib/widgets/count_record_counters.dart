@@ -19,6 +19,8 @@ import '../services/transaction_service.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/touch_profile.dart';
 import '../utils/daily_module_transactions.dart';
+import '../utils/fuel_stock.dart';
+import '../utils/sand_work_duration.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../utils/app_haptics.dart';
@@ -950,6 +952,76 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
   }
 
+
+  /// อัปเดตรายการใช้น้ำมันเครื่องร่อนทรายอัตโนมัติ (18 L/ชม. จากถังสำรอง)
+  Future<void> _syncSandSieveFuelUsage(_CounterUnit u) async {
+    if (widget.mode != CounterMode.sand) return;
+    final day = widget.dateYmd.trim();
+    final fuelId = fuelSandSieveTxId(day);
+    final summary = computeSandWorkDurationSummary(u.lapTimes, day);
+    final hours = summary?.totalActiveHours ?? 0;
+    final liters = double.parse(
+      (hours * kFuelSandSieveLitersPerHour).toStringAsFixed(2),
+    );
+
+    if (hours <= 0 || liters <= 0 || _unitIsEmpty(u)) {
+      // ลบแถวอัตโนมัติเมื่อไม่มีชั่วโมงทำงาน
+      final dayRows = _effectiveDayRows();
+      final hasFuel = dayRows.any((t) => t.id == fuelId);
+      if (hasFuel) {
+        await CountRecordOfflineSync.instance.delete(
+          service: widget.service,
+          client: Supabase.instance.client,
+          id: fuelId,
+          ymd: day,
+          dayServerRows: dayRows,
+          serverOnlineHint: _isOnline,
+        );
+        _hiddenDayTxIds.add(fuelId);
+      }
+      return;
+    }
+
+    final hoursLabel = hours % 1 == 0
+        ? hours.toStringAsFixed(0)
+        : hours.toStringAsFixed(2);
+    final litersLabel = formatFuelLiters(liters);
+    final clock = summary == null
+        ? ''
+        : (summary.startClock != null && summary.endClock != null
+            ? ' (${summary.startClock}–${summary.endClock})'
+            : '');
+    final tx = AppTransaction(
+      id: fuelId,
+      date: day,
+      type: 'Expense',
+      category: 'Fuel',
+      subCategory: kFuelSandSieveSubCategory,
+      description:
+          'ใช้น้ำมันเครื่องร่อนทราย: $hoursLabel ชม. × '
+          '${formatFuelLiters(kFuelSandSieveLitersPerHour)} L = $litersLabel L$clock',
+      amount: 0,
+      note: 'บันทึกอัตโนมัติจากนับร่อนทรายโดย ${widget.currentAdmin.displayName}',
+      quantity: liters,
+      unit: 'L',
+      fuelType: 'Diesel',
+      fuelMovement: 'stock_out',
+      fuelTank: kFuelTankReserve,
+      workDetails: 'auto_sand_sieve',
+    );
+    final dayRows = _effectiveDayRows();
+    final wasPersisted = dayRows.any((t) => t.id == fuelId);
+    await CountRecordOfflineSync.instance.persist(
+      service: widget.service,
+      client: Supabase.instance.client,
+      transaction: tx,
+      omitCreatedAt: wasPersisted,
+      dayServerRows: dayRows,
+      serverOnlineHint: _isOnline,
+    );
+    _hiddenDayTxIds.remove(fuelId);
+  }
+
   Future<bool> _save(
     _CounterUnit u, {
     bool notifyParent = true,
@@ -969,6 +1041,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       serverOnlineHint: _isOnline,
     );
     u.persisted = true;
+    if (widget.mode == CounterMode.sand) {
+      await _syncSandSieveFuelUsage(u);
+    }
     await _refreshPendingCount();
     if (notifyParent) {
       _notifyParentDataChanged(shieldPanelReload: true);
@@ -996,6 +1071,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     u.persisted = false;
     u.rounds = 0;
     u.lapTimes.clear();
+    if (widget.mode == CounterMode.sand) {
+      await _syncSandSieveFuelUsage(u);
+    }
     if (widget.mode == CounterMode.sand && mounted) {
       final idx = _units.indexOf(u);
       if (idx >= 0) {
