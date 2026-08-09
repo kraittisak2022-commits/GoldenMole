@@ -114,6 +114,9 @@ enum FuelLogic {
         return (t.quantity ?? 0) > 0
     }
 
+    /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0 (พ.ศ. 1 ส.ค. 2569)
+    static let stockCutoverYmd = "2026-08-01"
+
     /// Flutter `computeFuelStockBalance` parity (daily reconcile machine vs macro usage).
     static func computeBalance(
         transactions: [Transaction],
@@ -129,9 +132,11 @@ enum FuelLogic {
 
         for t in transactions {
             guard isFuelExpense(t) else { continue }
+            let day = String(t.date.prefix(10))
+            // ตัดยอด: ไม่นับรายการก่อนวันตัด
+            guard day >= stockCutoverYmd else { continue }
             let lit = liters(of: t)
             guard lit > 0 else { continue }
-            let day = String(t.date.prefix(10))
             let isBenzine = (t.fuelType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "benzine"
             let key = "\(day)|\(isBenzine ? "B" : "D")"
             var b = buckets[key] ?? Bucket()

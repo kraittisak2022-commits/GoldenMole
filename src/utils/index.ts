@@ -21,6 +21,12 @@ export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
 /** `subCategory` ของแถวเบิกน้ำมันออกจากถัง (แอปมือถือ เมนู «เบิกน้ำมัน») */
 export const FUEL_WITHDRAW_SUB_CATEGORY = 'Withdraw';
 
+/**
+ * วันตัดยอดสต็อกน้ำมัน — ก่อนวันนี้ถือว่าเหลือ 0 (ถูกใช้หมดแล้ว)
+ * พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
+ */
+export const FUEL_STOCK_CUTOVER_YMD = '2026-08-01';
+
 type FuelDayBucket = { stockIn: number; withdraw: number; machineWithdraw: number; vehicleUsage: number };
 
 /**
@@ -29,6 +35,8 @@ type FuelDayBucket = { stockIn: number; withdraw: number; machineWithdraw: numbe
  * น้ำมันที่ลงบันทึกการใช้รถถือว่าเบิกไปแล้วในกล่อง «เติมเครื่องจักร» จึงหักกลบกันรายวัน
  * เพื่อไม่ให้ตัดสต็อกซ้ำ ส่วนที่เกินโควตายังตัดสต็อกตามจริง
  * (ข้อมูลเก่าที่ไม่มีแถว Withdraw จะได้ผลเท่าสูตรเดิม)
+ *
+ * รายการก่อน [FUEL_STOCK_CUTOVER_YMD] ไม่ถูกนับ — ยอดก่อนหน้า = 0
  */
 export function computeFuelStockBalances(
     transactions: Transaction[],
@@ -47,10 +55,12 @@ export function computeFuelStockBalances(
 
     for (const t of transactions) {
         if (t.category !== 'Fuel' || t.type !== 'Expense') continue;
+        const day = normalizeDate(t.date);
+        if (day < FUEL_STOCK_CUTOVER_YMD) continue;
         const liters = fuelTxToLiters(t);
         if (!liters) continue;
         const ft = t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
-        const bucket = bucketFor(normalizeDate(t.date), ft);
+        const bucket = bucketFor(day, ft);
         if (inferFuelMovement(t) === 'stock_in') {
             bucket.stockIn += liters;
             continue;

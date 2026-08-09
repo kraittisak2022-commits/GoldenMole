@@ -4,6 +4,10 @@ import 'daily_module_transactions.dart';
 /// ความจุถังสต็อกน้ำมันที่หน้างาน (ลิตร)
 const double kFuelTankCapacityLiters = 9000;
 
+/// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
+/// พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
+const String kFuelStockCutoverYmd = '2026-08-01';
+
 /// `subCategory` ของแถวรับน้ำมันเข้าถัง (รถน้ำมันมาเติม)
 const String kFuelStockInSubCategory = 'StockIn';
 
@@ -113,6 +117,8 @@ class _FuelDayBucket {
 ///
 /// น้ำมันที่ลงบันทึกการใช้รถแม็คโครถือว่าเบิกไปแล้วในกล่อง «เติมเครื่องจักร»
 /// จึงหักกลบกันรายวันเพื่อไม่ให้ตัดสต็อกซ้ำ ส่วนที่เกินโควตายังตัดสต็อกตามจริง
+///
+/// รายการก่อน [kFuelStockCutoverYmd] ไม่ถูกนับ — ยอดก่อนหน้า = 0
 FuelStockBalance computeFuelStockBalance(
   Iterable<AppTransaction> transactions, {
   double openingDiesel = 0,
@@ -126,9 +132,12 @@ FuelStockBalance computeFuelStockBalance(
 
   for (final t in transactions) {
     if (!_isFuelExpenseRow(t)) continue;
+    final day = t.date.trim();
+    // ตัดยอด: ไม่นับรายการก่อนวันตัด (ยอดก่อนหน้า = 0)
+    if (day.compareTo(kFuelStockCutoverYmd) < 0) continue;
     final liters = fuelTxLiters(t);
     if (liters <= 0) continue;
-    final bucket = bucketFor(t.date.trim(), fuelTypeIsBenzine(t.fuelType));
+    final bucket = bucketFor(day, fuelTypeIsBenzine(t.fuelType));
     if (isFuelStockInRow(t)) {
       bucket.stockIn += liters;
       continue;
