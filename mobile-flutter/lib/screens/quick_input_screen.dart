@@ -19,6 +19,7 @@ import '../widgets/fuel_sub_mode_picker.dart';
 import '../widgets/fuel_time_picker_dialog.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
+import '../widgets/soft_press_button.dart';
 import '../widgets/soft_sync_indicator.dart';
 import '../widgets/thai_text_pad.dart';
 import '../utils/app_haptics.dart';
@@ -14649,50 +14650,67 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
   @override
   Widget build(BuildContext context) {
     final ls = widget.landscape;
-    final keyH = ls ? 42.0 : 52.0;
-    final gap = ls ? 6.0 : 8.0;
+    final keyH = ls ? 56.0 : 72.0;
+    final gap = ls ? 8.0 : 10.0;
+    final radius = ls ? 14.0 : 16.0;
+    const accent = Color(0xFF1565C0);
+    const ink = Color(0xFF142033);
+    const muted = Color(0xFF64748B);
+
     final keyStyle = GoogleFonts.kanit(
-      fontSize: ls ? 19.0 : 22.0,
-      fontWeight: FontWeight.w700,
-      color: const Color(0xFF1D2A3A),
+      fontSize: ls ? 26.0 : 32.0,
+      fontWeight: FontWeight.w800,
+      color: ink,
+      height: 1,
     );
     final labelStyle = GoogleFonts.kanit(
-      fontSize: ls ? 14.5 : 17,
-      fontWeight: FontWeight.w800,
+      fontSize: ls ? 15.0 : 17.0,
+      fontWeight: FontWeight.w700,
+      color: muted,
     );
     final previewStyle = GoogleFonts.kanit(
-      fontSize: ls ? 17.0 : 21.0,
+      fontSize: ls ? 34.0 : 42.0,
       fontWeight: FontWeight.w800,
-      color: const Color(0xFF1565C0),
+      color: accent,
+      height: 1.05,
+      letterSpacing: 0.5,
     );
 
     Widget cell(Widget child) => Expanded(child: child);
 
-    Widget digitKey(String d) => Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: () => _tapDigit(d),
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          height: keyH,
-          child: Center(child: Text(d, style: keyStyle)),
-        ),
-      ),
-    );
-
-    Widget auxKey({
-      required Color bg,
-      required Color fg,
+    Widget pressKey({
       required VoidCallback? onTap,
+      required Color bg,
       required Widget child,
+      Color? borderColor,
+      SoftPressDepthShadow? depth,
     }) {
-      return Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+      return SoftPressButton(
+        onTap: onTap,
+        size: SoftPressSize.large,
+        borderRadius: radius,
+        isDarkSurface: false,
+        liftWhenIdle: true,
+        idleLiftY: -1.5,
+        // haptic อยู่ใน _tapDigit / _clear / _backspace แล้ว
+        hapticOnDown: false,
+        hitPadding: EdgeInsets.zero,
+        depthShadow: depth ??
+            SoftPressDepthShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 10,
+              offsetY: 3,
+              pressedBlurRadius: 3,
+              pressedOffsetY: 1,
+            ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: borderColor ?? const Color(0xFFE2E8F0),
+            ),
+          ),
           child: SizedBox(
             height: keyH,
             child: Center(child: child),
@@ -14701,23 +14719,55 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
       );
     }
 
+    Widget digitKey(String d) => pressKey(
+          onTap: () => _tapDigit(d),
+          bg: Colors.white,
+          child: Text(d, style: keyStyle),
+        );
+
+    Widget auxKey({
+      required Color bg,
+      required Color border,
+      required VoidCallback? onTap,
+      required Widget child,
+      required Color shadowColor,
+    }) {
+      return pressKey(
+        onTap: onTap,
+        bg: bg,
+        borderColor: border,
+        depth: SoftPressDepthShadow(
+          color: shadowColor.withValues(alpha: 0.18),
+          blurRadius: 10,
+          offsetY: 3,
+          pressedBlurRadius: 3,
+          pressedOffsetY: 1,
+        ),
+        child: child,
+      );
+    }
+
     return RepaintBoundary(
       child: Container(
         padding: EdgeInsets.fromLTRB(
-          ls ? 10 : 12,
-          ls ? 8 : 10,
-          ls ? 10 : 12,
-          ls ? 8 : 10,
+          ls ? 12 : 14,
+          ls ? 10 : 14,
+          ls ? 12 : 14,
+          ls ? 10 : 14,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFFF2F5FA),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFD8E2EE)),
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF8FAFC), Color(0xFFEEF3F9)],
+          ),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFD5E0EC)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, -4),
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 28,
+              offset: const Offset(0, -6),
             ),
           ],
         ),
@@ -14726,29 +14776,38 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: ls ? 12 : 14,
+                  vertical: ls ? 10 : 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFDCE7F4)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
                       widget.label,
-                      maxLines: ls ? 2 : 3,
+                      maxLines: ls ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: labelStyle,
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
+                    SizedBox(height: ls ? 4 : 6),
+                    Text(
                       _digits.isEmpty ? '0' : _digits,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.end,
                       style: previewStyle,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              SizedBox(height: ls ? 6 : 10),
+              SizedBox(height: ls ? 10 : 14),
               Row(
                 children: [
                   cell(digitKey('1')),
@@ -14783,14 +14842,15 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                 children: [
                   cell(
                     auxKey(
-                      bg: const Color(0xFFFFEFEF),
-                      fg: const Color(0xFFD64545),
+                      bg: const Color(0xFFFFF1F1),
+                      border: const Color(0xFFF5C2C2),
+                      shadowColor: const Color(0xFFD64545),
                       onTap: _clear,
                       child: Text(
                         'ล้าง',
                         style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: ls ? 13.0 : 14.5,
+                          fontWeight: FontWeight.w800,
+                          fontSize: ls ? 16.0 : 18.0,
                           color: const Color(0xFFD64545),
                         ),
                       ),
@@ -14803,33 +14863,62 @@ class _CmNumericKeypadPanelState extends State<_CmNumericKeypadPanel> {
                   if (widget.allowDecimal) SizedBox(width: gap),
                   cell(
                     auxKey(
-                      bg: const Color(0xFFE9F1FF),
-                      fg: const Color(0xFF1565C0),
+                      bg: const Color(0xFFE8F1FF),
+                      border: const Color(0xFFBFD8F4),
+                      shadowColor: accent,
                       onTap: _backspace,
-                      child: const Icon(Icons.backspace_outlined),
+                      child: Icon(
+                        Icons.backspace_outlined,
+                        size: ls ? 24 : 28,
+                        color: accent,
+                      ),
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: ls ? 6 : 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _confirm,
-                  icon: Icon(Icons.check_circle_outline, size: ls ? 20 : 24),
-                  label: Text(
-                    'เสร็จสิ้น',
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: ls ? 15.5 : 19,
-                    ),
+              SizedBox(height: ls ? 10 : 12),
+              SoftPressButton(
+                onTap: _confirm,
+                size: SoftPressSize.large,
+                borderRadius: 16,
+                isDarkSurface: true,
+                liftWhenIdle: true,
+                idleLiftY: -2,
+                hitPadding: EdgeInsets.zero,
+                useConfirmHaptic: true,
+                depthShadow: SoftPressDepthShadow(
+                  color: accent.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  offsetY: 4,
+                  pressedBlurRadius: 4,
+                  pressedOffsetY: 1,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1565C0),
-                    foregroundColor: Colors.white,
-                    minimumSize: Size.fromHeight(ls ? 44 : 54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: ls ? 54 : 64,
+                    width: double.infinity,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.check_rounded,
+                          size: ls ? 24 : 28,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'เสร็จสิ้น',
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            fontSize: ls ? 18.0 : 22.0,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
