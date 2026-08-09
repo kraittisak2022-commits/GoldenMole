@@ -73,20 +73,13 @@ struct TodayOpsSnapshot: Sendable {
 
             for id in ids { workingIds.insert(id) }
 
-            let rowAmount: Double
-            if t.amount > 0, !allIds.isEmpty {
-                // Pro-rate recorded amount to roster members on this row.
-                rowAmount = t.amount * Double(ids.count) / Double(allIds.count)
-            } else if t.laborStatus == "OT" || t.subCategory == "OT" {
-                let fullOt = DashboardAggregations.wizardMonetaryAmount(t, employees: roster)
-                rowAmount = allIds.isEmpty ? 0 : fullOt * Double(ids.count) / Double(allIds.count)
-            } else {
-                // Prefer base_wage inference scoped to the home attendance pool.
-                rowAmount = DashboardAggregations.wizardMonetaryAmount(t, employees: roster)
-            }
-            let share = rowAmount / Double(ids.count)
+            // Per-employee wage from employees.base_wage (web พนักงาน > ค่าแรง), not equal-split of amount.
             for id in ids {
-                wageByEmployee[id, default: 0] += share
+                wageByEmployee[id, default: 0] += DashboardAggregations.laborWageForEmployee(
+                    t,
+                    employeeId: id,
+                    employees: employees
+                )
             }
 
             if let assignments = t.workAssignments {
@@ -287,6 +280,49 @@ extension DashboardAggregations {
     static func dailyWageForWorkType(emp: Employee, wage: Double, workType: String) -> Double {
         let daily = toDailyWage(emp: emp, wage: wage)
         return workType == "HalfDay" ? daily / 2 : daily
+    }
+
+    /// Per-employee labor pay for one Labor tx — mirrors web LaborModule + `laborWage.ts`.
+    /// Work: `dailyWageForWorkType(base_wage)` + `specialAmount` (per person).
+    /// OT: `otAmount × otHours`, else equal share of `amount`.
+    static func laborWageForEmployee(
+        _ t: Transaction,
+        employeeId: String,
+        employees: [Employee]
+    ) -> Double {
+        guard t.category == "Labor" else { return 0 }
+        guard (t.employeeIds ?? []).contains(employeeId) else { return 0 }
+        guard let emp = employees.first(where: { $0.id == employeeId }) else { return 0 }
+
+        let isOt = t.laborStatus == "OT" || t.subCategory == "OT"
+        if isOt {
+            let rate = t.otAmount ?? 0
+            let hours = t.otHours ?? 0
+            if rate > 0, hours > 0 {
+                return rate * hours
+            }
+            let ids = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            guard t.amount > 0, !ids.isEmpty else { return 0 }
+            return t.amount / Double(ids.count)
+        }
+
+        // Work / Attendance — use master base_wage from Employees > ค่าแรง.
+        guard let base = emp.baseWage, base.isFinite, base > 0 else {
+            // No master wage: fall back to equal share of recorded amount if present.
+            let ids = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            guard t.amount > 0, !ids.isEmpty else { return 0 }
+            return t.amount / Double(ids.count)
+        }
+        let wt: String
+        if t.workTypeByEmployee?[employeeId] == "HalfDay" {
+            wt = "HalfDay"
+        } else if t.workType == "HalfDay" {
+            wt = "HalfDay"
+        } else {
+            wt = "FullDay"
+        }
+        let special = max(0, t.specialAmount ?? 0)
+        return dailyWageForWorkType(emp: emp, wage: base, workType: wt) + special
     }
 
     static func inferredLaborAttendanceTotal(_ t: Transaction, employees: [Employee]) -> Double {
