@@ -694,7 +694,6 @@ struct RealtimeV4View: View {
 
     private var tripMorningTotal: Int { tripUnits.reduce(0) { $0 + $1.morning } }
     private var tripAfternoonTotal: Int { tripUnits.reduce(0) { $0 + $1.afternoon } }
-    private var tripOtTotal: Int { tripUnits.reduce(0) { $0 + $1.ot } }
 
     private var tripSummaryHero: some View {
         ZStack {
@@ -724,9 +723,7 @@ struct RealtimeV4View: View {
                 PeriodPill(
                     morning: tripMorningTotal,
                     afternoon: tripAfternoonTotal,
-                    ot: tripOtTotal,
-                    onDark: true,
-                    eveningLabel: "เย็น"
+                    onDark: true
                 )
 
                 if snapshot.fleetMorningSpanLabel != nil || snapshot.fleetAfternoonSpanLabel != nil {
@@ -883,7 +880,7 @@ struct RealtimeV4View: View {
                     .font(.system(size: 11, weight: .bold))
                     .tracking(2)
                     .foregroundStyle(.white.opacity(0.8))
-                PeriodPill(morning: sand.morning, afternoon: sand.afternoon, ot: sand.ot, onDark: true)
+                PeriodPill(morning: sand.morning, afternoon: sand.afternoon, onDark: true)
                 if snapshot.sandMorningSpanLabel != nil || snapshot.sandAfternoonSpanLabel != nil {
                     VStack(spacing: 6) {
                         if let morning = snapshot.sandMorningSpanLabel {
@@ -1253,9 +1250,7 @@ private struct TripVehicleCard: View {
                     PeriodPill(
                         morning: unit.morning,
                         afternoon: unit.afternoon,
-                        ot: unit.ot,
-                        onDark: true,
-                        eveningLabel: "เย็น"
+                        onDark: true
                     )
                 }
                 .frame(maxWidth: .infinity)
@@ -1740,7 +1735,7 @@ private struct SandRoundsSheet: View {
                         Spacer()
                     }
 
-                    PeriodPill(morning: sand.morning, afternoon: sand.afternoon, ot: sand.ot)
+                    PeriodPill(morning: sand.morning, afternoon: sand.afternoon)
 
                     if let workSpan {
                         Label(workSpan, systemImage: "clock")
@@ -2059,14 +2054,11 @@ struct LapTimeList: View {
 
 private struct PeriodPill: View {
     let morning: Int
+    /// Includes post-17:00 laps (formerly split out as OT/เย็น).
     let afternoon: Int
-    let ot: Int
     var onDark: Bool = false
-    /// Display label for the post-17:00 bucket (trip uses "เย็น"; sand keeps "OT").
-    var eveningLabel: String = "OT"
 
-    private var afternoonDisplay: Int { max(0, afternoon - ot) }
-    private var hasAny: Bool { morning > 0 || afternoonDisplay > 0 || ot > 0 }
+    private var hasAny: Bool { morning > 0 || afternoon > 0 }
 
     @ViewBuilder
     var body: some View {
@@ -2077,15 +2069,10 @@ private struct PeriodPill: View {
                          bg: onDark ? Color(hex: "#FBBF24").opacity(0.3) : Color(hex: "#FEF3C7"),
                          fg: onDark ? Color(hex: "#FFFBEB") : Color(hex: "#78350F"))
                 }
-                if afternoonDisplay > 0 {
-                    pill("sunset.fill", "บ่าย \(afternoonDisplay)",
+                if afternoon > 0 {
+                    pill("sunset.fill", "บ่าย \(afternoon)",
                          bg: onDark ? Color(hex: "#38BDF8").opacity(0.3) : Color(hex: "#E0E7FF"),
                          fg: onDark ? Color(hex: "#F0F9FF") : Color(hex: "#312E81"))
-                }
-                if ot > 0 {
-                    pill("moon.fill", "\(eveningLabel) \(ot)",
-                         bg: onDark ? Color(hex: "#A78BFA").opacity(0.3) : Color(hex: "#EDE9FE"),
-                         fg: onDark ? Color(hex: "#F5F3FF") : Color(hex: "#4C1D95"))
                 }
             }
         }
