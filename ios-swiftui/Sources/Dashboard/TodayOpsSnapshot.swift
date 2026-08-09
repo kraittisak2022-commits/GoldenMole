@@ -17,7 +17,10 @@ struct TodayOpsSnapshot: Sendable {
     }
 
     let dayKey: String
+    /// Alias for main tank diesel (legacy single-tank home chips).
     let dieselLiters: Double
+    let mainDieselLiters: Double
+    let reserveDieselLiters: Double
     let benzineLiters: Double
     let laborBaht: Double
     let vehicleBaht: Double
@@ -29,6 +32,8 @@ struct TodayOpsSnapshot: Sendable {
     static let empty = TodayOpsSnapshot(
         dayKey: "",
         dieselLiters: 0,
+        mainDieselLiters: 0,
+        reserveDieselLiters: 0,
         benzineLiters: 0,
         laborBaht: 0,
         vehicleBaht: 0,
@@ -157,7 +162,9 @@ struct TodayOpsSnapshot: Sendable {
 
         return TodayOpsSnapshot(
             dayKey: dayKey,
-            dieselLiters: fuel.diesel,
+            dieselLiters: fuel.mainDiesel,
+            mainDieselLiters: fuel.mainDiesel,
+            reserveDieselLiters: fuel.reserveDiesel,
             benzineLiters: fuel.benzine,
             laborBaht: laborBaht,
             vehicleBaht: vehicleBaht,

@@ -215,6 +215,70 @@ enum FuelWriter {
         )
     }
 
+    /// ใช้น้ำมันเครื่องร่อนทรายอัตโนมัติ (18 L/ชม. จากถังสำรอง) — Flutter `_syncSandSieveFuelUsage`
+    static func sandSievePayload(
+        id: String,
+        dateYmd: String,
+        liters: Double,
+        hours: Double,
+        startClock: String?,
+        endClock: String?,
+        adminName: String,
+        omitCreatedAt: Bool
+    ) -> TransactionWritePayload {
+        let hoursLabel = hours.truncatingRemainder(dividingBy: 1) == 0
+            ? String(format: "%.0f", hours)
+            : String(format: "%.2f", hours)
+        let litersLabel = FuelLogic.formatLiters(liters)
+        let rateLabel = FuelLogic.formatLiters(FuelLogic.sandSieveLitersPerHour)
+        let clock: String
+        if let startClock, let endClock {
+            clock = " (\(startClock)–\(endClock))"
+        } else {
+            clock = ""
+        }
+        return TransactionWritePayload(
+            id: id,
+            date: dateYmd,
+            type: TransactionType.expense.rawValue,
+            category: "Fuel",
+            subCategory: FuelLogic.sandSieveSubCategory,
+            description:
+                "ใช้น้ำมันเครื่องร่อนทราย: \(hoursLabel) ชม. × \(rateLabel) L = \(litersLabel) L\(clock)",
+            amount: 0,
+            note: "บันทึกอัตโนมัติจากนับร่อนทรายโดย \(adminName)",
+            vehicleId: nil,
+            driverId: nil,
+            workDetails: "auto_sand_sieve",
+            tripBillingMode: nil,
+            tripCount: nil,
+            perCarTrips: nil,
+            cubicPerTrip: nil,
+            perCarCubic: nil,
+            totalCubic: nil,
+            drumsObtained: nil,
+            workAssignments: nil,
+            createdAt: omitCreatedAt ? nil : ISO8601DateFormatter().string(from: Date()),
+            eventType: nil,
+            eventPriority: nil,
+            eventTime: nil,
+            employeeIds: nil,
+            laborStatus: nil,
+            workType: nil,
+            workTypeByEmployee: nil,
+            leaveReason: nil,
+            leaveDays: nil,
+            tripMorning: nil,
+            tripAfternoon: nil,
+            quantity: liters,
+            unit: "L",
+            unitPrice: nil,
+            fuelType: "Diesel",
+            fuelMovement: "stock_out",
+            fuelTank: FuelLogic.tankReserve
+        )
+    }
+
     /// คู่แถวโอนหลัก→สำรอง เมื่อเบิก purpose = machine
     static func transferToReservePayloads(
         dateYmd: String,

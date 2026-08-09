@@ -318,9 +318,9 @@ struct FuelHubView: View {
                 historySection(
                     title: "เบิก / โอนวันนี้",
                     rows: session.dayWithdrawRows,
-                    transferBadge: true,
                     onEdit: { session.loadWithdraw($0) },
-                    onDelete: { session.confirmDeleteId = $0.id }
+                    onDelete: { session.confirmDeleteId = $0.id },
+                    transferBadge: true
                 )
             }
             .padding(AppTheme.spaceLG)

@@ -163,6 +163,15 @@ enum FuelLogic {
         return !isStockIn(t)
     }
 
+    /// เติมน้ำมันรถยนต์ (เมนูแยก — workType=car, หักถังหลัก)
+    static func isCarFill(_ t: Transaction) -> Bool {
+        guard isWithdraw(t) else { return false }
+        if (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "car" {
+            return true
+        }
+        return t.description.hasPrefix("เติมน้ำมันรถยนต์")
+    }
+
     static func isTransfer(_ t: Transaction) -> Bool {
         guard isFuelExpense(t) else { return false }
         return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == transferSubCategory

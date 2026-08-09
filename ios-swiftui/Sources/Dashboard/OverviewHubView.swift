@@ -341,11 +341,18 @@ struct OverviewHubView: View {
                     .foregroundStyle(AppTheme.inkMuted)
             }
 
-            fuelStockChip(
-                title: "ดีเซลคงเหลือ",
-                value: "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
-                accent: AppTheme.fuel
-            )
+            HStack(spacing: 8) {
+                fuelStockChip(
+                    title: "ถังหลัก",
+                    value: "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L",
+                    accent: AppTheme.fuel
+                )
+                fuelStockChip(
+                    title: "ถังสำรอง",
+                    value: "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L",
+                    accent: Color(hex: "#0F766E")
+                )
+            }
 
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -515,7 +522,7 @@ struct OverviewHubView: View {
                         title: "เพิ่มน้ำมัน",
                         value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelInLiters),
                         unit: "L",
-                        detail: "คงเหลือ \(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L",
+                        detail: "หลัก \(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) · สำรอง \(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L",
                         accent: AppTheme.fuel,
                         systemImage: "arrow.down.to.line.circle.fill"
                     )
@@ -534,6 +541,22 @@ struct OverviewHubView: View {
                             : "วันนี้",
                         accent: AppTheme.fuel,
                         systemImage: "arrow.up.right.circle.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    TodayOpsDetailScreen(kind: .fuelCarFill)
+                } label: {
+                    SummaryMetricCard(
+                        title: "เติมน้ำมันรถยนต์",
+                        value: DashboardAggregations.formatNumber(snapshot.mobileToday.fuelCarFillLiters),
+                        unit: "L",
+                        detail: snapshot.mobileToday.fuelCarFillCount > 0
+                            ? "\(snapshot.mobileToday.fuelCarFillCount) ครั้ง · วันนี้"
+                            : "วันนี้",
+                        accent: AppTheme.fuel,
+                        systemImage: "car.fill"
                     )
                 }
                 .buttonStyle(.plain)

@@ -108,16 +108,16 @@ enum CategoryReportType: CaseIterable, Identifiable {
                 .filter { FuelLogic.isStockIn($0) }
                 .reduce(0.0) { $0 + DashboardAggregations.fuelTxToLiters($1) }
             let throughDay = transactions.filter { String($0.date.prefix(10)) <= dayKey }
-            let remaining = FuelLogic.computeBalance(
+            let bal = FuelLogic.computeBalance(
                 transactions: throughDay,
                 opening: settings.fuelOpeningStockLiters
-            ).diesel
+            )
             return CategoryHubSummary(
-                primary: "\(DashboardAggregations.formatNumber(remaining)) L คงเหลือ",
+                primary: "หลัก \(DashboardAggregations.formatNumber(bal.mainDiesel)) · สำรอง \(DashboardAggregations.formatNumber(bal.reserveDiesel)) L",
                 secondary: used > 0 || inbound > 0
                     ? "ใช้ \(DashboardAggregations.formatNumber(used)) L · เข้า \(DashboardAggregations.formatNumber(inbound)) L"
                     : (dayTx.isEmpty ? "ยังไม่มีบันทึกวันนี้" : "มีการเคลื่อนไหวสต็อก"),
-                hasData: remaining != 0 || used != 0 || inbound != 0 || !dayTx.isEmpty
+                hasData: bal.mainDiesel != 0 || bal.reserveDiesel != 0 || used != 0 || inbound != 0 || !dayTx.isEmpty
             )
         case .land:
             let total = dayTx.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
@@ -466,10 +466,10 @@ struct CategoryReportView: View {
 
     private var fuelView: some View {
         let inbound = fuelLitersWhere { FuelLogic.isStockIn($0) }
-        let withdraw = fuelLitersWhere { FuelLogic.isWithdraw($0) }
-        let usage = fuelLitersWhere { FuelLogic.isVehicleUsage($0) }
-        let used = withdraw + usage
-        let remaining = fuelRemainingDiesel
+        let withdraw = fuelLitersWhere { FuelLogic.isWithdraw($0) && !FuelLogic.isCarFill($0) }
+        let usage = fuelLitersWhere { FuelLogic.isVehicleUsage($0) && !FuelLogic.isCarFill($0) }
+        let used = withdraw + usage + fuelLitersWhere { FuelLogic.isCarFill($0) }
+        let bal = fuelRemainingBalance
         let slices: [(String, Double, String)] = [
             ("รับเข้า", inbound, "#0d9488"),
             ("เบิก", withdraw, "#ea580c"),
@@ -478,7 +478,8 @@ struct CategoryReportView: View {
 
         return VStack(alignment: .leading, spacing: 12) {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                fuelStatChip(title: "น้ำมันคงเหลือ", value: remaining, unit: "L", accent: AppTheme.fuel)
+                fuelStatChip(title: "ถังหลักคงเหลือ", value: bal.mainDiesel, unit: "L", accent: AppTheme.fuel)
+                fuelStatChip(title: "ถังสำรองคงเหลือ", value: bal.reserveDiesel, unit: "L", accent: Color(hex: "#0F766E"))
                 fuelStatChip(title: isSingleDay ? "ใช้ไปวันนี้" : "ใช้ในช่วง", value: used, unit: "L", accent: AppTheme.expense)
             }
 
@@ -512,14 +513,16 @@ struct CategoryReportView: View {
         }
     }
 
-    private var fuelRemainingDiesel: Double {
+    private var fuelRemainingBalance: FuelLogic.Balance {
         let end = dateFilter.end
         let throughEnd = fuelStockSource.filter { String($0.date.prefix(10)) <= end }
         return FuelLogic.computeBalance(
             transactions: throughEnd,
             opening: settings.fuelOpeningStockLiters
-        ).diesel
+        )
     }
+
+    private var fuelRemainingDiesel: Double { fuelRemainingBalance.mainDiesel }
 
     private func fuelLitersWhere(_ pred: (Transaction) -> Bool) -> Double {
         transactions
@@ -530,14 +533,14 @@ struct CategoryReportView: View {
     private func fuelBannerSummary(scopePrefix: String?) -> CategoryHubSummary {
         let used = fuelLitersWhere { !FuelLogic.isStockIn($0) }
         let inbound = fuelLitersWhere { FuelLogic.isStockIn($0) }
-        let remaining = fuelRemainingDiesel
+        let bal = fuelRemainingBalance
         let secondaryCore =
             "ใช้ \(DashboardAggregations.formatNumber(used)) L · เข้า \(DashboardAggregations.formatNumber(inbound)) L"
         let secondary = scopePrefix.map { "\($0) · \(secondaryCore)" } ?? secondaryCore
         return CategoryHubSummary(
-            primary: "\(DashboardAggregations.formatNumber(remaining)) L คงเหลือ",
+            primary: "หลัก \(DashboardAggregations.formatNumber(bal.mainDiesel)) · สำรอง \(DashboardAggregations.formatNumber(bal.reserveDiesel)) L",
             secondary: secondary,
-            hasData: remaining != 0 || used != 0 || inbound != 0 || !transactions.isEmpty
+            hasData: bal.mainDiesel != 0 || bal.reserveDiesel != 0 || used != 0 || inbound != 0 || !transactions.isEmpty
         )
     }
 

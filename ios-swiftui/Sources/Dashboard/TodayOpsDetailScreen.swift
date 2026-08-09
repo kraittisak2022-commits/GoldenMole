@@ -8,6 +8,7 @@ enum TodayOpsDetailKind: String, CaseIterable, Identifiable, Sendable {
     case macro
     case fuelStockIn
     case fuelWithdraw
+    case fuelCarFill
     case fuelMacroUsage
     case leave
 
@@ -21,6 +22,7 @@ enum TodayOpsDetailKind: String, CaseIterable, Identifiable, Sendable {
         case .macro: return "แม็คโคร"
         case .fuelStockIn: return "เพิ่มน้ำมัน"
         case .fuelWithdraw: return "เบิกน้ำมัน"
+        case .fuelCarFill: return "เติมน้ำมันรถยนต์"
         case .fuelMacroUsage: return "การใช้น้ำมันรถแม็คโคร"
         case .leave: return "ลางาน"
         }
@@ -34,6 +36,7 @@ enum TodayOpsDetailKind: String, CaseIterable, Identifiable, Sendable {
         case .macro: return "hammer.fill"
         case .fuelStockIn: return "arrow.down.to.line.circle.fill"
         case .fuelWithdraw: return "arrow.up.right.circle.fill"
+        case .fuelCarFill: return "car.fill"
         case .fuelMacroUsage: return "fuelpump.fill"
         case .leave: return "calendar.badge.minus"
         }
@@ -45,7 +48,7 @@ enum TodayOpsDetailKind: String, CaseIterable, Identifiable, Sendable {
         case .sand: return AppTheme.sand
         case .attendance: return AppTheme.labor
         case .macro: return Color(hex: "#0F766E")
-        case .fuelStockIn, .fuelWithdraw, .fuelMacroUsage: return AppTheme.fuel
+        case .fuelStockIn, .fuelWithdraw, .fuelCarFill, .fuelMacroUsage: return AppTheme.fuel
         case .leave: return AppTheme.warning
         }
     }
@@ -106,6 +109,8 @@ struct TodayOpsDetailScreen: View {
             FuelHubView(initialSubMode: .stockIn)
         case .fuelWithdraw:
             FuelHubView(initialSubMode: .withdraw)
+        case .fuelCarFill:
+            FuelHubView(initialSubMode: .carFill)
         case .fuelMacroUsage:
             FuelHubView(initialSubMode: .macroUsage)
         case .leave:
@@ -201,17 +206,29 @@ struct TodayOpsDetailScreen: View {
         case .fuelStockIn:
             return [
                 ("เข้าวันนี้", "\(DashboardAggregations.formatNumber(mobile.fuelInLiters)) L"),
-                ("ดีเซลคงเหลือ", "\(DashboardAggregations.formatNumber(todayOps.dieselLiters)) L"),
+                ("ถังหลัก", "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L"),
+                ("ถังสำรอง", "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L"),
             ]
         case .fuelWithdraw:
             return [
                 ("เบิกวันนี้", "\(DashboardAggregations.formatNumber(mobile.fuelWithdrawLiters)) L"),
                 ("ครั้ง", "\(mobile.fuelWithdrawCount)"),
+                ("ถังหลัก", "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L"),
+                ("ถังสำรอง", "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L"),
+            ]
+        case .fuelCarFill:
+            return [
+                ("เติมวันนี้", "\(DashboardAggregations.formatNumber(mobile.fuelCarFillLiters)) L"),
+                ("ครั้ง", "\(mobile.fuelCarFillCount)"),
+                ("ถังหลัก", "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L"),
+                ("ถังสำรอง", "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L"),
             ]
         case .fuelMacroUsage:
             return [
                 ("ใช้วันนี้", "\(DashboardAggregations.formatNumber(mobile.fuelMacroUsageLiters)) L"),
                 ("คัน", "\(mobile.fuelMacroVehicles)"),
+                ("ถังหลัก", "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L"),
+                ("ถังสำรอง", "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L"),
             ]
         case .leave:
             return [
@@ -233,7 +250,7 @@ struct TodayOpsDetailScreen: View {
             EmptyView()
         case .macro:
             macroList
-        case .fuelStockIn, .fuelWithdraw, .fuelMacroUsage:
+        case .fuelStockIn, .fuelWithdraw, .fuelCarFill, .fuelMacroUsage:
             fuelList
         case .leave:
             leaveList
@@ -488,6 +505,9 @@ struct TodayOpsDetailScreen: View {
         case .fuelWithdraw:
             return t.subCategory?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 ?? (t.description.isEmpty ? "เบิกน้ำมัน" : t.description)
+        case .fuelCarFill:
+            return t.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? (t.description.isEmpty ? "เติมน้ำมันรถยนต์" : t.description)
         case .fuelMacroUsage:
             return t.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 ?? "รถแม็คโคร"
@@ -552,9 +572,11 @@ struct TodayOpsDetailScreen: View {
             case .fuelStockIn:
                 fuel = dayTx.filter { FuelLogic.isStockIn($0) }
             case .fuelWithdraw:
-                fuel = dayTx.filter { FuelLogic.isWithdraw($0) }
+                fuel = dayTx.filter { FuelLogic.isWithdraw($0) && !FuelLogic.isCarFill($0) }
+            case .fuelCarFill:
+                fuel = dayTx.filter { FuelLogic.isCarFill($0) }
             case .fuelMacroUsage:
-                fuel = dayTx.filter { FuelLogic.isVehicleUsage($0) }
+                fuel = dayTx.filter { FuelLogic.isVehicleUsage($0) && !FuelLogic.isCarFill($0) }
             default:
                 fuel = []
             }

@@ -126,9 +126,9 @@ final class FuelSession {
         dayStockInRows = dayRows.filter(FuelLogic.isStockIn).sorted {
             ($0.createdAt ?? "") > ($1.createdAt ?? "")
         }
-        // รวมโอนเครื่องจักรหลัก→สำรอง ในประวัติเบิก (คู่แถว Transfer)
+        // รวมโอนเครื่องจักรหลัก→สำรอง ในประวัติเบิก (คู่แถว Transfer); แยกเติมรถยนต์ไปเมนู carFill
         dayWithdrawRows = dayRows.filter { t in
-            if FuelLogic.isWithdraw(t) { return true }
+            if FuelLogic.isWithdraw(t) { return !FuelLogic.isCarFill(t) }
             let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             return FuelLogic.isTransfer(t)
                 && mov == "stock_out"

@@ -489,6 +489,7 @@ final class CountRecordSession {
         unit.busy = false
         unit.dirty = false
         sandUnit = unit
+        await syncSandSieveFuelUsage(appState: appState, adminName: adminName)
         let msg = result.queued ? "ร่อน +\(unit.rounds) · \(stamp) (รอซิงค์)" : "ร่อน +\(unit.rounds) · \(stamp)"
         flash(unit.comboCount > 1 ? "\(msg) · ×\(unit.comboCount)" : msg)
         pendingUndo = CountRecordUndoAction(kind: .sand, message: "เลิกทำรอบล่าสุด", stamp: stamp)
@@ -531,6 +532,7 @@ final class CountRecordSession {
         unit.busy = false
         unit.dirty = false
         sandUnit = unit
+        await syncSandSieveFuelUsage(appState: appState, adminName: adminName)
         flash("ลบรอบ \(removed)")
         if pendingUndo?.stamp == removed { pendingUndo = nil }
     }
@@ -667,6 +669,7 @@ final class CountRecordSession {
         unit.busy = false
         unit.dirty = false
         sandUnit = unit
+        await syncSandSieveFuelUsage(appState: appState, adminName: adminName)
         flash(result.queued ? "ลบรอบ \(removed) (รอซิงค์)" : "ลบรอบ \(removed)")
     }
 
@@ -705,7 +708,41 @@ final class CountRecordSession {
         unit.busy = false
         unit.dirty = false
         sandUnit = unit
+        await syncSandSieveFuelUsage(appState: appState, adminName: adminName)
         flash(result.queued ? "แก้เวลาเป็น \(newStamp) (รอซิงค์)" : "แก้เวลาเป็น \(newStamp)")
+    }
+
+    /// Auto fuel usage for sand sieve (18 L/h from reserve) — Flutter `_syncSandSieveFuelUsage`.
+    private func syncSandSieveFuelUsage(appState: AppState, adminName: String) async {
+        let fuelId = FuelLogic.sandSieveTxId(dateYmd: dayKey)
+        let lapTimes = sandUnit?.lapTimes ?? []
+        let summary = CountRecordAnalytics.computeWorkDuration(lapTimes: lapTimes, dayKey: dayKey)
+        let hours = summary?.totalActiveHours ?? 0
+        let rawLiters = hours * FuelLogic.sandSieveLitersPerHour
+        let liters = (rawLiters * 100).rounded() / 100
+        let emptyUnit = lapTimes.isEmpty && (sandUnit?.rounds ?? 0) <= 0
+
+        if hours <= 0 || liters <= 0 || emptyUnit {
+            if appState.transactions.contains(where: { $0.id == fuelId }) {
+                skipExternalReload += 1
+                _ = await FuelWriter.delete(id: fuelId)
+            }
+            return
+        }
+
+        let wasPersisted = appState.transactions.contains(where: { $0.id == fuelId })
+        let payload = FuelWriter.sandSievePayload(
+            id: fuelId,
+            dateYmd: dayKey,
+            liters: liters,
+            hours: hours,
+            startClock: summary?.startClock,
+            endClock: summary?.endClock,
+            adminName: adminName,
+            omitCreatedAt: wasPersisted
+        )
+        skipExternalReload += 1
+        _ = await FuelWriter.persist(payload: payload, wasPersisted: wasPersisted)
     }
 
     private func persistTrip(at idx: Int, adminName: String, clearDirty: Bool) async {

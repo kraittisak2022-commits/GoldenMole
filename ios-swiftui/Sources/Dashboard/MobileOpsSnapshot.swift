@@ -29,6 +29,9 @@ struct MobileOpsMetrics: Sendable {
     /// Macro vehicle fuel usage (การใช้น้ำมันรถแม็คโคร).
     var fuelMacroUsageLiters: Double = 0
     var fuelMacroVehicles: Int = 0
+    /// Car fill (เติมน้ำมันรถยนต์) — liters / count today.
+    var fuelCarFillLiters: Double = 0
+    var fuelCarFillCount: Int = 0
     var recordCount: Int = 0
 
     static let empty = MobileOpsMetrics()
@@ -123,6 +126,8 @@ enum MobileOpsSnapshot {
         m.fuelWithdrawCount = fuel.withdrawCount
         m.fuelMacroUsageLiters = fuel.macroUsageLiters
         m.fuelMacroVehicles = fuel.macroVehicles
+        m.fuelCarFillLiters = fuel.carFillLiters
+        m.fuelCarFillCount = fuel.carFillCount
 
         m.recordCount = dayTx.filter { isMobileAppRecord($0) }.count
         return m
@@ -160,6 +165,8 @@ enum MobileOpsSnapshot {
             total.fuelWithdrawLiters += dayM.fuelWithdrawLiters
             total.fuelWithdrawCount += dayM.fuelWithdrawCount
             total.fuelMacroUsageLiters += dayM.fuelMacroUsageLiters
+            total.fuelCarFillLiters += dayM.fuelCarFillLiters
+            total.fuelCarFillCount += dayM.fuelCarFillCount
             total.recordCount += dayM.recordCount
 
             if dayM.attendanceDays > 0 {
@@ -221,7 +228,9 @@ enum MobileOpsSnapshot {
         withdrawLiters: Double,
         withdrawCount: Int,
         macroUsageLiters: Double,
-        macroVehicles: Int
+        macroVehicles: Int,
+        carFillLiters: Double,
+        carFillCount: Int
     ) {
         var inn = 0.0
         var out = 0.0
@@ -229,6 +238,8 @@ enum MobileOpsSnapshot {
         var withdrawCount = 0
         var macroLiters = 0.0
         var macroVehicleIds = Set<String>()
+        var carFill = 0.0
+        var carFillCount = 0
         for t in txs where FuelLogic.isFuelExpense(t) {
             let liters = DashboardAggregations.fuelTxToLiters(t)
             guard liters != 0 else { continue }
@@ -237,7 +248,10 @@ enum MobileOpsSnapshot {
                 continue
             }
             out += liters
-            if FuelLogic.isWithdraw(t) {
+            if FuelLogic.isCarFill(t) {
+                carFill += liters
+                carFillCount += 1
+            } else if FuelLogic.isWithdraw(t) {
                 withdraw += liters
                 withdrawCount += 1
             } else if FuelLogic.isVehicleUsage(t) {
@@ -247,6 +261,6 @@ enum MobileOpsSnapshot {
                 }
             }
         }
-        return (inn, out, withdraw, withdrawCount, macroLiters, macroVehicleIds.count)
+        return (inn, out, withdraw, withdrawCount, macroLiters, macroVehicleIds.count, carFill, carFillCount)
     }
 }
