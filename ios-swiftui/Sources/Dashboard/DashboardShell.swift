@@ -196,7 +196,7 @@ struct DashboardShell: View {
                         dateFilter: appState.dateFilter,
                         greetingName: auth.currentAdmin?.displayName
                     )
-                    .refreshable { await appState.refresh() }
+                    .refreshable { await appState.refresh(forceFull: true) }
                 case .worklog:
                     ScrollView {
                         WorkLogView(
@@ -206,11 +206,11 @@ struct DashboardShell: View {
                         )
                         .padding(AppTheme.spaceLG)
                     }
-                    .refreshable { await appState.refresh() }
+                    .refreshable { await appState.refresh(forceFull: true) }
                     .scrollContentBackground(.hidden)
                 case .reports:
                     reportsHub
-                        .refreshable { await appState.refresh() }
+                        .refreshable { await appState.refresh(forceFull: true) }
                 }
             }
         }
@@ -278,7 +278,7 @@ struct DashboardShell: View {
                 }
                 .padding(AppTheme.spaceLG)
             }
-            .refreshable { await appState.refresh() }
+            .refreshable { await appState.refresh(forceFull: true) }
             .scrollContentBackground(.hidden)
         }
         .background(RealtimeV4Palette.page.ignoresSafeArea())
@@ -620,7 +620,7 @@ struct DashboardShell: View {
                 )
                 .padding(AppTheme.spaceLG)
             }
-            .refreshable { await appState.refresh() }
+            .refreshable { await appState.refresh(forceFull: true) }
             .scrollContentBackground(.hidden)
         }
         .background(DashboardBackground())
@@ -762,7 +762,7 @@ struct DashboardShell: View {
                     systemImage: "wifi.exclamationmark"
                 )
                 Button("ลองอีกครั้ง") {
-                    Task { await appState.refresh() }
+                    Task { await appState.refresh(forceFull: true) }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.brand)
@@ -778,7 +778,7 @@ struct DashboardShell: View {
                     systemImage: "tray"
                 )
                 Button("ลองอีกครั้ง") {
-                    Task { await appState.refresh() }
+                    Task { await appState.refresh(forceFull: true) }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.brand)

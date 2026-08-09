@@ -56,7 +56,7 @@ struct CategoryReportScreen: View {
                 }
                 .padding(AppTheme.spaceLG)
             }
-            .refreshable { await appState.refresh() }
+            .refreshable { await appState.refresh(forceFull: true) }
             .scrollContentBackground(.hidden)
         }
         .background(DashboardBackground())

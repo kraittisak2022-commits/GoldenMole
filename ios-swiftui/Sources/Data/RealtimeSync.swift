@@ -31,8 +31,11 @@ final class RealtimeSyncCoordinator {
     func start() {
         stop()
 
-        // Initial load / reconcile.
-        Task { await appState?.refresh() }
+        // Hydrate disk cache immediately so UI has data before network.
+        // Network refresh is owned by AppState.loadInitial / DashboardShell (avoids double full fetch).
+        Task {
+            await appState?.hydrateFromCacheIfNeeded()
+        }
 
         let channel = service.realtimeChannel("realtime:public:transactions")
         self.channel = channel
@@ -115,8 +118,9 @@ final class RealtimeSyncCoordinator {
                 if Task.isCancelled { break }
                 guard let self else { break }
                 cycles += 1
+                // Full reconcile every 5th cycle; if cache/memory is still fresh, refresh() uses delta.
                 if cycles % 5 == 0 {
-                    await self.appState?.refresh()
+                    await self.appState?.refresh(forceFull: !(self.appState?.hasFreshTransactionCache ?? false))
                 } else {
                     await self.deltaPoll()
                 }
@@ -132,7 +136,9 @@ final class RealtimeSyncCoordinator {
         }
         do {
             let result = try await service.fetchTransactionsSince(since)
-            for tx in result.transactions { appState.upsertTransaction(tx) }
+            if !result.transactions.isEmpty {
+                appState.applyTransactionDelta(result.transactions)
+            }
         } catch {
             // Ignore transient errors; the next cycle retries.
         }

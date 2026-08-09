@@ -26,12 +26,19 @@ final class AppState {
     var lastFetchedAt: Date?
     var supabaseHost: String = SupabaseConfig.isConfigured ? SupabaseConfig.host : "(ยังไม่ตั้งค่า)"
 
+    /// True after a successful disk hydrate (even if arrays stay empty).
+    private(set) var didHydrateFromCache = false
+
     @ObservationIgnored private var dataService: SupabaseService?
     @ObservationIgnored private var syncCoordinator: RealtimeSyncCoordinator?
+    @ObservationIgnored private var cacheMeta: LocalDataCache.Meta?
+    @ObservationIgnored private var cachePersistTask: Task<Void, Never>?
+    @ObservationIgnored private var isRefreshing = false
+    @ObservationIgnored private var suppressCachePersist = false
 
     /// Newest `updated_at` currently held — used as the delta-poll cursor.
     var maxTransactionUpdatedAt: String? {
-        transactions.compactMap(\.updatedAt).max()
+        transactions.compactMap(\.updatedAt).max() ?? cacheMeta?.maxUpdatedAt
     }
 
     /// Bumped on every transactions mutation so views can avoid Equatable-diffing the full array.
@@ -50,6 +57,12 @@ final class AppState {
         lastFetchedAt != nil && errorMessage == nil && transactions.isEmpty
     }
 
+    /// Cache younger than 2 minutes — prefer delta over full transaction fetch.
+    var hasFreshTransactionCache: Bool {
+        LocalDataCache.isWithinTTL(cacheMeta?.transactionsSavedAt ?? lastFetchedAt, ttl: LocalDataCache.transactionsFreshTTL)
+            && !transactions.isEmpty
+    }
+
     func configure(dataService: SupabaseService) {
         self.dataService = dataService
         supabaseHost = SupabaseConfig.host
@@ -61,7 +74,55 @@ final class AppState {
     }
 
     func loadInitial() async {
+        await hydrateFromCacheIfNeeded()
         await refresh()
+    }
+
+    // MARK: - Disk cache
+
+    func hydrateFromCacheIfNeeded() async {
+        guard !didHydrateFromCache else { return }
+        didHydrateFromCache = true
+        guard let snap = await LocalDataCache.loadSnapshot() else { return }
+
+        cacheMeta = snap.meta
+        if transactions.isEmpty, !snap.transactions.isEmpty {
+            transactions = snap.transactions
+            transactionsRevision += 1
+            lastFetchTransactionCount = snap.transactions.count
+            lastFetchedAt = snap.meta.transactionsSavedAt
+        }
+        if employees.isEmpty, !snap.employees.isEmpty {
+            employees = snap.employees
+            lastFetchEmployeeCount = snap.employees.count
+        }
+        // First hydrate wins for settings when we have not network-refreshed yet.
+        settings = snap.settings
+    }
+
+    private func scheduleCachePersist() {
+        cachePersistTask?.cancel()
+        cachePersistTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await self.persistCacheNow()
+        }
+    }
+
+    private func persistCacheNow() async {
+        let tx = transactions
+        let emp = employees
+        let set = settings
+        await LocalDataCache.saveSnapshot(transactions: tx, employees: emp, settings: set)
+        cacheMeta = LocalDataCache.Meta(
+            savedAt: Date(),
+            transactionCount: tx.count,
+            employeeCount: emp.count,
+            maxUpdatedAt: tx.compactMap(\.updatedAt).max(),
+            transactionsSavedAt: Date(),
+            employeesSavedAt: Date(),
+            settingsSavedAt: Date()
+        )
     }
 
     // MARK: - Incremental realtime apply
@@ -83,6 +144,9 @@ final class AppState {
         }
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
+        if !suppressCachePersist {
+            scheduleCachePersist()
+        }
     }
 
     func removeTransaction(id: String) {
@@ -91,68 +155,122 @@ final class AppState {
         transactionsRevision += 1
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
+        if !suppressCachePersist {
+            scheduleCachePersist()
+        }
     }
 
-    func refresh() async {
+    /// Merges delta rows into the in-memory list (by id).
+    func applyTransactionDelta(_ rows: [Transaction]) {
+        guard !rows.isEmpty else { return }
+        suppressCachePersist = true
+        for tx in rows {
+            upsertTransaction(tx)
+        }
+        suppressCachePersist = false
+        scheduleCachePersist()
+    }
+
+    /// - Parameter forceFull: when true, always full-fetch transactions (and roster).
+    func refresh(forceFull: Bool = false) async {
         guard let dataService else { return }
-        // Only show the blocking spinner on the very first load; reconciles stay silent
-        // to avoid invalidating views that observe `isLoading`.
+        if isRefreshing { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        await hydrateFromCacheIfNeeded()
+
+        // Only show the blocking spinner when we still have nothing to show.
         let shouldShowLoading = transactions.isEmpty
         if isLoading != shouldShowLoading { isLoading = shouldShowLoading }
         var errors: [String] = []
+        var didMutateData = false
 
-        // Fetch independently so one failing endpoint cannot blank the whole app.
+        // --- Transactions ---
         do {
-            let fetchResult = try await dataService.fetchTransactions()
-            // Only reassign when data actually changed so periodic reconciles don't
-            // re-render the whole dashboard when nothing is new.
-            if transactions != fetchResult.transactions {
-                transactions = fetchResult.transactions
-                transactionsRevision += 1
+            let preferDelta = !forceFull
+                && hasFreshTransactionCache
+                && (maxTransactionUpdatedAt?.isEmpty == false)
+
+            if preferDelta, let since = maxTransactionUpdatedAt {
+                let result = try await dataService.fetchTransactionsSince(since)
+                if !result.transactions.isEmpty {
+                    applyTransactionDelta(result.transactions)
+                    didMutateData = true
+                }
+                lastSkippedTransactionCount = result.skippedCount
+                lastFetchedAt = Date()
+                lastFetchTransactionCount = transactions.count
+            } else {
+                let fetchResult = try await dataService.fetchTransactions()
+                if transactions != fetchResult.transactions {
+                    transactions = fetchResult.transactions
+                    transactionsRevision += 1
+                    didMutateData = true
+                }
+                lastFetchTransactionCount = fetchResult.transactions.count
+                lastSkippedTransactionCount = fetchResult.skippedCount
+                lastFetchedAt = Date()
             }
-            lastFetchTransactionCount = fetchResult.transactions.count
-            lastSkippedTransactionCount = fetchResult.skippedCount
-            lastFetchedAt = Date()
         } catch {
             errors.append("transactions: \(error.localizedDescription)")
         }
 
-        do {
-            let e = try await dataService.fetchEmployees()
-            if employees != e {
-                employees = e
+        // --- Employees ---
+        let employeesFresh = !forceFull
+            && LocalDataCache.isWithinTTL(cacheMeta?.employeesSavedAt, ttl: LocalDataCache.rosterTTL)
+            && !employees.isEmpty
+        if !employeesFresh {
+            do {
+                let e = try await dataService.fetchEmployees()
+                if employees != e {
+                    employees = e
+                    didMutateData = true
+                }
+                lastFetchEmployeeCount = e.count
+            } catch {
+                errors.append("employees: \(error.localizedDescription)")
             }
-            lastFetchEmployeeCount = e.count
-        } catch {
-            errors.append("employees: \(error.localizedDescription)")
+        } else {
+            lastFetchEmployeeCount = employees.count
         }
 
-        do {
-            let s = try await dataService.fetchSettings()
-            if settings != s {
-                settings = s
+        // --- Settings ---
+        let settingsFresh = !forceFull
+            && LocalDataCache.isWithinTTL(cacheMeta?.settingsSavedAt, ttl: LocalDataCache.rosterTTL)
+            && settings != .fallback
+        if !settingsFresh {
+            do {
+                let s = try await dataService.fetchSettings()
+                if settings != s {
+                    settings = s
+                    didMutateData = true
+                }
+            } catch {
+                errors.append("settings: \(error.localizedDescription)")
             }
-        } catch {
-            errors.append("settings: \(error.localizedDescription)")
         }
 
         if transactions.isEmpty && !errors.isEmpty {
             errorMessage = errors.joined(separator: " · ")
-            // Critical: app has no data because every source failed. Report it (deduped/rate-limited).
             ErrorReportCenter.shared.reportMessage(
                 "โหลดข้อมูลไม่สำเร็จ (ไม่มีข้อมูลแสดง)",
                 detail: errors.joined(separator: "\n"),
                 source: "error",
                 screenPage: String(describing: selectedTab)
             )
-        } else if !errors.isEmpty && transactions.isEmpty == false {
-            // Soft warning — keep data, surface issue in Profile diagnostics
+        } else if !errors.isEmpty && !transactions.isEmpty {
             errorMessage = errors.joined(separator: " · ")
         } else {
             errorMessage = nil
         }
 
         if isLoading { isLoading = false }
+
+        // Persist after a successful network pass (or when we mutated via delta).
+        if errors.isEmpty || didMutateData || (!transactions.isEmpty && cacheMeta == nil) {
+            await persistCacheNow()
+        }
     }
 
     /// Loads the latest market insight row. Safe to call repeatedly (tab appear / manual refresh).

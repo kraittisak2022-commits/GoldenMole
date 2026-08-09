@@ -222,7 +222,7 @@ struct Employee: Codable, Identifiable, Sendable, Equatable {
 
 // MARK: - Transaction
 
-struct Transaction: Decodable, Identifiable, Sendable, Equatable {
+struct Transaction: Codable, Identifiable, Sendable, Equatable {
     let id: String
     let date: String
     let type: TransactionType
@@ -403,6 +403,65 @@ struct Transaction: Decodable, Identifiable, Sendable, Equatable {
             out[key] = values.map(\.value)
         }
         return out.isEmpty ? nil : out
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(date, forKey: .date)
+        try c.encode(type, forKey: .type)
+        try c.encode(category, forKey: .category)
+        try c.encode(description, forKey: .description)
+        try c.encode(amount, forKey: .amount)
+        try c.encodeIfPresent(subCategory, forKey: .subCategory)
+        try c.encodeIfPresent(createdAt, forKey: .createdAt)
+        try c.encodeIfPresent(updatedAt, forKey: .updatedAt)
+        try c.encodeIfPresent(employeeId, forKey: .employeeId)
+        try c.encodeIfPresent(employeeIds, forKey: .employeeIds)
+        try c.encodeIfPresent(driverId, forKey: .driverId)
+        try c.encodeIfPresent(driverWage, forKey: .driverWage)
+        try c.encodeIfPresent(vehicleWage, forKey: .vehicleWage)
+        try c.encodeIfPresent(vehicleId, forKey: .vehicleId)
+        try c.encodeIfPresent(quantity, forKey: .quantity)
+        try c.encodeIfPresent(unit, forKey: .unit)
+        try c.encodeIfPresent(unitPrice, forKey: .unitPrice)
+        try c.encodeIfPresent(projectId, forKey: .projectId)
+        try c.encodeIfPresent(laborStatus, forKey: .laborStatus)
+        try c.encodeIfPresent(workType, forKey: .workType)
+        try c.encodeIfPresent(workTypeByEmployee, forKey: .workTypeByEmployee)
+        try c.encodeIfPresent(workAssignments, forKey: .workAssignments)
+        try c.encodeIfPresent(otAmount, forKey: .otAmount)
+        try c.encodeIfPresent(advanceAmount, forKey: .advanceAmount)
+        try c.encodeIfPresent(specialAmount, forKey: .specialAmount)
+        try c.encodeIfPresent(otHours, forKey: .otHours)
+        try c.encodeIfPresent(leaveReason, forKey: .leaveReason)
+        try c.encodeIfPresent(leaveDays, forKey: .leaveDays)
+        try c.encodeIfPresent(note, forKey: .note)
+        try c.encodeIfPresent(workDetails, forKey: .workDetails)
+        try c.encodeIfPresent(fuelType, forKey: .fuelType)
+        try c.encodeIfPresent(fuelMovement, forKey: .fuelMovement)
+        try c.encodeIfPresent(machineId, forKey: .machineId)
+        try c.encodeIfPresent(machineHours, forKey: .machineHours)
+        try c.encodeIfPresent(tripCount, forKey: .tripCount)
+        try c.encodeIfPresent(tripMorning, forKey: .tripMorning)
+        try c.encodeIfPresent(tripAfternoon, forKey: .tripAfternoon)
+        try c.encodeIfPresent(tripBillingMode, forKey: .tripBillingMode)
+        try c.encodeIfPresent(cubicPerTrip, forKey: .cubicPerTrip)
+        try c.encodeIfPresent(totalCubic, forKey: .totalCubic)
+        try c.encodeIfPresent(perCarTrips, forKey: .perCarTrips)
+        try c.encodeIfPresent(perCarCubic, forKey: .perCarCubic)
+        try c.encodeIfPresent(sandMorning, forKey: .sandMorning)
+        try c.encodeIfPresent(sandAfternoon, forKey: .sandAfternoon)
+        try c.encodeIfPresent(sandMachineType, forKey: .sandMachineType)
+        try c.encodeIfPresent(sandOperators, forKey: .sandOperators)
+        try c.encodeIfPresent(sandTransport, forKey: .sandTransport)
+        try c.encodeIfPresent(drumsObtained, forKey: .drumsObtained)
+        try c.encodeIfPresent(drumsWashedAtHome, forKey: .drumsWashedAtHome)
+        try c.encodeIfPresent(sandBatchId, forKey: .sandBatchId)
+        try c.encodeIfPresent(eventType, forKey: .eventType)
+        try c.encodeIfPresent(eventPriority, forKey: .eventPriority)
+        try c.encodeIfPresent(eventTime, forKey: .eventTime)
+        try c.encodeIfPresent(incomePaymentStatus, forKey: .incomePaymentStatus)
     }
 }
 
