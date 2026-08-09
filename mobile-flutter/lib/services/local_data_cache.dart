@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
+import '../utils/fuel_stock.dart';
 
 /// แคชข้อมูลจาก Supabase ลง SharedPreferences เพื่อโหลดเร็วและลดรอบเน็ตเวิร์ก
 ///
@@ -31,6 +32,9 @@ class LocalDataCache {
   static const _kTxAllJson = 'v1_cache_transactions_all_json';
   static const _kTxAllAt = 'v1_cache_transactions_all_ms';
 
+  static const _kFuelStockJson = 'v1_cache_fuel_stock_json';
+  static const _kFuelStockAt = 'v1_cache_fuel_stock_ms';
+
   /// ไม่เขียนข้อมูลธุรกรรมเต็มชุดลง prefs เกินขีดจำกัดนี้ (กันค้างความจำใหญ่)
   static const int maxTransactionsFullJsonChars = 350000;
 
@@ -38,6 +42,7 @@ class LocalDataCache {
   static const Duration dashboardSummaryTtl = Duration(minutes: 8);
   static const Duration transactionsByDayTtl = Duration(minutes: 3);
   static const Duration transactionsFullTtl = Duration(minutes: 2);
+  static const Duration fuelStockSnapshotTtl = Duration(hours: 12);
 
   static bool _withinTtl(Duration ttl, int? cachedAtMs) {
     if (cachedAtMs == null) return false;
@@ -264,5 +269,54 @@ class LocalDataCache {
     final p = await _p();
     await p.remove(_kTxAllJson);
     await p.remove(_kTxAllAt);
+  }
+
+  static Future<void> writeFuelStockSnapshot(FuelStockBalance balance) async {
+    final p = await _p();
+    await p.setString(
+      _kFuelStockJson,
+      jsonEncode({
+        'mainDiesel': balance.mainDiesel,
+        'reserveDiesel': balance.reserveDiesel,
+        'mainBenzine': balance.mainBenzine,
+        'reserveBenzine': balance.reserveBenzine,
+      }),
+    );
+    await p.setInt(_kFuelStockAt, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// อ่าน snapshot คงเหลือน้ำมัน (TTL) — ใช้โชว์เกจทันทีก่อนคำนวณจากแคชธุรกรรม
+  static Future<FuelStockBalance?> readFuelStockSnapshot(Duration ttl) async {
+    final p = await _p();
+    if (!_withinTtl(ttl, p.getInt(_kFuelStockAt))) return null;
+    return _decodeFuelStock(p.getString(_kFuelStockJson));
+  }
+
+  static Future<FuelStockBalance?> readFuelStockSnapshotAny() async {
+    final p = await _p();
+    return _decodeFuelStock(p.getString(_kFuelStockJson));
+  }
+
+  static FuelStockBalance? _decodeFuelStock(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return FuelStockBalance(
+        mainDiesel: (decoded['mainDiesel'] as num?)?.toDouble() ?? 0,
+        reserveDiesel: (decoded['reserveDiesel'] as num?)?.toDouble() ?? 0,
+        mainBenzine: (decoded['mainBenzine'] as num?)?.toDouble() ?? 0,
+        reserveBenzine: (decoded['reserveBenzine'] as num?)?.toDouble() ?? 0,
+      );
+    } catch (e, st) {
+      debugPrint('LocalDataCache.readFuelStockSnapshot error: $e\n$st');
+      return null;
+    }
+  }
+
+  static Future<void> invalidateFuelStockSnapshot() async {
+    final p = await _p();
+    await p.remove(_kFuelStockJson);
+    await p.remove(_kFuelStockAt);
   }
 }

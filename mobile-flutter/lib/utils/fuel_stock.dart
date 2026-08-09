@@ -36,6 +36,43 @@ const double kFuelSandSieveLitersPerHour = 18;
 /// วัตถุประสงค์การเบิกน้ำมันออกจากถัง
 enum FuelWithdrawPurpose { machine, car, generator, other }
 
+/// รถที่เติมจากเมนู «เติมน้ำมันรถยนต์» (หักถังหลัก)
+enum FuelCarFillVehicle { mighty, taplien, ahming, other }
+
+const String kFuelCarFillMighty = 'ไมตี้';
+const String kFuelCarFillTaplien = 'รถตาเปลื่ยน';
+const String kFuelCarFillAhming = 'อาหมิง';
+
+String fuelCarFillVehicleLabelOf(FuelCarFillVehicle vehicle) {
+  switch (vehicle) {
+    case FuelCarFillVehicle.mighty:
+      return kFuelCarFillMighty;
+    case FuelCarFillVehicle.taplien:
+      return kFuelCarFillTaplien;
+    case FuelCarFillVehicle.ahming:
+      return kFuelCarFillAhming;
+    case FuelCarFillVehicle.other:
+      return 'อื่นๆ';
+  }
+}
+
+/// ค่า `vehicleId` ที่บันทึก — อื่นๆ ใช้ข้อความที่ระบุ
+String fuelCarFillVehicleIdOf(
+  FuelCarFillVehicle vehicle, {
+  String otherText = '',
+}) {
+  switch (vehicle) {
+    case FuelCarFillVehicle.mighty:
+      return kFuelCarFillMighty;
+    case FuelCarFillVehicle.taplien:
+      return kFuelCarFillTaplien;
+    case FuelCarFillVehicle.ahming:
+      return kFuelCarFillAhming;
+    case FuelCarFillVehicle.other:
+      return otherText.trim();
+  }
+}
+
 String fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose purpose) {
   switch (purpose) {
     case FuelWithdrawPurpose.machine:
@@ -317,6 +354,80 @@ fuelMachineReconcileForDay(
 String formatFuelLiters(double liters) {
   if (liters % 1 == 0) return liters.toStringAsFixed(0);
   return liters.toStringAsFixed(2);
+}
+
+FuelStockBalance _fuelBalanceAdd(
+  FuelStockBalance b, {
+  required String tank,
+  required bool benzine,
+  required double delta,
+}) {
+  final reserve = fuelTankIsReserve(tank);
+  if (benzine) {
+    return FuelStockBalance(
+      mainDiesel: b.mainDiesel,
+      reserveDiesel: b.reserveDiesel,
+      mainBenzine: reserve ? b.mainBenzine : b.mainBenzine + delta,
+      reserveBenzine: reserve ? b.reserveBenzine + delta : b.reserveBenzine,
+    );
+  }
+  return FuelStockBalance(
+    mainDiesel: reserve ? b.mainDiesel : b.mainDiesel + delta,
+    reserveDiesel: reserve ? b.reserveDiesel + delta : b.reserveDiesel,
+    mainBenzine: b.mainBenzine,
+    reserveBenzine: b.reserveBenzine,
+  );
+}
+
+/// อัปเดตคงเหลือจากแถวเดียวโดยไม่สแกนทั้งลิสต์
+///
+/// คืน `null` เมื่อต้องคำนวณใหม่ทั้งชุด (เช่น VehicleUsage ที่พึ่งโควตา machine)
+FuelStockBalance? applyFuelBalanceDelta(
+  FuelStockBalance current,
+  AppTransaction t, {
+  bool reverse = false,
+}) {
+  if (!_isFuelExpenseRow(t)) return current;
+  final day = t.date.trim();
+  if (day.compareTo(kFuelStockCutoverYmd) < 0) return current;
+  final liters = fuelTxLiters(t);
+  if (liters <= 0) return current;
+  final signed = reverse ? -liters : liters;
+  final tank = normalizeFuelTank(t.fuelTank);
+  final benzine = fuelTypeIsBenzine(t.fuelType);
+
+  if (isFuelStockInRow(t)) {
+    return _fuelBalanceAdd(
+      current,
+      tank: tank,
+      benzine: benzine,
+      delta: signed,
+    );
+  }
+  if (isFuelWithdrawRow(t) ||
+      isFuelSandSieveRow(t) ||
+      isFuelTransferRow(t)) {
+    // Transfer stock_in ถูกจับที่ isFuelStockInRow แล้ว
+    return _fuelBalanceAdd(
+      current,
+      tank: tank,
+      benzine: benzine,
+      delta: -signed,
+    );
+  }
+  if (isFuelVehicleUsageRow(t)) {
+    return null;
+  }
+  final mov = (t.fuelMovement ?? '').trim().toLowerCase();
+  if (mov == 'stock_out') {
+    return _fuelBalanceAdd(
+      current,
+      tank: tank,
+      benzine: benzine,
+      delta: -signed,
+    );
+  }
+  return current;
 }
 
 /// id คงที่ของแถวใช้น้ำมันร่อนทรายอัตโนมัติรายวัน

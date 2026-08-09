@@ -110,6 +110,59 @@ enum FuelWriter {
         )
     }
 
+    static func carFillPayload(
+        id: String,
+        dateYmd: String,
+        liters: Double,
+        vehicle: FuelLogic.CarFillVehicle,
+        otherText: String,
+        time: String,
+        omitCreatedAt: Bool
+    ) -> TransactionWritePayload {
+        let trimmedOther = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vehicleId = vehicle.vehicleId(otherText: trimmedOther)
+        let vehicleLabel = vehicle == .other ? "อื่นๆ: \(trimmedOther)" : vehicle.label
+        return TransactionWritePayload(
+            id: id,
+            date: dateYmd,
+            type: TransactionType.expense.rawValue,
+            category: "Fuel",
+            subCategory: FuelLogic.withdrawSubCategory,
+            description: "เติมน้ำมันรถยนต์: \(vehicleLabel) \(FuelLogic.formatLiters(liters)) ลิตร (ดีเซล · ถังหลัก)",
+            amount: 0,
+            note: nil,
+            vehicleId: vehicleId,
+            driverId: nil,
+            workDetails: time,
+            tripBillingMode: nil,
+            tripCount: nil,
+            perCarTrips: nil,
+            cubicPerTrip: nil,
+            perCarCubic: nil,
+            totalCubic: nil,
+            drumsObtained: nil,
+            workAssignments: nil,
+            createdAt: omitCreatedAt ? nil : ISO8601DateFormatter().string(from: Date()),
+            eventType: nil,
+            eventPriority: nil,
+            eventTime: nil,
+            employeeIds: nil,
+            laborStatus: nil,
+            workType: FuelLogic.WithdrawPurpose.car.rawValue,
+            workTypeByEmployee: nil,
+            leaveReason: nil,
+            leaveDays: nil,
+            tripMorning: nil,
+            tripAfternoon: nil,
+            quantity: liters,
+            unit: "L",
+            unitPrice: nil,
+            fuelType: "Diesel",
+            fuelMovement: "stock_out",
+            fuelTank: FuelLogic.tankMain
+        )
+    }
+
     static func vehicleUsagePayload(
         id: String,
         dateYmd: String,

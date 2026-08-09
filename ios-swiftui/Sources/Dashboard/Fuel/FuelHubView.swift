@@ -28,6 +28,7 @@ struct FuelHubView: View {
                     switch mode {
                     case .stockIn: stockInForm(session)
                     case .withdraw: withdrawForm(session)
+                    case .carFill: carFillForm(session)
                     case .macroUsage: macroUsageForm(session)
                     }
                 } else {
@@ -116,6 +117,9 @@ struct FuelHubView: View {
                         }
                         if mode == .withdraw, session.withdraw.time.isEmpty {
                             session.withdraw.time = FuelLogic.nowTimeHHmm()
+                        }
+                        if mode == .carFill, session.carFill.time.isEmpty {
+                            session.carFill.time = FuelLogic.nowTimeHHmm()
                         }
                     } label: {
                         HStack(spacing: 14) {
@@ -255,7 +259,7 @@ struct FuelHubView: View {
                 formCard {
                     Text("เบิกน้ำมัน (ดีเซล)")
                         .font(.headline)
-                    Text("เติมเครื่องจักร = โอนเข้าถังสำรอง · อื่นๆ = หักจากถังหลัก")
+                    Text("เติมเครื่องจักร = โอนเข้าถังสำรอง · ปั่นไฟ/อื่นๆ = หักจากถังหลัก (รถยนต์ใช้เมนูเติมน้ำมันรถยนต์)")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                     stepperField(title: "ลิตร", value: $session.withdraw.liters, step: 1, range: 0...50_000)
@@ -265,7 +269,7 @@ struct FuelHubView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.inkMuted)
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        ForEach(FuelLogic.WithdrawPurpose.allCases) { purpose in
+                        ForEach(FuelLogic.WithdrawPurpose.withdrawMenuCases) { purpose in
                             Button {
                                 session.withdraw.purpose = purpose
                             } label: {
@@ -314,6 +318,67 @@ struct FuelHubView: View {
                     onEdit: { session.loadWithdraw($0) },
                     onDelete: { session.confirmDeleteId = $0.id }
                 )
+            }
+            .padding(AppTheme.spaceLG)
+        }
+    }
+
+    // MARK: - Car fill
+
+    private func carFillForm(_ session: FuelSession) -> some View {
+        @Bindable var session = session
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                formCard {
+                    Text("เติมน้ำมันรถยนต์")
+                        .font(.headline)
+                    Text("หักจากถังหลัก — เลือกรถ แล้วระบุลิตรและเวลา")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                    Text("ถังหลักคงเหลือ \(FuelLogic.formatLiters(session.dieselBalance)) ลิตร")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.fuel)
+                    stepperField(title: "ลิตร", value: $session.carFill.liters, step: 1, range: 0...50_000)
+                    timeField(title: "เวลา", text: $session.carFill.time)
+
+                    Text("เลือกรถยนต์")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ForEach(FuelLogic.CarFillVehicle.allCases) { vehicle in
+                            Button {
+                                session.carFill.vehicle = vehicle
+                            } label: {
+                                Text(vehicle == .other ? "อื่นๆ (ระบุ)" : vehicle.label)
+                                    .font(.caption.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .foregroundStyle(session.carFill.vehicle == vehicle ? .white : AppTheme.ink)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(session.carFill.vehicle == vehicle ? Color(hex: "#6A1B9A") : AppTheme.surfaceSoft)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    if session.carFill.vehicle == .other {
+                        TextField("ระบุชื่อรถ", text: $session.carFill.otherText)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+
+                primaryButton(
+                    title: "บันทึกเติมน้ำมันรถยนต์",
+                    busy: session.isSaving
+                ) {
+                    Task { await session.saveCarFill(appState: appState) }
+                }
+
+                Button("ล้างฟอร์ม") { session.clearCarFillForm() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             .padding(AppTheme.spaceLG)
         }

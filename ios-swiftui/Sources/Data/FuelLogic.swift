@@ -19,6 +19,7 @@ enum FuelLogic {
     enum SubMode: String, CaseIterable, Identifiable, Sendable {
         case stockIn
         case withdraw
+        case carFill
         case macroUsage
 
         var id: String { rawValue }
@@ -27,6 +28,7 @@ enum FuelLogic {
             switch self {
             case .stockIn: return "เพิ่มน้ำมัน"
             case .withdraw: return "เบิกน้ำมัน"
+            case .carFill: return "เติมน้ำมันรถยนต์"
             case .macroUsage: return "การใช้น้ำมันรถแม็คโคร"
             }
         }
@@ -35,6 +37,7 @@ enum FuelLogic {
             switch self {
             case .stockIn: return "รถน้ำมันมาเติมเข้าถังหลัก"
             case .withdraw: return "เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก"
+            case .carFill: return "หักจากถังหลัก"
             case .macroUsage: return "ค่าเริ่มต้นหักจากถังสำรอง"
             }
         }
@@ -43,7 +46,33 @@ enum FuelLogic {
             switch self {
             case .stockIn: return "arrow.down.to.line.circle.fill"
             case .withdraw: return "arrow.up.right.circle.fill"
+            case .carFill: return "car.fill"
             case .macroUsage: return "fuelpump.fill"
+            }
+        }
+    }
+
+    enum CarFillVehicle: String, CaseIterable, Identifiable, Sendable {
+        case mighty
+        case taplien
+        case ahming
+        case other
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .mighty: return "ไมตี้"
+            case .taplien: return "รถตาเปลื่ยน"
+            case .ahming: return "อาหมิง"
+            case .other: return "อื่นๆ"
+            }
+        }
+
+        func vehicleId(otherText: String) -> String {
+            switch self {
+            case .mighty, .taplien, .ahming: return label
+            case .other: return otherText.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
     }
@@ -55,6 +84,9 @@ enum FuelLogic {
         case other
 
         var id: String { rawValue }
+
+        /// เมนูเบิก — ไม่รวมรถยนต์ (ใช้เมนูเติมน้ำมันรถยนต์)
+        static var withdrawMenuCases: [WithdrawPurpose] { [.machine, .generator, .other] }
 
         var label: String {
             switch self {

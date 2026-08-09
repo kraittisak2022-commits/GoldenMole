@@ -12,6 +12,9 @@ enum FuelSubMode {
   /// เบิกน้ำมันออกจากถังสต็อก (รวมเติมถังสำรองเมื่อเลือกเติมเครื่องจักร)
   withdraw,
 
+  /// เติมน้ำมันรถยนต์ — หักจากถังหลัก
+  carFill,
+
   /// บันทึกการใช้น้ำมันรถแม็คโคร
   macroUsage,
 }
@@ -49,8 +52,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       vsync: this,
       duration: Duration(milliseconds: _lite ? 300 : 560),
     );
-    _staggerAnims = List.generate(4, (index) {
-      final start = (0.06 + index * 0.12).clamp(0.0, 0.72);
+    _staggerAnims = List.generate(5, (index) {
+      final start = (0.06 + index * 0.10).clamp(0.0, 0.72);
       final end = (start + (_lite ? 0.22 : 0.32)).clamp(0.0, 1.0);
       return CurvedAnimation(
         parent: _entrance,
@@ -175,8 +178,6 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
-    final isLandscape = size.width > size.height;
-    final useColumns = isTablet && isLandscape;
     final gap = isTablet ? 14.0 : 10.0;
 
     final stockIn = _FuelModeOption(
@@ -185,7 +186,6 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF2E7D32),
       iconTileColor: const Color(0xFFE8F5E9),
-      vertical: useColumns,
       onTap: () => widget.onSelect(FuelSubMode.stockIn),
     );
     final withdraw = _FuelModeOption(
@@ -194,8 +194,15 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
       iconTileColor: const Color(0xFFFFF3E0),
-      vertical: useColumns,
       onTap: () => widget.onSelect(FuelSubMode.withdraw),
+    );
+    final carFill = _FuelModeOption(
+      title: 'เติมน้ำมันรถยนต์',
+      subtitle: 'หักจากถังหลัก',
+      icon: Icons.directions_car_filled_rounded,
+      accent: const Color(0xFF6A1B9A),
+      iconTileColor: const Color(0xFFF3E5F5),
+      onTap: () => widget.onSelect(FuelSubMode.carFill),
     );
     final macro = _FuelModeOption(
       title: 'การใช้น้ำมันรถแม็คโคร',
@@ -203,7 +210,6 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),
       iconTileColor: const Color(0xFFE3F2FD),
-      vertical: useColumns,
       onTap: () => widget.onSelect(FuelSubMode.macroUsage),
     );
 
@@ -240,36 +246,33 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       ),
     );
 
-    final options = useColumns
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: _staggerTile(1, stockIn)),
-              SizedBox(width: gap),
-              Expanded(child: _staggerTile(2, withdraw)),
-              SizedBox(width: gap),
-              Expanded(child: _staggerTile(3, macro)),
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _staggerTile(1, stockIn),
-              SizedBox(height: gap),
-              _staggerTile(2, withdraw),
-              SizedBox(height: gap),
-              _staggerTile(3, macro),
-            ],
-          );
+    final options = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _staggerTile(1, stockIn)),
+            SizedBox(width: gap),
+            Expanded(child: _staggerTile(2, withdraw)),
+          ],
+        ),
+        SizedBox(height: gap),
+        Row(
+          children: [
+            Expanded(child: _staggerTile(3, carFill)),
+            SizedBox(width: gap),
+            Expanded(child: _staggerTile(4, macro)),
+          ],
+        ),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         header,
         SizedBox(height: gap),
-        useColumns
-            ? SizedBox(height: isTablet ? 220 : 200, child: options)
-            : options,
+        options,
       ],
     );
   }
@@ -283,7 +286,6 @@ class _FuelModeOption extends StatelessWidget {
     required this.accent,
     required this.iconTileColor,
     required this.onTap,
-    this.vertical = false,
   });
 
   final String title;
@@ -292,40 +294,31 @@ class _FuelModeOption extends StatelessWidget {
   final Color accent;
   final Color iconTileColor;
   final VoidCallback onTap;
-  final bool vertical;
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
-    final iconBox = vertical
-        ? (isTablet ? 64.0 : 56.0)
-        : (isTablet ? 58.0 : 52.0);
+    final iconBox = isTablet ? 52.0 : 46.0;
     final iconSize = iconBox * 0.52;
-    final titleSize = vertical
-        ? (isTablet ? 18.0 : 17.0)
-        : (isTablet ? 21.0 : 19.0);
-    final subtitleSize = vertical
-        ? (isTablet ? 13.0 : 12.5)
-        : (isTablet ? 14.0 : 13.0);
+    final titleSize = isTablet ? 16.0 : 15.0;
+    final subtitleSize = isTablet ? 12.5 : 11.5;
 
     final iconTile = Container(
       width: iconBox,
       height: iconBox,
       decoration: BoxDecoration(
         color: iconTileColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(icon, color: accent, size: iconSize),
     );
 
     final textBlock = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment:
-          vertical ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          textAlign: vertical ? TextAlign.center : TextAlign.start,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -336,10 +329,9 @@ class _FuelModeOption extends StatelessWidget {
             color: const Color(0xFF1A2433),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         Text(
           subtitle,
-          textAlign: vertical ? TextAlign.center : TextAlign.start,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -351,36 +343,6 @@ class _FuelModeOption extends StatelessWidget {
         ),
       ],
     );
-
-    final body = vertical
-        ? FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.center,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  iconTile,
-                  SizedBox(height: isTablet ? 10 : 8),
-                  textBlock,
-                ],
-              ),
-            ),
-          )
-        : Row(
-            children: [
-              iconTile,
-              SizedBox(width: isTablet ? 16 : 12),
-              Expanded(child: textBlock),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: accent.withValues(alpha: 0.9),
-                size: isTablet ? 28 : 26,
-              ),
-            ],
-          );
 
     return SoftPressButton(
       onTap: onTap,
@@ -411,14 +373,18 @@ class _FuelModeOption extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: vertical
-                          ? (isTablet ? 10 : 8)
-                          : (isTablet ? 16 : 12),
-                      vertical: vertical
-                          ? (isTablet ? 12 : 10)
-                          : (isTablet ? 14 : 12),
+                      horizontal: isTablet ? 12 : 10,
+                      vertical: isTablet ? 12 : 10,
                     ),
-                    child: body,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        iconTile,
+                        SizedBox(height: isTablet ? 10 : 8),
+                        textBlock,
+                      ],
+                    ),
                   ),
                 ),
               ],

@@ -45,10 +45,20 @@ struct FuelWithdrawDraft: Equatable, Sendable {
     var isPersisted: Bool { !(txId ?? "").isEmpty }
 }
 
+struct FuelCarFillDraft: Equatable, Sendable {
+    var liters: Double = 0
+    var time: String = FuelLogic.nowTimeHHmm()
+    var vehicle: FuelLogic.CarFillVehicle?
+    var otherText: String = ""
+}
+
 enum FuelSaveError: LocalizedError {
     case liters
     case time
     case otherDetail
+    case pickVehicle
+    case vehicleName
+    case mainTankShort
     case noCars
     case emptyUsage
     case usageLiters(String)
@@ -59,6 +69,9 @@ enum FuelSaveError: LocalizedError {
         case .liters: return "กรุณาระบุจำนวนลิตรให้มากกว่า 0"
         case .time: return "กรุณาระบุเวลา"
         case .otherDetail: return "กรุณาระบุรายละเอียดการเบิก"
+        case .pickVehicle: return "กรุณาเลือกรถยนต์"
+        case .vehicleName: return "กรุณาระบุชื่อรถ"
+        case .mainTankShort: return "ถังหลักมีน้ำมันไม่พอ"
         case .noCars: return "ยังไม่พบรถแม็คโครในตั้งค่าแอพ"
         case .emptyUsage: return "กรุณาระบุปริมาณน้ำมันอย่างน้อย 1 คัน"
         case .usageLiters(let v): return "กรุณาระบุปริมาณน้ำมันให้มากกว่า 0 (\(v))"
@@ -73,6 +86,7 @@ final class FuelSession {
     var subMode: FuelLogic.SubMode?
     var stockIn = FuelStockInDraft()
     var withdraw = FuelWithdrawDraft()
+    var carFill = FuelCarFillDraft()
     var vehicleDrafts: [FuelVehicleDraft] = []
     var dieselBalance: Double = 0
     var reserveDieselBalance: Double = 0
@@ -211,6 +225,10 @@ final class FuelSession {
         withdraw = FuelWithdrawDraft()
     }
 
+    func clearCarFillForm() {
+        carFill = FuelCarFillDraft()
+    }
+
     func saveStockIn(appState: AppState) async {
         guard !isSaving else { return }
         do {
@@ -292,6 +310,42 @@ final class FuelSession {
                 clearWithdrawForm()
                 setOk("บันทึกเบิกน้ำมันสำเร็จ")
             }
+            reload(appState: appState, force: true)
+        } catch {
+            setError(error.localizedDescription)
+        }
+    }
+
+    func saveCarFill(appState: AppState) async {
+        guard !isSaving else { return }
+        do {
+            guard let vehicle = carFill.vehicle else { throw FuelSaveError.pickVehicle }
+            if carFill.liters <= 0 { throw FuelSaveError.liters }
+            if carFill.time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw FuelSaveError.time
+            }
+            if vehicle == .other,
+               carFill.otherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw FuelSaveError.vehicleName
+            }
+            if carFill.liters > dieselBalance + 1e-9 {
+                throw FuelSaveError.mainTankShort
+            }
+            isSaving = true
+            defer { isSaving = false }
+            let payload = FuelWriter.carFillPayload(
+                id: FuelWriter.newId(suffix: "fuel_car"),
+                dateYmd: dayKey,
+                liters: carFill.liters,
+                vehicle: vehicle,
+                otherText: carFill.otherText,
+                time: carFill.time.trimmingCharacters(in: .whitespacesAndNewlines),
+                omitCreatedAt: false
+            )
+            skipExternalReload += 1
+            _ = await FuelWriter.persist(payload: payload, wasPersisted: false)
+            clearCarFillForm()
+            setOk("บันทึกเติมน้ำมันรถยนต์สำเร็จ")
             reload(appState: appState, force: true)
         } catch {
             setError(error.localizedDescription)
