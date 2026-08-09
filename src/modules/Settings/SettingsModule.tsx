@@ -582,7 +582,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             ...settings,
             fuelOpeningStockLiters: {
                 Diesel: Number(fuelStockForm.diesel.replace(/,/g, '')) || 0,
-                Benzine: Number(fuelStockForm.benzine.replace(/,/g, '')) || 0,
+                Benzine: settings.fuelOpeningStockLiters?.Benzine ?? 0,
             },
         });
         alert('บันทึกยอดยกมาสต็อกน้ำมันแล้ว');
@@ -1219,7 +1219,6 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input label="ดีเซล (ลิตร)" type="number" value={fuelStockForm.diesel} onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, diesel: e.target.value })} />
-                                <Input label="เบนซิน (ลิตร)" type="number" value={fuelStockForm.benzine} onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, benzine: e.target.value })} />
                             </div>
                             <Button onClick={saveFuelOpening}>บันทึกยอดยกมา</Button>
                         </div>

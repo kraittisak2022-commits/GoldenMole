@@ -112,8 +112,11 @@ struct FuelHubView: View {
                 ForEach(FuelLogic.SubMode.allCases) { mode in
                     Button {
                         session.subMode = mode
-                        if mode == .stockIn, session.stockIn.time.isEmpty {
-                            session.stockIn.time = FuelLogic.nowTimeHHmm()
+                        if mode == .stockIn {
+                            session.autoHydrateStockInIfNeeded()
+                            if session.stockIn.time.isEmpty {
+                                session.stockIn.time = FuelLogic.nowTimeHHmm()
+                            }
                         }
                         if mode == .withdraw, session.withdraw.time.isEmpty {
                             session.withdraw.time = FuelLogic.nowTimeHHmm()
@@ -313,8 +316,9 @@ struct FuelHubView: View {
                 }
 
                 historySection(
-                    title: "เบิกวันนี้",
+                    title: "เบิก / โอนวันนี้",
                     rows: session.dayWithdrawRows,
+                    transferBadge: true,
                     onEdit: { session.loadWithdraw($0) },
                     onDelete: { session.confirmDeleteId = $0.id }
                 )
@@ -566,7 +570,8 @@ struct FuelHubView: View {
         title: String,
         rows: [Transaction],
         onEdit: @escaping (Transaction) -> Void,
-        onDelete: @escaping (Transaction) -> Void
+        onDelete: @escaping (Transaction) -> Void,
+        transferBadge: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -577,13 +582,26 @@ struct FuelHubView: View {
                     .foregroundStyle(AppTheme.inkMuted)
             } else {
                 ForEach(rows) { t in
+                    let isXfer = transferBadge && FuelLogic.isTransfer(t)
                     VStack(alignment: .leading, spacing: 6) {
                         Button { onEdit(t) } label: {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(t.description)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.ink)
-                                    .multilineTextAlignment(.leading)
+                                HStack(spacing: 6) {
+                                    Text(t.description)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(AppTheme.ink)
+                                        .multilineTextAlignment(.leading)
+                                    if isXfer {
+                                        Text("โอนเข้าสำรอง")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(Color(hex: "#0F766E"))
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(
+                                                Capsule().fill(Color(hex: "#0F766E").opacity(0.12))
+                                            )
+                                    }
+                                }
                                 Text("\(FuelLogic.formatLiters(FuelLogic.liters(of: t))) L · \(FuelLogic.stripRecorder(t.workDetails ?? "—"))")
                                     .font(.caption)
                                     .foregroundStyle(AppTheme.inkMuted)
@@ -592,7 +610,7 @@ struct FuelHubView: View {
                         }
                         .buttonStyle(.plain)
                         HStack {
-                            Text("แตะเพื่อแก้ไข")
+                            Text(isXfer ? "ลบคู่โอนได้ · แก้ไขไม่ได้" : "แตะเพื่อแก้ไข")
                                 .font(.caption2)
                                 .foregroundStyle(AppTheme.inkMuted)
                             Spacer()

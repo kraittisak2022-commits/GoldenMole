@@ -4042,23 +4042,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                     </div>
 
-                                    {/* Fuel Type - Radio style */}
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {/* Fuel Type — ดีเซลเท่านั้น (ถังสต็อก) */}
+                                    <div className="grid grid-cols-1 gap-3">
                                         <button onClick={() => setFuelType('Diesel')}
                                             type="button"
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Diesel' ? 'border-slate-800 dark:border-slate-300 bg-white dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20'}`}>
-                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${fuelType === 'Diesel' ? 'border-slate-800 dark:border-slate-300' : 'border-slate-300 dark:border-slate-500'}`}>
-                                                {fuelType === 'Diesel' && <span className="w-3 h-3 rounded-full bg-slate-800 dark:bg-slate-200"></span>}
+                                            className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium border-slate-800 dark:border-slate-300 bg-white dark:bg-white/10 text-slate-800 dark:text-slate-100">
+                                            <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-slate-800 dark:border-slate-300">
+                                                <span className="w-3 h-3 rounded-full bg-slate-800 dark:bg-slate-200"></span>
                                             </span>
                                             ดีเซล
-                                        </button>
-                                        <button onClick={() => setFuelType('Benzine')}
-                                            type="button"
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-base font-medium ${fuelType === 'Benzine' ? 'border-slate-800 dark:border-slate-300 bg-white dark:bg-white/10 text-slate-800 dark:text-slate-100' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20'}`}>
-                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${fuelType === 'Benzine' ? 'border-slate-800 dark:border-slate-300' : 'border-slate-300 dark:border-slate-500'}`}>
-                                                {fuelType === 'Benzine' && <span className="w-3 h-3 rounded-full bg-slate-800 dark:bg-slate-200"></span>}
-                                            </span>
-                                            เบนซิน
                                         </button>
                                     </div>
 
@@ -4163,7 +4155,6 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 className="w-full min-w-0 px-4 py-3 border border-slate-300 dark:border-white/15 rounded-xl text-base text-slate-800 dark:text-slate-100 bg-white dark:bg-white/5 focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none transition-colors"
                                             >
                                                 <option value="Diesel">ดีเซล</option>
-                                                <option value="Benzine">เบนซิน</option>
                                             </select>
                                         </div>
                                     </div>

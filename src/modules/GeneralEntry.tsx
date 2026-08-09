@@ -109,19 +109,25 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
     }, [settings.fuelOpeningStockLiters]);
 
     useEffect(() => {
-        if (type === 'Fuel' && dayFuelTx.length > 0 && !editingId) {
-            const latest = dayFuelTx[dayFuelTx.length - 1];
-            setForm(prev => ({
-                ...prev,
-                amount: latest.amount != null ? String(latest.amount) : prev.amount,
-                quantity: latest.quantity != null ? String(latest.quantity) : prev.quantity,
-                unit: latest.unit === 'gallon' || latest.unit === 'L' ? (latest.unit === 'gallon' ? 'แกลลอน' : 'ลิตร') : latest.unit || prev.unit,
-                fuelType: (latest.fuelType as 'Diesel' | 'Benzine') || prev.fuelType,
-                workDetails: latest.workDetails || prev.workDetails,
-                fuelMovement: latest.fuelMovement || (latest.vehicleId ? 'stock_out' : 'stock_in'),
-                vehicleId: latest.vehicleId || '',
-            }));
-        }
+        setEditingId(null);
+    }, [form.date]);
+
+    useEffect(() => {
+        if (type !== 'Fuel' || editingId) return;
+        const stockInRows = dayFuelTx.filter(t => inferFuelMovement(t) === 'stock_in');
+        if (stockInRows.length === 0) return;
+        const latest = stockInRows[stockInRows.length - 1];
+        setForm(prev => ({
+            ...prev,
+            amount: latest.amount != null ? String(latest.amount) : '',
+            quantity: latest.quantity != null ? String(latest.quantity) : '',
+            unit: latest.unit === 'gallon' || latest.unit === 'L' ? (latest.unit === 'gallon' ? 'แกลลอน' : 'ลิตร') : latest.unit || 'ลิตร',
+            fuelType: 'Diesel',
+            workDetails: latest.workDetails || '',
+            fuelMovement: 'stock_in',
+            vehicleId: '',
+        }));
+        setEditingId(latest.id);
     }, [form.date, type, dayFuelTx, editingId]);
 
     const saveOpeningStock = () => {
@@ -130,7 +136,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             ...prev,
             fuelOpeningStockLiters: {
                 Diesel: Number(openingDraft.d.replace(/,/g, '')) || 0,
-                Benzine: Number(openingDraft.b.replace(/,/g, '')) || 0,
+                Benzine: prev.fuelOpeningStockLiters?.Benzine ?? 0,
             },
         }));
     };
@@ -193,21 +199,26 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         } else if (!form.amount) {
             return;
         }
-        if (editingId && onDelete) {
+        const subCat = form.desc === 'Other' ? form.customType : form.desc;
+        const qtyNum = Number(form.quantity) || 0;
+        const fuelTypeFixed = type === 'Fuel' ? 'Diesel' as const : form.fuelType;
+        const ftTh = 'ดีเซล';
+        const unitLabel = form.unit === 'แกลลอน' ? 'แกลลอน' : form.unit === 'ถัง' ? 'ถัง' : 'ลิตร';
+        const reuseId =
+            type === 'Fuel' &&
+            form.fuelMovement === 'stock_in' &&
+            !!editingId;
+        if (editingId && onDelete && !reuseId) {
             onDelete(editingId);
             setEditingId(null);
         }
-        const subCat = form.desc === 'Other' ? form.customType : form.desc;
-        const qtyNum = Number(form.quantity) || 0;
-        const ftTh = form.fuelType === 'Diesel' ? 'ดีเซล' : 'เบนซิน';
-        const unitLabel = form.unit === 'แกลลอน' ? 'แกลลอน' : form.unit === 'ถัง' ? 'ถัง' : 'ลิตร';
         if (type === 'Fuel') {
             const warnings: string[] = [];
             const duplicate = dayFuelTx.find((t) => {
                 if (t.id === editingId) return false;
                 const mov = inferFuelMovement(t);
                 if (mov !== form.fuelMovement) return false;
-                if ((t.fuelType || 'Diesel') !== form.fuelType) return false;
+                if ((t.fuelType || 'Diesel') !== fuelTypeFixed) return false;
                 if (form.fuelMovement === 'stock_in') {
                     if (t.vehicleId) return false;
                     if ((t.fuelMovement || 'stock_in') !== 'stock_in') return false;
@@ -235,7 +246,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         }
 
         const payload: Transaction = {
-            id: Date.now().toString(),
+            id: reuseId && editingId ? editingId : Date.now().toString(),
             date: form.date,
             type: 'Expense',
             category: type,
@@ -244,7 +255,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             subCategory: subCat,
             quantity: qtyNum,
             unit: type === 'Fuel' ? (form.unit === 'แกลลอน' ? 'gallon' : 'L') : form.unit,
-            fuelType: type === 'Fuel' ? form.fuelType : undefined,
+            fuelType: type === 'Fuel' ? fuelTypeFixed : undefined,
             fuelMovement: type === 'Fuel' ? form.fuelMovement : undefined,
             vehicleId: type === 'Fuel' && form.fuelMovement === 'stock_out' ? form.vehicleId : undefined,
         } as Transaction;
@@ -255,6 +266,16 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             if (form.workDetails.trim()) payload.workDetails = form.workDetails.trim();
         }
         onSave(payload);
+        if (type === 'Fuel' && form.fuelMovement === 'stock_in') {
+            setEditingId(payload.id);
+            setForm(prev => ({
+                ...prev,
+                fuelType: 'Diesel',
+                fuelMovement: 'stock_in',
+            }));
+            return;
+        }
+        setEditingId(null);
         setForm(prev => ({
             ...prev,
             amount: '',
@@ -266,6 +287,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             customType: '',
             workDetails: '',
             vehicleId: '',
+            fuelType: 'Diesel',
             fuelMovement: 'stock_out',
         }));
     };
@@ -329,15 +351,6 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 <p className="text-[11px] text-slate-400 mt-1">ความจุ 1,000 ลิตร</p>
                                 {(fuelStock.DieselReserve ?? 0) < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบการโอน/การใช้</p>}
                             </div>
-                            <div className={`rounded-xl p-4 border ${fuelStock.Benzine < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังหลัก · เบนซิน</p>
-                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round(fuelStock.Benzine * 10) / 10}</p>
-                                {fuelStock.Benzine < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบยอดยกมาหรือรายการรับเข้า</p>}
-                            </div>
-                            <div className={`rounded-xl p-4 border ${(fuelStock.BenzineReserve ?? 0) < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังสำรอง · เบนซิน</p>
-                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round((fuelStock.BenzineReserve ?? 0) * 10) / 10}</p>
-                            </div>
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">
                             ถังหลัก: ยอดยกมา + รับเข้า − เบิก/ใช้ · ถังสำรอง: โอนจากถังหลัก − ใช้แม็คโคร/ร่อนทราย
@@ -349,18 +362,12 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                             <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-3 flex items-center gap-2">
                                 <Package size={18} className="text-amber-600" /> ยอดยกมาต้นงวด (ลิตร)
                             </h4>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div className="grid grid-cols-1 gap-3 mb-3 max-w-xs">
                                 <Input
-                                    label="ดีเซล"
+                                    label="ดีเซล (ถังหลัก)"
                                     type="number"
                                     value={openingDraft.d}
                                     onChange={(e: any) => setOpeningDraft(o => ({ ...o, d: e.target.value }))}
-                                />
-                                <Input
-                                    label="เบนซิน"
-                                    type="number"
-                                    value={openingDraft.b}
-                                    onChange={(e: any) => setOpeningDraft(o => ({ ...o, b: e.target.value }))}
                                 />
                             </div>
                             <Button type="button" variant="outline" className="w-full" onClick={saveOpeningStock}>
@@ -511,7 +518,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                     </div>
                                 </label>
                                 <label className={`flex items-center gap-3 border p-3 rounded-xl cursor-pointer transition-colors ${form.fuelMovement === 'stock_out' ? 'border-orange-400 bg-orange-50/80 dark:bg-orange-950/40' : 'border-slate-200 dark:border-white/15 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
-                                    <input type="radio" name="fuelMov" checked={form.fuelMovement === 'stock_out'} onChange={() => setForm({ ...form, fuelMovement: 'stock_out' })} />
+                                    <input type="radio" name="fuelMov" checked={form.fuelMovement === 'stock_out'} onChange={() => { setEditingId(null); setForm({ ...form, fuelMovement: 'stock_out' }); }} />
                                     <div>
                                         <div className="font-medium text-slate-800 dark:text-slate-100">เติมรถ</div>
                                         <div className="text-[11px] text-slate-500">หักจากสต็อก — เลือกคันรถ</div>
@@ -519,11 +526,8 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 </label>
                             </div>
                             <div className="flex gap-4">
-                                <label className="flex items-center gap-2 border p-3 rounded-lg w-full cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
-                                    <input type="radio" name="fuel" checked={form.fuelType === 'Diesel'} onChange={() => setForm({ ...form, fuelType: 'Diesel' })} /> ดีเซล
-                                </label>
-                                <label className="flex items-center gap-2 border p-3 rounded-lg w-full cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
-                                    <input type="radio" name="fuel" checked={form.fuelType === 'Benzine'} onChange={() => setForm({ ...form, fuelType: 'Benzine' })} /> เบนซิน
+                                <label className="flex items-center gap-2 border p-3 rounded-lg w-full cursor-pointer border-orange-300 bg-orange-50/60 dark:bg-orange-950/30">
+                                    <input type="radio" name="fuel" checked readOnly /> ดีเซล
                                 </label>
                             </div>
                             {form.fuelMovement === 'stock_out' && (

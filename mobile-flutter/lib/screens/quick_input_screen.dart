@@ -597,6 +597,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelStockInPricePerLiterController = TextEditingController();
   final _fuelStockInAmountController = TextEditingController();
   final _fuelStockInTimeController = TextEditingController();
+  /// id รายการ StockIn ที่กำลังแก้ — null = รายการใหม่
+  String? _fuelStockInTxId;
+  /// ผู้ใช้กดล้างฟอร์มเพื่อเพิ่มแถวใหม่ — กัน auto-hydrate ทับจนกว่าจะเซฟ/เลือกรายการ
+  bool _fuelStockInComposingNew = false;
   final _fuelWithdrawLitersController = TextEditingController();
   final _fuelWithdrawTimeController = TextEditingController();
   final _fuelWithdrawOtherController = TextEditingController();
@@ -1984,6 +1988,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _syncFuelVehicleDraftsFromMacroCars(
         dayFuelRows: dayTransactions ?? txs,
         forceHydrate: true,
+      );
+      _hydrateFuelStockInFromDay(
+        dayRows: dayTransactions ?? txs,
       );
       return;
     }
@@ -3578,7 +3585,70 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// เพิ่มน้ำมันเข้าถัง (รถน้ำมันมาเติม) — 1 รายการต่อการบันทึก
+  List<AppTransaction> _dayFuelStockInRows([List<AppTransaction>? dayRows]) {
+    final ymd = _quickYmd(_selectedDate);
+    final source = dayRows ?? _moduleDayAllTransactions;
+    final rows = source
+        .where((t) => t.date.trim() == ymd && isFuelStockInRow(t))
+        .toList();
+    rows.sort((a, b) {
+      final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tb.compareTo(ta);
+    });
+    return rows;
+  }
+
+  void _clearFuelStockInForm({bool composingNew = true}) {
+    _fuelStockInTxId = null;
+    _fuelStockInComposingNew = composingNew;
+    _fuelStockInLitersController.clear();
+    _fuelStockInPricePerLiterController.clear();
+    _fuelStockInAmountController.clear();
+    _fuelStockInTimeController.clear();
+  }
+
+  void _applyFuelStockInFromTx(AppTransaction t) {
+    _fuelStockInComposingNew = false;
+    _fuelStockInTxId = t.id;
+    _persistOmitCreatedForIds.add(t.id);
+    final liters = fuelTxLiters(t);
+    _fuelStockInLitersController.text =
+        liters > 0 ? formatFuelLiters(liters) : '';
+    final price = t.unitPrice;
+    _fuelStockInPricePerLiterController.text =
+        price != null && price > 0 ? formatFuelLiters(price) : '';
+    _fuelStockInAmountController.text =
+        t.amount > 0 ? formatFuelLiters(t.amount) : '';
+    _fuelStockInTimeController.text =
+        _stripRecorderSuffix(t.workDetails ?? '').trim();
+  }
+
+  void _hydrateFuelStockInFromDay({
+    List<AppTransaction>? dayRows,
+    bool force = false,
+  }) {
+    if (_fuelStockInComposingNew && !force) return;
+    final rows = _dayFuelStockInRows(dayRows);
+    if (rows.isEmpty) {
+      if (force) _clearFuelStockInForm(composingNew: false);
+      return;
+    }
+    AppTransaction? target;
+    final currentId = _fuelStockInTxId?.trim();
+    if (currentId != null && currentId.isNotEmpty) {
+      for (final r in rows) {
+        if (r.id == currentId) {
+          target = r;
+          break;
+        }
+      }
+    }
+    target ??= rows.first;
+    _applyFuelStockInFromTx(target);
+  }
+
+  /// เพิ่มน้ำมันเข้าถัง (รถน้ำมันมาเติม) — สร้างใหม่หรืออัปเดตรายการเดิม
   Future<void> _saveFuelStockInEntry() async {
     final liters =
         double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
@@ -3587,18 +3657,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final amount =
         double.tryParse(_fuelStockInAmountController.text.trim()) ?? 0;
     final time = _fuelStockInTimeController.text.trim();
+    final existingId = _fuelStockInTxId?.trim();
+    final isUpdate = existingId != null && existingId.isNotEmpty;
     // เพิ่มเข้าถัง = ดีเซลอย่างเดียว — ราคา/ยอดเงินกรอกทีหลังได้
     const fuelType = 'Diesel';
     await _runSaveWithPopups(
-      successMessage: 'บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ',
-      saveActionLabel: 'เพิ่มน้ำมันเข้าถัง',
-      saveButtonLabel: 'บันทึกเพิ่มน้ำมัน',
+      successMessage: isUpdate
+          ? 'อัปเดตเพิ่มน้ำมันเข้าถังสำเร็จ'
+          : 'บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ',
+      saveActionLabel: isUpdate ? 'อัปเดตน้ำมันเข้าถัง' : 'เพิ่มน้ำมันเข้าถัง',
+      saveButtonLabel: isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเพิ่มน้ำมัน',
       stayOnPage: true,
       onStayOnPageCleared: () {
-        _fuelStockInLitersController.clear();
-        _fuelStockInPricePerLiterController.clear();
-        _fuelStockInAmountController.clear();
-        _fuelStockInTimeController.clear();
+        // คงค่าในช่องเพื่อแก้ต่อ — ตั้ง txId จากรายการที่เพิ่งบันทึก
+        _fuelStockInComposingNew = false;
       },
       body: () async {
         if (liters <= 0) {
@@ -3613,8 +3685,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
+        final txId = isUpdate
+            ? existingId
+            : '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
         final tx = AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_fuel_in',
+          id: txId,
           date: '$y-$m-$d',
           type: 'Expense',
           category: 'Fuel',
@@ -3633,7 +3708,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           workDetails: _appendRecorder(time),
         );
         await _persist(tx);
-        await _applyLocalFuelStockAfterSave([tx]);
+        _fuelStockInTxId = tx.id;
+        _fuelStockInComposingNew = false;
+        // อัปเดตอาจเปลี่ยนลิตร — คำนวณใหม่จากแคช ไม่ใช้ delta
+        await _refreshFuelStock();
       },
     );
   }
@@ -10567,7 +10645,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ? FuelSubModePicker(
             mainDieselLiters: _fuelStock.mainDiesel,
             reserveDieselLiters: _fuelStock.reserveDiesel,
-            onSelect: (selected) => setState(() => _fuelSubMode = selected),
+            onSelect: (selected) {
+              setState(() {
+                _fuelSubMode = selected;
+                if (selected == FuelSubMode.stockIn) {
+                  _hydrateFuelStockInFromDay();
+                }
+              });
+            },
           )
         : switch (mode) {
             FuelSubMode.stockIn => _buildFuelStockInFormCard(),
@@ -10710,6 +10795,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildFuelStockInFormCard() {
     final liters =
         double.tryParse(_fuelStockInLitersController.text.trim()) ?? 0;
+    final dayRows = _dayFuelStockInRows();
+    final editing = _fuelStockInTxId != null && _fuelStockInTxId!.isNotEmpty;
+    var priorLiters = 0.0;
+    if (editing) {
+      for (final r in dayRows) {
+        if (r.id == _fuelStockInTxId) {
+          priorLiters = fuelTxLiters(r);
+          break;
+        }
+      }
+    }
+    // แก้รายการเดิม: แสดงเฉพาะส่วนต่างจากค่าที่บันทึกไว้
+    final pendingMain = editing ? (liters - priorLiters) : liters;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -10723,7 +10822,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'เพิ่มน้ำมันเข้าถัง',
+            editing ? 'แก้ไขน้ำมันเข้าถัง' : 'เพิ่มน้ำมันเข้าถัง',
             style: GoogleFonts.kanit(
               fontSize: 24,
               fontWeight: FontWeight.w800,
@@ -10732,8 +10831,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
-            '(ราคาใส่ทีหลังได้)',
+            editing
+                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
+                    '(หรือล้างฟอร์มเพื่อเพิ่มรายการใหม่)'
+                : 'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
+                    '(ราคาใส่ทีหลังได้)',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -10742,7 +10844,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 14),
-          _buildFuelStockBanner(pendingMainDelta: liters),
+          _buildFuelStockBanner(
+            pendingMainDelta: pendingMain == 0 ? null : pendingMain,
+          ),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
@@ -10864,9 +10968,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveFuelStockInEntry,
-              icon: const Icon(Icons.add_circle_outline),
+              icon: Icon(
+                editing ? Icons.save_outlined : Icons.add_circle_outline,
+              ),
               label: Text(
-                'บันทึกเพิ่มน้ำมัน',
+                editing ? 'อัปเดตรายการนี้' : 'บันทึกเพิ่มน้ำมัน',
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
                   fontSize: 20,
@@ -10878,6 +10984,99 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ),
+          if (editing || dayRows.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _saving
+                  ? null
+                  : () => setState(_clearFuelStockInForm),
+              child: Text(
+                'ล้างฟอร์ม (รายการใหม่)',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: const Color(0xFF546E7A),
+                ),
+              ),
+            ),
+          ],
+          if (dayRows.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'รายการรับเข้าวันนี้',
+              style: GoogleFonts.kanit(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF334155),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...dayRows.map((row) {
+              final selected = row.id == _fuelStockInTxId;
+              final rowLiters = fuelTxLiters(row);
+              final rowTime =
+                  _stripRecorderSuffix(row.workDetails ?? '').trim();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: selected
+                      ? const Color(0xFFE8F5E9)
+                      : const Color(0xFFF8FAFD),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _applyFuelStockInFromTx(row)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE1E8F0),
+                          width: selected ? 1.6 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${formatFuelLiters(rowLiters)} ลิตร'
+                              '${rowTime.isEmpty ? '' : ' · $rowTime'}'
+                              '${row.amount > 0 ? ' · ฿${formatFuelLiters(row.amount)}' : ''}',
+                              style: GoogleFonts.kanit(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                          if (selected)
+                            const Icon(
+                              Icons.check_circle,
+                              size: 20,
+                              color: Color(0xFF2E7D32),
+                            )
+                          else
+                            Text(
+                              'แก้ไข',
+                              style: GoogleFonts.kanit(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF2E7D32),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );

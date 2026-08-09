@@ -123,10 +123,40 @@ final class FuelSession {
         reserveDieselBalance = balance.reserveDiesel
 
         let dayRows = FuelLogic.dayFuelRows(dayKey: dayKey, transactions: appState.transactions)
-        dayStockInRows = dayRows.filter(FuelLogic.isStockIn)
-        dayWithdrawRows = dayRows.filter(FuelLogic.isWithdraw)
+        dayStockInRows = dayRows.filter(FuelLogic.isStockIn).sorted {
+            ($0.createdAt ?? "") > ($1.createdAt ?? "")
+        }
+        // รวมโอนเครื่องจักรหลัก→สำรอง ในประวัติเบิก (คู่แถว Transfer)
+        dayWithdrawRows = dayRows.filter { t in
+            if FuelLogic.isWithdraw(t) { return true }
+            let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return FuelLogic.isTransfer(t)
+                && mov == "stock_out"
+                && FuelLogic.normalizeTank(t.fuelTank) == FuelLogic.tankMain
+                && (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "machine"
+        }.sorted {
+            ($0.createdAt ?? "") > ($1.createdAt ?? "")
+        }
 
         syncVehicleDrafts(appState: appState, dayRows: dayRows, force: force)
+    }
+
+    /// โหลดรายการรับเข้าล่าสุดของวันเข้าฟอร์มเมื่อยังไม่ได้แก้/กรอกใหม่
+    func autoHydrateStockInIfNeeded() {
+        guard stockIn.txId == nil else { return }
+        // มีการพิมพ์ลิตรแล้ว = กำลังกรอกใหม่ — ไม่ทับ
+        if stockIn.liters > 0 { return }
+        guard let latest = dayStockInRows.first else { return }
+        applyStockInFields(from: latest)
+    }
+
+    private func applyStockInFields(from t: Transaction) {
+        stockIn.txId = t.id
+        stockIn.liters = t.quantity ?? 0
+        stockIn.unitPrice = t.unitPrice ?? 0
+        stockIn.amount = t.amount
+        stockIn.time = FuelLogic.stripRecorder(t.workDetails ?? "")
+        if stockIn.time.isEmpty { stockIn.time = FuelLogic.nowTimeHHmm() }
     }
 
     private func syncVehicleDrafts(appState: AppState, dayRows: [Transaction], force: Bool) {
@@ -182,18 +212,19 @@ final class FuelSession {
     }
 
     func loadStockIn(_ t: Transaction) {
-        stockIn.txId = t.id
-        stockIn.liters = t.quantity ?? 0
-        stockIn.unitPrice = t.unitPrice ?? 0
-        stockIn.amount = t.amount
-        stockIn.time = FuelLogic.stripRecorder(t.workDetails ?? "")
-        if stockIn.time.isEmpty { stockIn.time = FuelLogic.nowTimeHHmm() }
+        applyStockInFields(from: t)
         subMode = .stockIn
         statusMessage = "โหลดรายการเพิ่มน้ำมันมาแก้ไข"
         isErrorStatus = false
     }
 
     func loadWithdraw(_ t: Transaction) {
+        // Machine transfers are create-only pairs — don't load into the withdraw editor.
+        if FuelLogic.isTransfer(t) {
+            statusMessage = "รายการโอนเข้าสำรอง — ลบแล้วบันทึกใหม่ได้"
+            isErrorStatus = false
+            return
+        }
         withdraw.txId = t.id
         withdraw.liters = t.quantity ?? 0
         withdraw.time = FuelLogic.stripRecorder(t.workDetails ?? "")
@@ -253,8 +284,9 @@ final class FuelSession {
             )
             skipExternalReload += 1
             _ = await FuelWriter.persist(payload: payload, wasPersisted: !existing.isEmpty)
-            clearStockInForm()
-            setOk("บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ")
+            stockIn.txId = id
+            stockIn.amount = amount
+            setOk(existing.isEmpty ? "บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ" : "อัปเดตเพิ่มน้ำมันเข้าถังสำเร็จ")
             reload(appState: appState, force: true)
         } catch {
             setError(error.localizedDescription)
@@ -392,7 +424,21 @@ final class FuelSession {
 
     func deleteTransaction(id: String, appState: AppState) async {
         skipExternalReload += 1
-        _ = await FuelWriter.delete(id: id)
+        // Delete paired transfer (main out + reserve in) by shared note.
+        if let row = appState.transactions.first(where: { $0.id == id }),
+           FuelLogic.isTransfer(row),
+           let note = row.note?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !note.isEmpty {
+            let siblings = appState.transactions.filter {
+                FuelLogic.isTransfer($0)
+                    && ($0.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == note
+            }
+            for sib in siblings {
+                _ = await FuelWriter.delete(id: sib.id)
+            }
+        } else {
+            _ = await FuelWriter.delete(id: id)
+        }
         if stockIn.txId == id { clearStockInForm() }
         if withdraw.txId == id { clearWithdrawForm() }
         if let i = vehicleDrafts.firstIndex(where: { $0.txId == id }) {
