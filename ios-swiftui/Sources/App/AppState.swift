@@ -10,7 +10,7 @@ final class AppState {
     var isLoading = false
     var errorMessage: String?
     var selectedTab: DashboardTab = .realtimeV4
-    var datePreset: DateRangePreset = .days7
+    var datePreset: DateRangePreset = .today
     var customStart = DashboardAggregations.gregorian.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     var customEnd = Date()
 

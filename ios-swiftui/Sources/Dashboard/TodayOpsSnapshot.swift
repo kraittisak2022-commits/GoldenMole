@@ -44,7 +44,7 @@ struct TodayOpsSnapshot: Sendable {
         settings: AppSettings,
         dayKey: String = DashboardAggregations.todayYMD()
     ) -> TodayOpsSnapshot {
-        let fuel = DashboardAggregations.fuelStockBalances(
+        let fuel = FuelLogic.computeBalance(
             transactions: transactions,
             opening: settings.fuelOpeningStockLiters
         )
@@ -246,24 +246,13 @@ extension DashboardAggregations {
         return (t.vehicleId?.isEmpty == false) ? "stock_out" : "stock_in"
     }
 
+    /// Web/Flutter parity — delegates to `FuelLogic.computeBalance` (cutover + machine reconcile).
     static func fuelStockBalances(
         transactions: [Transaction],
         opening: FuelStock?
     ) -> FuelBalances {
-        var diesel = opening?.diesel ?? 0
-        var benzine = opening?.benzine ?? 0
-        for t in transactions {
-            guard t.category == "Fuel", t.type == .expense else { continue }
-            let liters = fuelTxToLiters(t)
-            guard liters != 0 else { continue }
-            let delta = inferFuelMovement(t) == "stock_in" ? liters : -liters
-            if t.fuelType == "Benzine" {
-                benzine += delta
-            } else {
-                diesel += delta
-            }
-        }
-        return FuelBalances(diesel: diesel, benzine: benzine)
+        let bal = FuelLogic.computeBalance(transactions: transactions, opening: opening)
+        return FuelBalances(diesel: bal.diesel, benzine: bal.benzine)
     }
 
     // MARK: - Wizard monetary amount (web parity)
