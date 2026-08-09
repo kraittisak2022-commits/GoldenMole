@@ -18,6 +18,17 @@ struct TransactionFetchResult: Sendable {
     let skippedCount: Int
 }
 
+/// Lightweight row used for ID-index reconcile (no transaction body).
+struct TransactionIndexRow: Codable, Sendable, Equatable, Identifiable {
+    let id: String
+    let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case updatedAt = "updated_at"
+    }
+}
+
 /// Lossy element: decodes T when possible, otherwise keeps nil so one bad row
 /// never aborts decoding of the whole array.
 struct FailableDecodable<T: Decodable>: Decodable {
@@ -109,7 +120,7 @@ final class SupabaseService: ObservableObject {
     }
 
     /// Gregorian YMD ~90 days ago (Bangkok calendar), used to bound the main fetch.
-    nonisolated private static func transactionsWindowStartYMD() -> String {
+    nonisolated static func transactionsWindowStartYMD() -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Bangkok") ?? .current
         let start = cal.date(byAdding: .day, value: -90, to: Date()) ?? Date()
@@ -119,14 +130,17 @@ final class SupabaseService: ObservableObject {
         return String(format: "%04d-%02d-%02d", y, m, d)
     }
 
-    /// Delta fetch: only rows changed since `isoTimestamp` (used by the realtime fallback poll).
+    /// Delta fetch: only rows changed since `isoTimestamp` (bounded to the 90-day window).
     func fetchTransactionsSince(_ isoTimestamp: String) async throws -> TransactionFetchResult {
+        let since = Self.transactionsWindowStartYMD()
         let data: Data
         do {
             data = try await client.from("transactions")
                 .select()
+                .gte("date", value: since)
                 .gt("updated_at", value: isoTimestamp)
-                .order("created_at", ascending: false)
+                .order("updated_at", ascending: false)
+                .limit(500)
                 .execute()
                 .data
         } catch {
@@ -135,6 +149,56 @@ final class SupabaseService: ObservableObject {
         return await Task.detached(priority: .userInitiated) {
             Self.decodeTransactions(from: data)
         }.value
+    }
+
+    /// Lightweight index for reconcile: ids + updated_at in the 90-day window (no row body).
+    func fetchTransactionIndex() async throws -> [TransactionIndexRow] {
+        let since = Self.transactionsWindowStartYMD()
+        do {
+            return try await client.from("transactions")
+                .select("id,updated_at")
+                .gte("date", value: since)
+                .order("updated_at", ascending: false)
+                .limit(2000)
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    /// Fetches full transaction bodies for the given ids (chunked for PostgREST URL limits).
+    func fetchTransactions(ids: [String]) async throws -> TransactionFetchResult {
+        let unique = Array(Set(ids)).filter { !$0.isEmpty }
+        guard !unique.isEmpty else {
+            return TransactionFetchResult(transactions: [], skippedCount: 0)
+        }
+
+        var all: [Transaction] = []
+        var skipped = 0
+        let chunkSize = 100
+        var start = 0
+        while start < unique.count {
+            let end = min(start + chunkSize, unique.count)
+            let chunk = Array(unique[start..<end])
+            let data: Data
+            do {
+                data = try await client.from("transactions")
+                    .select()
+                    .in("id", values: chunk)
+                    .execute()
+                    .data
+            } catch {
+                throw DataServiceError.fetchFailed(error.localizedDescription)
+            }
+            let part = await Task.detached(priority: .userInitiated) {
+                Self.decodeTransactions(from: data)
+            }.value
+            all.append(contentsOf: part.transactions)
+            skipped += part.skippedCount
+            start = end
+        }
+        return TransactionFetchResult(transactions: all, skippedCount: skipped)
     }
 
     /// A realtime channel for the given topic (used by RealtimeSyncCoordinator).

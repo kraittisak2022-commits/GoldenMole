@@ -157,7 +157,8 @@ final class AuthService {
     func logout() {
         currentAdmin = nil
         UserDefaults.standard.removeObject(forKey: sessionKey)
-        // Keep saved profiles (Facebook-style).
+        // Keep saved profiles (Facebook-style). Wipe read-model disk cache for the next session.
+        LocalDataCache.invalidate()
     }
 
     private func normalizeUsername(_ value: String) -> String {

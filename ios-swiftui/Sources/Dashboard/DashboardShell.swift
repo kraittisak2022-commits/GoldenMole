@@ -20,6 +20,7 @@ struct DashboardShell: View {
     @Environment(AppState.self) private var appState
     @Environment(TaskStore.self) private var taskStore
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtimeTrip
     @State private var homeSegment: HomeSegment = .overview
@@ -107,6 +108,10 @@ struct DashboardShell: View {
             // Load tasks before the "งาน" tab is ever opened so the assignment badge is accurate.
             taskStore.currentAdminId = auth.currentAdmin?.id ?? ""
             await taskStore.loadIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await appState.refreshOnForeground() }
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack {

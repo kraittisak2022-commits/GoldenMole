@@ -34,7 +34,10 @@ final class AppState {
     @ObservationIgnored private var cacheMeta: LocalDataCache.Meta?
     @ObservationIgnored private var cachePersistTask: Task<Void, Never>?
     @ObservationIgnored private var isRefreshing = false
+    @ObservationIgnored private var isReconciling = false
     @ObservationIgnored private var suppressCachePersist = false
+    @ObservationIgnored private var lastForegroundRefreshAt: Date?
+    @ObservationIgnored private var lastReconcileAt: Date?
 
     /// Newest `updated_at` currently held — used as the delta-poll cursor.
     var maxTransactionUpdatedAt: String? {
@@ -78,6 +81,24 @@ final class AppState {
         await refresh()
     }
 
+    /// Clears in-memory + disk cache (logout).
+    func clearLocalData() {
+        cachePersistTask?.cancel()
+        cachePersistTask = nil
+        transactions = []
+        employees = []
+        settings = .fallback
+        transactionsRevision += 1
+        cacheMeta = nil
+        didHydrateFromCache = false
+        lastFetchedAt = nil
+        lastReconcileAt = nil
+        lastForegroundRefreshAt = nil
+        lastFetchTransactionCount = 0
+        lastFetchEmployeeCount = 0
+        LocalDataCache.invalidate()
+    }
+
     // MARK: - Disk cache
 
     func hydrateFromCacheIfNeeded() async {
@@ -86,6 +107,7 @@ final class AppState {
         guard let snap = await LocalDataCache.loadSnapshot() else { return }
 
         cacheMeta = snap.meta
+        lastReconcileAt = snap.meta.lastReconcileAt
         if transactions.isEmpty, !snap.transactions.isEmpty {
             transactions = snap.transactions
             transactionsRevision += 1
@@ -105,24 +127,24 @@ final class AppState {
         cachePersistTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard !Task.isCancelled, let self else { return }
-            await self.persistCacheNow()
+            await self.persistTransactionsOnly()
         }
     }
 
-    private func persistCacheNow() async {
-        let tx = transactions
-        let emp = employees
-        let set = settings
-        await LocalDataCache.saveSnapshot(transactions: tx, employees: emp, settings: set)
-        cacheMeta = LocalDataCache.Meta(
-            savedAt: Date(),
-            transactionCount: tx.count,
-            employeeCount: emp.count,
-            maxUpdatedAt: tx.compactMap(\.updatedAt).max(),
-            transactionsSavedAt: Date(),
-            employeesSavedAt: Date(),
-            settingsSavedAt: Date()
+    private func persistTransactionsOnly() async {
+        cacheMeta = await LocalDataCache.saveTransactions(
+            transactions,
+            preserving: cacheMeta,
+            lastReconcileAt: lastReconcileAt
         )
+    }
+
+    private func persistEmployeesOnly() async {
+        cacheMeta = await LocalDataCache.saveEmployees(employees, preserving: cacheMeta)
+    }
+
+    private func persistSettingsOnly() async {
+        cacheMeta = await LocalDataCache.saveSettings(settings, preserving: cacheMeta)
     }
 
     // MARK: - Incremental realtime apply
@@ -171,6 +193,97 @@ final class AppState {
         scheduleCachePersist()
     }
 
+    // MARK: - ID-index reconcile (detect remote deletes + missed updates)
+
+    /// Compares a lightweight server index (`id,updated_at`) with memory; removes ghosts and
+    /// fetches only bodies that are missing or newer. Much cheaper than a full 2000-row body fetch.
+    func reconcileTransactionsWithIndex() async {
+        guard let dataService else { return }
+        if isReconciling { return }
+        isReconciling = true
+        defer { isReconciling = false }
+
+        do {
+            let index = try await dataService.fetchTransactionIndex()
+            let windowStart = SupabaseService.transactionsWindowStartYMD()
+            var remoteById: [String: TransactionIndexRow] = [:]
+            remoteById.reserveCapacity(index.count)
+            for row in index { remoteById[row.id] = row }
+            let remoteIds = Set(remoteById.keys)
+
+            // Remove local rows in the window that no longer exist remotely.
+            var removed = false
+            suppressCachePersist = true
+            let ghostIds = transactions
+                .filter { $0.date >= windowStart && !remoteIds.contains($0.id) }
+                .map(\.id)
+            for id in ghostIds {
+                removeTransaction(id: id)
+                removed = true
+            }
+
+            // Fetch bodies for missing or newer rows.
+            var staleIds: [String] = []
+            var localById: [String: Transaction] = [:]
+            localById.reserveCapacity(transactions.count)
+            for tx in transactions { localById[tx.id] = tx }
+            for row in index {
+                if let local = localById[row.id] {
+                    let remoteUpdated = row.updatedAt ?? ""
+                    let localUpdated = local.updatedAt ?? ""
+                    if !remoteUpdated.isEmpty, remoteUpdated > localUpdated {
+                        staleIds.append(row.id)
+                    }
+                } else {
+                    staleIds.append(row.id)
+                }
+            }
+            suppressCachePersist = false
+
+            if !staleIds.isEmpty {
+                let result = try await dataService.fetchTransactions(ids: staleIds)
+                if !result.transactions.isEmpty {
+                    applyTransactionDelta(result.transactions)
+                }
+                lastSkippedTransactionCount = result.skippedCount
+            } else if removed {
+                scheduleCachePersist()
+            }
+
+            lastReconcileAt = Date()
+            lastFetchedAt = Date()
+            lastFetchTransactionCount = transactions.count
+            // Persist meta with reconcile timestamp even when nothing mutated.
+            cacheMeta = await LocalDataCache.saveTransactions(
+                transactions,
+                preserving: cacheMeta,
+                lastReconcileAt: lastReconcileAt
+            )
+        } catch {
+            // Transient — next cycle / foreground will retry.
+        }
+    }
+
+    /// Delta sync when returning to foreground; runs ID-index reconcile if due (~10 min).
+    func refreshOnForeground() async {
+        // Debounce rapid app-switch chatter.
+        if let last = lastForegroundRefreshAt, Date().timeIntervalSince(last) < 2 {
+            return
+        }
+        lastForegroundRefreshAt = Date()
+
+        await hydrateFromCacheIfNeeded()
+        await refresh(forceFull: false)
+
+        let reconcileDue = !LocalDataCache.isWithinTTL(
+            lastReconcileAt ?? cacheMeta?.lastReconcileAt,
+            ttl: LocalDataCache.reconcileTTL
+        )
+        if reconcileDue {
+            await reconcileTransactionsWithIndex()
+        }
+    }
+
     /// - Parameter forceFull: when true, always full-fetch transactions (and roster).
     func refresh(forceFull: Bool = false) async {
         guard let dataService else { return }
@@ -184,7 +297,9 @@ final class AppState {
         let shouldShowLoading = transactions.isEmpty
         if isLoading != shouldShowLoading { isLoading = shouldShowLoading }
         var errors: [String] = []
-        var didMutateData = false
+        var didRefreshTransactions = false
+        var didRefreshEmployees = false
+        var didRefreshSettings = false
 
         // --- Transactions ---
         do {
@@ -196,7 +311,6 @@ final class AppState {
                 let result = try await dataService.fetchTransactionsSince(since)
                 if !result.transactions.isEmpty {
                     applyTransactionDelta(result.transactions)
-                    didMutateData = true
                 }
                 lastSkippedTransactionCount = result.skippedCount
                 lastFetchedAt = Date()
@@ -206,12 +320,14 @@ final class AppState {
                 if transactions != fetchResult.transactions {
                     transactions = fetchResult.transactions
                     transactionsRevision += 1
-                    didMutateData = true
                 }
                 lastFetchTransactionCount = fetchResult.transactions.count
                 lastSkippedTransactionCount = fetchResult.skippedCount
                 lastFetchedAt = Date()
+                // Full body replace already matches the server window — skip immediate index reconcile.
+                lastReconcileAt = Date()
             }
+            didRefreshTransactions = true
         } catch {
             errors.append("transactions: \(error.localizedDescription)")
         }
@@ -225,9 +341,9 @@ final class AppState {
                 let e = try await dataService.fetchEmployees()
                 if employees != e {
                     employees = e
-                    didMutateData = true
                 }
                 lastFetchEmployeeCount = e.count
+                didRefreshEmployees = true
             } catch {
                 errors.append("employees: \(error.localizedDescription)")
             }
@@ -244,8 +360,8 @@ final class AppState {
                 let s = try await dataService.fetchSettings()
                 if settings != s {
                     settings = s
-                    didMutateData = true
                 }
+                didRefreshSettings = true
             } catch {
                 errors.append("settings: \(error.localizedDescription)")
             }
@@ -267,9 +383,15 @@ final class AppState {
 
         if isLoading { isLoading = false }
 
-        // Persist after a successful network pass (or when we mutated via delta).
-        if errors.isEmpty || didMutateData || (!transactions.isEmpty && cacheMeta == nil) {
-            await persistCacheNow()
+        // Domain-scoped persist so tx writes do not inflate roster TTLs.
+        if didRefreshTransactions {
+            await persistTransactionsOnly()
+        }
+        if didRefreshEmployees {
+            await persistEmployeesOnly()
+        }
+        if didRefreshSettings {
+            await persistSettingsOnly()
         }
     }
 

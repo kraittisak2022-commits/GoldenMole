@@ -5,6 +5,8 @@ import Foundation
 enum LocalDataCache {
     static let transactionsFreshTTL: TimeInterval = 2 * 60
     static let rosterTTL: TimeInterval = 25 * 60
+    /// How often an ID-index reconcile is required on foreground / cold paths.
+    static let reconcileTTL: TimeInterval = 10 * 60
 
     struct Meta: Codable, Sendable, Equatable {
         var savedAt: Date
@@ -14,6 +16,7 @@ enum LocalDataCache {
         var transactionsSavedAt: Date
         var employeesSavedAt: Date
         var settingsSavedAt: Date
+        var lastReconcileAt: Date?
     }
 
     struct Snapshot: Sendable {
@@ -65,11 +68,13 @@ enum LocalDataCache {
         }.value
     }
 
+    @discardableResult
     static func saveSnapshot(
         transactions: [Transaction],
         employees: [Employee],
-        settings: AppSettings
-    ) async {
+        settings: AppSettings,
+        preservingReconcileAt: Date? = nil
+    ) async -> Meta {
         let now = Date()
         let meta = Meta(
             savedAt: now,
@@ -78,7 +83,8 @@ enum LocalDataCache {
             maxUpdatedAt: transactions.compactMap(\.updatedAt).max(),
             transactionsSavedAt: now,
             employeesSavedAt: now,
-            settingsSavedAt: now
+            settingsSavedAt: now,
+            lastReconcileAt: preservingReconcileAt
         )
         let snap = Snapshot(
             transactions: transactions,
@@ -89,10 +95,16 @@ enum LocalDataCache {
         await Task.detached(priority: .utility) {
             saveSnapshotSync(snap)
         }.value
+        return meta
     }
 
     /// Partial write helpers keep timestamps independent when only one source refreshed.
-    static func saveTransactions(_ transactions: [Transaction], preserving metaBase: Meta?) async {
+    @discardableResult
+    static func saveTransactions(
+        _ transactions: [Transaction],
+        preserving metaBase: Meta?,
+        lastReconcileAt: Date? = nil
+    ) async -> Meta {
         let now = Date()
         let prior = metaBase
         let meta = Meta(
@@ -102,7 +114,8 @@ enum LocalDataCache {
             maxUpdatedAt: transactions.compactMap(\.updatedAt).max(),
             transactionsSavedAt: now,
             employeesSavedAt: prior?.employeesSavedAt ?? now,
-            settingsSavedAt: prior?.settingsSavedAt ?? now
+            settingsSavedAt: prior?.settingsSavedAt ?? now,
+            lastReconcileAt: lastReconcileAt ?? prior?.lastReconcileAt
         )
         await Task.detached(priority: .utility) {
             do {
@@ -113,6 +126,55 @@ enum LocalDataCache {
                 // Best-effort cache; ignore disk errors.
             }
         }.value
+        return meta
+    }
+
+    @discardableResult
+    static func saveEmployees(_ employees: [Employee], preserving metaBase: Meta?) async -> Meta {
+        let now = Date()
+        let prior = metaBase
+        let meta = Meta(
+            savedAt: now,
+            transactionCount: prior?.transactionCount ?? 0,
+            employeeCount: employees.count,
+            maxUpdatedAt: prior?.maxUpdatedAt,
+            transactionsSavedAt: prior?.transactionsSavedAt ?? now,
+            employeesSavedAt: now,
+            settingsSavedAt: prior?.settingsSavedAt ?? now,
+            lastReconcileAt: prior?.lastReconcileAt
+        )
+        await Task.detached(priority: .utility) {
+            do {
+                try ensureDirectory()
+                try atomicWrite(encode(employees), to: fileURL(employeesFile))
+                try atomicWrite(encode(meta), to: fileURL(metaFile))
+            } catch {}
+        }.value
+        return meta
+    }
+
+    @discardableResult
+    static func saveSettings(_ settings: AppSettings, preserving metaBase: Meta?) async -> Meta {
+        let now = Date()
+        let prior = metaBase
+        let meta = Meta(
+            savedAt: now,
+            transactionCount: prior?.transactionCount ?? 0,
+            employeeCount: prior?.employeeCount ?? 0,
+            maxUpdatedAt: prior?.maxUpdatedAt,
+            transactionsSavedAt: prior?.transactionsSavedAt ?? now,
+            employeesSavedAt: prior?.employeesSavedAt ?? now,
+            settingsSavedAt: now,
+            lastReconcileAt: prior?.lastReconcileAt
+        )
+        await Task.detached(priority: .utility) {
+            do {
+                try ensureDirectory()
+                try atomicWrite(encode(settings), to: fileURL(settingsFile))
+                try atomicWrite(encode(meta), to: fileURL(metaFile))
+            } catch {}
+        }.value
+        return meta
     }
 
     static func invalidate() {

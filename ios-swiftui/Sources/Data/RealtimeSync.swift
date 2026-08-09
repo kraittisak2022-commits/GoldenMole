@@ -6,12 +6,12 @@ private struct RealtimeIdOnly: Decodable, Sendable {
 }
 
 /// Keeps `AppState.transactions` in sync using Supabase Realtime (WebSocket) for instant
-/// incremental updates, with a delta poll fallback and a periodic full reconcile.
+/// incremental updates, with a delta poll fallback and a periodic ID-index reconcile.
 ///
 /// - Realtime INSERT/UPDATE -> upsert the single row (no full refetch)
 /// - Realtime DELETE -> remove by id
-/// - Fallback loop (every 30s): delta poll (`updated_at` > lastSync); every 5th cycle a full
-///   reconcile so deletes missed while disconnected are corrected.
+/// - Fallback loop (every 30s): delta poll (`updated_at` > lastSync); every 5th cycle an
+///   ID-index reconcile so deletes missed while disconnected are corrected.
 @MainActor
 final class RealtimeSyncCoordinator {
     private let service: SupabaseService
@@ -118,9 +118,9 @@ final class RealtimeSyncCoordinator {
                 if Task.isCancelled { break }
                 guard let self else { break }
                 cycles += 1
-                // Full reconcile every 5th cycle; if cache/memory is still fresh, refresh() uses delta.
+                // Every ~2.5 minutes: lightweight id/updated_at reconcile (detects remote deletes).
                 if cycles % 5 == 0 {
-                    await self.appState?.refresh(forceFull: !(self.appState?.hasFreshTransactionCache ?? false))
+                    await self.appState?.reconcileTransactionsWithIndex()
                 } else {
                     await self.deltaPoll()
                 }

@@ -221,6 +221,7 @@ struct ProfileView: View {
             row(icon: "iphone", title: "เวอร์ชัน", value: appVersion)
             Divider()
             Button(role: .destructive) {
+                appState.clearLocalData()
                 auth.logout()
             } label: {
                 Label("ออกจากระบบ", systemImage: "rectangle.portrait.and.arrow.right")
