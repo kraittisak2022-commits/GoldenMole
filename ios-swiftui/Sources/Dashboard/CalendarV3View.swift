@@ -669,6 +669,7 @@ private struct LedgerCategoryBucket: Identifiable {
 private struct DayDetailSheet: View {
     let day: CalendarDayModel
     let employees: [Employee]
+    let transactions: [Transaction]
     let onClose: () -> Void
 
     private static let tripOpsColor = Color(hex: "#2563EB")
@@ -678,16 +679,20 @@ private struct DayDetailSheet: View {
         LedgerCategoryBucket.group(day.financeTransactions)
     }
 
+    private var dayTransactions: [Transaction] {
+        transactions.filter { String($0.date.prefix(10)) == day.date }
+    }
+
     private var tripUnits: [CountRecordTripUnit] {
         CountRecordLogic.buildTripUnits(
             dayKey: day.date,
-            transactions: day.financeTransactions,
+            transactions: dayTransactions,
             employees: employees
         )
     }
 
     private var sandUnit: CountRecordSandUnit? {
-        CountRecordLogic.buildSandUnit(dayKey: day.date, transactions: day.financeTransactions)
+        CountRecordLogic.buildSandUnit(dayKey: day.date, transactions: dayTransactions)
     }
 
     var body: some View {
