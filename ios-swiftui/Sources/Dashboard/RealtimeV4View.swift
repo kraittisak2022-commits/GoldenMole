@@ -510,45 +510,13 @@ struct RealtimeV4View: View {
     }
 
     private var focusDatePickerSheet: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                DatePicker(
-                    "เลือกวันที่",
-                    selection: $focusDate,
-                    in: ...Date(),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .tint(Color(hex: "#6366F1"))
-                .padding(.horizontal, 8)
-
-                Button {
-                    focusDate = Date()
-                } label: {
-                    Label("วันนี้", systemImage: "sun.max.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.bordered)
-                .tint(Color.emerald)
-                .padding(.horizontal, 20)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.top, 8)
-            .background(RealtimeV4Palette.page.ignoresSafeArea())
-            .navigationTitle("กำลังดู")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("เสร็จ") { showDatePicker = false }
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
+        RealtimeFocusCalendarSheet(
+            selection: $focusDate,
+            transactions: transactions,
+            employees: employees,
+            transactionsRevision: transactionsRevision,
+            onDismiss: { showDatePicker = false }
+        )
     }
 
     // MARK: - Live board

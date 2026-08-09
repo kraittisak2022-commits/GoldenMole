@@ -48,6 +48,64 @@ enum CountRecordLogic {
         return desc.contains("ร่อนทราย")
     }
 
+    // MARK: - Focus calendar day marks (เที่ยวรถ / ร่อนทราย)
+
+    enum DayOpsMark: Equatable, Sendable {
+        case none
+        case tripOnly
+        case sandOnly
+        case both
+    }
+
+    /// Per-day activity marks for the Real-time focus date picker (month grid).
+    static func dayOpsMarks(
+        inMonth monthStart: Date,
+        transactions: [Transaction],
+        employees: [Employee]
+    ) -> [String: DayOpsMark] {
+        let cal = DashboardAggregations.gregorian
+        let year = cal.component(.year, from: monthStart)
+        let month = cal.component(.month, from: monthStart)
+        let prefix = String(format: "%04d-%02d-", year, month)
+
+        var byDay: [String: [Transaction]] = [:]
+        for t in transactions {
+            let key = String(t.date.prefix(10))
+            guard key.hasPrefix(prefix) else { continue }
+            byDay[key, default: []].append(t)
+        }
+
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        guard let first = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: first)
+        else { return [:] }
+
+        var out: [String: DayOpsMark] = [:]
+        for d in range {
+            let key = String(format: "%04d-%02d-%02d", year, month, d)
+            let dayTx = byDay[key] ?? []
+            guard !dayTx.isEmpty else {
+                out[key] = .none
+                continue
+            }
+            let tripTotal = buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
+                .reduce(0) { $0 + $1.rounds }
+            let sandRounds = buildSandUnit(dayKey: key, transactions: dayTx)?.rounds ?? 0
+            let hasTrip = tripTotal > 0
+            let hasSand = sandRounds > 0
+            switch (hasTrip, hasSand) {
+            case (true, true): out[key] = .both
+            case (true, false): out[key] = .tripOnly
+            case (false, true): out[key] = .sandOnly
+            case (false, false): out[key] = .none
+            }
+        }
+        return out
+    }
+
     static func isMacroVehicleId(_ raw: String?) -> Bool {
         let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !s.isEmpty else { return false }
