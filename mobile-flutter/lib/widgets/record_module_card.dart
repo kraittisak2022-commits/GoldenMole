@@ -98,6 +98,61 @@ class RecordModuleCard extends StatelessWidget {
             ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)
             : cardW - (pad * 2);
 
+        Widget statusBlock() {
+          if (recorded) {
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: (pad * 0.45).clamp(6.0, 10.0),
+                  vertical: (pad * 0.18).clamp(2.0, 4.0),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: (statusSize + 2).clamp(11.0, 14.0),
+                      color: const Color(0xFF15803D),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        statusLabel,
+                        textAlign: TextAlign.center,
+                        maxLines: statusMaxLines,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: statusSize,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF15803D),
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return Text(
+            statusLabel,
+            textAlign: TextAlign.center,
+            maxLines: statusMaxLines,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontSize: statusSize,
+              fontWeight: FontWeight.w500,
+              color: statusColor,
+              height: 1.15,
+            ),
+          );
+        }
+
         Widget titleBlock() {
           return Column(
             mainAxisSize: MainAxisSize.min,
@@ -121,18 +176,7 @@ class RecordModuleCard extends StatelessWidget {
               SizedBox(height: pad * 0.28),
               SizedBox(
                 width: textMaxWidth,
-                child: Text(
-                  statusLabel,
-                  textAlign: TextAlign.center,
-                  maxLines: statusMaxLines,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: statusSize,
-                    fontWeight: FontWeight.w500,
-                    color: statusColor,
-                    height: 1.15,
-                  ),
-                ),
+                child: statusBlock(),
               ),
             ],
           );
@@ -242,9 +286,25 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = recorded
-        ? const Color(0xFF22C55E)
-        : partial
+    if (recorded) {
+      return Container(
+        width: 18,
+        height: 18,
+        decoration: const BoxDecoration(
+          color: Color(0xFFECFDF5),
+          shape: BoxShape.circle,
+          border: Border.fromBorderSide(
+            BorderSide(color: Color(0xFFBBF7D0)),
+          ),
+        ),
+        child: const Icon(
+          Icons.check_rounded,
+          size: 12,
+          color: Color(0xFF15803D),
+        ),
+      );
+    }
+    final color = partial
         ? const Color(0xFFF59E0B)
         : const Color(0xFFCBD5E1);
     return Container(

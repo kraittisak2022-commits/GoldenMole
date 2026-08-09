@@ -26,7 +26,6 @@ import '../utils/touch_profile.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../utils/record_success_speaker.dart';
-import '../widgets/app_locale_scope.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_menu_shell.dart';
@@ -1151,7 +1150,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   Widget build(BuildContext context) {
     final useLiteAnimations = _reduceMotion;
     final l10n = AppLocalizations.of(context);
-    final localeScope = AppLocaleScope.of(context);
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? l10n.formatShortDateFromYmd(
@@ -1186,7 +1184,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         fillStatus: countRecordFill,
         completeStatusLabelOverride: translateDailyCardStatus(
           countRecordStatusLabel,
-          localeScope.locale,
+          AppLocale.th,
         ),
         statusMaxLines: 2,
         onTap: () {
@@ -1645,7 +1643,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             completeStatusLabelOverride:
                                 translateDailyCardStatus(
                               rawStatus,
-                              localeScope.locale,
+                              AppLocale.th,
                             ),
                             statusMaxLines:
                                 _kDailyMenuDetailCategories
@@ -1761,8 +1759,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 ),
                                 onPickDay: widget.onPickDay,
                                 onRefresh: widget.onPullRefresh,
-                                locale: localeScope.locale,
-                                onLocaleChanged: localeScope.onLocaleChanged,
                               ),
                             ),
                           ),
@@ -2008,8 +2004,6 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.selectedDateLabel,
     required this.onPickDay,
     required this.onRefresh,
-    required this.locale,
-    required this.onLocaleChanged,
   });
 
   final String appName;
@@ -2017,8 +2011,6 @@ class _HomeHeaderCompact extends StatelessWidget {
   final String selectedDateLabel;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
-  final AppLocale locale;
-  final ValueChanged<AppLocale> onLocaleChanged;
 
   static const _teal = Color(0xFF0D98A5);
   static const _tealMid = Color(0xFF0A7A88);
@@ -2029,8 +2021,7 @@ class _HomeHeaderCompact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final changeDayHint =
-        locale == AppLocale.zh ? '点按更改日期' : 'แตะเพื่อเปลี่ยนวัน';
+    const changeDayHint = 'แตะเพื่อเปลี่ยนวัน';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -2134,78 +2125,26 @@ class _HomeHeaderCompact extends StatelessWidget {
                             ],
                           ),
                         ),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF4F8FA),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFFDCE6EE),
+                        SoftPressButton(
+                          onTap: () => onRefresh(),
+                          size: SoftPressSize.small,
+                          borderRadius: 12,
+                          liftWhenIdle: true,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF4F8FA),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFDCE6EE),
+                              ),
                             ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SegmentedButton<AppLocale>(
-                                  segments: [
-                                    ButtonSegment(
-                                      value: AppLocale.th,
-                                      label: Text(
-                                        AppLocale.th.shortLabel,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    ButtonSegment(
-                                      value: AppLocale.zh,
-                                      label: Text(
-                                        AppLocale.zh.shortLabel,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  selected: {locale},
-                                  onSelectionChanged: (next) {
-                                    if (next.isEmpty) return;
-                                    onLocaleChanged(next.first);
-                                  },
-                                  style: ButtonStyle(
-                                    visualDensity: VisualDensity.compact,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    padding: const WidgetStatePropertyAll(
-                                      EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                    ),
-                                    minimumSize: const WidgetStatePropertyAll(
-                                      Size(30, 34),
-                                    ),
-                                  ),
-                                ),
-                                SoftPressButton(
-                                  onTap: () => onRefresh(),
-                                  size: SoftPressSize.small,
-                                  borderRadius: 10,
-                                  liftWhenIdle: true,
-                                  hitPadding: EdgeInsets.zero,
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(7),
-                                    child: Icon(
-                                      Icons.refresh_rounded,
-                                      color: Color(0xFF546E7A),
-                                      size: 22,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            child: const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(
+                                Icons.refresh_rounded,
+                                color: Color(0xFF546E7A),
+                                size: 22,
+                              ),
                             ),
                           ),
                         ),
