@@ -7,7 +7,6 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
     case drumTrips
     case macro
     case fuel
-    case sandStock
     case events
     case leave
     case advance
@@ -21,7 +20,6 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return "บันทึกรถดรัมและจำนวนเที่ยว"
         case .macro: return "การใช้รถแม็คโคร"
         case .fuel: return "น้ำมัน"
-        case .sandStock: return "สต๊อกทราย"
         case .events: return "เหตุการณ์"
         case .leave: return "ลางาน"
         case .advance: return "เบิกเงิน"
@@ -35,7 +33,6 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return "truck.box.fill"
         case .macro: return "gearshape.2.fill"
         case .fuel: return "fuelpump.fill"
-        case .sandStock: return "cylinder.split.1x2.fill"
         case .events: return "exclamationmark.bubble.fill"
         case .leave: return "calendar.badge.minus"
         case .advance: return "banknote.fill"
@@ -49,7 +46,6 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return AppTheme.vehicle
         case .macro: return AppTheme.warning
         case .fuel: return AppTheme.fuel
-        case .sandStock: return AppTheme.sand
         case .events: return AppTheme.purple
         case .leave: return AppTheme.slate
         case .advance: return AppTheme.income
@@ -264,8 +260,6 @@ struct OpsMenuDestinationView: View {
             MacroVehicleHubView()
         case .fuel:
             FuelHubView()
-        case .sandStock:
-            SandStockHubView()
         case .events:
             EventHubView()
         case .leave:

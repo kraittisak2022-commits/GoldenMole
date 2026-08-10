@@ -4,6 +4,7 @@ enum AppMainTab: Hashable {
     case home
     case realtimeTrip
     case realtimeSand
+    case sandStock
     case tasks
 }
 
@@ -51,6 +52,12 @@ struct DashboardShell: View {
                 }
                 .tabItem { Label("ร่อนทราย", systemImage: "drop.fill") }
                 .tag(AppMainTab.realtimeSand)
+
+                NavigationStack {
+                    SandStockHubView()
+                }
+                .tabItem { Label("สต๊อกทราย", systemImage: "cylinder.split.1x2.fill") }
+                .tag(AppMainTab.sandStock)
 
                 NavigationStack {
                     realtimeBoard(mode: .trip)
