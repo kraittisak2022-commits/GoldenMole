@@ -126,10 +126,7 @@ enum DashboardAggregations {
     }
 
     static func sandTransportedCubic(_ transactions: [Transaction], date: String) -> Double {
-        transactions.filter { t in
-            String(t.date.prefix(10)) == date &&
-            ((t.category == "DailyLog" && t.subCategory == "VehicleTrip") || t.category == "Vehicle")
-        }.reduce(0) { acc, _ in acc + 3 }
+        SandStockLogic.cubicIn(on: date, transactions: transactions)
     }
 
     static func buildDailySandSeries(filter: DateFilter, transactions: [Transaction]) -> (washed: [Double], transported: [Double], labels: [String], dates: [String]) {

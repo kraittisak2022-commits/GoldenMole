@@ -1,0 +1,265 @@
+import Foundation
+
+/// Sand stock pond (บ่อสต๊อก) balance in cubic meters (คิว / ลบ.ม.).
+///
+/// - **IN** — vehicle trip rows that dump sand into the pond
+/// - **OUT** — sand sieve / wash rows that scoop sand out of the pond
+///
+/// Remaining = opening + Σ(in) − Σ(out) through the as-of date.
+enum SandStockLogic {
+    static let openingStockDefaultsKey = "sand_stock_opening_cubic_v1"
+    static let unitLabel = "คิว"
+
+    enum PaceStatus: String, Sendable {
+        case keepingUp
+        case tight
+        case fallingBehind
+        case surplusBuilding
+        case idle
+
+        var title: String {
+            switch self {
+            case .keepingUp: return "ขนทัน"
+            case .tight: return "กระชั้น"
+            case .fallingBehind: return "ขนไม่ทัน"
+            case .surplusBuilding: return "ขนเกินใช้"
+            case .idle: return "ยังไม่มีข้อมูล"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .keepingUp: return "ปริมาณขนเข้าใกล้เคียงหรือมากกว่าที่ร่อนออก — บ่อไม่น่าแห้ง"
+            case .tight: return "ร่อนออกเร็วกว่าขนเข้าเล็กน้อย — ควรเฝ้าติดตาม"
+            case .fallingBehind: return "ร่อนออกเร็วกว่าขนเข้าชัดเจน — เสี่ยงทรายในบ่อหมด"
+            case .surplusBuilding: return "ขนเข้ามากกว่าที่ร่อน — ทรายในบ่อกำลังสะสม"
+            case .idle: return "ยังไม่มีการขนเข้าหรือร่อนออกในช่วงนี้"
+            }
+        }
+    }
+
+    struct DayPoint: Identifiable, Sendable, Equatable {
+        var id: String { date }
+        let date: String
+        let label: String
+        let inCubic: Double
+        let outCubic: Double
+        let remainingEndOfDay: Double
+    }
+
+    struct Snapshot: Sendable, Equatable {
+        let asOfDate: String
+        let openingCubic: Double
+        let remainingCubic: Double
+        let periodInCubic: Double
+        let periodOutCubic: Double
+        let periodNetCubic: Double
+        let todayInCubic: Double
+        let todayOutCubic: Double
+        let avgDailyInCubic: Double
+        let avgDailyOutCubic: Double
+        let pace: PaceStatus
+        let daysUntilEmpty: Double?
+        let insight: String
+        let series: [DayPoint]
+
+        static let empty = Snapshot(
+            asOfDate: "",
+            openingCubic: 0,
+            remainingCubic: 0,
+            periodInCubic: 0,
+            periodOutCubic: 0,
+            periodNetCubic: 0,
+            todayInCubic: 0,
+            todayOutCubic: 0,
+            avgDailyInCubic: 0,
+            avgDailyOutCubic: 0,
+            pace: .idle,
+            daysUntilEmpty: nil,
+            insight: "ยังไม่มีข้อมูลสต๊อก",
+            series: []
+        )
+    }
+
+    // MARK: - Opening stock (device-local for v1)
+
+    static func loadOpeningCubic() -> Double {
+        let value = UserDefaults.standard.double(forKey: openingStockDefaultsKey)
+        return value.isFinite ? max(0, value) : 0
+    }
+
+    static func saveOpeningCubic(_ value: Double) {
+        let clamped = value.isFinite ? max(0, value) : 0
+        UserDefaults.standard.set(clamped, forKey: openingStockDefaultsKey)
+    }
+
+    // MARK: - Row helpers
+
+    static func isTripInRow(_ t: Transaction) -> Bool {
+        if CountRecordLogic.isCountRecordVehicleRow(t) { return true }
+        return t.category == "Vehicle"
+    }
+
+    static func isWashOutRow(_ t: Transaction) -> Bool {
+        t.category == "DailyLog" &&
+            (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "sand"
+    }
+
+    /// Prefer stored cubic fields; fall back to trips × cubic/trip when both are present.
+    static func tripCubicIn(_ t: Transaction) -> Double {
+        if let c = t.perCarCubic, c > 0 { return c }
+        if let c = t.totalCubic, c > 0 { return c }
+        let trips = t.perCarTrips
+            ?? t.tripCount
+            ?? ((t.tripMorning ?? 0) + (t.tripAfternoon ?? 0))
+        let cpt = t.cubicPerTrip ?? 0
+        if trips > 0, cpt > 0 { return trips * cpt }
+        return 0
+    }
+
+    static func washCubicOut(_ t: Transaction) -> Double {
+        DashboardAggregations.sandWashedCubic(t)
+    }
+
+    // MARK: - Aggregations
+
+    static func cubicIn(on date: String, transactions: [Transaction]) -> Double {
+        transactions
+            .filter { String($0.date.prefix(10)) == date && isTripInRow($0) }
+            .reduce(0.0) { $0 + tripCubicIn($1) }
+    }
+
+    static func cubicOut(on date: String, transactions: [Transaction]) -> Double {
+        transactions
+            .filter { String($0.date.prefix(10)) == date && isWashOutRow($0) }
+            .reduce(0.0) { $0 + washCubicOut($1) }
+    }
+
+    static func build(
+        filter: DateFilter,
+        transactions: [Transaction],
+        openingCubic: Double = loadOpeningCubic()
+    ) -> Snapshot {
+        let dates = DashboardAggregations.enumerateDates(in: filter)
+        guard !dates.isEmpty else { return .empty }
+
+        let asOf = filter.end
+        let today = DashboardAggregations.todayYMD()
+        let opening = max(0, openingCubic)
+
+        // Cumulative balance from opening through each day in the selected window,
+        // seeded with movements before the window start (within loaded transactions).
+        let priorIn = transactions
+            .filter { isTripInRow($0) && String($0.date.prefix(10)) < filter.start }
+            .reduce(0.0) { $0 + tripCubicIn($1) }
+        let priorOut = transactions
+            .filter { isWashOutRow($0) && String($0.date.prefix(10)) < filter.start }
+            .reduce(0.0) { $0 + washCubicOut($1) }
+
+        var running = opening + priorIn - priorOut
+        var series: [DayPoint] = []
+        var periodIn = 0.0
+        var periodOut = 0.0
+
+        for date in dates {
+            let inn = cubicIn(on: date, transactions: transactions)
+            let out = cubicOut(on: date, transactions: transactions)
+            periodIn += inn
+            periodOut += out
+            running += inn - out
+            series.append(
+                DayPoint(
+                    date: date,
+                    label: DashboardAggregations.dayLabel(date),
+                    inCubic: inn,
+                    outCubic: out,
+                    remainingEndOfDay: running
+                )
+            )
+        }
+
+        let remaining = series.last?.remainingEndOfDay ?? (opening + priorIn - priorOut)
+        let dayCount = max(dates.count, 1)
+        let avgIn = periodIn / Double(dayCount)
+        let avgOut = periodOut / Double(dayCount)
+        let todayIn = cubicIn(on: today, transactions: transactions)
+        let todayOut = cubicOut(on: today, transactions: transactions)
+
+        let pace = resolvePace(avgIn: avgIn, avgOut: avgOut, periodIn: periodIn, periodOut: periodOut)
+        let burn = avgOut - avgIn
+        let daysUntilEmpty: Double? = {
+            guard burn > 0.05, remaining > 0 else { return nil }
+            return remaining / burn
+        }()
+
+        return Snapshot(
+            asOfDate: asOf,
+            openingCubic: opening,
+            remainingCubic: remaining,
+            periodInCubic: periodIn,
+            periodOutCubic: periodOut,
+            periodNetCubic: periodIn - periodOut,
+            todayInCubic: todayIn,
+            todayOutCubic: todayOut,
+            avgDailyInCubic: avgIn,
+            avgDailyOutCubic: avgOut,
+            pace: pace,
+            daysUntilEmpty: daysUntilEmpty,
+            insight: makeInsight(
+                pace: pace,
+                remaining: remaining,
+                avgIn: avgIn,
+                avgOut: avgOut,
+                daysUntilEmpty: daysUntilEmpty,
+                periodNet: periodIn - periodOut
+            ),
+            series: series
+        )
+    }
+
+    private static func resolvePace(
+        avgIn: Double,
+        avgOut: Double,
+        periodIn: Double,
+        periodOut: Double
+    ) -> PaceStatus {
+        if periodIn <= 0, periodOut <= 0 { return .idle }
+        if avgOut <= 0.05 {
+            return avgIn > 0.05 ? .surplusBuilding : .idle
+        }
+        let ratio = avgIn / avgOut
+        if ratio >= 1.05 { return .surplusBuilding }
+        if ratio >= 0.92 { return .keepingUp }
+        if ratio >= 0.75 { return .tight }
+        return .fallingBehind
+    }
+
+    private static func makeInsight(
+        pace: PaceStatus,
+        remaining: Double,
+        avgIn: Double,
+        avgOut: Double,
+        daysUntilEmpty: Double?,
+        periodNet: Double
+    ) -> String {
+        let remText = DashboardAggregations.formatNumber(max(0, remaining))
+        switch pace {
+        case .idle:
+            return "ยังไม่มีการขนเข้าหรือร่อนออกในช่วงที่เลือก"
+        case .keepingUp:
+            return "คงเหลือประมาณ \(remText) \(unitLabel) — ขนเข้าเฉลี่ย \(DashboardAggregations.formatNumber(avgIn)) คิว/วัน ใกล้เคียงร่อนออก \(DashboardAggregations.formatNumber(avgOut)) คิว/วัน"
+        case .tight:
+            if let days = daysUntilEmpty {
+                return "คงเหลือ \(remText) \(unitLabel) — ถ้ารอบนี้ต่อเนื่อง อาจหมดใน ~\(DashboardAggregations.formatNumber(days)) วัน"
+            }
+            return "คงเหลือ \(remText) \(unitLabel) — ร่อนออกเร็วกว่าขนเข้าเล็กน้อย"
+        case .fallingBehind:
+            if let days = daysUntilEmpty {
+                return "ขนไม่ทัน — คงเหลือ \(remText) \(unitLabel) อาจหมดใน ~\(DashboardAggregations.formatNumber(days)) วัน ถ้าอัตรานี้คงที่"
+            }
+            return "ขนไม่ทัน — ร่อนออกเร็วกว่าขนเข้าชัดเจน (สุทธิ \(DashboardAggregations.formatNumber(periodNet)) \(unitLabel))"
+        case .surplusBuilding:
+            return "ขนเกินใช้ — คงเหลือ \(remText) \(unitLabel) สุทธิ +\(DashboardAggregations.formatNumber(periodNet)) \(unitLabel) ในช่วงนี้"
+        }
+    }
+}
