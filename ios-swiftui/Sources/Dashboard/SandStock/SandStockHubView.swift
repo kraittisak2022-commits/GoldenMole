@@ -1,57 +1,39 @@
 import SwiftUI
 
-/// Sand stock pond dashboard — remaining / in / out in cubic meters (คิว).
+/// Live sand-stock pond board — game-style HUD with realtime fill + feed.
 struct SandStockHubView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var scope = ReportDateScope()
     @State private var snapshot = SandStockLogic.Snapshot.empty
     @State private var openingDraft = ""
-    @State private var showOpeningEditor = false
+    @State private var capacityDraft = ""
+    @State private var showSettingsEditor = false
+    @State private var livePing = false
+    @State private var boardPulse = false
+    @State private var displayedFill: CGFloat = 0
+    @State private var lastRevision: Int = -1
 
     private var accent: Color { AppTheme.sand }
+    private let liveGreen = Color(hex: "#10B981")
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ReportDateBar(scope: $scope)
+                liveHeader
 
-                remainingHero
+                pondHero
+                    .scaleEffect(boardPulse && !reduceMotion ? 1.015 : 1)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: boardPulse)
+
+                hudRow
 
                 paceBanner
 
-                LazyVGrid(
-                    columns: [GridItem(.flexible()), GridItem(.flexible())],
-                    spacing: 12
-                ) {
-                    StatCardView(
-                        title: "ขนเข้าบ่อ",
-                        value: "\(fmt(snapshot.periodInCubic))",
-                        subtitle: "\(SandStockLogic.unitLabel) · \(scope.title)",
-                        accent: AppTheme.income,
-                        systemImage: "arrow.down.to.line.circle.fill"
-                    )
-                    StatCardView(
-                        title: "ร่อนออก",
-                        value: "\(fmt(snapshot.periodOutCubic))",
-                        subtitle: "\(SandStockLogic.unitLabel) · \(scope.title)",
-                        accent: AppTheme.expense,
-                        systemImage: "arrow.up.right.circle.fill"
-                    )
-                    StatCardView(
-                        title: "สุทธิช่วงนี้",
-                        value: signed(snapshot.periodNetCubic),
-                        subtitle: SandStockLogic.unitLabel,
-                        accent: snapshot.periodNetCubic >= 0 ? AppTheme.income : AppTheme.warning,
-                        systemImage: "arrow.left.arrow.right.circle.fill"
-                    )
-                    StatCardView(
-                        title: "วันนี้",
-                        value: "+\(fmt(snapshot.todayInCubic)) / −\(fmt(snapshot.todayOutCubic))",
-                        subtitle: SandStockLogic.unitLabel,
-                        accent: AppTheme.info,
-                        systemImage: "sun.max.fill"
-                    )
-                }
+                liveFeedSection
+
+                ReportDateBar(scope: $scope)
 
                 if !snapshot.series.isEmpty {
                     chartCard(
@@ -82,9 +64,9 @@ struct SandStockHubView: View {
                     }
                 }
 
-                openingCard
+                settingsCard
 
-                Text("คำนวณจากเที่ยวรถ (เข้าบ่อ) และร่อนทราย (ออกจากบ่อ) · หน่วยหลัก \(SandStockLogic.unitLabel) (ลูกบาศก์เมตร)")
+                Text("อัปเดตจากซิงก์เรียลไทม์ · หน่วยหลัก \(SandStockLogic.unitLabel) (ลูกบาศก์เมตร)")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.inkMuted)
             }
@@ -97,67 +79,225 @@ struct SandStockHubView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     openingDraft = Self.draftString(SandStockLogic.loadOpeningCubic())
-                    showOpeningEditor = true
+                    capacityDraft = Self.draftString(SandStockLogic.loadPondCapacityCubic())
+                    showSettingsEditor = true
                 } label: {
                     Image(systemName: "slider.horizontal.3")
                 }
-                .accessibilityLabel("ตั้งค่ายอดเปิดบ่อ")
+                .accessibilityLabel("ตั้งค่าบ่อสต๊อก")
             }
         }
-        .sheet(isPresented: $showOpeningEditor) {
-            openingEditorSheet
+        .sheet(isPresented: $showSettingsEditor) {
+            settingsEditorSheet
         }
-        .task(id: reloadToken) {
-            await reload()
+        .task {
+            startLivePing()
+            await reload(animate: false)
         }
-        .onChange(of: appState.transactionsRevision) { _, _ in
-            Task { await reload() }
-        }
-        .onChange(of: scope) { _, _ in
-            Task { await reload() }
+        .onChange(of: reloadToken) { _, _ in
+            Task { await reload(animate: true) }
         }
     }
 
-    // MARK: - Sections
+    // MARK: - LIVE header
 
-    private var remainingHero: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("คงเหลือในบ่อสต๊อก", systemImage: "cylinder.split.1x2.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkSecondary)
-                Spacer()
+    private var liveHeader: some View {
+        HStack(spacing: 10) {
+            liveBadge
+            VStack(alignment: .leading, spacing: 2) {
+                Text("บ่อสต๊อกสด")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
                 Text(scope.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
             }
+            Spacer(minLength: 0)
+            Text("\(fmt(snapshot.pondCapacityCubic)) \(SandStockLogic.unitLabel)")
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppTheme.inkSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(AppTheme.surfaceSoft))
+        }
+    }
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(fmt(max(0, snapshot.remainingCubic)))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
+    private var liveBadge: some View {
+        HStack(spacing: 6) {
+            ZStack {
+                if !reduceMotion && livePing {
+                    Circle()
+                        .fill(liveGreen.opacity(boardPulse ? 0.55 : 0.28))
+                        .frame(width: 12, height: 12)
+                }
+                Circle()
+                    .fill(liveGreen)
+                    .frame(width: 8, height: 8)
+            }
+            Text("LIVE")
+                .font(.system(size: 10, weight: .black))
+                .tracking(2)
+                .foregroundStyle(Color(hex: "#6EE7B7"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(liveGreen.opacity(0.15)))
+        .overlay(Capsule().strokeBorder(liveGreen.opacity(boardPulse ? 0.7 : 0.35)))
+    }
+
+    // MARK: - Pond hero
+
+    private var pondHero: some View {
+        VStack(spacing: 14) {
+            HStack {
+                Label("คงเหลือในบ่อ", systemImage: "cylinder.split.1x2.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkSecondary)
+                Spacer()
+                Text("\(Int((snapshot.fillRatio * 100).rounded()))%")
+                    .font(.caption.weight(.bold).monospacedDigit())
                     .foregroundStyle(accent)
                     .contentTransition(.numericText())
-                Text(SandStockLogic.unitLabel)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "#1C1917").opacity(0.92),
+                                Color(hex: "#292524")
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(height: 220)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .strokeBorder(accent.opacity(0.35), lineWidth: 2)
+                    )
+
+                GeometryReader { geo in
+                    let fillH = max(8, geo.size.height * displayedFill)
+                    ZStack(alignment: .bottom) {
+                        // Sand body
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: displayedFill > 0.92 ? 24 : 10,
+                            bottomLeadingRadius: 24,
+                            bottomTrailingRadius: 24,
+                            topTrailingRadius: displayedFill > 0.92 ? 24 : 10,
+                            style: .continuous
+                        )
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: "#F9A8D4"),
+                                    accent,
+                                    Color(hex: "#9D174D")
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(height: fillH)
+                        .overlay(alignment: .top) {
+                            if displayedFill > 0.04 {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.28))
+                                    .frame(height: 6)
+                                    .padding(.horizontal, 18)
+                                    .offset(y: -2)
+                            }
+                        }
+
+                        // Center score readout
+                        VStack(spacing: 2) {
+                            Text(fmt(max(0, snapshot.remainingCubic)))
+                                .font(.system(size: 48, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+                                .contentTransition(.numericText())
+                                .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: snapshot.remainingCubic)
+                            Text(SandStockLogic.unitLabel)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .padding(10)
+                }
+                .frame(height: 220)
             }
 
             Text("เฉลี่ยขนเข้า \(fmt(snapshot.avgDailyInCubic)) · ร่อนออก \(fmt(snapshot.avgDailyOutCubic)) \(SandStockLogic.unitLabel)/วัน")
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                 .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow, radius: 10, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .stroke(accent.opacity(0.22), lineWidth: 1)
+                .shadow(color: AppTheme.cardShadow, radius: 12, y: 5)
         )
     }
+
+    // MARK: - HUD
+
+    private var hudRow: some View {
+        HStack(spacing: 10) {
+            hudChip(
+                title: "ขนเข้า",
+                value: "+\(fmt(snapshot.periodInCubic))",
+                color: AppTheme.income,
+                icon: "arrow.down.to.line"
+            )
+            hudChip(
+                title: "ร่อนออก",
+                value: "−\(fmt(snapshot.periodOutCubic))",
+                color: AppTheme.expense,
+                icon: "arrow.up.right"
+            )
+            hudChip(
+                title: "สุทธิ",
+                value: signed(snapshot.periodNetCubic),
+                color: snapshot.periodNetCubic >= 0 ? AppTheme.income : AppTheme.warning,
+                icon: "arrow.left.arrow.right"
+            )
+        }
+    }
+
+    private func hudChip(title: String, value: String, color: Color, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: icon)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(color)
+                .labelStyle(.titleAndIcon)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(AppTheme.ink)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(SandStockLogic.unitLabel)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(color.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(color.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Pace
 
     private var paceBanner: some View {
         let color = paceColor(snapshot.pace)
@@ -192,10 +332,74 @@ struct SandStockHubView: View {
         )
     }
 
-    private var openingCard: some View {
+    // MARK: - Live feed
+
+    private var liveFeedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("เหตุการณ์ล่าสุด")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("วันนี้ / ท้ายช่วง")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            if snapshot.recentEvents.isEmpty {
+                Text("ยังไม่มีเที่ยวเข้าหรือร่อนออกในวันนี้")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(snapshot.recentEvents) { event in
+                    feedRow(event)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+        )
+    }
+
+    private func feedRow(_ event: SandStockLogic.FeedEvent) -> some View {
+        let inbound = event.direction == .inbound
+        let color = inbound ? AppTheme.income : AppTheme.expense
+        return HStack(spacing: 10) {
+            Image(systemName: inbound ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
+                .foregroundStyle(color)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(event.direction.title) · \(event.label)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Text(event.timeLabel)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            Spacer(minLength: 0)
+            Text("\(inbound ? "+" : "−")\(fmt(event.cubic)) \(SandStockLogic.unitLabel)")
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+        }
+        .padding(.vertical, 6)
+    }
+
+    // MARK: - Settings
+
+    private var settingsCard: some View {
         Button {
             openingDraft = Self.draftString(SandStockLogic.loadOpeningCubic())
-            showOpeningEditor = true
+            capacityDraft = Self.draftString(SandStockLogic.loadPondCapacityCubic())
+            showSettingsEditor = true
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "gauge.with.dots.needle.33percent")
@@ -204,10 +408,10 @@ struct SandStockHubView: View {
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(accent.opacity(0.12)))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ยอดเปิดบ่อ")
+                    Text("ตั้งค่าบ่อ")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("\(fmt(snapshot.openingCubic)) \(SandStockLogic.unitLabel) · แตะเพื่อปรับ")
+                    Text("เปิด \(fmt(snapshot.openingCubic)) · จุ \(fmt(snapshot.pondCapacityCubic)) \(SandStockLogic.unitLabel)")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                 }
@@ -225,32 +429,33 @@ struct SandStockHubView: View {
         .buttonStyle(.plain)
     }
 
-    private var openingEditorSheet: some View {
+    private var settingsEditorSheet: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("ยอดเปิดบ่อ (คิว)", text: $openingDraft)
                         .keyboardType(.decimalPad)
+                    TextField("ความจุบ่อ (คิว)", text: $capacityDraft)
+                        .keyboardType(.decimalPad)
                 } footer: {
-                    Text("ใช้เป็นจุดเริ่มก่อนรวมเที่ยวรถเข้าบ่อและร่อนทรายออกจากบ่อ เก็บเฉพาะเครื่องนี้")
+                    Text("ยอดเปิดใช้เป็นจุดเริ่มก่อนรวมเที่ยวเข้า/ร่อนออก ความจุใช้แสดงระดับบ่อแบบเกม เก็บเฉพาะเครื่องนี้")
                 }
             }
-            .navigationTitle("ยอดเปิดบ่อ")
+            .navigationTitle("ตั้งค่าบ่อสต๊อก")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("ยกเลิก") { showOpeningEditor = false }
+                    Button("ยกเลิก") { showSettingsEditor = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("บันทึก") {
-                        let parsed = Double(
-                            openingDraft
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                                .replacingOccurrences(of: ",", with: "")
-                        ) ?? 0
-                        SandStockLogic.saveOpeningCubic(parsed)
-                        showOpeningEditor = false
-                        Task { await reload() }
+                        SandStockLogic.saveOpeningCubic(parseDraft(openingDraft))
+                        let capacity = parseDraft(capacityDraft)
+                        SandStockLogic.savePondCapacityCubic(
+                            capacity > 0 ? capacity : SandStockLogic.defaultPondCapacityCubic
+                        )
+                        showSettingsEditor = false
+                        Task { await reload(animate: true) }
                     }
                 }
             }
@@ -290,19 +495,52 @@ struct SandStockHubView: View {
     private var chartLabels: [String] {
         let labels = snapshot.series.map(\.label)
         if labels.count <= 10 { return labels }
-        // Thin labels for denser ranges so the axis stays readable.
         return labels.enumerated().map { i, label in
             i == 0 || i == labels.count - 1 || i % max(labels.count / 6, 1) == 0 ? label : ""
         }
     }
 
-    private func reload() async {
+    private func reload(animate: Bool) async {
         let filter = scope.filter
         let txs = appState.transactions
         let opening = SandStockLogic.loadOpeningCubic()
-        snapshot = await Task.detached(priority: .userInitiated) {
-            SandStockLogic.build(filter: filter, transactions: txs, openingCubic: opening)
+        let capacity = SandStockLogic.loadPondCapacityCubic()
+        let revision = appState.transactionsRevision
+        let next = await Task.detached(priority: .userInitiated) {
+            SandStockLogic.build(
+                filter: filter,
+                transactions: txs,
+                openingCubic: opening,
+                pondCapacityCubic: capacity
+            )
         }.value
+
+        let shouldPulse = animate && lastRevision >= 0 && revision != lastRevision
+        lastRevision = revision
+
+        if animate && !reduceMotion {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                snapshot = next
+                displayedFill = CGFloat(next.fillRatio)
+            }
+            if shouldPulse { triggerPulse() }
+        } else {
+            snapshot = next
+            displayedFill = CGFloat(next.fillRatio)
+        }
+    }
+
+    private func triggerPulse() {
+        guard !reduceMotion else { return }
+        withAnimation(.easeOut(duration: 0.2)) { boardPulse = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.easeOut(duration: 0.25)) { boardPulse = false }
+        }
+    }
+
+    private func startLivePing() {
+        guard !reduceMotion else { return }
+        livePing = true
     }
 
     // MARK: - Formatting helpers
@@ -316,6 +554,13 @@ struct SandStockHubView: View {
         if value > 0 { return "+\(body)" }
         if value < 0 { return "−\(body)" }
         return body
+    }
+
+    private func parseDraft(_ text: String) -> Double {
+        Double(
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: ",", with: "")
+        ) ?? 0
     }
 
     private func paceColor(_ pace: SandStockLogic.PaceStatus) -> Color {

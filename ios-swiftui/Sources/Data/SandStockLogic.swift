@@ -8,7 +8,10 @@ import Foundation
 /// Remaining = opening + Σ(in) − Σ(out) through the as-of date.
 enum SandStockLogic {
     static let openingStockDefaultsKey = "sand_stock_opening_cubic_v1"
+    static let pondCapacityDefaultsKey = "sand_stock_pond_capacity_cubic_v1"
+    static let defaultPondCapacityCubic: Double = 500
     static let unitLabel = "คิว"
+    static let maxFeedEvents = 8
 
     enum PaceStatus: String, Sendable {
         case keepingUp
@@ -38,6 +41,27 @@ enum SandStockLogic {
         }
     }
 
+    enum FeedDirection: String, Sendable, Equatable {
+        case inbound
+        case outbound
+
+        var title: String {
+            switch self {
+            case .inbound: return "ขนเข้า"
+            case .outbound: return "ร่อนออก"
+            }
+        }
+    }
+
+    struct FeedEvent: Identifiable, Sendable, Equatable {
+        let id: String
+        let direction: FeedDirection
+        let cubic: Double
+        let label: String
+        let timeLabel: String
+        let sortKey: String
+    }
+
     struct DayPoint: Identifiable, Sendable, Equatable {
         var id: String { date }
         let date: String
@@ -50,6 +74,8 @@ enum SandStockLogic {
     struct Snapshot: Sendable, Equatable {
         let asOfDate: String
         let openingCubic: Double
+        let pondCapacityCubic: Double
+        let fillRatio: Double
         let remainingCubic: Double
         let periodInCubic: Double
         let periodOutCubic: Double
@@ -62,10 +88,13 @@ enum SandStockLogic {
         let daysUntilEmpty: Double?
         let insight: String
         let series: [DayPoint]
+        let recentEvents: [FeedEvent]
 
         static let empty = Snapshot(
             asOfDate: "",
             openingCubic: 0,
+            pondCapacityCubic: defaultPondCapacityCubic,
+            fillRatio: 0,
             remainingCubic: 0,
             periodInCubic: 0,
             periodOutCubic: 0,
@@ -77,11 +106,12 @@ enum SandStockLogic {
             pace: .idle,
             daysUntilEmpty: nil,
             insight: "ยังไม่มีข้อมูลสต๊อก",
-            series: []
+            series: [],
+            recentEvents: []
         )
     }
 
-    // MARK: - Opening stock (device-local for v1)
+    // MARK: - Device-local settings
 
     static func loadOpeningCubic() -> Double {
         let value = UserDefaults.standard.double(forKey: openingStockDefaultsKey)
@@ -91,6 +121,26 @@ enum SandStockLogic {
     static func saveOpeningCubic(_ value: Double) {
         let clamped = value.isFinite ? max(0, value) : 0
         UserDefaults.standard.set(clamped, forKey: openingStockDefaultsKey)
+    }
+
+    static func loadPondCapacityCubic() -> Double {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: pondCapacityDefaultsKey) == nil {
+            return defaultPondCapacityCubic
+        }
+        let value = defaults.double(forKey: pondCapacityDefaultsKey)
+        guard value.isFinite, value > 0 else { return defaultPondCapacityCubic }
+        return value
+    }
+
+    static func savePondCapacityCubic(_ value: Double) {
+        let clamped = value.isFinite ? max(1, value) : defaultPondCapacityCubic
+        UserDefaults.standard.set(clamped, forKey: pondCapacityDefaultsKey)
+    }
+
+    static func fillRatio(remaining: Double, capacity: Double) -> Double {
+        let cap = max(capacity, 1)
+        return min(1, max(0, remaining / cap))
     }
 
     // MARK: - Row helpers
@@ -135,10 +185,55 @@ enum SandStockLogic {
             .reduce(0.0) { $0 + washCubicOut($1) }
     }
 
+    static func buildRecentEvents(
+        dayKey: String,
+        transactions: [Transaction],
+        limit: Int = maxFeedEvents
+    ) -> [FeedEvent] {
+        var events: [FeedEvent] = []
+        for t in transactions where String(t.date.prefix(10)) == dayKey {
+            if isTripInRow(t) {
+                let cubic = tripCubicIn(t)
+                guard cubic > 0 else { continue }
+                let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                events.append(
+                    FeedEvent(
+                        id: "in-\(t.id)",
+                        direction: .inbound,
+                        cubic: cubic,
+                        label: vehicle.isEmpty ? "เที่ยวรถ" : vehicle,
+                        timeLabel: formatEventTime(t),
+                        sortKey: eventSortKey(t)
+                    )
+                )
+            }
+            if isWashOutRow(t) {
+                let cubic = washCubicOut(t)
+                guard cubic > 0 else { continue }
+                events.append(
+                    FeedEvent(
+                        id: "out-\(t.id)",
+                        direction: .outbound,
+                        cubic: cubic,
+                        label: "ร่อนทราย",
+                        timeLabel: formatEventTime(t),
+                        sortKey: eventSortKey(t)
+                    )
+                )
+            }
+        }
+        return Array(
+            events
+                .sorted { $0.sortKey > $1.sortKey }
+                .prefix(max(1, limit))
+        )
+    }
+
     static func build(
         filter: DateFilter,
         transactions: [Transaction],
-        openingCubic: Double = loadOpeningCubic()
+        openingCubic: Double = loadOpeningCubic(),
+        pondCapacityCubic: Double = loadPondCapacityCubic()
     ) -> Snapshot {
         let dates = DashboardAggregations.enumerateDates(in: filter)
         guard !dates.isEmpty else { return .empty }
@@ -146,6 +241,7 @@ enum SandStockLogic {
         let asOf = filter.end
         let today = DashboardAggregations.todayYMD()
         let opening = max(0, openingCubic)
+        let capacity = max(pondCapacityCubic, 1)
 
         // Cumulative balance from opening through each day in the selected window,
         // seeded with movements before the window start (within loaded transactions).
@@ -184,6 +280,7 @@ enum SandStockLogic {
         let avgOut = periodOut / Double(dayCount)
         let todayIn = cubicIn(on: today, transactions: transactions)
         let todayOut = cubicOut(on: today, transactions: transactions)
+        let feedDay = filter.end.isEmpty ? today : filter.end
 
         let pace = resolvePace(avgIn: avgIn, avgOut: avgOut, periodIn: periodIn, periodOut: periodOut)
         let burn = avgOut - avgIn
@@ -195,6 +292,8 @@ enum SandStockLogic {
         return Snapshot(
             asOfDate: asOf,
             openingCubic: opening,
+            pondCapacityCubic: capacity,
+            fillRatio: fillRatio(remaining: max(0, remaining), capacity: capacity),
             remainingCubic: remaining,
             periodInCubic: periodIn,
             periodOutCubic: periodOut,
@@ -213,8 +312,34 @@ enum SandStockLogic {
                 daysUntilEmpty: daysUntilEmpty,
                 periodNet: periodIn - periodOut
             ),
-            series: series
+            series: series,
+            recentEvents: buildRecentEvents(dayKey: feedDay, transactions: transactions)
         )
+    }
+
+    // MARK: - Private
+
+    private static func eventSortKey(_ t: Transaction) -> String {
+        if let created = t.createdAt, !created.isEmpty { return created }
+        if let updated = t.updatedAt, !updated.isEmpty { return updated }
+        return t.date
+    }
+
+    private static func formatEventTime(_ t: Transaction) -> String {
+        let raw = t.createdAt ?? t.updatedAt ?? t.date
+        // ISO-ish: 2026-08-10T14:32:01 or date-only
+        if let tIndex = raw.firstIndex(of: "T") {
+            let afterT = raw[raw.index(after: tIndex)...]
+            let hhmm = String(afterT.prefix(5))
+            if hhmm.count == 5 { return hhmm }
+        }
+        if raw.count >= 16, raw.contains(" ") {
+            let parts = raw.split(separator: " ")
+            if parts.count >= 2 {
+                return String(parts[1].prefix(5))
+            }
+        }
+        return String(raw.prefix(10))
     }
 
     private static func resolvePace(
