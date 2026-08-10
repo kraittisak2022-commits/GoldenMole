@@ -113,7 +113,7 @@ const DashboardV4 = ({
         transactions,
         employees,
         onRefresh: onRefreshTransactions,
-        pollIntervalMs: 12000,
+        pollIntervalMs: 60000,
         displayLocale: locale,
     });
 

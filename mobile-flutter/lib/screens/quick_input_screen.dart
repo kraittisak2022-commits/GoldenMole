@@ -268,7 +268,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Timer? _pollFallbackTimer;
   static const Duration _remoteRefreshDebounceDelay =
       Duration(milliseconds: 300);
-  static const Duration _pollFallbackInterval = Duration(seconds: 12);
+  static const Duration _pollFallbackInterval = Duration(seconds: 60);
   bool _saving = false;
   String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
@@ -919,7 +919,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _pollFallbackTimer = Timer.periodic(_pollFallbackInterval, (_) {
       if (!mounted || _saving || _hasUnsavedModuleChanges) return;
       if (widget.serverOnlineHint == false) return;
-      unawaited(_loadModuleTransactions(forceRefresh: true));
+      // Soft poll: use cache TTL; Realtime + resume force refresh when needed.
+      unawaited(_loadModuleTransactions(forceRefresh: false));
     });
   }
 

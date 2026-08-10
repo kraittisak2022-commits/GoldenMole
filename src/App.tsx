@@ -56,6 +56,7 @@ import { supabase, hasSupabaseConfig } from './lib/supabase';
 import { ensureSupabaseSessionForEdgeFunctions } from './utils/supabaseFunctionSession';
 import {
     emitTransactionsRealtime,
+    getTransactionsRealtimeStatus,
     setTransactionsRealtimeStatus,
 } from './services/transactionsRealtimeBus';
 
@@ -1396,6 +1397,9 @@ function App() {
         if (!isLoggedIn || activeMenu !== 'DailyWizard') return;
         let disposed = false;
         const refreshTransactions = async () => {
+            // Skip full-table poll while Realtime is healthy (Disk IO).
+            const status = getTransactionsRealtimeStatus();
+            if (status === 'connected' || status === 'connecting') return;
             try {
                 const latest = await db.fetchTransactions();
                 if (disposed) return;
@@ -1408,7 +1412,7 @@ function App() {
         void refreshTransactions();
         const timer = window.setInterval(() => {
             void refreshTransactions();
-        }, 15000);
+        }, 60000);
 
         return () => {
             disposed = true;

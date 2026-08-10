@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./dataService', () => ({
     saveTransaction: vi.fn(async () => true),
     fetchTransactions: vi.fn(async () => []),
+    fetchTransactionsByIds: vi.fn(async () => []),
 }));
 
 import * as db from './dataService';

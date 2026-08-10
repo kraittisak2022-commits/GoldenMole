@@ -224,7 +224,8 @@ export const syncOfflineQueue = async (): Promise<OfflineSyncSnapshot> => {
 
     let successCount = 0;
     const nextQueue: OfflineQueueItem[] = [];
-    const remoteTx = await db.fetchTransactions();
+    const queuedIds = queue.map((item) => item.tx.id);
+    const remoteTx = await db.fetchTransactionsByIds(queuedIds);
     const remoteMap = new Map(remoteTx.map(tx => [tx.id, tx]));
 
     for (const item of queue) {

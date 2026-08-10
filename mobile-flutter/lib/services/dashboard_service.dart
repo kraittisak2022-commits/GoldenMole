@@ -13,19 +13,43 @@ class DashboardService {
   }
 
   Future<double> _sumTransactionsByType(String type) async {
-    final rows = await _client
-        .from('transactions')
-        .select('amount')
-        .eq('type', type);
-    var sum = 0.0;
-    for (final row in rows) {
-      final amountRaw = row['amount'];
-      final value = amountRaw is num
-          ? amountRaw.toDouble()
-          : double.tryParse('$amountRaw') ?? 0;
-      sum += value;
+    try {
+      final raw = await _client.rpc(
+        'sum_transactions_amount_by_type',
+        params: {'p_type': type},
+      );
+      if (raw is num) return raw.toDouble();
+      return double.tryParse('$raw') ?? 0;
+    } catch (_) {
+      try {
+        final rows = await _client
+            .from('transactions')
+            .select('amount.sum()')
+            .eq('type', type);
+        if (rows.isEmpty) return 0;
+        final first = rows.first;
+        final nested = first['amount'];
+        final raw = first['sum'] ??
+            (nested is Map ? nested['sum'] : nested) ??
+            first['amount'];
+        if (raw is num) return raw.toDouble();
+        return double.tryParse('$raw') ?? 0;
+      } catch (_) {
+        final rows = await _client
+            .from('transactions')
+            .select('amount')
+            .eq('type', type);
+        var sum = 0.0;
+        for (final row in rows) {
+          final amountRaw = row['amount'];
+          final value = amountRaw is num
+              ? amountRaw.toDouble()
+              : double.tryParse('$amountRaw') ?? 0;
+          sum += value;
+        }
+        return sum;
+      }
     }
-    return sum;
   }
 
   Future<DashboardSummary> fetchSummary({bool forceRefresh = false}) async {

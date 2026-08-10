@@ -111,8 +111,10 @@ export function useCountRecordRealtime({
         return subscribeTransactionsRealtime(onEvent);
     }, []);
 
+    // Poll only when Realtime is down — avoids full-table refetch every 12s while live.
     useEffect(() => {
         if (!onRefresh || !dayKey) return;
+        if (channelStatus === 'connected' || channelStatus === 'connecting') return;
         let disposed = false;
 
         const tick = async () => {
@@ -132,7 +134,7 @@ export function useCountRecordRealtime({
             disposed = true;
             window.clearInterval(timer);
         };
-    }, [onRefresh, dayKey, pollIntervalMs]);
+    }, [onRefresh, dayKey, pollIntervalMs, channelStatus]);
 
     const isLive = channelStatus === 'connected' || channelStatus === 'connecting';
 

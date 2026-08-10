@@ -112,6 +112,18 @@ export const fetchTransactions = async (): Promise<Transaction[]> => {
     return (data || []).map(keysToCamel);
 };
 
+/** Conflict check for offline queue — fetch only the queued ids (not the full table). */
+export const fetchTransactionsByIds = async (ids: string[]): Promise<Transaction[]> => {
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (unique.length === 0) return [];
+    const { data, error } = await supabase.from('transactions').select('*').in('id', unique);
+    if (error) {
+        console.error('fetchTransactionsByIds error:', error);
+        return [];
+    }
+    return (data || []).map(keysToCamel);
+};
+
 export const saveTransaction = async (t: Transaction): Promise<boolean> => {
     const row = prepareTransactionForDb(t);
     const { data, error } = await supabase

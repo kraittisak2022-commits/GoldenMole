@@ -174,7 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _pollFallbackTimer;
   static const Duration _remoteRefreshDebounceDelay =
       Duration(milliseconds: 300);
-  static const Duration _pollFallbackInterval = Duration(seconds: 12);
+  static const Duration _pollFallbackInterval = Duration(seconds: 60);
 
   void _applyServerReachability(bool online, {bool force = false}) {
     if (!mounted) return;
@@ -232,9 +232,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _startPollFallback() {
     _pollFallbackTimer?.cancel();
+    // Soft poll: respect cache TTL — Realtime handles live updates; avoid force full-table IO.
     _pollFallbackTimer = Timer.periodic(_pollFallbackInterval, (_) {
       if (!mounted || !_serverOnline) return;
-      unawaited(_refreshHomeSilently(tryNetwork: true));
+      unawaited(_refreshHomeSilently(tryNetwork: true, forceNetwork: false));
     });
   }
 
@@ -260,7 +261,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   /// อัปเดตข้อมูลแบบเงียบ — ไม่สลับ FutureBuilder เข้า waiting (กันแถบโหลดกระพริบ)
-  Future<void> _refreshHomeSilently({bool tryNetwork = true}) async {
+  Future<void> _refreshHomeSilently({
+    bool tryNetwork = true,
+    bool forceNetwork = true,
+  }) async {
     if (!mounted) return;
     final dayKey = _dateKey(_selectedDay);
 
@@ -290,7 +294,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       final fresh = await _loadHomeFromNetwork(
         client: client,
         dayKey: dayKey,
-        networkRefresh: true,
+        networkRefresh: forceNetwork,
+        includeFullLedger: forceNetwork,
       ).timeout(const Duration(seconds: 12));
       if (mounted) _applyPayloadQuietly(fresh);
     } catch (_) {
@@ -301,7 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   /// ดึงจากเซิร์ฟเวอร์เสมอ เพื่อรับการแก้จากเครื่องอื่น (แม้เปิดเมนูนับจำนวนอยู่)
   Future<void> _refreshHomeDataInPlace() async {
-    await _refreshHomeSilently(tryNetwork: true);
+    await _refreshHomeSilently(tryNetwork: true, forceNetwork: true);
   }
 
   @override
@@ -524,21 +529,36 @@ class _DashboardScreenState extends State<DashboardScreen>
     required SupabaseClient client,
     required String dayKey,
     required bool networkRefresh,
+    bool includeFullLedger = true,
   }) async {
     final employeeService = EmployeeService(client);
-    final results = await Future.wait([
+    final futures = <Future<dynamic>>[
       widget.dashboardService.fetchSummary(forceRefresh: networkRefresh),
       _txService.fetchTransactionsForDate(
         dayKey,
         forceRefresh: networkRefresh,
       ),
       employeeService.fetchEmployees(forceRefresh: networkRefresh),
-      _txService.fetchTransactions(forceRefresh: networkRefresh),
-    ]);
+    ];
+    if (includeFullLedger) {
+      futures.add(_txService.fetchTransactions(forceRefresh: networkRefresh));
+    }
+    final results = await Future.wait(futures);
     final summary = results[0] as DashboardSummary;
     final dayRows = results[1] as List<AppTransaction>;
     final employees = results[2] as List<Employee>;
-    final allRows = results[3] as List<AppTransaction>;
+    final List<AppTransaction> allRows;
+    if (includeFullLedger) {
+      allRows = results[3] as List<AppTransaction>;
+    } else {
+      // Soft poll: keep prior ledger (fuel stock etc.) — only refresh day slice.
+      final prior = _lastHomePayload?.allTransactions;
+      if (prior != null && prior.isNotEmpty) {
+        allRows = prior;
+      } else {
+        allRows = await _txService.fetchTransactions(forceRefresh: false);
+      }
+    }
     unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
     unawaited(
       CountRecordOfflineSync.instance.loadDropdownCatalog(
