@@ -1397,6 +1397,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         mergedRows,
         clearForm: _moduleDayTransactions.isEmpty,
       );
+      if (_isFuelMode && forceRefresh && mounted && isCurrentLoad()) {
+        await _refreshFuelStock(forceNetwork: true);
+      }
     } catch (_) {
       if (!mounted || !isCurrentLoad()) return;
       if (_moduleDayTransactions.isEmpty) {
@@ -2643,15 +2646,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     await LocalDataCache.writeFuelStockSnapshot(balance);
   }
 
-  /// คงเหลือในถัง — คำนวณจากแคชในเครื่องเป็นหลัก (ไม่ดึง DB บ่อย)
-  Future<void> _refreshFuelStock({bool forceNetwork = false}) async {
+  /// คงเหลือในถัง — snapshot-first (ไม่สแกน/ไม่ดึง DB ถ้ามีแคช)
+  ///
+  /// [forceNetwork] = true → ดึง transactions จากเซิร์ฟเวอร์แล้วคำนวณใหม่
+  /// [allowNetworkFetch] = false → ไม่ยิงเครือข่าย; ใช้แคชในเครื่องเท่านั้น
+  Future<void> _refreshFuelStock({
+    bool forceNetwork = false,
+    bool allowNetworkFetch = true,
+  }) async {
     try {
       if (!forceNetwork) {
         final snap = await LocalDataCache.readFuelStockSnapshot(
           LocalDataCache.fuelStockSnapshotTtl,
         );
-        if (snap != null && mounted) {
-          setState(() => _fuelStock = snap);
+        if (snap != null) {
+          if (mounted) setState(() => _fuelStock = snap);
+          return;
+        }
+        final any = await LocalDataCache.readFuelStockSnapshotAny();
+        if (any != null) {
+          if (mounted) setState(() => _fuelStock = any);
+          return;
         }
       }
 
@@ -2660,7 +2675,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         baseRows = await widget.service.fetchTransactions(forceRefresh: true);
       } else {
         baseRows = await LocalDataCache.readTransactionsFullAny();
-        baseRows ??= await widget.service.fetchTransactions();
+        if (baseRows == null && allowNetworkFetch) {
+          baseRows = await widget.service.fetchTransactions();
+        }
+      }
+      if (baseRows == null) {
+        final stale = await LocalDataCache.readFuelStockSnapshotAny();
+        if (stale != null && mounted) {
+          setState(() => _fuelStock = stale);
+        }
+        return;
       }
       final rows = await CountRecordOfflineSync.instance
           .mergeAllTransactionsAsync(baseRows);
@@ -2679,22 +2703,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
-  /// หลังบันทึกน้ำมัน — อัปเดตเกจจาก delta หรือคำนวณใหม่จากแคช (ไม่ยิงเครือข่าย)
+  /// หลังบันทึกน้ำมัน — อัปเดตเกจจาก delta (ไม่ยิงเครือข่าย)
+  ///
+  /// [reverseFirst] = แถวที่ต้องถอนผลจากยอดก่อน (เช่น อัปเดต StockIn ที่เปลี่ยนลิตร)
   Future<void> _applyLocalFuelStockAfterSave(
-    List<AppTransaction> savedRows,
-  ) async {
+    List<AppTransaction> savedRows, {
+    List<AppTransaction> reverseFirst = const [],
+  }) async {
     var next = _fuelStock;
     var needRecompute = false;
-    for (final t in savedRows) {
-      final applied = applyFuelBalanceDelta(next, t);
+    for (final t in reverseFirst) {
+      final applied = applyFuelBalanceDelta(next, t, reverse: true);
       if (applied == null) {
         needRecompute = true;
         break;
       }
       next = applied;
     }
+    if (!needRecompute) {
+      for (final t in savedRows) {
+        final applied = applyFuelBalanceDelta(next, t);
+        if (applied == null) {
+          needRecompute = true;
+          break;
+        }
+        next = applied;
+      }
+    }
     if (needRecompute) {
-      await _refreshFuelStock();
+      // VehicleUsage / กรณีซับซ้อน — คำนวณจากแคชในเครื่องเท่านั้น
+      await _refreshFuelStock(allowNetworkFetch: false);
       return;
     }
     await _setFuelStockBalance(next);
@@ -3682,6 +3720,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (time.isEmpty) {
           _failSave('กรุณาระบุเวลาที่เติม', field: 'เวลาที่เติม');
         }
+        var priorLiters = 0.0;
+        if (isUpdate) {
+          for (final r in _dayFuelStockInRows()) {
+            if (r.id == existingId) {
+              priorLiters = fuelTxLiters(r);
+              break;
+            }
+          }
+        }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
@@ -3710,8 +3757,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _persist(tx);
         _fuelStockInTxId = tx.id;
         _fuelStockInComposingNew = false;
-        // อัปเดตอาจเปลี่ยนลิตร — คำนวณใหม่จากแคช ไม่ใช้ delta
-        await _refreshFuelStock();
+        if (isUpdate && priorLiters > 0) {
+          final oldTx = AppTransaction(
+            id: txId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelStockInSubCategory,
+            description: '',
+            amount: 0,
+            quantity: priorLiters,
+            unit: 'L',
+            fuelType: fuelType,
+            fuelMovement: 'stock_in',
+            fuelTank: kFuelTankMain,
+          );
+          await _applyLocalFuelStockAfterSave([tx], reverseFirst: [oldTx]);
+        } else {
+          await _applyLocalFuelStockAfterSave([tx]);
+        }
       },
     );
   }

@@ -8,12 +8,23 @@ class TransactionService {
 
   final SupabaseClient _client;
 
-  Future<void> _invalidateAfterMutation({required String? affectingDate}) async {
+  Future<void> _invalidateAfterMutation({
+    required String? affectingDate,
+    AppTransaction? patchedTx,
+    String? removedId,
+  }) async {
     await LocalDataCache.invalidateDashboard();
     if (affectingDate != null && affectingDate.isNotEmpty) {
       await LocalDataCache.invalidateTransactionsForDay(affectingDate);
     }
-    await LocalDataCache.invalidateTransactionsFull();
+    // แพตช์แถวในแคชเต็มชุดแทนการล้างทั้งก้อน — ลดการดึงตารางทั้งหมดรอบถัดไป
+    if (patchedTx != null) {
+      await LocalDataCache.patchTransactionInFull(patchedTx);
+    } else if (removedId != null && removedId.isNotEmpty) {
+      await LocalDataCache.removeTransactionFromFull(removedId);
+    } else {
+      await LocalDataCache.invalidateTransactionsFull();
+    }
   }
 
   Future<List<AppTransaction>> fetchTransactions({bool forceRefresh = false}) async {
@@ -113,7 +124,10 @@ class TransactionService {
       );
     }
 
-    await _invalidateAfterMutation(affectingDate: item.date);
+    await _invalidateAfterMutation(
+      affectingDate: item.date,
+      patchedTx: item,
+    );
   }
 
   /// อัปโหลดหลายแถวในครั้งเดียว — ใช้ตอนซิงค์คิวออฟไลน์
@@ -134,7 +148,9 @@ class TransactionService {
       );
     }
     await LocalDataCache.invalidateDashboard();
-    await LocalDataCache.invalidateTransactionsFull();
+    for (final item in items) {
+      await LocalDataCache.patchTransactionInFull(item.item);
+    }
     for (final d in items.map((e) => e.item.date).toSet()) {
       await LocalDataCache.invalidateTransactionsForDay(d);
     }
@@ -143,7 +159,10 @@ class TransactionService {
 
   Future<void> deleteTransaction(String id, {String? affectingDate}) async {
     await _client.from('transactions').delete().eq('id', id);
-    await _invalidateAfterMutation(affectingDate: affectingDate);
+    await _invalidateAfterMutation(
+      affectingDate: affectingDate,
+      removedId: id,
+    );
   }
 
   /// ลบหลายแถวในครั้งเดียว — ใช้ตอนซิงค์คิวออฟไลน์
@@ -155,7 +174,9 @@ class TransactionService {
     if (ids.isEmpty) return 0;
     await _client.from('transactions').delete().inFilter('id', ids);
     await LocalDataCache.invalidateDashboard();
-    await LocalDataCache.invalidateTransactionsFull();
+    for (final id in ids) {
+      await LocalDataCache.removeTransactionFromFull(id);
+    }
     for (final d in items.map((e) => e.affectingDate).whereType<String>()) {
       await LocalDataCache.invalidateTransactionsForDay(d);
     }

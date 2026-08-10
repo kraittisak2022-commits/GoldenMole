@@ -101,9 +101,23 @@ final class FuelSession {
 
     private(set) var dayKey: String
     private var skipExternalReload = 0
+    /// กันคำนวณยอดถังซ้ำเมื่อ transactionsRevision ยังไม่เปลี่ยน
+    private var lastBalanceRevision: Int = -1
+
+    private static let kCachedMainDiesel = "fuel_snapshot_main_diesel"
+    private static let kCachedReserveDiesel = "fuel_snapshot_reserve_diesel"
 
     init(dayKey: String = DashboardAggregations.todayYMD()) {
         self.dayKey = dayKey
+        let ud = UserDefaults.standard
+        dieselBalance = ud.double(forKey: Self.kCachedMainDiesel)
+        reserveDieselBalance = ud.double(forKey: Self.kCachedReserveDiesel)
+    }
+
+    private func persistBalanceSnapshot() {
+        let ud = UserDefaults.standard
+        ud.set(dieselBalance, forKey: Self.kCachedMainDiesel)
+        ud.set(reserveDieselBalance, forKey: Self.kCachedReserveDiesel)
     }
 
     func configureOffline(service: SupabaseService, appState: AppState) {
@@ -115,12 +129,18 @@ final class FuelSession {
             skipExternalReload -= 1
             return
         }
-        let balance = FuelLogic.computeBalance(
-            transactions: appState.transactions,
-            opening: appState.settings.fuelOpeningStockLiters
-        )
-        dieselBalance = balance.mainDiesel
-        reserveDieselBalance = balance.reserveDiesel
+        let rev = appState.transactionsRevision
+        let needsBalance = force || rev != lastBalanceRevision
+        if needsBalance {
+            let balance = FuelLogic.computeBalance(
+                transactions: appState.transactions,
+                opening: appState.settings.fuelOpeningStockLiters
+            )
+            dieselBalance = balance.mainDiesel
+            reserveDieselBalance = balance.reserveDiesel
+            lastBalanceRevision = rev
+            persistBalanceSnapshot()
+        }
 
         let dayRows = FuelLogic.dayFuelRows(dayKey: dayKey, transactions: appState.transactions)
         dayStockInRows = dayRows.filter(FuelLogic.isStockIn).sorted {

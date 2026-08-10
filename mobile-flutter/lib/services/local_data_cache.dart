@@ -42,7 +42,8 @@ class LocalDataCache {
   static const Duration dashboardSummaryTtl = Duration(minutes: 8);
   static const Duration transactionsByDayTtl = Duration(minutes: 3);
   static const Duration transactionsFullTtl = Duration(minutes: 2);
-  static const Duration fuelStockSnapshotTtl = Duration(hours: 12);
+  /// ยอดถังอัปเดตจาก delta หลังเซฟ — TTL ยาวเพื่อไม่บังคับคำนวณ/ดึง DB บ่อย
+  static const Duration fuelStockSnapshotTtl = Duration(days: 7);
 
   static bool _withinTtl(Duration ttl, int? cachedAtMs) {
     if (cachedAtMs == null) return false;
