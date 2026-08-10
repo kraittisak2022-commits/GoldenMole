@@ -53,10 +53,22 @@ class CalendarScreen extends StatefulWidget {
     super.key,
     required this.transactionService,
     required this.employeeService,
+    this.embedded = false,
+    this.externalSelectedDay,
+    this.onDaySelected,
   });
 
   final TransactionService transactionService;
   final EmployeeService employeeService;
+
+  /// When true, render as an in-home panel (no Scaffold / AppBar / swipe-back).
+  final bool embedded;
+
+  /// Sync selected day from the parent home screen.
+  final DateTime? externalSelectedDay;
+
+  /// Notify home when user picks a day on the month grid.
+  final ValueChanged<DateTime>? onDaySelected;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -89,7 +101,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
       pageId: MobileScreenIds.pageCalendar,
       stepId: MobileScreenIds.stepCalendarMain,
     );
+    final external = widget.externalSelectedDay;
+    if (external != null) {
+      _selectedDate = DateTime(external.year, external.month, external.day);
+      _monthCursor = DateTime(external.year, external.month, 1);
+    }
     _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant CalendarScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final external = widget.externalSelectedDay;
+    if (external == null) return;
+    final next = DateTime(external.year, external.month, external.day);
+    final sameDay = next.year == _selectedDate.year &&
+        next.month == _selectedDate.month &&
+        next.day == _selectedDate.day;
+    if (sameDay) return;
+    setState(() {
+      _selectedDate = next;
+      if (_monthCursor.year != next.year || _monthCursor.month != next.month) {
+        _monthCursor = DateTime(next.year, next.month, 1);
+      }
+    });
   }
 
   @override
@@ -248,6 +283,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       int.parse(p[2]),
     );
     setState(() => _selectedDate = selected);
+    widget.onDaySelected?.call(selected);
     _openDayDetails(day);
   }
 
@@ -920,13 +956,313 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Widget _monthNavRow(String monthLabel, int y, int m) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            monthLabel,
+            style: GoogleFonts.kanit(
+              fontSize: widget.embedded ? 17 : 20,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A1A1A),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        IconButton(
+          tooltip: 'เดือนก่อน',
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          padding: EdgeInsets.zero,
+          onPressed: () => setState(() {
+            _monthCursor = DateTime(y, m - 1, 1);
+          }),
+          icon: const Icon(Icons.chevron_left, color: Color(0xFF5C6470)),
+        ),
+        IconButton(
+          tooltip: 'เดือนถัดไป',
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          padding: EdgeInsets.zero,
+          onPressed: () => setState(() {
+            _monthCursor = DateTime(y, m + 1, 1);
+          }),
+          icon: const Icon(Icons.chevron_right, color: Color(0xFF5C6470)),
+        ),
+        IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+      ],
+    );
+  }
+
+  Widget _calendarBody({required double bottomClearance}) {
+    final y = _monthCursor.year;
+    final m = _monthCursor.month;
+    final selectedLabel =
+        '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
+
+    return FutureBuilder<_CalendarPayload>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 220,
+            child: ListPageSkeleton(rowCount: 3, showHeaderBlock: false),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'โหลดปฏิทินไม่สำเร็จ\n${snapshot.error}',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        final data = snapshot.data!;
+        final days = _buildMonthDays(
+          y,
+          m,
+          data.transactions,
+          data.employees,
+          data.weeklyOffByMonday,
+          data.weeklyOffMoveReasonByMonday,
+        );
+        final grid = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.embedded) ...[
+                    _monthNavRow(_formatThaiMonthYear(_monthCursor), y, m),
+                    const SizedBox(height: 4),
+                  ],
+                  Text(
+                    selectedLabel,
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFF1A2A3C),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _legendChip(
+                        color: const Color(0xFFE57373),
+                        label: 'หยุด',
+                      ),
+                      _legendChip(
+                        color: const Color(0xFF5C7C9F),
+                        label: 'นักขัตฤกษ์',
+                      ),
+                      _legendChip(
+                        color: const Color(0xFFFFB74D),
+                        label: 'ลา',
+                      ),
+                      _legendChip(
+                        color: const Color(0xFF00897B),
+                        label: 'ทรายบ้าน',
+                      ),
+                      _legendChip(
+                        color: const Color(0xFFE65100),
+                        label: 'เหตุการณ์',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(
+              height: 1,
+              thickness: 1,
+              color: Color(0xFFE8ECF0),
+            ),
+            if (widget.embedded)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _calendarGridBlock(
+                  days: days,
+                  bottomClearance: 0,
+                  fixedGridHeight: 268,
+                ),
+              )
+            else
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _calendarGridBlock(
+                    days: days,
+                    bottomClearance: bottomClearance,
+                    fixedGridHeight: null,
+                  ),
+                ),
+              ),
+          ],
+        );
+        return grid;
+      },
+    );
+  }
+
+  Widget _calendarGridBlock({
+    required List<_CalendarDay?> days,
+    required double bottomClearance,
+    required double? fixedGridHeight,
+  }) {
+    return ColoredBox(
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+            child: Row(
+              children: [
+                for (final d in const [
+                  'อา.',
+                  'จ.',
+                  'อ.',
+                  'พ.',
+                  'พฤ.',
+                  'ศ.',
+                  'ส.',
+                ])
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        d,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                          color: const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+          if (fixedGridHeight != null)
+            SizedBox(
+              height: fixedGridHeight,
+              child: _monthGrid(days: days),
+            )
+          else
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: bottomClearance),
+                child: _monthGrid(days: days),
+              ),
+            ),
+          if (widget.embedded) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: FilledButton.icon(
+                onPressed: _openCreateEntrySheet,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(
+                  'เพิ่มวันหยุด/ลา',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D98A5),
+                  minimumSize: const Size.fromHeight(42),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _monthGrid({required List<_CalendarDay?> days}) {
+    return LayoutBuilder(
+      builder: (context, gridConstraints) {
+        const mainGap = 3.0;
+        const crossGap = 6.0;
+        const padH = 8.0;
+        const padTop = 0.0;
+        final rows = (days.length / 7).ceil().clamp(1, 12);
+        final innerW = gridConstraints.maxWidth - padH * 2;
+        final innerH = gridConstraints.maxHeight - padTop;
+        if (innerW <= 8 || innerH <= 8) {
+          return const SizedBox.shrink();
+        }
+        final cellH = (innerH - mainGap * (rows - 1)) / rows;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(padH, padTop, padH, 0),
+          child: GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: mainGap,
+              crossAxisSpacing: crossGap,
+              mainAxisExtent: cellH,
+            ),
+            itemCount: days.length,
+            itemBuilder: (context, index) {
+              final day = days[index];
+              if (day == null) {
+                return const SizedBox.shrink();
+              }
+              final d = _dateFromYmd(day.dateStr);
+              final isSelected = d.year == _selectedDate.year &&
+                  d.month == _selectedDate.month &&
+                  d.day == _selectedDate.day;
+              final now = DateTime.now();
+              final isToday = d.year == now.year &&
+                  d.month == now.month &&
+                  d.day == now.day;
+              return _DayCell(
+                day: day,
+                selected: isSelected,
+                today: isToday,
+                onTap: () => _pickDay(day),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final y = _monthCursor.year;
     final m = _monthCursor.month;
     final monthLabel = _formatThaiMonthYear(_monthCursor);
-    final selectedLabel =
-        '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
+    final bottomFabClearance =
+        MediaQuery.of(context).padding.bottom + 42.0;
+
+    if (widget.embedded) {
+      return Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        clipBehavior: Clip.antiAlias,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE7ECF3)),
+          ),
+          child: _calendarBody(bottomClearance: 0),
+        ),
+      );
+    }
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -943,243 +1279,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           surfaceTintColor: Colors.transparent,
           titleSpacing: 12,
           centerTitle: false,
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  monthLabel,
-                  style: GoogleFonts.kanit(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1A1A1A),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              IconButton(
-                tooltip: 'เดือนก่อน',
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() {
-                  _monthCursor = DateTime(y, m - 1, 1);
-                }),
-                icon: const Icon(Icons.chevron_left, color: Color(0xFF5C6470)),
-              ),
-              IconButton(
-                tooltip: 'เดือนถัดไป',
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() {
-                  _monthCursor = DateTime(y, m + 1, 1);
-                }),
-                icon: const Icon(Icons.chevron_right, color: Color(0xFF5C6470)),
-              ),
-            ],
-          ),
-          actions: [
-            IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
-          ],
+          title: _monthNavRow(monthLabel, y, m),
         ),
-        body: FutureBuilder<_CalendarPayload>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const ListPageSkeleton(
-                rowCount: 4,
-                showHeaderBlock: true,
-              );
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  'โหลดปฏิทินไม่สำเร็จ\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                ),
-              );
-            }
-
-            final data = snapshot.data!;
-            final days = _buildMonthDays(
-              y,
-              m,
-              data.transactions,
-              data.employees,
-              data.weeklyOffByMonday,
-              data.weeklyOffMoveReasonByMonday,
-            );
-            final bottomFabClearance =
-                MediaQuery.of(context).padding.bottom + 42.0;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        selectedLabel,
-                        style: GoogleFonts.kanit(
-                          color: const Color(0xFF1A2A3C),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          _legendChip(
-                            color: const Color(0xFFE57373),
-                            label: 'หยุด',
-                          ),
-                          _legendChip(
-                            color: const Color(0xFF5C7C9F),
-                            label: 'นักขัตฤกษ์',
-                          ),
-                          _legendChip(
-                            color: const Color(0xFFFFB74D),
-                            label: 'ลา',
-                          ),
-                          _legendChip(
-                            color: const Color(0xFF00897B),
-                            label: 'ทรายบ้าน',
-                          ),
-                          _legendChip(
-                            color: const Color(0xFFE65100),
-                            label: 'เหตุการณ์',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: Color(0xFFE8ECF0),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: ColoredBox(
-                      color: Colors.white,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
-                            child: Row(
-                              children: [
-                                for (final d in const [
-                                  'อา.',
-                                  'จ.',
-                                  'อ.',
-                                  'พ.',
-                                  'พฤ.',
-                                  'ศ.',
-                                  'ส.',
-                                ])
-                                  Expanded(
-                                    child: Center(
-                                      child: Text(
-                                        d,
-                                        textAlign: TextAlign.center,
-                                        maxLines: 1,
-                                        style: GoogleFonts.kanit(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 10,
-                                          color: const Color(0xFF6B7280),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 1, color: Color(0xFFF0F2F5)),
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                bottom: bottomFabClearance,
-                              ),
-                              child: LayoutBuilder(
-                                builder: (context, gridConstraints) {
-                                  const mainGap = 3.0;
-                                  const crossGap = 6.0;
-                                  const padH = 8.0;
-                                  const padTop = 0.0;
-                                  final rows = (days.length / 7).ceil().clamp(
-                                    1,
-                                    12,
-                                  );
-                                  final innerW =
-                                      gridConstraints.maxWidth - padH * 2;
-                                  final innerH =
-                                      gridConstraints.maxHeight - padTop;
-                                  if (innerW <= 8 || innerH <= 8) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final cellH =
-                                      (innerH - mainGap * (rows - 1)) / rows;
-
-                                  return Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      padH,
-                                      padTop,
-                                      padH,
-                                      0,
-                                    ),
-                                    child: GridView.builder(
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      gridDelegate:
-                                          SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: 7,
-                                            mainAxisSpacing: mainGap,
-                                            crossAxisSpacing: crossGap,
-                                            mainAxisExtent: cellH,
-                                          ),
-                                      itemCount: days.length,
-                                      itemBuilder: (context, index) {
-                                        final day = days[index];
-                                        if (day == null) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        final d = _dateFromYmd(day.dateStr);
-                                        final isSelected =
-                                            d.year == _selectedDate.year &&
-                                            d.month == _selectedDate.month &&
-                                            d.day == _selectedDate.day;
-                                        final now = DateTime.now();
-                                        final isToday =
-                                            d.year == now.year &&
-                                            d.month == now.month &&
-                                            d.day == now.day;
-                                        return _DayCell(
-                                          day: day,
-                                          selected: isSelected,
-                                          today: isToday,
-                                          onTap: () => _pickDay(day),
-                                        );
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+        body: _calendarBody(bottomClearance: bottomFabClearance),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _openCreateEntrySheet,
           icon: const Icon(Icons.add),

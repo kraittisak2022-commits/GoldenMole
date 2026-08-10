@@ -5,13 +5,13 @@ enum AppMainTab: Hashable {
     case realtimeTrip
     case realtimeSand
     case tasks
-    case calendar
 }
 
 private enum HomeSegment: String, CaseIterable, Identifiable {
     case overview = "ภาพรวม"
     case worklog = "บันทึกงาน"
     case reports = "รายงาน"
+    case calendar = "ปฏิทิน"
     var id: String { rawValue }
 }
 
@@ -64,12 +64,6 @@ struct DashboardShell: View {
                 .tabItem { Label("งาน", systemImage: "checklist") }
                 .badge(taskStore.inboxCount)
                 .tag(AppMainTab.tasks)
-
-                NavigationStack {
-                    calendarTab
-                }
-                .tabItem { Label("ปฏิทิน", systemImage: "calendar") }
-                .tag(AppMainTab.calendar)
             }
             .tint(AppTheme.brand)
 
@@ -216,6 +210,17 @@ struct DashboardShell: View {
                 case .reports:
                     reportsHub
                         .refreshable { await appState.refresh(forceFull: true) }
+                case .calendar:
+                    ScrollView {
+                        CalendarV3View(
+                            transactions: appState.transactions,
+                            employees: appState.employees,
+                            onDaySelected: applyHomeCalendarDay
+                        )
+                        .padding(AppTheme.spaceLG)
+                    }
+                    .refreshable { await appState.refresh(forceFull: true) }
+                    .scrollContentBackground(.hidden)
                 }
             }
         }
@@ -223,6 +228,20 @@ struct DashboardShell: View {
         .navigationTitle(appState.settings.appName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
+    }
+
+    /// Sync Home date filter to the day tapped on the embedded calendar.
+    private func applyHomeCalendarDay(_ ymd: String) {
+        let parts = ymd.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return }
+        var comps = DateComponents()
+        comps.year = parts[0]
+        comps.month = parts[1]
+        comps.day = parts[2]
+        guard let day = DashboardAggregations.gregorian.date(from: comps) else { return }
+        appState.datePreset = .custom
+        appState.customStart = day
+        appState.customEnd = day
     }
 
     /// Compact pill segment + date-range chip for the Home tab.
@@ -614,26 +633,6 @@ struct DashboardShell: View {
         CategoryReportScreen(type: type)
     }
 
-    // MARK: - Calendar
-
-    private var calendarTab: some View {
-        loadingOr {
-            ScrollView {
-                CalendarV3View(
-                    transactions: appState.transactions,
-                    employees: appState.employees
-                )
-                .padding(AppTheme.spaceLG)
-            }
-            .refreshable { await appState.refresh(forceFull: true) }
-            .scrollContentBackground(.hidden)
-        }
-        .background(DashboardBackground())
-        .navigationTitle("ปฏิทิน")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { headerToolbar }
-    }
-
     // MARK: - Header controls (profile + appearance)
 
     @ToolbarContentBuilder
@@ -810,10 +809,12 @@ private struct HomeSegmentPill: View {
                     withAnimation(.snappy(duration: 0.28)) { selection = seg }
                 } label: {
                     Text(seg.rawValue)
-                        .font(.caption.weight(.bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(selection == seg ? .white : AppTheme.inkMuted)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 9)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
                         .background {
                             if selection == seg {
                                 Capsule()

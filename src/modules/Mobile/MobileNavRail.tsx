@@ -1,10 +1,9 @@
-import { Calendar, ChevronLeft, Home, LogOut, Settings } from 'lucide-react';
+import { ChevronLeft, Home, LogOut, Settings } from 'lucide-react';
 
 type MobileNavRailProps = {
     open: boolean;
     homeSelected: boolean;
     onHome: () => void;
-    onCalendar: () => void;
     onSettings: () => void;
     onToggleRail: () => void;
     onLogout: () => void;
@@ -38,7 +37,6 @@ const MobileNavRail = ({
     open,
     homeSelected,
     onHome,
-    onCalendar,
     onSettings,
     onToggleRail,
     onLogout,
@@ -51,9 +49,6 @@ const MobileNavRail = ({
             aria-label="เมนูหลัก"
         >
             <SquircleNavButton icon={Home} selected={homeSelected} label="หน้าแรก" onClick={onHome} />
-            <div className="mt-2">
-                <SquircleNavButton icon={Calendar} label="ปฏิทิน" onClick={onCalendar} />
-            </div>
             <div className="mt-2">
                 <SquircleNavButton icon={Settings} label="ตั้งค่า" onClick={onSettings} />
             </div>

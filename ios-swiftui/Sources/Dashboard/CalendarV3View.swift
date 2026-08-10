@@ -7,6 +7,8 @@ import UIKit
 struct CalendarV3View: View {
     let transactions: [Transaction]
     let employees: [Employee]
+    /// Notifies parent (e.g. Home) when a day cell is selected — YMD string.
+    var onDaySelected: ((String) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -244,6 +246,7 @@ struct CalendarV3View: View {
 
         return Button {
             withAnimation(.snappy(duration: 0.2)) { selectedDay = day.date }
+            onDaySelected?(day.date)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             VStack(alignment: .leading, spacing: 4) {

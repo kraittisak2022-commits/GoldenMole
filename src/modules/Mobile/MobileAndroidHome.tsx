@@ -10,6 +10,7 @@ import {
     resolveDailyModuleFillStatus,
 } from './dailyModuleTransactions';
 import RecordModuleCard from './RecordModuleCard';
+import CalendarView from '../Dashboard/CalendarView';
 
 const formatBuddhistDateButton = (ymd: string): string => {
     const weekdays = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
@@ -32,8 +33,11 @@ type MobileAndroidHomeProps = {
     employees: Employee[];
     serverOnline?: boolean;
     onPickDay: () => void;
+    onSelectDay: (ymd: string) => void;
     onRefresh: () => void;
     onOpenModule: (mod: DailyModuleDef) => void;
+    onSaveTransaction: (t: Transaction) => void | Promise<void>;
+    onDeleteTransaction?: (id: string) => void | Promise<void>;
 };
 
 const MobileAndroidHome = ({
@@ -44,8 +48,11 @@ const MobileAndroidHome = ({
     employees,
     serverOnline = true,
     onPickDay,
+    onSelectDay,
     onRefresh,
     onOpenModule,
+    onSaveTransaction,
+    onDeleteTransaction,
 }: MobileAndroidHomeProps) => {
     const [countMenuOpen, setCountMenuOpen] = useState(false);
     const dayTransactions = useMemo(
@@ -135,6 +142,16 @@ const MobileAndroidHome = ({
                         ) : null}
                     </p>
                 )}
+            </div>
+
+            <div className="mt-3 shrink-0 rounded-3xl border border-[#E7ECF3] bg-white p-2 shadow-[0_3px_10px_rgba(0,0,0,0.07)]">
+                <CalendarView
+                    transactions={transactions}
+                    employees={employees}
+                    onSaveTransaction={onSaveTransaction}
+                    onDeleteTransaction={onDeleteTransaction}
+                    onDaySelected={onSelectDay}
+                />
             </div>
 
             <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-[28px] border border-[#E7ECF3] bg-white p-2 shadow-[0_3px_10px_rgba(0,0,0,0.07)]">

@@ -25,7 +25,6 @@ import { getToday } from '../../utils';
 import type { OfflineSyncSnapshot } from '../../services/offlineSync';
 import type { OfflineQueueItem } from '../../services/offlineSync';
 import SettingsModule from '../Settings/SettingsModule';
-import CalendarView from '../Dashboard/CalendarView';
 import EmployeeManager from '../Employees/EmployeeManager';
 import LandModule from '../Land/LandModule';
 import MobileNavRail from './MobileNavRail';
@@ -38,7 +37,7 @@ const AdminModule = lazyWithRetry(() => import('../Admin/AdminModule'));
 
 const NAV_RAIL_PREF = 'cm_mobile_nav_rail_open_v1';
 
-type SurfacePage = 'home' | 'calendar' | 'settings' | 'employees' | 'transactions' | 'projects' | 'sync' | 'admin';
+type SurfacePage = 'home' | 'settings' | 'employees' | 'transactions' | 'projects' | 'sync' | 'admin';
 
 interface MobileFieldAppProps {
     settings: AppSettings;
@@ -209,21 +208,19 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
     }, []);
 
     const pageTitle =
-        page === 'calendar'
-            ? 'ปฏิทิน'
-            : page === 'settings'
-              ? 'ตั้งค่า'
-              : page === 'employees'
-                ? 'พนักงาน'
-                : page === 'transactions'
-                  ? 'รายการธุรกรรม'
-                  : page === 'projects'
-                    ? 'โครงการ'
-                    : page === 'sync'
-                      ? 'ศูนย์ซิงก์'
-                      : page === 'admin'
-                        ? 'จัดการแอดมิน'
-                        : '';
+        page === 'settings'
+            ? 'ตั้งค่า'
+            : page === 'employees'
+              ? 'พนักงาน'
+              : page === 'transactions'
+                ? 'รายการธุรกรรม'
+                : page === 'projects'
+                  ? 'โครงการ'
+                  : page === 'sync'
+                    ? 'ศูนย์ซิงก์'
+                    : page === 'admin'
+                      ? 'จัดการแอดมิน'
+                      : '';
 
     const showSubPageHeader = page !== 'home';
 
@@ -270,10 +267,6 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                         open={navRailOpen}
                         homeSelected={page === 'home'}
                         onHome={goHome}
-                        onCalendar={() => {
-                            setPage('calendar');
-                            setActiveModule(null);
-                        }}
                         onSettings={() => {
                             setPage('settings');
                             setActiveModule(null);
@@ -349,22 +342,12 @@ const MobileFieldApp = (props: MobileFieldAppProps) => {
                                 employees={employees}
                                 serverOnline={offlineSync.lastMessage !== 'ออฟไลน์'}
                                 onPickDay={onPickDay}
+                                onSelectDay={(ymd) => setSelectedDate(ymd.slice(0, 10))}
                                 onRefresh={onRefresh}
                                 onOpenModule={setActiveModule}
+                                onSaveTransaction={onSaveTransaction}
+                                onDeleteTransaction={onDeleteTransaction}
                             />
-                        )}
-
-                        {page === 'calendar' && (
-                            <div className="p-3">
-                                <div className="rounded-3xl border border-[#E7ECF3] bg-white p-3 shadow-sm">
-                                    <CalendarView
-                                        transactions={transactions}
-                                        employees={employees}
-                                        onSaveTransaction={onSaveTransaction}
-                                        onDeleteTransaction={onDeleteTransaction}
-                                    />
-                                </div>
-                            </div>
                         )}
 
                         {page === 'settings' && (

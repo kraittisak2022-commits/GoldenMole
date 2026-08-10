@@ -38,9 +38,17 @@ type CalendarViewProps = {
     employees: Employee[];
     onSaveTransaction: (t: Transaction) => void | Promise<void>;
     onDeleteTransaction?: (id: string) => void | Promise<void>;
+    /** Notify parent (e.g. mobile home) when a day cell is selected — YMD. */
+    onDaySelected?: (ymd: string) => void;
 };
 
-const CalendarView = ({ transactions, employees, onSaveTransaction, onDeleteTransaction }: CalendarViewProps) => {
+const CalendarView = ({
+    transactions,
+    employees,
+    onSaveTransaction,
+    onDeleteTransaction,
+    onDaySelected,
+}: CalendarViewProps) => {
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     /** เดือนที่กำลังดู (วันที่ 1 ของเดือน) */
     const [cursorMonth, setCursorMonth] = useState(() => {
@@ -289,7 +297,10 @@ const CalendarView = ({ transactions, employees, onSaveTransaction, onDeleteTran
                         return (
                             <div
                                 key={i}
-                                onClick={() => setSelectedDay(d.date)}
+                                onClick={() => {
+                                    setSelectedDay(d.date);
+                                    onDaySelected?.(d.date);
+                                }}
                                 className={`aspect-[4/3] sm:aspect-square border rounded-2xl p-2 sm:p-3 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer relative group ${bgClass}`}
                             >
                                 <div className="flex justify-between items-start gap-1">

@@ -714,18 +714,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       lastDate: last,
     );
     if (picked != null) {
-      if (!mounted) return;
-      final pickedDate = picked;
-      setState(() {
-        _selectedDay = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
-        );
-      });
-      _configureTransactionRealtime();
-      unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
+      _applySelectedDay(picked);
     }
+  }
+
+  void _applySelectedDay(DateTime picked) {
+    if (!mounted) return;
+    final next = DateTime(picked.year, picked.month, picked.day);
+    if (_dateKey(_selectedDay) == _dateKey(next)) return;
+    setState(() => _selectedDay = next);
+    _configureTransactionRealtime();
+    unawaited(_refreshHomeSilently(tryNetwork: _serverOnline));
   }
 
   /// สลับวันที่เลือกเป็นวันนี้ — เรียกเมื่อกดนับขณะดูวันอื่นใน «บันทึกและนับจำนวน»
@@ -782,15 +781,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         onOpenMobileAndroidHub: () => _openWithAnimation(
           MobileErrorReportHubScreen(currentAdmin: widget.currentAdmin),
         ),
-      ),
-    );
-  }
-
-  Future<void> _openCalendarScreen(SupabaseClient client) async {
-    await _openWithAnimation(
-      CalendarScreen(
-        transactionService: TransactionService(client),
-        employeeService: EmployeeService(client),
       ),
     );
   }
@@ -881,6 +871,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                             _refreshAfterCountRecordChange,
                                         onRequireToday: _forceCountRecordToday,
                                         onPickDay: _pickDay,
+                                        onSelectDay: _applySelectedDay,
                                         dateKey: _dateKey,
                                         formatBuddhistDateButton:
                                             _formatBuddhistDateButton,
@@ -928,7 +919,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         l10n: l10n,
         selectedIndex: _bodyPage == 0 ? 0 : -1,
         onHome: () => setState(() => _bodyPage = 0),
-        onCalendar: () => _openCalendarScreen(client),
         onSettings: () => _openAppSettingsScreen(client),
         onLogout: _confirmLogout,
       ),
@@ -1006,6 +996,7 @@ class _DailyHomeContent extends StatefulWidget {
     required this.onCountRecordDataChanged,
     required this.onRequireToday,
     required this.onPickDay,
+    required this.onSelectDay,
     required this.dateKey,
     required this.formatBuddhistDateButton,
     required this.onOpenModule,
@@ -1025,6 +1016,7 @@ class _DailyHomeContent extends StatefulWidget {
   /// สลับวันที่เลือกเป็นวันนี้เมื่อกดนับขณะดูวันอื่น
   final VoidCallback onRequireToday;
   final VoidCallback onPickDay;
+  final ValueChanged<DateTime> onSelectDay;
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
   final void Function(_DailyModuleDef m) onOpenModule;
@@ -1783,6 +1775,14 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 onRefresh: widget.onPullRefresh,
                               ),
                             ),
+                          ),
+                          const SizedBox(height: 10),
+                          CalendarScreen(
+                            transactionService: widget.txService,
+                            employeeService: widget.employeeService,
+                            embedded: true,
+                            externalSelectedDay: widget.selectedDay,
+                            onDaySelected: widget.onSelectDay,
                           ),
                           const SizedBox(height: 12),
                         ],
@@ -2681,7 +2681,6 @@ class _ProBottomNav extends StatelessWidget {
     required this.l10n,
     required this.selectedIndex,
     required this.onHome,
-    required this.onCalendar,
     required this.onSettings,
     required this.onLogout,
   });
@@ -2689,7 +2688,6 @@ class _ProBottomNav extends StatelessWidget {
   final AppLocalizations l10n;
   final int selectedIndex;
   final VoidCallback onHome;
-  final VoidCallback onCalendar;
   final VoidCallback onSettings;
   final VoidCallback onLogout;
 
@@ -2720,14 +2718,6 @@ class _ProBottomNav extends StatelessWidget {
               _navItem(
                 context,
                 index: 1,
-                icon: Icons.calendar_month_outlined,
-                selectedIcon: Icons.calendar_month_rounded,
-                label: l10n.navCalendar,
-                onTap: onCalendar,
-              ),
-              _navItem(
-                context,
-                index: 2,
                 icon: Icons.settings_outlined,
                 selectedIcon: Icons.settings_rounded,
                 label: l10n.navSettings,
@@ -2735,7 +2725,7 @@ class _ProBottomNav extends StatelessWidget {
               ),
               _navItem(
                 context,
-                index: 3,
+                index: 2,
                 icon: Icons.logout_rounded,
                 selectedIcon: Icons.logout_rounded,
                 label: l10n.navLogout,
