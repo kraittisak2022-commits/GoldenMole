@@ -41,7 +41,8 @@ class LocalDataCache {
   static const Duration employeeTtl = Duration(minutes: 25);
   static const Duration dashboardSummaryTtl = Duration(minutes: 8);
   static const Duration transactionsByDayTtl = Duration(minutes: 3);
-  static const Duration transactionsFullTtl = Duration(minutes: 2);
+  /// มี realtime + patch หลังบันทึก — ยืด TTL ลด full-table SELECT ที่กิน Disk IO
+  static const Duration transactionsFullTtl = Duration(minutes: 30);
   /// ยอดถังอัปเดตจาก delta หลังเซฟ — TTL ยาวเพื่อไม่บังคับคำนวณ/ดึง DB บ่อย
   static const Duration fuelStockSnapshotTtl = Duration(days: 7);
 

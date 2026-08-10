@@ -551,12 +551,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (includeFullLedger) {
       allRows = results[3] as List<AppTransaction>;
     } else {
-      // Soft poll: keep prior ledger (fuel stock etc.) — only refresh day slice.
+      // Soft poll: day slice only — never full-table fetch (Disk IO).
       final prior = _lastHomePayload?.allTransactions;
       if (prior != null && prior.isNotEmpty) {
         allRows = prior;
       } else {
-        allRows = await _txService.fetchTransactions(forceRefresh: false);
+        allRows =
+            await LocalDataCache.readTransactionsFullAny() ??
+            const <AppTransaction>[];
       }
     }
     unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));

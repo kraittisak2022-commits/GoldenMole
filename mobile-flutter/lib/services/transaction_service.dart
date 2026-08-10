@@ -8,6 +8,20 @@ class TransactionService {
 
   final SupabaseClient _client;
 
+  /// คอลัมน์ที่ [AppTransaction.fromMap] ใช้ — ลด bytes ตอน full fetch (Disk IO / network)
+  static const String _transactionColumns =
+      'id, date, type, category, description, amount, sub_category, '
+      'labor_status, employee_ids, employee_id, note, event_time, event_type, '
+      'event_priority, sand_morning, sand_afternoon, sand_machine_type, '
+      'sand_operators, drums_obtained, drums_washed_at_home, sand_morning_start, '
+      'sand_afternoon_start, sand_evening_end, vehicle_id, driver_id, driver_wage, '
+      'vehicle_wage, work_details, work_type, work_assignments, '
+      'work_type_by_employee, custom_work_categories, quantity, unit_price, unit, '
+      'project_id, location, fuel_type, fuel_movement, fuel_tank, trip_count, '
+      'trip_morning, trip_afternoon, cubic_per_trip, total_cubic, per_car_trips, '
+      'per_car_cubic, trip_billing_mode, ot_amount, ot_hours, ot_description, '
+      'advance_amount, leave_reason, leave_days, income_payment_status, created_at';
+
   Future<void> _invalidateAfterMutation({
     required String? affectingDate,
     AppTransaction? patchedTx,
@@ -35,7 +49,10 @@ class TransactionService {
     }
 
     try {
-      final rows = await _client.from('transactions').select().order('created_at', ascending: false);
+      final rows = await _client
+          .from('transactions')
+          .select(_transactionColumns)
+          .order('created_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsFull(list);
       return list;
@@ -49,7 +66,7 @@ class TransactionService {
   Future<List<AppTransaction>> fetchRecentTransactions({int limit = 10}) async {
     final rows = await _client
         .from('transactions')
-        .select()
+        .select(_transactionColumns)
         .order('created_at', ascending: false)
         .limit(limit);
     return rows.map(AppTransaction.fromMap).toList();
@@ -70,7 +87,7 @@ class TransactionService {
     try {
       final rows = await _client
           .from('transactions')
-          .select()
+          .select(_transactionColumns)
           .eq('date', ymd)
           .order('created_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();

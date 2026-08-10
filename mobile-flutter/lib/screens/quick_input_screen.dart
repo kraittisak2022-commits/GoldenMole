@@ -1377,11 +1377,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (!mounted || !isCurrentLoad()) return;
 
     try {
-      // ลางานไม่ forceServer ตลอด — เฉพาะเมื่อ forceRefresh (realtime/resume/ผู้ใช้ดึง)
-      final forceServer = forceRefresh ||
-          cat == 'จำนวนเที่ยวรถ' ||
-          cat == 'การใช้รถแม็คโคร' ||
-          cat.toUpperCase().contains('OT');
+      // Soft poll ใช้แคช/TTL — force เฉพาะเมื่อ realtime/resume/ผู้ใช้ดึง (forceRefresh)
+      // เดิมบังคับ force ทุกครั้งสำหรับรถ/OT ทำให้ Disk IO พุ่งแม้ poll 60 วิ
+      final forceServer = forceRefresh;
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: forceServer)
           : await widget.service.fetchTransactionsForDate(
@@ -2433,9 +2431,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } catch (_) {}
   }
 
+  /// งานรอง (suggestions / stock) — อ่านแคชเต็มชุดในเครื่องก่อน ไม่บังคับดึงตาราง
+  Future<List<AppTransaction>> _transactionsPreferLocalCache() async {
+    final local = await LocalDataCache.readTransactionsFullAny();
+    if (local != null && local.isNotEmpty) return local;
+    return widget.service.fetchTransactions(forceRefresh: false);
+  }
+
   Future<void> _loadOtSuggestions() async {
     try {
-      final txs = await widget.service.fetchTransactions();
+      final txs = await _transactionsPreferLocalCache();
       final ranked = <String, int>{};
       for (final tx in txs) {
         if (tx.category != 'Labor') continue;
@@ -2461,7 +2466,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _loadVehicleWorkSuggestions() async {
     try {
-      final txs = await widget.service.fetchTransactions();
+      final txs = await _transactionsPreferLocalCache();
       final ranked = <String, int>{};
       for (final tx in txs) {
         if (!transactionCountsAsVehicleTripMenu(tx)) continue;
@@ -2572,7 +2577,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _refreshHomeSandStock() async {
     try {
-      final rows = await widget.service.fetchTransactions();
+      final rows = await _transactionsPreferLocalCache();
       final byDay = <String, List<AppTransaction>>{};
       for (final t in rows) {
         if (t.category != 'DailyLog' || t.subCategory != 'Sand') continue;
