@@ -824,6 +824,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onOpenMobileAndroidHub: () => _openWithAnimation(
           MobileErrorReportHubScreen(currentAdmin: widget.currentAdmin),
         ),
+        onLogout: widget.onLogout,
       ),
     );
   }
@@ -964,34 +965,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         selectedIndex: _bodyPage == 0 ? 0 : -1,
         onHome: () => setState(() => _bodyPage = 0),
         onCalendar: () => _openCalendarScreen(client),
-        onLogout: _confirmLogout,
       ),
     );
   }
 
-  Future<void> _confirmLogout() async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.navLogout),
-        content: Text(l10n.logoutConfirmMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.navLogout),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      widget.onLogout();
-    }
-  }
 }
 
 const _kDailyMenuDetailCategories = {
@@ -2761,14 +2738,12 @@ class _ProBottomNav extends StatelessWidget {
     required this.selectedIndex,
     required this.onHome,
     required this.onCalendar,
-    required this.onLogout,
   });
 
   final AppLocalizations l10n;
   final int selectedIndex;
   final VoidCallback onHome;
   final VoidCallback onCalendar;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -2801,14 +2776,6 @@ class _ProBottomNav extends StatelessWidget {
                 selectedIcon: Icons.calendar_month_rounded,
                 label: l10n.navCalendar,
                 onTap: onCalendar,
-              ),
-              _navItem(
-                context,
-                index: 2,
-                icon: Icons.logout_rounded,
-                selectedIcon: Icons.logout_rounded,
-                label: l10n.navLogout,
-                onTap: onLogout,
               ),
             ],
           ),

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_localizations.dart';
 import '../models/admin_user.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
@@ -16,6 +17,7 @@ class AppSettingsScreen extends StatefulWidget {
     required this.onOpenTransactions,
     required this.onOpenProjects,
     required this.onOpenMobileAndroidHub,
+    required this.onLogout,
     required this.currentAdmin,
   });
 
@@ -23,6 +25,7 @@ class AppSettingsScreen extends StatefulWidget {
   final VoidCallback onOpenTransactions;
   final VoidCallback onOpenProjects;
   final VoidCallback onOpenMobileAndroidHub;
+  final VoidCallback onLogout;
   final AdminUser currentAdmin;
 
   @override
@@ -190,6 +193,33 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
         content: Text('บันทึกการตั้งค่าสำเร็จ', style: GoogleFonts.kanit()),
       ),
     );
+  }
+
+  Future<void> _confirmLogout() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.navLogout, style: GoogleFonts.kanit()),
+        content: Text(l10n.logoutConfirmMessage, style: GoogleFonts.kanit()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.cancel, style: GoogleFonts.kanit()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.navLogout, style: GoogleFonts.kanit()),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+      widget.onLogout();
+    }
   }
 
   @override
@@ -386,6 +416,23 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       style: GoogleFonts.kanit(
                         fontSize: 12,
                         color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _confirmLogout,
+                      icon: const Icon(Icons.logout_rounded),
+                      label: Text(
+                        AppLocalizations.of(context).navLogout,
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFD14343),
+                        side: const BorderSide(color: Color(0xFFF5C2C2)),
+                        minimumSize: const Size.fromHeight(48),
                       ),
                     ),
                   ),
