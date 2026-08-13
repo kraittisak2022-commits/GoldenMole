@@ -155,6 +155,11 @@ enum SandStockLogic {
             (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "sand"
     }
 
+    /// Wash-form cubic rows that are not the count-record sieve tap.
+    static func isLegacyWashCubicRow(_ t: Transaction) -> Bool {
+        isWashOutRow(t) && !CountRecordLogic.isCountRecordSandTapRow(t)
+    }
+
     /// Prefer stored cubic fields; fall back to trips × cubic/trip when both are present.
     static func tripCubicIn(_ t: Transaction) -> Double {
         if let c = t.perCarCubic, c > 0 { return c }
@@ -179,10 +184,24 @@ enum SandStockLogic {
             .reduce(0.0) { $0 + tripCubicIn($1) }
     }
 
+    /// ร่อนออก = รอบจากเมนูร่อนทราย (1 รอบ = 1 คิว). Fallback คิวฟอร์มล้างทรายเมื่อไม่มีแถวนับร่อน.
     static func cubicOut(on date: String, transactions: [Transaction]) -> Double {
-        transactions
-            .filter { String($0.date.prefix(10)) == date && isWashOutRow($0) }
+        let dayTx = transactions.filter { String($0.date.prefix(10)) == date }
+        if let sand = CountRecordLogic.buildSandUnit(dayKey: date, transactions: dayTx), sand.rounds > 0 {
+            return Double(sand.rounds)
+        }
+        return dayTx
+            .filter(isLegacyWashCubicRow)
             .reduce(0.0) { $0 + washCubicOut($1) }
+    }
+
+    static func cubicOutBefore(_ startDate: String, transactions: [Transaction]) -> Double {
+        let priorDates = Set(
+            transactions
+                .map { String($0.date.prefix(10)) }
+                .filter { !$0.isEmpty && $0 < startDate }
+        )
+        return priorDates.reduce(0.0) { $0 + cubicOut(on: $1, transactions: transactions) }
     }
 
     static func buildRecentEvents(
@@ -191,7 +210,8 @@ enum SandStockLogic {
         limit: Int = maxFeedEvents
     ) -> [FeedEvent] {
         var events: [FeedEvent] = []
-        for t in transactions where String(t.date.prefix(10)) == dayKey {
+        let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey }
+        for t in dayTx {
             if isTripInRow(t) {
                 let cubic = tripCubicIn(t)
                 guard cubic > 0 else { continue }
@@ -207,7 +227,21 @@ enum SandStockLogic {
                     )
                 )
             }
-            if isWashOutRow(t) {
+        }
+        if let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: dayTx), sand.rounds > 0,
+           let tap = dayTx.first(where: { $0.id == sand.id }) {
+            events.append(
+                FeedEvent(
+                    id: "out-\(sand.id)",
+                    direction: .outbound,
+                    cubic: Double(sand.rounds),
+                    label: "ร่อนทราย \(sand.rounds) รอบ",
+                    timeLabel: formatEventTime(tap),
+                    sortKey: eventSortKey(tap)
+                )
+            )
+        } else {
+            for t in dayTx where isLegacyWashCubicRow(t) {
                 let cubic = washCubicOut(t)
                 guard cubic > 0 else { continue }
                 events.append(
@@ -248,9 +282,7 @@ enum SandStockLogic {
         let priorIn = transactions
             .filter { isTripInRow($0) && String($0.date.prefix(10)) < filter.start }
             .reduce(0.0) { $0 + tripCubicIn($1) }
-        let priorOut = transactions
-            .filter { isWashOutRow($0) && String($0.date.prefix(10)) < filter.start }
-            .reduce(0.0) { $0 + washCubicOut($1) }
+        let priorOut = cubicOutBefore(filter.start, transactions: transactions)
 
         var running = opening + priorIn - priorOut
         var series: [DayPoint] = []
@@ -278,9 +310,9 @@ enum SandStockLogic {
         let dayCount = max(dates.count, 1)
         let avgIn = periodIn / Double(dayCount)
         let avgOut = periodOut / Double(dayCount)
-        let todayIn = cubicIn(on: today, transactions: transactions)
-        let todayOut = cubicOut(on: today, transactions: transactions)
-        let feedDay = filter.end.isEmpty ? today : filter.end
+        let asOfIn = cubicIn(on: asOf, transactions: transactions)
+        let asOfOut = cubicOut(on: asOf, transactions: transactions)
+        let feedDay = asOf.isEmpty ? today : asOf
 
         let pace = resolvePace(avgIn: avgIn, avgOut: avgOut, periodIn: periodIn, periodOut: periodOut)
         let burn = avgOut - avgIn
@@ -298,8 +330,8 @@ enum SandStockLogic {
             periodInCubic: periodIn,
             periodOutCubic: periodOut,
             periodNetCubic: periodIn - periodOut,
-            todayInCubic: todayIn,
-            todayOutCubic: todayOut,
+            todayInCubic: asOfIn,
+            todayOutCubic: asOfOut,
             avgDailyInCubic: avgIn,
             avgDailyOutCubic: avgOut,
             pace: pace,

@@ -5,7 +5,8 @@ struct SandStockHubView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var scope = ReportDateScope()
+    @State private var focusDate = Date()
+    @State private var showDatePicker = false
     @State private var snapshot = SandStockLogic.Snapshot.empty
     @State private var openingDraft = ""
     @State private var capacityDraft = ""
@@ -32,8 +33,6 @@ struct SandStockHubView: View {
                 paceBanner
 
                 liveFeedSection
-
-                ReportDateBar(scope: $scope)
 
                 if !snapshot.series.isEmpty {
                     chartCard(
@@ -90,6 +89,15 @@ struct SandStockHubView: View {
         .sheet(isPresented: $showSettingsEditor) {
             settingsEditorSheet
         }
+        .sheet(isPresented: $showDatePicker) {
+            RealtimeFocusCalendarSheet(
+                selection: $focusDate,
+                transactions: appState.transactions,
+                employees: appState.employees,
+                transactionsRevision: appState.transactionsRevision,
+                onDismiss: { showDatePicker = false }
+            )
+        }
         .task {
             startLivePing()
             await reload(animate: false)
@@ -101,18 +109,66 @@ struct SandStockHubView: View {
 
     // MARK: - LIVE header
 
+    private var focusDateStr: String { DashboardAggregations.formatYMD(focusDate) }
+    private var isToday: Bool { focusDateStr == DashboardAggregations.todayYMD() }
+
+    private var chartFilter: DateFilter {
+        let end = focusDateStr
+        let start = DashboardAggregations.shiftDateStr(end, deltaDays: -6)
+        let earliest = DashboardAggregations.shiftDateStr(DashboardAggregations.todayYMD(), deltaDays: -90)
+        return DateFilter(start: max(start, earliest), end: end)
+    }
+
     private var liveHeader: some View {
         HStack(spacing: 10) {
             liveBadge
-            VStack(alignment: .leading, spacing: 2) {
-                Text("บ่อสต๊อกสด")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(scope.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkMuted)
+            Button {
+                showDatePicker = true
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("บ่อสต๊อกสด")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                        HStack(spacing: 6) {
+                            Text(thaiDateShort(focusDateStr))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                            if isToday {
+                                Text("วันนี้")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(liveGreen)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(liveGreen.opacity(0.14)))
+                            }
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityLabel("เลือกวันที่กำลังดู")
+            .accessibilityHint("แตะเพื่อเลือกวันย้อนหลัง")
+
+            if !isToday {
+                Button {
+                    focusDate = Date()
+                } label: {
+                    Text("กลับวันนี้")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(accent.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+            }
+
             Text("\(fmt(snapshot.pondCapacityCubic)) \(SandStockLogic.unitLabel)")
                 .font(.caption.weight(.bold).monospacedDigit())
                 .foregroundStyle(AppTheme.inkSecondary)
@@ -247,23 +303,24 @@ struct SandStockHubView: View {
     // MARK: - HUD
 
     private var hudRow: some View {
-        HStack(spacing: 10) {
+        let dayNet = snapshot.todayInCubic - snapshot.todayOutCubic
+        return HStack(spacing: 10) {
             hudChip(
                 title: "ขนเข้า",
-                value: "+\(fmt(snapshot.periodInCubic))",
+                value: "+\(fmt(snapshot.todayInCubic))",
                 color: AppTheme.income,
                 icon: "arrow.down.to.line"
             )
             hudChip(
                 title: "ร่อนออก",
-                value: "−\(fmt(snapshot.periodOutCubic))",
+                value: "−\(fmt(snapshot.todayOutCubic))",
                 color: AppTheme.expense,
                 icon: "arrow.up.right"
             )
             hudChip(
                 title: "สุทธิ",
-                value: signed(snapshot.periodNetCubic),
-                color: snapshot.periodNetCubic >= 0 ? AppTheme.income : AppTheme.warning,
+                value: signed(dayNet),
+                color: dayNet >= 0 ? AppTheme.income : AppTheme.warning,
                 icon: "arrow.left.arrow.right"
             )
         }
@@ -341,13 +398,13 @@ struct SandStockHubView: View {
                     .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                Text("วันนี้ / ท้ายช่วง")
+                Text(isToday ? "วันนี้" : thaiDateShort(focusDateStr))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
             }
 
             if snapshot.recentEvents.isEmpty {
-                Text("ยังไม่มีเที่ยวเข้าหรือร่อนออกในวันนี้")
+                Text(isToday ? "ยังไม่มีเที่ยวเข้าหรือร่อนออกในวันนี้" : "ยังไม่มีเที่ยวเข้าหรือร่อนออกในวันที่เลือก")
                     .font(.caption)
                     .foregroundStyle(AppTheme.inkMuted)
                     .padding(.vertical, 8)
@@ -489,7 +546,7 @@ struct SandStockHubView: View {
     // MARK: - Data
 
     private var reloadToken: String {
-        "\(scope.filter.start)-\(scope.filter.end)-\(appState.transactionsRevision)"
+        "\(chartFilter.start)-\(chartFilter.end)-\(appState.transactionsRevision)"
     }
 
     private var chartLabels: [String] {
@@ -501,7 +558,7 @@ struct SandStockHubView: View {
     }
 
     private func reload(animate: Bool) async {
-        let filter = scope.filter
+        let filter = chartFilter
         let txs = appState.transactions
         let opening = SandStockLogic.loadOpeningCubic()
         let capacity = SandStockLogic.loadPondCapacityCubic()
@@ -544,6 +601,12 @@ struct SandStockHubView: View {
     }
 
     // MARK: - Formatting helpers
+
+    private func thaiDateShort(_ ymd: String) -> String {
+        let parts = ymd.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return ymd }
+        return String(format: "%02d/%02d/%04d", parts[2], parts[1], parts[0])
+    }
 
     private func fmt(_ value: Double) -> String {
         DashboardAggregations.formatNumber(value)
