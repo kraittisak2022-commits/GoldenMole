@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -2689,7 +2690,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     border: Border(
-                      top: BorderSide(color: Color(0xFFDCEDF1)),
+                      top: BorderSide(color: Color(0xFFA9DCE4)),
                     ),
                   ),
                   child: SizedBox(
@@ -2731,7 +2732,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
   }
 }
 
-/// แถบนำทางล่าง — เม็ดที่เลือกหุ้มเฉพาะไอคอน+ป้าย ไม่ยืดเต็มช่อง
+/// แถบนำทางล่างเต็มความกว้าง — พื้นเดียว ไม่มีกล่องสีล้อมแท็บ
 class _ProBottomNav extends StatelessWidget {
   const _ProBottomNav({
     required this.l10n,
@@ -2745,73 +2746,71 @@ class _ProBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
 
-  static const _accent = Color(0xFF0D98A5);
+  static const _teal = Color(0xFF0D98A5);
   static const _idle = Color(0xFF64748B);
-  static const _pillFill = Color(0xFFE6F7F9);
-  static const _pillBorder = Color(0xFFA9DCE4);
-
-  /// กันแท็บกระจายห่างกันบนจอกว้าง — ให้กลุ่มแท็บอยู่กลางแถบ
-  static const _maxTabsWidth = 380.0;
 
   @override
   Widget build(BuildContext context) {
     final profile = TouchProfile.of(context);
+    final navHeight = profile.navBarHeight;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: _accent.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, -6),
-          ),
-          const BoxShadow(
-            color: Color(0x0F0F172A),
-            blurRadius: 6,
-            offset: Offset(0, -1),
+            color: _teal.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
+          const SizedBox(
             height: 3,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Color(0xFF00C4D4), _accent, Color(0xFF0A7A88)],
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF00C4D4),
+                    _teal,
+                    Color(0xFF0A7A88),
+                  ],
+                ),
               ),
             ),
           ),
           SafeArea(
             top: false,
             child: SizedBox(
-              height: profile.navBarHeight,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: _maxTabsWidth),
-                  child: Row(
-                    children: [
-                      _navItem(
-                        index: 0,
-                        icon: Icons.home_outlined,
-                        selectedIcon: Icons.home_rounded,
-                        label: l10n.navHome,
-                        onTap: onHome,
-                      ),
-                      _navItem(
-                        index: 1,
-                        icon: Icons.calendar_month_outlined,
-                        selectedIcon: Icons.calendar_month_rounded,
-                        label: l10n.navCalendar,
-                        onTap: onCalendar,
-                      ),
-                    ],
+              height: navHeight,
+              child: Row(
+                children: [
+                  _navItem(
+                    index: 0,
+                    icon: Icons.home_outlined,
+                    selectedIcon: Icons.home_rounded,
+                    label: l10n.navHome,
+                    onTap: onHome,
                   ),
-                ),
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    indent: 12,
+                    endIndent: 12,
+                    color: Color(0xFFE3EEF3),
+                  ),
+                  _navItem(
+                    index: 1,
+                    icon: Icons.calendar_month_outlined,
+                    selectedIcon: Icons.calendar_month_rounded,
+                    label: l10n.navCalendar,
+                    onTap: onCalendar,
+                  ),
+                ],
               ),
             ),
           ),
@@ -2828,61 +2827,54 @@ class _ProBottomNav extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final selected = selectedIndex == index;
+    final color = selected ? _teal : _idle;
 
     return Expanded(
       child: SoftPressButton(
         onTap: onTap,
         size: SoftPressSize.small,
-        borderRadius: 18,
+        borderRadius: 0,
         isDarkSurface: false,
         showHighlight: false,
-        child: Center(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
-            decoration: BoxDecoration(
-              color: selected ? _pillFill : Colors.transparent,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: selected ? _pillBorder : Colors.transparent,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  selected ? selectedIcon : icon,
+                  size: 24,
+                  color: color,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                    color: color,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: selected ? 1 : 0,
+                child: const SizedBox(
+                  height: 3,
+                  child: ColoredBox(color: _teal),
+                ),
               ),
             ),
-            child: FittedBox(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    selected ? selectedIcon : icon,
-                    size: 24,
-                    color: selected ? _accent : _idle,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.1,
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                      color: selected ? _accent : _idle,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    width: selected ? 18 : 0,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: selected ? _accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          ],
         ),
       ),
     );
