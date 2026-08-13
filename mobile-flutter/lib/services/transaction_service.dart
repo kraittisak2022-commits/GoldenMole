@@ -8,6 +8,9 @@ class TransactionService {
 
   final SupabaseClient _client;
 
+  static Future<List<AppTransaction>>? _inFlightFull;
+  static final Map<String, Future<List<AppTransaction>>> _inFlightByDay = {};
+
   /// คอลัมน์ที่ [AppTransaction.fromMap] ใช้ — ลด bytes ตอน full fetch (Disk IO / network)
   static const String _transactionColumns =
       'id, date, type, category, description, amount, sub_category, '
@@ -41,7 +44,21 @@ class TransactionService {
     }
   }
 
-  Future<List<AppTransaction>> fetchTransactions({bool forceRefresh = false}) async {
+  Future<List<AppTransaction>> fetchTransactions({
+    bool forceRefresh = false,
+  }) {
+    final existing = _inFlightFull;
+    if (existing != null) return existing;
+    final future = _fetchTransactionsBody(forceRefresh: forceRefresh);
+    _inFlightFull = future;
+    return future.whenComplete(() {
+      if (identical(_inFlightFull, future)) _inFlightFull = null;
+    });
+  }
+
+  Future<List<AppTransaction>> _fetchTransactionsBody({
+    required bool forceRefresh,
+  }) async {
     if (!forceRefresh) {
       final cached =
           await LocalDataCache.readTransactionsFull(LocalDataCache.transactionsFullTtl);
@@ -75,6 +92,24 @@ class TransactionService {
   Future<List<AppTransaction>> fetchTransactionsForDate(
     String ymd, {
     bool forceRefresh = false,
+  }) {
+    final existing = _inFlightByDay[ymd];
+    if (existing != null) return existing;
+    final future = _fetchTransactionsForDateBody(
+      ymd,
+      forceRefresh: forceRefresh,
+    );
+    _inFlightByDay[ymd] = future;
+    return future.whenComplete(() {
+      if (identical(_inFlightByDay[ymd], future)) {
+        _inFlightByDay.remove(ymd);
+      }
+    });
+  }
+
+  Future<List<AppTransaction>> _fetchTransactionsForDateBody(
+    String ymd, {
+    required bool forceRefresh,
   }) async {
     if (!forceRefresh) {
       final cached = await LocalDataCache.readTransactionsForDay(

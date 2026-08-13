@@ -1094,6 +1094,9 @@ class CountRecordOfflineSync {
     final c = client ?? _autoSyncClient;
     if (s == null || c == null || _uploadInFlight) return 0;
 
+    await _ensureQueueLoaded();
+    if (_memoryQueue!.isEmpty) return 0;
+
     _uploadInFlight = true;
     _publishSyncState(activity: SyncActivity.syncing);
     try {

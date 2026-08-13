@@ -1,12 +1,29 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
 import '../utils/fuel_stock.dart';
+
+/// jsonDecode ใน isolate — อย่าเรียกตรงจาก UI
+List<Map<String, dynamic>> decodeTxPersistenceMaps(String raw) {
+  final decoded = jsonDecode(raw);
+  if (decoded is! List) return const [];
+  return [
+    for (final item in decoded)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
+}
+
+/// jsonEncode ใน isolate — อย่าเรียกตรงจาก UI
+String encodeTxPersistenceMaps(List<Map<String, dynamic>> maps) {
+  return jsonEncode(maps);
+}
 
 /// แคชข้อมูลจาก Supabase ลง SharedPreferences เพื่อโหลดเร็วและลดรอบเน็ตเวิร์ก
 ///
@@ -31,12 +48,16 @@ class LocalDataCache {
   static const _kTxDayDates = 'v1_cache_tx_day_dates_json';
   static const _kTxAllJson = 'v1_cache_transactions_all_json';
   static const _kTxAllAt = 'v1_cache_transactions_all_ms';
+  static const _txFullFileName = 'tx_full_v1.json';
 
   static const _kFuelStockJson = 'v1_cache_fuel_stock_json';
   static const _kFuelStockAt = 'v1_cache_fuel_stock_ms';
 
-  /// ไม่เขียนข้อมูลธุรกรรมเต็มชุดลง prefs เกินขีดจำกัดนี้ (กันค้างความจำใหญ่)
-  static const int maxTransactionsFullJsonChars = 350000;
+  /// เพดานไฟล์แคชเต็มชุด (~8 MB) — กันบวมผิดปกติ ไม่ใช่ SharedPreferences
+  static const int maxTransactionsFullJsonChars = 8 * 1024 * 1024;
+
+  static File? _txFullFile;
+  static bool _legacyTxPrefsCleared = false;
 
   static const Duration employeeTtl = Duration(minutes: 25);
   static const Duration dashboardSummaryTtl = Duration(minutes: 8);
@@ -211,40 +232,89 @@ class LocalDataCache {
     await p.remove(_kTxDayDates);
   }
 
-  static Future<List<AppTransaction>?> readTransactionsFull(Duration ttl) async {
-    final p = await _p();
-    if (!_withinTtl(ttl, p.getInt(_kTxAllAt))) return null;
-    return _decodeTransactionsFull(p.getString(_kTxAllJson));
+  static Future<File?> _transactionsFullFile() async {
+    if (kIsWeb) return null;
+    if (_txFullFile != null) return _txFullFile;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      _txFullFile = File('${dir.path}/$_txFullFileName');
+      return _txFullFile;
+    } catch (e, st) {
+      debugPrint('LocalDataCache._transactionsFullFile: $e\n$st');
+      return null;
+    }
   }
 
-  /// อ่านธุรกรรมทั้งหมดแม้ TTL หมด — ใช้ตอนออฟไลน์
-  static Future<List<AppTransaction>?> readTransactionsFullAny() async {
-    final p = await _p();
-    return _decodeTransactionsFull(p.getString(_kTxAllJson));
+  static Future<void> _clearLegacyTxPrefsOnce() async {
+    if (_legacyTxPrefsCleared) return;
+    _legacyTxPrefsCleared = true;
+    try {
+      final p = await _p();
+      if (p.containsKey(_kTxAllJson)) {
+        await p.remove(_kTxAllJson);
+      }
+    } catch (_) {}
   }
 
-  static List<AppTransaction>? _decodeTransactionsFull(String? raw) {
+  static Future<String?> _readTransactionsFullBlob() async {
+    await _clearLegacyTxPrefsOnce();
+    try {
+      final file = await _transactionsFullFile();
+      if (file == null || !await file.exists()) return null;
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return null;
+      return raw;
+    } catch (e, st) {
+      debugPrint('LocalDataCache.readTransactionsFull file error: $e\n$st');
+      return null;
+    }
+  }
+
+  static Future<List<AppTransaction>?> _decodeTransactionsFullAsync(
+    String? raw,
+  ) async {
     if (raw == null || raw.isEmpty) return null;
     try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return null;
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(AppTransaction.fromMap)
-          .toList();
+      final maps = await compute(decodeTxPersistenceMaps, raw);
+      if (maps.isEmpty) return null;
+      return maps.map(AppTransaction.fromMap).toList();
     } catch (e, st) {
       debugPrint('LocalDataCache.readTransactionsFull error: $e\n$st');
       return null;
     }
   }
 
-  static Future<void> writeTransactionsFull(List<AppTransaction> list) async {
-    final blob =
-        jsonEncode(list.map((e) => e.toPersistenceMap()).toList());
-    if (blob.length > maxTransactionsFullJsonChars) return;
+  static Future<List<AppTransaction>?> readTransactionsFull(Duration ttl) async {
     final p = await _p();
-    await p.setString(_kTxAllJson, blob);
-    await p.setInt(_kTxAllAt, DateTime.now().millisecondsSinceEpoch);
+    if (!_withinTtl(ttl, p.getInt(_kTxAllAt))) return null;
+    return readTransactionsFullAny();
+  }
+
+  /// อ่านธุรกรรมทั้งหมดแม้ TTL หมด — ใช้ตอนออฟไลน์
+  static Future<List<AppTransaction>?> readTransactionsFullAny() async {
+    final raw = await _readTransactionsFullBlob();
+    return _decodeTransactionsFullAsync(raw);
+  }
+
+  static Future<void> writeTransactionsFull(List<AppTransaction> list) async {
+    final maps = list.map((e) => e.toPersistenceMap()).toList();
+    final blob = await compute(encodeTxPersistenceMaps, maps);
+    if (blob.length > maxTransactionsFullJsonChars) {
+      debugPrint(
+        'LocalDataCache.writeTransactionsFull skipped: ${blob.length} chars',
+      );
+      return;
+    }
+    await _clearLegacyTxPrefsOnce();
+    try {
+      final file = await _transactionsFullFile();
+      if (file == null) return;
+      await file.writeAsString(blob, flush: true);
+      final p = await _p();
+      await p.setInt(_kTxAllAt, DateTime.now().millisecondsSinceEpoch);
+    } catch (e, st) {
+      debugPrint('LocalDataCache.writeTransactionsFull error: $e\n$st');
+    }
   }
 
   /// อัปเดต/เพิ่มรายการเดียวในแคชธุรกรรมเต็มชุด (ใช้หลังบันทึกออฟไลน์)
@@ -268,9 +338,15 @@ class LocalDataCache {
   }
 
   static Future<void> invalidateTransactionsFull() async {
+    await _clearLegacyTxPrefsOnce();
     final p = await _p();
-    await p.remove(_kTxAllJson);
     await p.remove(_kTxAllAt);
+    try {
+      final file = await _transactionsFullFile();
+      if (file != null && await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   static Future<void> writeFuelStockSnapshot(FuelStockBalance balance) async {

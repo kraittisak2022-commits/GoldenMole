@@ -551,15 +551,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (includeFullLedger) {
       allRows = results[3] as List<AppTransaction>;
     } else {
-      // Soft poll: day slice only — never full-table fetch (Disk IO).
+      // First paint / soft poll: never wait on full-table fetch or file decode.
       final prior = _lastHomePayload?.allTransactions;
-      if (prior != null && prior.isNotEmpty) {
-        allRows = prior;
-      } else {
-        allRows =
-            await LocalDataCache.readTransactionsFullAny() ??
-            const <AppTransaction>[];
-      }
+      allRows = (prior != null && prior.isNotEmpty)
+          ? prior
+          : const <AppTransaction>[];
     }
     unawaited(CountRecordOfflineSync.instance.cacheEmployees(employees));
     unawaited(
@@ -623,16 +619,47 @@ class _DashboardScreenState extends State<DashboardScreen>
       } catch (_) {}
       CountRecordOfflineSync.instance.noteServerReachable();
 
-      return await _loadHomeFromNetwork(
+      final payload = await _loadHomeFromNetwork(
         client: client,
         dayKey: dayKey,
         networkRefresh: forceRefresh,
+        includeFullLedger: false,
       ).timeout(const Duration(seconds: 12));
+      unawaited(
+        _hydrateFullLedger(dayKey: dayKey, forceRefresh: forceRefresh),
+      );
+      return payload;
     } catch (_) {
       CountRecordOfflineSync.instance.noteServerUnreachable();
       _applyServerReachability(false, force: forceRefresh);
       return _loadHomeOfflineOrEmpty(dayKey);
     }
+  }
+
+  /// เติม ledger เต็มชุดหลังขึ้นจอแล้ว — ไม่บล็อกสปินเนอร์ครั้งแรก
+  Future<void> _hydrateFullLedger({
+    required String dayKey,
+    required bool forceRefresh,
+  }) async {
+    try {
+      final allRows = await _txService.fetchTransactions(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) return;
+      if (_dateKey(_selectedDay) != dayKey) return;
+      final base = _lastHomePayload;
+      if (base == null) return;
+      final composed = await _composeHomePayload(
+        summary: base.summary,
+        dayRows: base.dayTransactions,
+        allRows: allRows,
+        employees: base.employees,
+        dayKey: dayKey,
+      );
+      if (!mounted) return;
+      if (_dateKey(_selectedDay) != dayKey) return;
+      _applyPayloadQuietly(composed);
+    } catch (_) {}
   }
 
   void _refreshHome() {
