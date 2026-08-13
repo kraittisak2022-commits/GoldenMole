@@ -59,6 +59,7 @@ enum FuelSaveError: LocalizedError {
     case pickVehicle
     case vehicleName
     case mainTankShort
+    case reserveTankShort
     case noCars
     case emptyUsage
     case usageLiters(String)
@@ -72,6 +73,7 @@ enum FuelSaveError: LocalizedError {
         case .pickVehicle: return "กรุณาเลือกรถยนต์"
         case .vehicleName: return "กรุณาระบุชื่อรถ"
         case .mainTankShort: return "ถังหลักมีน้ำมันไม่พอ"
+        case .reserveTankShort: return "ถังสำรองมีน้ำมันไม่พอ"
         case .noCars: return "ยังไม่พบรถแม็คโครในตั้งค่าแอพ"
         case .emptyUsage: return "กรุณาระบุปริมาณน้ำมันอย่างน้อย 1 คัน"
         case .usageLiters(let v): return "กรุณาระบุปริมาณน้ำมันให้มากกว่า 0 (\(v))"
@@ -417,6 +419,29 @@ final class FuelSession {
                     throw FuelSaveError.usageTime(row.vehicleId)
                 }
             }
+            var extraMain = 0.0
+            var extraReserve = 0.0
+            for row in active {
+                let tank = FuelLogic.normalizeTank(row.fuelTank)
+                let previousId = (row.txId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let previous = previousId.isEmpty
+                    ? nil
+                    : appState.transactions.first(where: { $0.id == previousId })
+                if let previous {
+                    if FuelLogic.normalizeTank(previous.fuelTank) == FuelLogic.tankReserve {
+                        extraReserve -= FuelLogic.liters(of: previous)
+                    } else {
+                        extraMain -= FuelLogic.liters(of: previous)
+                    }
+                }
+                if tank == FuelLogic.tankReserve {
+                    extraReserve += row.liters
+                } else {
+                    extraMain += row.liters
+                }
+            }
+            if extraMain > dieselBalance + 1e-9 { throw FuelSaveError.mainTankShort }
+            if extraReserve > reserveDieselBalance + 1e-9 { throw FuelSaveError.reserveTankShort }
             isSaving = true
             defer { isSaving = false }
             skipExternalReload += 1

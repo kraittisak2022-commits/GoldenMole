@@ -190,7 +190,7 @@ struct FuelHubView: View {
         return VStack(alignment: .leading, spacing: 12) {
             Text("สต็อกดีเซล")
                 .font(.headline)
-            row(title: "ถังหลัก", liters: mainDiesel, capacity: FuelLogic.tankCapacityMainLiters)
+            row(title: "ถังหลัก (ถังหลัง)", liters: mainDiesel, capacity: FuelLogic.tankCapacityMainLiters)
             row(title: "ถังสำรอง", liters: reserveDiesel, capacity: FuelLogic.tankCapacityReserveLiters)
             if mainDiesel < 0 || reserveDiesel < 0 {
                 Text("คงเหลือติดลบ — ตรวจสอบรายการเบิก/ใช้รถ")
@@ -262,7 +262,7 @@ struct FuelHubView: View {
                 formCard {
                     Text("เบิกน้ำมัน (ดีเซล)")
                         .font(.headline)
-                    Text("เติมเครื่องจักร = โอนเข้าถังสำรอง · ปั่นไฟ/อื่นๆ = หักจากถังหลัก (รถยนต์ใช้เมนูเติมน้ำมันรถยนต์)")
+                    Text("เติมเครื่องจักร = หักถังหลักแล้วเติมเข้าถังสำรอง · ปั่นไฟเล็ก/อื่นๆ = หักถังหลัก (รถยนต์ใช้เมนูเติมน้ำมันรถยนต์)")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                     stepperField(title: "ลิตร", value: $session.withdraw.liters, step: 1, range: 0...50_000)
@@ -296,7 +296,7 @@ struct FuelHubView: View {
                     }
 
                     if reconcile.machineWithdraw > 0 || reconcile.vehicleUsage > 0 {
-                        Text("วันนี้: เบิกเครื่องจักร \(FuelLogic.formatLiters(reconcile.machineWithdraw)) L · ใช้รถ \(FuelLogic.formatLiters(reconcile.vehicleUsage)) L · คงเหลือโควตา \(FuelLogic.formatLiters(reconcile.remaining)) L")
+                        Text("วันนี้: โอนเข้าถังสำรอง \(FuelLogic.formatLiters(reconcile.machineWithdraw)) L · ใช้รถแม็คโคร \(FuelLogic.formatLiters(reconcile.vehicleUsage)) L")
                             .font(.caption)
                             .foregroundStyle(AppTheme.inkMuted)
                     }
@@ -396,7 +396,7 @@ struct FuelHubView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("บันทึกการใช้น้ำมันรายรถแม็คโคร")
                     .font(.title3.weight(.bold))
-                Text("กรอกลิตรและเวลาต่อคัน — บันทึกแล้วแก้/ลบได้")
+                Text("กรอกลิตรและเวลาต่อคัน — หักจากถังหลังหรือถังสำรองตามที่เลือก ไม่หักซ้ำอีกถัง")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.inkMuted)
 
@@ -454,18 +454,18 @@ struct FuelHubView: View {
                     .foregroundStyle(AppTheme.inkMuted)
                 HStack(spacing: 8) {
                     tankChip(
-                        title: "ถังสำรอง",
-                        hint: "ปั่นไฟ",
-                        selected: FuelLogic.normalizeTank(draft.fuelTank) == FuelLogic.tankReserve
-                    ) {
-                        session.updateVehicle(car) { $0.fuelTank = FuelLogic.tankReserve }
-                    }
-                    tankChip(
-                        title: "ถังหลัก",
-                        hint: "พล่าม",
+                        title: "ถังหลัง",
+                        hint: "หักถังหลัก",
                         selected: FuelLogic.normalizeTank(draft.fuelTank) == FuelLogic.tankMain
                     ) {
                         session.updateVehicle(car) { $0.fuelTank = FuelLogic.tankMain }
+                    }
+                    tankChip(
+                        title: "ถังสำรอง",
+                        hint: "หักสำรอง",
+                        selected: FuelLogic.normalizeTank(draft.fuelTank) == FuelLogic.tankReserve
+                    ) {
+                        session.updateVehicle(car) { $0.fuelTank = FuelLogic.tankReserve }
                     }
                 }
                 HStack(spacing: 12) {

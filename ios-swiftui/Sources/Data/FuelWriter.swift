@@ -173,7 +173,7 @@ enum FuelWriter {
         fuelTank: String = FuelLogic.tankReserve
     ) -> TransactionWritePayload {
         let tank = FuelLogic.normalizeTank(fuelTank)
-        let tankLabel = tank == FuelLogic.tankReserve ? "ปั่นไฟ/สำรอง" : "พล่าม/หลัก"
+        let tankLabel = tank == FuelLogic.tankReserve ? "ถังสำรอง" : "ถังหลัก"
         return TransactionWritePayload(
             id: id,
             date: dateYmd,

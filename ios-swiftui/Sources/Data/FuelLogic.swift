@@ -36,9 +36,9 @@ enum FuelLogic {
         var subtitle: String {
             switch self {
             case .stockIn: return "รถน้ำมันมาเติมเข้าถังหลัก"
-            case .withdraw: return "เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก"
+            case .withdraw: return "เครื่องจักร: หลัก→สำรอง · ปั่นไฟ/อื่นๆ: หักถังหลัก"
             case .carFill: return "หักจากถังหลัก"
-            case .macroUsage: return "ค่าเริ่มต้นหักจากถังสำรอง"
+            case .macroUsage: return "หักจากถังหลังหรือถังสำรองตามที่เลือก"
             }
         }
 
@@ -90,7 +90,7 @@ enum FuelLogic {
 
         var label: String {
             switch self {
-            case .machine: return "เติมเครื่องจักร (ถังสำรอง)"
+            case .machine: return "เติมเครื่องจักร"
             case .car: return "รถยนต์"
             case .generator: return "เครื่องปั่นไฟเล็ก"
             case .other: return "อื่นๆ"
@@ -192,7 +192,8 @@ enum FuelLogic {
     /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 5 ส.ค. 2569)
     static let stockCutoverYmd = "2026-08-05"
 
-    /// Flutter `computeFuelStockBalance` parity (dual tank + machine reconcile).
+    /// Dual-tank balance: each row hits only the tank stored on it.
+    /// `delta = stockIn − withdraw − vehicleUsage` (no machine-quota offset).
     static func computeBalance(
         transactions: [Transaction],
         opening: FuelStock?
@@ -200,7 +201,6 @@ enum FuelLogic {
         struct Bucket {
             var stockIn = 0.0
             var withdraw = 0.0
-            var machineWithdraw = 0.0
             var vehicleUsage = 0.0
         }
         var buckets: [String: Bucket] = [:]
@@ -217,16 +217,8 @@ enum FuelLogic {
             var b = buckets[key] ?? Bucket()
             if isStockIn(t) {
                 b.stockIn += lit
-            } else if isWithdraw(t) {
+            } else if isWithdraw(t) || isTransfer(t) || isSandSieve(t) {
                 b.withdraw += lit
-                if (t.workType ?? "").lowercased() == "machine" {
-                    b.machineWithdraw += lit
-                }
-            } else if isTransfer(t) || isSandSieve(t) {
-                b.withdraw += lit
-                if isTransfer(t), (t.workType ?? "").lowercased() == "machine" {
-                    b.machineWithdraw += lit
-                }
             } else if isVehicleUsage(t) {
                 b.vehicleUsage += lit
             }
@@ -238,8 +230,7 @@ enum FuelLogic {
         var reserveDiesel = 0.0
         var reserveBenzine = 0.0
         for (key, b) in buckets {
-            let excess = b.vehicleUsage - b.machineWithdraw
-            let delta = b.stockIn - b.withdraw - max(0, excess)
+            let delta = b.stockIn - b.withdraw - b.vehicleUsage
             let isReserve = key.contains("|\(tankReserve)|")
             let isBenzine = key.hasSuffix("|B")
             if isReserve {
