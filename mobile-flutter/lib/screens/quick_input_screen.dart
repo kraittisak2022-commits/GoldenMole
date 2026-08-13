@@ -3269,6 +3269,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
       saveActionLabel: 'บันทึกรถดรัมและจำนวนเที่ยว',
       saveButtonLabel: 'บันทึกรถคันนี้',
+      requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: _clearVehicleTripFormAfterSave,
       body: () async {
@@ -3484,6 +3485,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     target.lumpSumTotalCubicController.text = source.lumpSumTotalCubic;
   }
 
+  /// คนขับประจำรถจากตั้งค่าเว็บ — เติมเฉพาะตอนแถวยังไม่มีคนขับ
+  void _applyDefaultDriverForVehicleRow(_VehicleTripDraft row, String vehicle) {
+    if (row.driverId.trim().isNotEmpty) return;
+    final id = _defaultDriverIdForVehicle(vehicle);
+    if (id == null || id.isEmpty) return;
+    if (!_driverEmployees.any((e) => e.id == id)) return;
+    row.driverId = id;
+  }
+
   void _hydrateVehicleRowFromExistingIfDuplicate(
     _VehicleTripDraft row,
     String vehicleId,
@@ -3495,6 +3505,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return;
     }
     _applyDefaultCubicForVehicleRow(row, vehicle);
+    _applyDefaultDriverForVehicleRow(row, vehicle);
     final existing = _findLatestVehicleTripForDay(vehicle);
     if (existing == null) {
       row.tripTxId = null;
@@ -3502,6 +3513,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     final loaded = _vehicleTripDraftFromAppTransaction(existing);
     _mergeVehicleTripDraftFrom(row, loaded);
+    _applyDefaultDriverForVehicleRow(row, vehicle);
     loaded.dispose();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
