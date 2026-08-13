@@ -124,12 +124,13 @@ String _normalizeSandDayKey(String raw) {
   return s;
 }
 
-/// รถแม็คโครหลักบนหน้าบันทึกน้ำมัน — คันอื่นอยู่ใน «เพิ่มเติม»
-const _kFuelPinnedVehiclePatterns = <({String model, String nickname})>[
-  (model: 'SK200-8', nickname: 'น้องโกลเด้น'),
-  (model: 'SK200-10', nickname: 'พี่ยักษ์ใหญ่'),
-  (model: 'SK200-10', nickname: 'พี่เดอะฮัก'),
+/// รถแม็คโครหลักบนหน้าบันทึกน้ำมัน — จับคู่ชื่อเล่น (รุ่นเปลี่ยนได้จากการตั้งค่า)
+const _kFuelPinnedVehicleNicknames = <String>[
+  'น้องโกลเด้น',
+  'พี่ยักษ์ใหญ่',
+  'พี่เดอะฮัก',
 ];
+const _kFuelPinnedVehicleCap = 3;
 
 /// เลือกบันทึกรายจ่ายสาธารณูปโภคหรือรายรับประจำวัน
 enum _IuEntryKind { expense, income }
@@ -1470,21 +1471,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
-  bool _fuelVehicleMatchesPinned(
-    String car,
-    ({String model, String nickname}) pattern,
-  ) {
-    return car.contains(pattern.model) && car.contains(pattern.nickname);
+  bool _fuelVehicleMatchesPinned(String car, String nickname) {
+    return car.contains(nickname);
   }
 
   List<String> _fuelPinnedMacroCars(List<String> allCars) {
     final pinned = <String>[];
     final used = <String>{};
-    for (final pattern in _kFuelPinnedVehiclePatterns) {
+    for (final nickname in _kFuelPinnedVehicleNicknames) {
+      if (pinned.length >= _kFuelPinnedVehicleCap) break;
       String? hit;
       for (final car in allCars) {
         if (used.contains(car)) continue;
-        if (_fuelVehicleMatchesPinned(car, pattern)) {
+        if (_fuelVehicleMatchesPinned(car, nickname)) {
           hit = car;
           break;
         }
@@ -1493,6 +1492,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         pinned.add(hit);
         used.add(hit);
       }
+    }
+    for (final car in allCars) {
+      if (pinned.length >= _kFuelPinnedVehicleCap) break;
+      if (used.add(car)) pinned.add(car);
     }
     return pinned;
   }

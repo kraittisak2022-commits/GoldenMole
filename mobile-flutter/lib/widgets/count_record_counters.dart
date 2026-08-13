@@ -574,8 +574,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       forceNetwork: tryNetwork && (widget.serverOnline || _isOnline),
     );
     if (!mounted) return;
-    final rawCars =
-        catalog.cars.where(isVehicleTripDrumCarName).toList(growable: false);
+    final seen = <String>{};
+    final rawCars = <String>[
+      for (final car in catalog.cars)
+        if (car.trim().isNotEmpty && seen.add(car.trim())) car.trim(),
+    ];
     final cars = sortCountRecordVehicles(
       cars: rawCars,
       tripHistory: widget.tripHistoryTransactions,
