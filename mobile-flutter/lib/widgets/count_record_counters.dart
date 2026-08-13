@@ -210,7 +210,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   List<Employee> _drivers = const [];
   Map<String, String> _vehicleDefaultDrivers = const {};
   Timer? _offlineSyncTicker;
-  Timer? _dropdownRefreshTicker;
   Timer? _parentRefreshDebounce;
   bool _isOnline = true;
   int _pendingCount = 0;
@@ -234,7 +233,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     unawaited(_refreshDropdownLists(tryNetwork: false));
     unawaited(_initPanel());
     unawaited(RecordSuccessSpeaker.instance.warmUp());
-    _syncDropdownRefreshTimer();
     _syncOfflinePollTimer();
     if (widget.mode == CounterMode.trip) {
       unawaited(_loadTripGoal());
@@ -335,7 +333,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       _skipExternalDayTxReload--;
       if (oldWidget.serverOnline != widget.serverOnline) {
         if (mounted) setState(() => _isOnline = widget.serverOnline);
-        _syncDropdownRefreshTimer();
         if (widget.serverOnline) {
           unawaited(_handleParentOnlineTransition());
         } else {
@@ -359,7 +356,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       unawaited(_initPanel());
     } else if (oldWidget.serverOnline != widget.serverOnline) {
       if (mounted) setState(() => _isOnline = widget.serverOnline);
-      _syncDropdownRefreshTimer();
       if (widget.serverOnline) {
         unawaited(_handleParentOnlineTransition());
       } else {
@@ -415,27 +411,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   @override
   void dispose() {
     _offlineSyncTicker?.cancel();
-    _dropdownRefreshTicker?.cancel();
     _parentRefreshDebounce?.cancel();
     super.dispose();
-  }
-
-  void _syncDropdownRefreshTimer() {
-    _dropdownRefreshTicker?.cancel();
-    final offline = !widget.serverOnline || !_isOnline;
-    // รายชื่อรถ/คนขับแทบไม่เปลี่ยนระหว่างวัน — รีเฟรชห่างๆ พอ
-    // (ตอนเปิด popup เพิ่มรถจะรีเฟรชสดผ่าน _ensureDropdownListsForDialog อยู่แล้ว)
-    final interval = offline
-        ? const Duration(seconds: 45)
-        : const Duration(seconds: 90);
-    _dropdownRefreshTicker = Timer.periodic(interval, (_) {
-      if (!mounted) return;
-      unawaited(
-        _refreshDropdownLists(
-          tryNetwork: widget.serverOnline || _isOnline,
-        ),
-      );
-    });
   }
 
   void _armRecordCooldown(_CounterUnit u) {
@@ -552,7 +529,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Future<void> _handleParentOnlineTransition() async {
-    _syncDropdownRefreshTimer();
     unawaited(_refreshDropdownLists(tryNetwork: true));
     await _trySyncPending(silent: true);
   }
@@ -631,7 +607,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
     if (online && (!wasOnline || _pendingCount > 0)) {
       await _trySyncPending(silent: wasOnline);
-      _syncDropdownRefreshTimer();
     }
     _syncOfflinePollTimer();
   }
@@ -648,9 +623,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   void _syncOfflinePollTimer() {
-    if (_pendingCount > 0 || !_isOnline) {
+    if (_pendingCount > 0) {
       _offlineSyncTicker ??= Timer.periodic(
-        const Duration(seconds: 5),
+        const Duration(seconds: 15),
         (_) {
           if (!mounted) return;
           unawaited(_pollOfflineQueue());
@@ -697,7 +672,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     await _refreshPendingCount();
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
-      forceProbe: true,
+      forceProbe: _pendingCount > 0,
     );
     if (mounted) setState(() => _isOnline = online);
     if (online) {

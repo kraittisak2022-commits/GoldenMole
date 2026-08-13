@@ -269,7 +269,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Timer? _pollFallbackTimer;
   static const Duration _remoteRefreshDebounceDelay =
       Duration(milliseconds: 300);
-  static const Duration _pollFallbackInterval = Duration(seconds: 60);
+  static const Duration _pollFallbackInterval = Duration(minutes: 5);
   bool _saving = false;
   String? _activeSignatureNote;
   List<String> _otDescSuggestions = const [];
@@ -869,10 +869,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : 'ค่าแรง',
     );
     // ออฟไลน์ห้ามบังคับดึงเน็ต — ไม่งั้นกระดานลากชื่อจะว่างจนกว่า request จะ timeout
-    _loadEmployees(
-      forceRefresh:
-          (_isLaborMode || _isAttendanceMode) && widget.serverOnlineHint,
-    );
+    // ค่าแรง/เช็คชื่อใช้แคชพนักงาน 25 นาที (ไม่ force)
+    _loadEmployees();
     if (_isFuelMode) {
       // ต้องได้ค่ายกมาก่อนคิดคงเหลือในถัง
       unawaited(_loadAppCars().then((_) => _refreshFuelStock()));
@@ -935,7 +933,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (state == AppLifecycleState.resumed) {
       _startPollFallback();
       if (!_saving && !_hasUnsavedModuleChanges) {
-        unawaited(_loadModuleTransactions(forceRefresh: true));
+        unawaited(_loadModuleTransactions(forceRefresh: false));
       }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
@@ -1378,9 +1376,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (!mounted || !isCurrentLoad()) return;
 
     try {
-      // Soft poll ใช้แคช/TTL — force เฉพาะเมื่อ realtime/resume/ผู้ใช้ดึง (forceRefresh)
-      // เดิมบังคับ force ทุกครั้งสำหรับรถ/OT ทำให้ Disk IO พุ่งแม้ poll 60 วิ
+      // Soft poll ใช้แคช/TTL — force เฉพาะเมื่อ realtime/ผู้ใช้ดึง (forceRefresh)
+      // ลางาน: ใช้แคชเต็มชุดในเครื่องก่อน — ยิงเน็ตเฉพาะแคชว่างหรือ forceRefresh
       final forceServer = forceRefresh;
+      if (cat == 'ลางาน' && !forceServer && hasCachedModule) {
+        if (mounted && isCurrentLoad()) {
+          setState(() => _moduleDayLoading = false);
+        }
+        return;
+      }
       final rows = cat == 'ลางาน'
           ? await widget.service.fetchTransactions(forceRefresh: forceServer)
           : await widget.service.fetchTransactionsForDate(
@@ -2626,7 +2630,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ไม่รวมแถว OT และไม่รวมลางาน — ใช้จัดอันดับพูลรายชื่อในกระดานเช็คชื่อ
   Future<void> _refreshAttendanceDaysWorked() async {
     try {
-      final serverRows = await widget.service.fetchTransactions();
+      final serverRows = await _transactionsPreferLocalCache();
       final rows = await CountRecordOfflineSync.instance
           .mergeAllTransactionsAsync(serverRows);
       final daysByEmp = <String, Set<String>>{};

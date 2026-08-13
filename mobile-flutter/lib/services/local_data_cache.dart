@@ -60,7 +60,7 @@ class LocalDataCache {
   static bool _legacyTxPrefsCleared = false;
 
   static const Duration employeeTtl = Duration(minutes: 25);
-  static const Duration dashboardSummaryTtl = Duration(minutes: 8);
+  static const Duration dashboardSummaryTtl = Duration(minutes: 30);
   static const Duration transactionsByDayTtl = Duration(minutes: 3);
   /// มี realtime + patch หลังบันทึก — ยืด TTL ลด full-table SELECT ที่กิน Disk IO
   static const Duration transactionsFullTtl = Duration(minutes: 30);

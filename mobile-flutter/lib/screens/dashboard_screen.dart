@@ -174,7 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _pollFallbackTimer;
   static const Duration _remoteRefreshDebounceDelay =
       Duration(milliseconds: 300);
-  static const Duration _pollFallbackInterval = Duration(seconds: 60);
+  static const Duration _pollFallbackInterval = Duration(minutes: 5);
 
   void _applyServerReachability(bool online, {bool force = false}) {
     if (!mounted) return;
@@ -306,7 +306,14 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// โหลดข้อมูลใหม่ในพื้นหลัง — ไม่รีเซ็ตหน้าที่ผู้ใช้อยู่ (เมนูย่อยนับจำนวน ฯลฯ)
   /// ดึงจากเซิร์ฟเวอร์เสมอ เพื่อรับการแก้จากเครื่องอื่น (แม้เปิดเมนูนับจำนวนอยู่)
   Future<void> _refreshHomeDataInPlace() async {
-    await _refreshHomeSilently(tryNetwork: true, forceNetwork: true);
+    await _refreshHomeSilently(tryNetwork: true, forceNetwork: false);
+    if (!mounted) return;
+    unawaited(
+      _hydrateFullLedger(
+        dayKey: _dateKey(_selectedDay),
+        forceRefresh: false,
+      ),
+    );
   }
 
   @override
@@ -438,7 +445,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted) return;
     final online = await CountRecordOfflineSync.instance.isOnline(
       Supabase.instance.client,
-      forceProbe: true,
+      forceProbe: false,
     );
     if (online) {
       CountRecordOfflineSync.instance.noteServerReachable();

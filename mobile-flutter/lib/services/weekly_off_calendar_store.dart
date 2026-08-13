@@ -24,8 +24,10 @@ class WeeklyOffCalendarStore {
 
   static const _prefsKey = 'calendar_weekly_off_by_monday_v1';
   static const _prefsReasonKey = 'calendar_weekly_off_reason_by_monday_v1';
+  static const _prefsAtKey = 'calendar_weekly_off_cached_ms';
   static const _remoteKey = 'weeklyOffByMonday';
   static const _remoteReasonKey = 'weeklyOffMoveReasonByMonday';
+  static const _remoteTtl = Duration(minutes: 30);
 
   /// ปกติหยุดวันพฤหัสบดี (ตาม Dart: จันทร์=1 … พฤหัสบดี=4)
   static const int defaultOffWeekday = DateTime.thursday;
@@ -102,41 +104,34 @@ class WeeklyOffCalendarStore {
     await p.setString(_prefsReasonKey, jsonEncode(map));
   }
 
-  Future<Map<String, int>> _readRemoteMap(SupabaseClient client) async {
+  Future<({Map<String, int> weekday, Map<String, String> reason})>
+      _readRemoteMaps(SupabaseClient client) async {
     try {
       final row = await client
           .from('app_settings')
           .select('app_defaults')
           .eq('id', 'default')
           .maybeSingle();
-      if (row == null) return {};
+      if (row == null) {
+        return (weekday: <String, int>{}, reason: <String, String>{});
+      }
       final ad = row['app_defaults'];
-      if (ad is! Map) return {};
+      if (ad is! Map) {
+        return (weekday: <String, int>{}, reason: <String, String>{});
+      }
       final w = ad[_remoteKey];
-      if (w is! Map) return {};
-      return _parseWeeklyMap(Map<dynamic, dynamic>.from(w));
+      final r = ad[_remoteReasonKey];
+      return (
+        weekday: w is Map
+            ? _parseWeeklyMap(Map<dynamic, dynamic>.from(w))
+            : <String, int>{},
+        reason: r is Map
+            ? _parseReasonMap(Map<dynamic, dynamic>.from(r))
+            : <String, String>{},
+      );
     } catch (e, st) {
-      debugPrint('WeeklyOffCalendarStore._readRemoteMap: $e\n$st');
-      return {};
-    }
-  }
-
-  Future<Map<String, String>> _readRemoteReasonMap(SupabaseClient client) async {
-    try {
-      final row = await client
-          .from('app_settings')
-          .select('app_defaults')
-          .eq('id', 'default')
-          .maybeSingle();
-      if (row == null) return {};
-      final ad = row['app_defaults'];
-      if (ad is! Map) return {};
-      final w = ad[_remoteReasonKey];
-      if (w is! Map) return {};
-      return _parseReasonMap(Map<dynamic, dynamic>.from(w));
-    } catch (e, st) {
-      debugPrint('WeeklyOffCalendarStore._readRemoteReasonMap: $e\n$st');
-      return {};
+      debugPrint('WeeklyOffCalendarStore._readRemoteMaps: $e\n$st');
+      return (weekday: <String, int>{}, reason: <String, String>{});
     }
   }
 
@@ -183,15 +178,30 @@ class WeeklyOffCalendarStore {
       );
     }
 
+    final cachedAt = p.getInt(_prefsAtKey);
+    final ttlFresh = cachedAt != null &&
+        DateTime.now().difference(
+              DateTime.fromMillisecondsSinceEpoch(cachedAt),
+            ) <=
+            _remoteTtl;
+    if (ttlFresh) {
+      return WeeklyOffCalendarData(
+        weekdayByMonday: localWd,
+        moveReasonByMonday: localReason,
+      );
+    }
+
     try {
-      final remoteWd = await _readRemoteMap(client);
-      final remoteReason = await _readRemoteReasonMap(client);
+      final remote = await _readRemoteMaps(client);
+      final remoteWd = remote.weekday;
+      final remoteReason = remote.reason;
       if (remoteWd.isEmpty && remoteReason.isEmpty) {
         if (localWd.isNotEmpty || localReason.isNotEmpty) {
           try {
             await _writeRemoteMaps(client, localWd, localReason);
           } catch (_) {}
         }
+        await p.setInt(_prefsAtKey, DateTime.now().millisecondsSinceEpoch);
         return WeeklyOffCalendarData(
           weekdayByMonday: localWd,
           moveReasonByMonday: localReason,
@@ -212,6 +222,7 @@ class WeeklyOffCalendarStore {
         await p.setString(_prefsKey, jsonEncode(mergedWd));
         await p.setString(_prefsReasonKey, jsonEncode(mergedReason));
       }
+      await p.setInt(_prefsAtKey, DateTime.now().millisecondsSinceEpoch);
       return WeeklyOffCalendarData(
         weekdayByMonday: mergedWd,
         moveReasonByMonday: mergedReason,
@@ -251,6 +262,7 @@ class WeeklyOffCalendarStore {
     }
     await _writePrefsMap(map);
     await _writePrefsReasonMap(reasonMap);
+    await p.setInt(_prefsAtKey, DateTime.now().millisecondsSinceEpoch);
     if (client != null) {
       await _writeRemoteMaps(client, map, reasonMap);
     }

@@ -33,14 +33,14 @@ class CountRecordOfflineSync {
   static const _kEmployees = 'v1_count_record_employees_json';
   static const _kDropdownAt = 'v1_count_record_dropdown_cached_ms';
 
-  static const _reachabilityTtlOnline = Duration(seconds: 8);
-  static const _reachabilityTtlOffline = Duration(seconds: 18);
+  static const _reachabilityTtlOnline = Duration(minutes: 10);
+  static const _reachabilityTtlOffline = Duration(minutes: 1);
   static const _failuresBeforeOffline = 2;
   static const _probeTimeout = Duration(milliseconds: 2500);
   static const _batchChunkSize = 25;
   static const _maxItemRetries = 8;
 
-  static const _schedulerMinDelay = Duration(seconds: 2);
+  static const _schedulerMinDelay = Duration(seconds: 10);
   static const _schedulerMaxDelay = Duration(seconds: 30);
 
   TransactionService? _autoSyncService;
@@ -51,6 +51,7 @@ class CountRecordOfflineSync {
   Timer? _schedulerTimer;
   Duration _schedulerDelay = _schedulerMinDelay;
   bool _schedulerRunning = false;
+  bool _schedulerWakeQueued = false;
   bool _uploadInFlight = false;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -447,6 +448,7 @@ class CountRecordOfflineSync {
 
   Future<void> _runSchedulerCycle({bool immediate = false}) async {
     if (_schedulerRunning || _uploadInFlight) {
+      _schedulerWakeQueued = true;
       if (!immediate) _scheduleNextCycle();
       return;
     }
@@ -458,6 +460,11 @@ class CountRecordOfflineSync {
     try {
       await _ensureQueueLoaded();
       final pending = _memoryQueue!.length;
+      if (pending == 0) {
+        _awaitingUploadAfterOffline = false;
+        // คิวว่าง — ไม่ probe / ไม่ตั้งรอบถัดไป (ปลุกจาก connectivity / resume / enqueue)
+        return;
+      }
 
       if (!await _checkOsNetworkLink()) {
         _increaseSchedulerBackoff();
@@ -465,10 +472,9 @@ class CountRecordOfflineSync {
         return;
       }
 
-      final needsWork = pending > 0 || _awaitingUploadAfterOffline;
       final online = await isOnline(
         client,
-        forceProbe: needsWork || !(_cachedReachable ?? true),
+        forceProbe: !(_cachedReachable ?? true),
       );
 
       if (!online) {
@@ -478,14 +484,18 @@ class CountRecordOfflineSync {
       }
 
       _resetSchedulerBackoff();
-
-      if (needsWork) {
-        await uploadPendingImmediately(service, client);
+      await uploadPendingImmediately(service, client);
+      if ((_memoryQueue?.length ?? 0) > 0) {
+        _scheduleNextCycle();
+      } else {
+        _awaitingUploadAfterOffline = false;
       }
-
-      _scheduleNextCycle();
     } finally {
       _schedulerRunning = false;
+      if (_schedulerWakeQueued) {
+        _schedulerWakeQueued = false;
+        unawaited(_runSchedulerCycle(immediate: true));
+      }
     }
   }
 
@@ -638,6 +648,14 @@ class CountRecordOfflineSync {
     var cars = await readCachedCars();
     var employees = await mergedEmployeeSources(widgetEmployees);
     var vehicleDefaultDrivers = await readCachedVehicleDefaultDrivers();
+
+    if (!forceNetwork && cars.isNotEmpty && employees.isNotEmpty) {
+      return (
+        cars: cars,
+        employees: employees,
+        vehicleDefaultDrivers: vehicleDefaultDrivers,
+      );
+    }
 
     final shouldFetch = forceNetwork ||
         (serverOnlineHint && await isOnline(client, forceProbe: forceNetwork));
@@ -1006,7 +1024,10 @@ class CountRecordOfflineSync {
   }) async {
     if (!await isOnline(client, forceProbe: forceProbe)) return 0;
     await _ensureQueueLoaded();
-    if (_memoryQueue!.isEmpty) return 0;
+    if (_memoryQueue!.isEmpty) {
+      _awaitingUploadAfterOffline = false;
+      return 0;
+    }
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final ready = _readyOps(_memoryQueue!, nowMs);
@@ -1095,7 +1116,10 @@ class CountRecordOfflineSync {
     if (s == null || c == null || _uploadInFlight) return 0;
 
     await _ensureQueueLoaded();
-    if (_memoryQueue!.isEmpty) return 0;
+    if (_memoryQueue!.isEmpty) {
+      _awaitingUploadAfterOffline = false;
+      return 0;
+    }
 
     _uploadInFlight = true;
     _publishSyncState(activity: SyncActivity.syncing);
@@ -1294,6 +1318,7 @@ class CountRecordOfflineSync {
     _onRemoteDataChanged = null;
     _remoteChangeListeners.clear();
     _schedulerRunning = false;
+    _schedulerWakeQueued = false;
     _publishSyncState(activity: SyncActivity.idle);
   }
 }

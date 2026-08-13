@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
+import '../services/local_data_cache.dart';
 import '../services/transaction_service.dart';
 import '../services/weekly_off_calendar_store.dart';
 import '../utils/daily_module_transactions.dart';
@@ -136,12 +137,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<_CalendarPayload> _load({bool forceRefresh = false}) async {
-    final transactions = await widget.transactionService.fetchTransactions(
-      forceRefresh: forceRefresh,
-    );
-    final employees = await widget.employeeService.fetchEmployees(
-      forceRefresh: forceRefresh,
-    );
+    late final List<AppTransaction> transactions;
+    late final List<Employee> employees;
+    if (!forceRefresh) {
+      final cachedTx = await LocalDataCache.readTransactionsFullAny();
+      final cachedEmp = await LocalDataCache.readEmployeesAny();
+      transactions = (cachedTx != null && cachedTx.isNotEmpty)
+          ? cachedTx
+          : await widget.transactionService.fetchTransactions(
+              forceRefresh: false,
+            );
+      employees = (cachedEmp != null && cachedEmp.isNotEmpty)
+          ? cachedEmp
+          : await widget.employeeService.fetchEmployees(forceRefresh: false);
+    } else {
+      transactions = await widget.transactionService.fetchTransactions(
+        forceRefresh: true,
+      );
+      employees = await widget.employeeService.fetchEmployees(
+        forceRefresh: true,
+      );
+    }
     final weeklyOff = await _weeklyOffStore.load(
       client: Supabase.instance.client,
     );
