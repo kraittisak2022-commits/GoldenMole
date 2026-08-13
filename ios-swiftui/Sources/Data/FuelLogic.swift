@@ -182,6 +182,42 @@ enum FuelLogic {
         return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == sandSieveSubCategory
     }
 
+    struct SandSieveUsage: Equatable, Sendable {
+        let dayKey: String
+        let liters: Double
+        let hours: Double
+        let fromPersistedRow: Bool
+    }
+
+    /// ลิตรเครื่องร่อนของวันนั้น: แถว SandSieve ถ้ามี ไม่งั้นชั่วโมงร่อน × 18 L
+    static func sandSieveUsage(on date: String, transactions: [Transaction]) -> SandSieveUsage? {
+        let dayTx = transactions.filter { String($0.date.prefix(10)) == date }
+        let persistedLiters = dayTx.filter(isSandSieve).reduce(0.0) { $0 + liters(of: $1) }
+        if persistedLiters > 0 {
+            return SandSieveUsage(dayKey: date, liters: persistedLiters, hours: 0, fromPersistedRow: true)
+        }
+        guard let sand = CountRecordLogic.buildSandUnit(dayKey: date, transactions: dayTx) else { return nil }
+        let hours = CountRecordAnalytics.computeWorkDuration(lapTimes: sand.lapTimes, dayKey: date)?.totalActiveHours ?? 0
+        guard hours > 0 else { return nil }
+        let liters = ((hours * sandSieveLitersPerHour) * 100).rounded() / 100
+        guard liters > 0 else { return nil }
+        return SandSieveUsage(dayKey: date, liters: liters, hours: hours, fromPersistedRow: false)
+    }
+
+    static func sandSieveLiters(on date: String, transactions: [Transaction]) -> Double {
+        sandSieveUsage(on: date, transactions: transactions)?.liters ?? 0
+    }
+
+    static func sandSieveLiters(in transactions: [Transaction], dates: [String]) -> Double {
+        dates.reduce(0.0) { $0 + sandSieveLiters(on: $1, transactions: transactions) }
+    }
+
+    /// ลิตรที่คำนวณจากชั่วโมงร่อน เพราะยังไม่มีแถว SandSieve
+    static func inferredSandSieveLiters(on date: String, transactions: [Transaction]) -> Double {
+        guard let usage = sandSieveUsage(on: date, transactions: transactions), !usage.fromPersistedRow else { return 0 }
+        return usage.liters
+    }
+
     static func isVehicleUsage(_ t: Transaction) -> Bool {
         guard isFuelExpense(t), !isStockIn(t) else { return false }
         let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -222,6 +258,20 @@ enum FuelLogic {
             } else if isVehicleUsage(t) {
                 b.vehicleUsage += lit
             }
+            buckets[key] = b
+        }
+
+        let persistedSieveDays = Set(
+            transactions.filter(isSandSieve).map { String($0.date.prefix(10)) }
+        )
+        let candidateDays = Set(transactions.map { String($0.date.prefix(10)) })
+            .filter { $0 >= stockCutoverYmd && !persistedSieveDays.contains($0) }
+        for date in candidateDays {
+            let inferred = inferredSandSieveLiters(on: date, transactions: transactions)
+            guard inferred > 0 else { continue }
+            let key = "\(date)|\(tankReserve)|D"
+            var b = buckets[key] ?? Bucket()
+            b.withdraw += inferred
             buckets[key] = b
         }
 

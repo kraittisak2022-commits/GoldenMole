@@ -119,7 +119,7 @@ enum MobileOpsSnapshot {
         m.macroUsageCount = macroRows.count
         m.macroVehicles = Set(macroRows.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }).count
 
-        let fuel = fuelBreakdown(dayTx)
+        let fuel = fuelBreakdown(dayTx, dayKey: dayKey)
         m.fuelInLiters = fuel.inLiters
         m.fuelOutLiters = fuel.outLiters
         m.fuelWithdrawLiters = fuel.withdrawLiters
@@ -222,7 +222,7 @@ enum MobileOpsSnapshot {
         return false
     }
 
-    nonisolated private static func fuelBreakdown(_ txs: [Transaction]) -> (
+    nonisolated private static func fuelBreakdown(_ txs: [Transaction], dayKey: String) -> (
         inLiters: Double,
         outLiters: Double,
         withdrawLiters: Double,
@@ -261,6 +261,7 @@ enum MobileOpsSnapshot {
                 }
             }
         }
+        out += FuelLogic.inferredSandSieveLiters(on: dayKey, transactions: txs)
         return (inn, out, withdraw, withdrawCount, macroLiters, macroVehicleIds.count, carFill, carFillCount)
     }
 }

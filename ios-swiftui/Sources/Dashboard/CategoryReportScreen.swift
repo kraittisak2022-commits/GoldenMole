@@ -16,7 +16,10 @@ struct CategoryReportScreen: View {
     }
 
     private var hasData: Bool {
-        scoped.contains { type.matches($0) }
+        if scoped.contains(where: { type.matches($0) }) { return true }
+        guard type == .fuel else { return false }
+        let dates = DashboardAggregations.enumerateDates(in: scope.filter)
+        return FuelLogic.sandSieveLiters(in: appState.transactions, dates: dates) > 0
     }
 
     /// Newest day inside the fetch window that actually has rows for this category.
