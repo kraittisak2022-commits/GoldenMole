@@ -14378,8 +14378,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         .where(
           (e) =>
               !e.inactive &&
-              (_isSandYardAttendanceEmployee(e) ||
-                  assignedGeneral.contains(e.id)),
+              _isSandYardAttendanceEmployee(e) &&
+              !assignedGeneral.contains(e.id),
         )
         .toList()
       ..sort(_compareAttendancePoolOrder);
@@ -14437,8 +14437,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         .where(
           (e) =>
               !e.inactive &&
-              (_isMacroExcavatorDriverEmployee(e) ||
-                  assignedDriver.contains(e.id)),
+              _isMacroExcavatorDriverEmployee(e) &&
+              !assignedDriver.contains(e.id),
         )
         .toList()
       ..sort(_compareAttendancePoolOrder);
