@@ -574,17 +574,15 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       forceNetwork: tryNetwork && (widget.serverOnline || _isOnline),
     );
     if (!mounted) return;
-    final seen = <String>{};
-    final rawCars = <String>[
-      for (final car in catalog.cars)
-        if (car.trim().isNotEmpty && seen.add(car.trim())) car.trim(),
-    ];
+    final rawCars = catalog.cars
+        .where(isCountRecordDrumOrTenWheelCarName)
+        .toList(growable: false);
     final cars = sortCountRecordVehicles(
       cars: rawCars,
       tripHistory: widget.tripHistoryTransactions,
     );
     setState(() {
-      if (cars.isNotEmpty) _cars = cars;
+      if (catalog.cars.isNotEmpty) _cars = cars;
       _applyDriverList(catalog.employees);
       if (catalog.vehicleDefaultDrivers.isNotEmpty) {
         _vehicleDefaultDrivers = catalog.vehicleDefaultDrivers;
@@ -1353,7 +1351,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
     if (!ready || !mounted) {
       if (mounted && _cars.isEmpty) {
-        _toast('ยังไม่พบรายการรถ (ดรัม/หกล้อ/สิบล้อ) ในตั้งค่าแอพ', error: true);
+        _toast('ยังไม่พบรายการรถดรัมหรือรถสิบล้อในตั้งค่าแอพ', error: true);
       }
       return;
     }
