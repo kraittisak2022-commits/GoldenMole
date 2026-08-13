@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
@@ -2687,32 +2686,30 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
                 onTap: _reveal,
                 onVerticalDragEnd: _onHandleDragEnd,
                 child: DecoratedBox(
-                  decoration: const BoxDecoration(color: Colors.white),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      top: BorderSide(color: Color(0xFFDCEDF1)),
+                    ),
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     height: collapsed
                         ? _handleHeight + bottomInset
                         : _handleHeight,
-                    child: Column(
-                      children: [
-                        const _NavTealAccentBar(),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.topCenter,
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Container(
-                                width: 44,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFA9DCE4),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                              ),
-                            ),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFA9DCE4),
+                            borderRadius: BorderRadius.circular(999),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -2734,28 +2731,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
   }
 }
 
-class _NavTealAccentBar extends StatelessWidget {
-  const _NavTealAccentBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 3,
-      width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF00C4D4), Color(0xFF0D98A5), Color(0xFF0A7A88)],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// แถบนำทางล่าง — เต็มความกว้างจอ ธีมเทียลเดียวกับหัวหน้าแรก
+/// แถบนำทางล่าง — เม็ดที่เลือกหุ้มเฉพาะไอคอน+ป้าย ไม่ยืดเต็มช่อง
 class _ProBottomNav extends StatelessWidget {
   const _ProBottomNav({
     required this.l10n,
@@ -2769,56 +2745,73 @@ class _ProBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
 
-  static const _teal = Color(0xFF0D98A5);
+  static const _accent = Color(0xFF0D98A5);
+  static const _idle = Color(0xFF64748B);
+  static const _pillFill = Color(0xFFE6F7F9);
+  static const _pillBorder = Color(0xFFA9DCE4);
+
+  /// กันแท็บกระจายห่างกันบนจอกว้าง — ให้กลุ่มแท็บอยู่กลางแถบ
+  static const _maxTabsWidth = 380.0;
 
   @override
   Widget build(BuildContext context) {
     final profile = TouchProfile.of(context);
-    final navHeight = profile.navBarHeight;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: _teal.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
+            color: _accent.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
           ),
-          BoxShadow(
-            color: const Color(0x12000000),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+          const BoxShadow(
+            color: Color(0x0F0F172A),
+            blurRadius: 6,
+            offset: Offset(0, -1),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const _NavTealAccentBar(),
+          Container(
+            height: 3,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [Color(0xFF00C4D4), _accent, Color(0xFF0A7A88)],
+              ),
+            ),
+          ),
           SafeArea(
             top: false,
             child: SizedBox(
-              height: navHeight,
-              child: Row(
-                children: [
-                  _navItem(
-                    context,
-                    index: 0,
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: l10n.navHome,
-                    onTap: onHome,
+              height: profile.navBarHeight,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: _maxTabsWidth),
+                  child: Row(
+                    children: [
+                      _navItem(
+                        index: 0,
+                        icon: Icons.home_outlined,
+                        selectedIcon: Icons.home_rounded,
+                        label: l10n.navHome,
+                        onTap: onHome,
+                      ),
+                      _navItem(
+                        index: 1,
+                        icon: Icons.calendar_month_outlined,
+                        selectedIcon: Icons.calendar_month_rounded,
+                        label: l10n.navCalendar,
+                        onTap: onCalendar,
+                      ),
+                    ],
                   ),
-                  _navItem(
-                    context,
-                    index: 1,
-                    icon: Icons.calendar_month_outlined,
-                    selectedIcon: Icons.calendar_month_rounded,
-                    label: l10n.navCalendar,
-                    onTap: onCalendar,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -2827,8 +2820,7 @@ class _ProBottomNav extends StatelessWidget {
     );
   }
 
-  Widget _navItem(
-    BuildContext context, {
+  Widget _navItem({
     required int index,
     required IconData icon,
     required IconData selectedIcon,
@@ -2836,63 +2828,54 @@ class _ProBottomNav extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final selected = selectedIndex == index;
-    const idleColor = Color(0xFF64748B);
 
     return Expanded(
-      child: Center(
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: label,
-          child: SoftPressButton(
-            onTap: onTap,
-            size: SoftPressSize.small,
-            borderRadius: 16,
-            isDarkSurface: false,
-            showHighlight: false,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.fromLTRB(18, 6, 18, 5),
-              decoration: BoxDecoration(
-                color: selected ? const Color(0xFFE6F7F9) : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: selected
-                      ? const Color(0xFFA9DCE4)
-                      : Colors.transparent,
-                ),
+      child: SoftPressButton(
+        onTap: onTap,
+        size: SoftPressSize.small,
+        borderRadius: 18,
+        isDarkSurface: false,
+        showHighlight: false,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+            decoration: BoxDecoration(
+              color: selected ? _pillFill : Colors.transparent,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: selected ? _pillBorder : Colors.transparent,
               ),
+            ),
+            child: FittedBox(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     selected ? selectedIcon : icon,
                     size: 24,
-                    color: selected ? _teal : idleColor,
+                    color: selected ? _accent : _idle,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     label,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
+                    style: TextStyle(
                       fontSize: 12,
-                      fontWeight:
-                          selected ? FontWeight.w800 : FontWeight.w500,
-                      color: selected ? _teal : idleColor,
-                      height: 1.15,
+                      height: 1.1,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                      color: selected ? _accent : _idle,
                     ),
                   ),
                   const SizedBox(height: 3),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOutCubic,
-                    width: selected ? 16 : 0,
+                    width: selected ? 18 : 0,
                     height: 3,
                     decoration: BoxDecoration(
-                      color: selected ? _teal : Colors.transparent,
+                      color: selected ? _accent : Colors.transparent,
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
