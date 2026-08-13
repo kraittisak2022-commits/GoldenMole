@@ -918,6 +918,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         formatBuddhistDateButton:
                                             _formatBuddhistDateButton,
                                         onOpenModule: _openQuickInput,
+                                        onOpenSettings: () =>
+                                            _openAppSettingsScreen(client),
                                         txService: _txService,
                                         employeeService:
                                             EmployeeService(client),
@@ -962,7 +964,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         selectedIndex: _bodyPage == 0 ? 0 : -1,
         onHome: () => setState(() => _bodyPage = 0),
         onCalendar: () => _openCalendarScreen(client),
-        onSettings: () => _openAppSettingsScreen(client),
         onLogout: _confirmLogout,
       ),
     );
@@ -1042,6 +1043,7 @@ class _DailyHomeContent extends StatefulWidget {
     required this.dateKey,
     required this.formatBuddhistDateButton,
     required this.onOpenModule,
+    required this.onOpenSettings,
     required this.txService,
     required this.employeeService,
   });
@@ -1061,6 +1063,7 @@ class _DailyHomeContent extends StatefulWidget {
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
   final void Function(_DailyModuleDef m) onOpenModule;
+  final VoidCallback onOpenSettings;
   final TransactionService txService;
   final EmployeeService employeeService;
 
@@ -1814,6 +1817,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 ),
                                 onPickDay: widget.onPickDay,
                                 onRefresh: widget.onPullRefresh,
+                                onOpenSettings: widget.onOpenSettings,
                               ),
                             ),
                           ),
@@ -2051,6 +2055,45 @@ class _StaggerMenuTile extends StatelessWidget {
   }
 }
 
+class _TopSettingsButton extends StatelessWidget {
+  const _TopSettingsButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).navSettings;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: SoftPressButton(
+          onTap: onTap,
+          size: SoftPressSize.small,
+          borderRadius: 12,
+          liftWhenIdle: true,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F8FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFDCE6EE)),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(10),
+              child: Icon(
+                Icons.settings_outlined,
+                color: Color(0xFF0D98A5),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeHeaderCompact extends StatelessWidget {
   const _HomeHeaderCompact({
     required this.appName,
@@ -2058,6 +2101,7 @@ class _HomeHeaderCompact extends StatelessWidget {
     required this.selectedDateLabel,
     required this.onPickDay,
     required this.onRefresh,
+    required this.onOpenSettings,
   });
 
   final String appName;
@@ -2065,6 +2109,7 @@ class _HomeHeaderCompact extends StatelessWidget {
   final String selectedDateLabel;
   final VoidCallback onPickDay;
   final Future<void> Function() onRefresh;
+  final VoidCallback onOpenSettings;
 
   static const _teal = Color(0xFF0D98A5);
   static const _tealMid = Color(0xFF0A7A88);
@@ -2202,6 +2247,8 @@ class _HomeHeaderCompact extends StatelessWidget {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        _TopSettingsButton(onTap: onOpenSettings),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -2714,7 +2761,6 @@ class _ProBottomNav extends StatelessWidget {
     required this.selectedIndex,
     required this.onHome,
     required this.onCalendar,
-    required this.onSettings,
     required this.onLogout,
   });
 
@@ -2722,7 +2768,6 @@ class _ProBottomNav extends StatelessWidget {
   final int selectedIndex;
   final VoidCallback onHome;
   final VoidCallback onCalendar;
-  final VoidCallback onSettings;
   final VoidCallback onLogout;
 
   @override
@@ -2760,14 +2805,6 @@ class _ProBottomNav extends StatelessWidget {
               _navItem(
                 context,
                 index: 2,
-                icon: Icons.settings_outlined,
-                selectedIcon: Icons.settings_rounded,
-                label: l10n.navSettings,
-                onTap: onSettings,
-              ),
-              _navItem(
-                context,
-                index: 3,
                 icon: Icons.logout_rounded,
                 selectedIcon: Icons.logout_rounded,
                 label: l10n.navLogout,
