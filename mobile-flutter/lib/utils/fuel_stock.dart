@@ -1,5 +1,6 @@
 import '../models/app_transaction.dart';
 import 'daily_module_transactions.dart';
+import 'sand_work_duration.dart';
 
 /// ความจุถังสต็อกน้ำมันหลัก (ลิตร)
 const double kFuelTankCapacityMainLiters = 12000;
@@ -124,6 +125,20 @@ String normalizeFuelTank(String? raw) {
   return kFuelTankMain;
 }
 
+/// ถังที่ใช้คิดยอดการใช้น้ำมัน
+///
+/// แถว `VehicleUsage` ที่ไม่ระบุถัง (แอปเก่า) = ถังสำรอง
+/// ตรงกับค่าเริ่มต้นของฟอร์มแม็คโคร — ประเภทอื่นที่ว่าง = ถังหลัก
+String fuelUsageTankOf(AppTransaction t) {
+  final raw = (t.fuelTank ?? '').trim();
+  if (raw.isNotEmpty) return normalizeFuelTank(raw);
+  final sub = (t.subCategory ?? '').trim();
+  if (t.category == 'Fuel' && sub == 'VehicleUsage') {
+    return kFuelTankReserve;
+  }
+  return kFuelTankMain;
+}
+
 bool fuelTankIsReserve(String? raw) => normalizeFuelTank(raw) == kFuelTankReserve;
 
 String fuelTankLabelOf(String? raw) =>
@@ -215,17 +230,27 @@ class FuelStockBalance {
 class _FuelDayBucket {
   double stockIn = 0;
   double withdraw = 0;
-  double machineWithdraw = 0;
-  double vehicleUsage = 0;
 }
+
+List<String> _sandLapTimes(AppTransaction t) {
+  final raw = t.workAssignments?['lapTimes'];
+  if (raw == null || raw.isEmpty) return const [];
+  return [
+    for (final e in raw)
+      if (e.trim().isNotEmpty) e.trim(),
+  ];
+}
+
+bool _isDailyLogSandRow(AppTransaction t) =>
+    t.category == 'DailyLog' && (t.subCategory ?? '').trim() == 'Sand';
 
 /// คงเหลือแยกถังหลัก/สำรอง
 ///
-/// ต่อวันต่อถังต่อชนิดน้ำมัน:
-/// `delta = stockIn − withdraw − max(0, vehicleUsage − machineWithdraw)`
+/// แต่ละแถวหัก/เติมถังของตัวเอง — ไม่หักล้างข้ามแถว
+/// `delta = stockIn − withdraw`
 ///
 /// รายการก่อน [kFuelStockCutoverYmd] ไม่ถูกนับ — ยอดก่อนหน้า = 0
-/// แถวไม่มี `fuelTank` → ถือเป็นถังหลัก
+/// แถว `VehicleUsage` ไม่ระบุถัง → ถังสำรอง; ประเภทอื่นไม่ระบุ → ถังหลัก
 FuelStockBalance computeFuelStockBalance(
   Iterable<AppTransaction> transactions, {
   double openingDiesel = 0,
@@ -240,44 +265,75 @@ FuelStockBalance computeFuelStockBalance(
         () => _FuelDayBucket(),
       );
 
+  final sandSieveDays = <String>{};
+  final transferMachineDays = <String>{};
+  final sandByDay = <String, AppTransaction>{};
+
+  for (final t in transactions) {
+    final day = t.date.trim();
+    if (day.compareTo(kFuelStockCutoverYmd) < 0) continue;
+    if (isFuelSandSieveRow(t)) sandSieveDays.add(day);
+    if (isFuelTransferRow(t) &&
+        (t.workType ?? '').trim().toLowerCase() == 'machine') {
+      transferMachineDays.add(day);
+    }
+    if (_isDailyLogSandRow(t)) {
+      final laps = _sandLapTimes(t);
+      if (laps.isNotEmpty) {
+        final prev = sandByDay[day];
+        final prevLen = prev == null ? 0 : _sandLapTimes(prev).length;
+        if (laps.length >= prevLen) sandByDay[day] = t;
+      }
+    }
+  }
+
   for (final t in transactions) {
     if (!_isFuelExpenseRow(t)) continue;
     final day = t.date.trim();
     if (day.compareTo(kFuelStockCutoverYmd) < 0) continue;
     final liters = fuelTxLiters(t);
     if (liters <= 0) continue;
-    final tank = normalizeFuelTank(t.fuelTank);
-    final bucket = bucketFor(day, tank, fuelTypeIsBenzine(t.fuelType));
+    final tank = fuelUsageTankOf(t);
+    final benzine = fuelTypeIsBenzine(t.fuelType);
+    final bucket = bucketFor(day, tank, benzine);
     if (isFuelStockInRow(t)) {
       bucket.stockIn += liters;
       continue;
     }
     if (isFuelWithdrawRow(t)) {
       bucket.withdraw += liters;
-      if (fuelWithdrawPurposeCode(t) == 'machine') {
-        bucket.machineWithdraw += liters;
+      // แอปเก่า: เบิกเติมเครื่องจักรเป็นแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
+      if (fuelWithdrawPurposeCode(t) == 'machine' &&
+          !transferMachineDays.contains(day)) {
+        bucketFor(day, kFuelTankReserve, benzine).stockIn += liters;
       }
       continue;
     }
     if (isFuelSandSieveRow(t) || isFuelTransferRow(t)) {
-      // Transfer stock_out / SandSieve — หักเต็มจากถังนั้น
       bucket.withdraw += liters;
-      // เติมเครื่องจักรผ่านโอนหลัก→สำรอง: นับโควตา machine บนถังหลัก
-      if (isFuelTransferRow(t) &&
-          (t.workType ?? '').trim().toLowerCase() == 'machine') {
-        bucket.machineWithdraw += liters;
-      }
       continue;
     }
     if (isFuelVehicleUsageRow(t)) {
-      bucket.vehicleUsage += liters;
+      bucket.withdraw += liters;
       continue;
     }
-    // catch-all stock_out ที่ไม่ใช่ vehicle
     final mov = (t.fuelMovement ?? '').trim().toLowerCase();
     if (mov == 'stock_out') {
       bucket.withdraw += liters;
     }
+  }
+
+  for (final entry in sandByDay.entries) {
+    if (sandSieveDays.contains(entry.key)) continue;
+    final laps = _sandLapTimes(entry.value);
+    final hours =
+        computeSandWorkDurationSummary(laps, entry.key)?.totalActiveHours ?? 0;
+    if (hours <= 0) continue;
+    final liters = double.parse(
+      (hours * kFuelSandSieveLitersPerHour).toStringAsFixed(2),
+    );
+    if (liters <= 0) continue;
+    bucketFor(entry.key, kFuelTankReserve, false).withdraw += liters;
   }
 
   var mainDiesel = openingDiesel;
@@ -286,8 +342,7 @@ FuelStockBalance computeFuelStockBalance(
   var reserveBenzine = openingReserveBenzine;
   for (final entry in buckets.entries) {
     final b = entry.value;
-    final excess = b.vehicleUsage - b.machineWithdraw;
-    final delta = b.stockIn - b.withdraw - (excess > 0 ? excess : 0);
+    final delta = b.stockIn - b.withdraw;
     final parts = entry.key.split('|');
     final tank = parts.length >= 2 ? parts[1] : kFuelTankMain;
     final isBenzine = entry.key.endsWith('|B');
@@ -380,8 +435,6 @@ FuelStockBalance _fuelBalanceAdd(
 }
 
 /// อัปเดตคงเหลือจากแถวเดียวโดยไม่สแกนทั้งลิสต์
-///
-/// คืน `null` เมื่อต้องคำนวณใหม่ทั้งชุด (เช่น VehicleUsage ที่พึ่งโควตา machine)
 FuelStockBalance? applyFuelBalanceDelta(
   FuelStockBalance current,
   AppTransaction t, {
@@ -393,7 +446,7 @@ FuelStockBalance? applyFuelBalanceDelta(
   final liters = fuelTxLiters(t);
   if (liters <= 0) return current;
   final signed = reverse ? -liters : liters;
-  final tank = normalizeFuelTank(t.fuelTank);
+  final tank = fuelUsageTankOf(t);
   final benzine = fuelTypeIsBenzine(t.fuelType);
 
   if (isFuelStockInRow(t)) {
@@ -404,9 +457,27 @@ FuelStockBalance? applyFuelBalanceDelta(
       delta: signed,
     );
   }
-  if (isFuelWithdrawRow(t) ||
-      isFuelSandSieveRow(t) ||
-      isFuelTransferRow(t)) {
+  if (isFuelWithdrawRow(t)) {
+    var next = _fuelBalanceAdd(
+      current,
+      tank: tank,
+      benzine: benzine,
+      delta: -signed,
+    );
+    // แอปเก่า: เบิกเติมเครื่องจักรเป็นแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
+    if (fuelWithdrawPurposeCode(t) == 'machine') {
+      next = _fuelBalanceAdd(
+        next,
+        tank: kFuelTankReserve,
+        benzine: benzine,
+        delta: signed,
+      );
+    }
+    return next;
+  }
+  if (isFuelSandSieveRow(t) ||
+      isFuelTransferRow(t) ||
+      isFuelVehicleUsageRow(t)) {
     // Transfer stock_in ถูกจับที่ isFuelStockInRow แล้ว
     return _fuelBalanceAdd(
       current,
@@ -414,9 +485,6 @@ FuelStockBalance? applyFuelBalanceDelta(
       benzine: benzine,
       delta: -signed,
     );
-  }
-  if (isFuelVehicleUsageRow(t)) {
-    return null;
   }
   final mov = (t.fuelMovement ?? '').trim().toLowerCase();
   if (mov == 'stock_out') {

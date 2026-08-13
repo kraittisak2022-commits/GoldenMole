@@ -500,9 +500,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (vid.isNotEmpty) row.vehicleId = vid;
     final ft = (t.fuelType ?? 'Diesel').trim();
     row.fuelType = ft.isEmpty ? 'Diesel' : ft;
-    // แถวเก่าไม่มี fuel_tank = ถังหลัก (legacy); มีค่าแล้วใช้ตามที่บันทึก
-    final rawTank = (t.fuelTank ?? '').trim();
-    row.fuelTank = rawTank.isEmpty ? kFuelTankMain : normalizeFuelTank(rawTank);
+    // แถว VehicleUsage ไม่ระบุถัง = ถังสำรอง (ตรงกับยอดที่คิดจริง)
+    row.fuelTank = fuelUsageTankOf(t);
     final lit = t.quantity ?? 0;
     if (lit > 0) {
       row.liters = _strNum(lit);
