@@ -176,6 +176,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ),
   ];
   static const Color _bg = Color(0xFFFDFEFF);
+  static const Color _macroAccent = Color(0xFF0F9EA8);
+  static const Color _macroAccentInk = Color(0xFF00838F);
+  static const Color _macroAccentTint = Color(0xFFE0F2F1);
 
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
@@ -3584,6 +3587,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกการใช้รถแม็คโครสำเร็จ',
       saveActionLabel: 'บันทึกการใช้รถแม็คโคร',
       saveButtonLabel: 'บันทึก',
+      requireSignature: false,
       stayOnPage: true,
       body: () async {
         final macroCars = _fuelMacroCars();
@@ -3619,6 +3623,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'อัปเดต ${row.vehicleId} แล้ว',
       saveActionLabel: 'อัปเดตการใช้รถแม็คโคร',
       saveButtonLabel: 'อัปเดตคันนี้',
+      requireSignature: false,
       stayOnPage: true,
       body: () async {
         final macroCars = _fuelMacroCars();
@@ -9792,13 +9797,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool starred = false,
     VoidCallback? onRemove,
   }) {
-    const accent = Color(0xFFE65100);
+    const accent = _macroAccent;
     return AnimatedScale(
       scale: selected ? 1.03 : 1,
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutBack,
       child: Material(
-        color: selected ? const Color(0xFFFFE0B2) : Colors.white,
+        color: selected ? _macroAccentTint : Colors.white,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
@@ -9844,7 +9849,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: selected
-                        ? const Color(0xFFBF360C)
+                        ? _macroAccentInk
                         : const Color(0xFF37474F),
                   ),
                 ),
@@ -9856,7 +9861,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     child: const Icon(
                       Icons.cancel_rounded,
                       size: 19,
-                      color: Color(0xFFBF360C),
+                      color: Color(0xFFD14343),
                     ),
                   ),
                 ],
@@ -9906,19 +9911,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isFilled || isSaved
-            ? const Color(0xFFFFF8F0)
+            ? _macroAccent.withValues(alpha: 0.05)
             : const Color(0xFFFAFCFE),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isFilled || isSaved
-              ? const Color(0xFFFF9800)
-              : const Color(0xFFFFE0B2),
+              ? _macroAccent
+              : _macroAccent.withValues(alpha: 0.35),
           width: isFilled || isSaved ? 1.8 : 1,
         ),
         boxShadow: [
           if (isFilled || isSaved)
             BoxShadow(
-              color: const Color(0xFFFF8F00).withValues(alpha: 0.18),
+              color: _macroAccent.withValues(alpha: 0.18),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -9934,13 +9939,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFE0B2),
+                  color: _macroAccentTint,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Icon(
                   Icons.construction_rounded,
                   size: 30,
-                  color: Color(0xFFE65100),
+                  color: _macroAccent,
                 ),
               ),
               const SizedBox(width: 12),
@@ -9964,7 +9969,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: 23,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFFBF360C),
+                        color: _macroAccentInk,
                         height: 1.2,
                       ),
                     ),
@@ -10094,16 +10099,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
+                color: _macroAccentTint,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFCC80)),
+                border: Border.all(color: _macroAccent.withValues(alpha: 0.45)),
               ),
               child: Text(
                 'ลำดับงาน: ${tags.join(' → ')}',
                 style: GoogleFonts.kanit(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFFBF360C),
+                  color: _macroAccentInk,
                   height: 1.3,
                 ),
               ),
@@ -10125,8 +10130,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
-                  foregroundColor: const Color(0xFFE65100),
-                  side: const BorderSide(color: Color(0xFFFFB74D), width: 1.5),
+                  foregroundColor: _macroAccent,
+                  side: BorderSide(
+                    color: _macroAccent.withValues(alpha: 0.55),
+                    width: 1.5,
+                  ),
                   backgroundColor: Colors.white,
                 ),
               ),
@@ -10176,7 +10184,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             border: Border.all(color: const Color(0xFFE3ECF7)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFFF8F00).withValues(alpha: 0.12),
+                color: _macroAccent.withValues(alpha: 0.05),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -10241,7 +10249,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         style: GoogleFonts.kanit(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFFE65100),
+                          color: _macroAccent,
                         ),
                       ),
                       children: [
@@ -10265,12 +10273,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8E1),
+                    color: _macroAccentTint,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: savedCount > 0 || filledCount > 0
-                          ? const Color(0xFFFFE082)
-                          : const Color(0xFFFFECB3),
+                          ? _macroAccent.withValues(alpha: 0.45)
+                          : _macroAccent.withValues(alpha: 0.25),
                     ),
                   ),
                   child: Text(
@@ -10300,8 +10308,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(56),
-                    backgroundColor: const Color(0xFFFF8F00),
-                    foregroundColor: Colors.white,
                   ),
                 ),
               ),
