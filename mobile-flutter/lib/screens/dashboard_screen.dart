@@ -2765,56 +2765,36 @@ class _ProBottomNav extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            height: 3,
-            width: double.infinity,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFF00C4D4),
-                    _teal,
-                    Color(0xFF0A7A88),
-                  ],
-                ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: navHeight,
+          child: Row(
+            children: [
+              _navItem(
+                index: 0,
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: l10n.navHome,
+                onTap: onHome,
               ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: SizedBox(
-              height: navHeight,
-              child: Row(
-                children: [
-                  _navItem(
-                    index: 0,
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: l10n.navHome,
-                    onTap: onHome,
-                  ),
-                  const VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    indent: 12,
-                    endIndent: 12,
-                    color: Color(0xFFE3EEF3),
-                  ),
-                  _navItem(
-                    index: 1,
-                    icon: Icons.calendar_month_outlined,
-                    selectedIcon: Icons.calendar_month_rounded,
-                    label: l10n.navCalendar,
-                    onTap: onCalendar,
-                  ),
-                ],
+              const VerticalDivider(
+                width: 1,
+                thickness: 1,
+                indent: 12,
+                endIndent: 12,
+                color: Color(0xFFE3EEF3),
               ),
-            ),
+              _navItem(
+                index: 1,
+                icon: Icons.calendar_month_outlined,
+                selectedIcon: Icons.calendar_month_rounded,
+                label: l10n.navCalendar,
+                onTap: onCalendar,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2836,42 +2816,24 @@ class _ProBottomNav extends StatelessWidget {
         borderRadius: 0,
         isDarkSurface: false,
         showHighlight: false,
-        child: Stack(
-          alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  selected ? selectedIcon : icon,
-                  size: 24,
-                  color: color,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.kanit(
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                    color: color,
-                    height: 1.1,
-                  ),
-                ),
-              ],
+            Icon(
+              selected ? selectedIcon : icon,
+              size: 24,
+              color: color,
             ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: selected ? 1 : 0,
-                child: const SizedBox(
-                  height: 3,
-                  child: ColoredBox(color: _teal),
-                ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.kanit(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                color: color,
+                height: 1.1,
               ),
             ),
           ],
