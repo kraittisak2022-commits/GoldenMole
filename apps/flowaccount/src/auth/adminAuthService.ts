@@ -45,7 +45,10 @@ export async function signInWithAdminUsers(
     throw new SignInError('empty_fields', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
   }
   if (!hasSupabaseConfig) {
-    throw new SignInError('missing_config', 'ยังไม่ได้ตั้งค่าการเชื่อมต่อฐานข้อมูล');
+    throw new SignInError(
+      'missing_config',
+      'ยังไม่ได้ตั้งค่าการเชื่อมต่อฐานข้อมูล (ขาด VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) — ถ้าใช้ localhost ให้สร้างไฟล์ apps/flowaccount/.env แล้วรีสตาร์ท npm run dev; ถ้าอยู่บน Vercel ให้ใส่ env ในโปรเจกต์ goldenmole-flowaccount แล้ว Redeploy',
+    );
   }
 
   const normalized = normalizeUsername(u);
