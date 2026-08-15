@@ -11424,6 +11424,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           const SizedBox(height: 8),
           purposeTile(FuelWithdrawPurpose.generator, Icons.bolt_outlined),
           const SizedBox(height: 8),
+          purposeTile(
+            FuelWithdrawPurpose.mayor,
+            Icons.account_balance_outlined,
+          ),
+          const SizedBox(height: 8),
           purposeTile(FuelWithdrawPurpose.other, Icons.more_horiz_rounded),
           if (_fuelWithdrawPurpose == FuelWithdrawPurpose.other) ...[
             const SizedBox(height: 12),

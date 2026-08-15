@@ -151,7 +151,7 @@ void main() {
       expect(b.reserveDiesel, 200);
     });
 
-    test('generator and other withdraw from main only', () {
+    test('generator mayor and other withdraw from main only', () {
       final b = computeFuelStockBalance([
         _fuel(
           id: 'g',
@@ -161,6 +161,13 @@ void main() {
           workType: 'generator',
         ),
         _fuel(
+          id: 'm',
+          sub: kFuelWithdrawSubCategory,
+          movement: 'stock_out',
+          liters: 20,
+          workType: 'mayor',
+        ),
+        _fuel(
           id: 'o',
           sub: kFuelWithdrawSubCategory,
           movement: 'stock_out',
@@ -168,8 +175,10 @@ void main() {
           workType: 'other',
         ),
       ]);
-      expect(b.mainDiesel, -26);
+      expect(b.mainDiesel, -46);
       expect(b.reserveDiesel, 0);
+      expect(fuelWithdrawPurposeLabelOf(FuelWithdrawPurpose.mayor), 'นายกเบิก');
+      expect(fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose.mayor), 'mayor');
     });
 
     test('macro on main deducts main even when machine was filled that day', () {

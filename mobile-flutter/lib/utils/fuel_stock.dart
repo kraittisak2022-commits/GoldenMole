@@ -35,7 +35,7 @@ const String kFuelSandSieveSubCategory = 'SandSieve';
 const double kFuelSandSieveLitersPerHour = 18;
 
 /// วัตถุประสงค์การเบิกน้ำมันออกจากถัง
-enum FuelWithdrawPurpose { machine, car, generator, other }
+enum FuelWithdrawPurpose { machine, car, generator, mayor, other }
 
 /// รถที่เติมจากเมนู «เติมน้ำมันรถยนต์» (หักถังหลัก)
 enum FuelCarFillVehicle { mighty, taplien, ahming, other }
@@ -82,6 +82,8 @@ String fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose purpose) {
       return 'car';
     case FuelWithdrawPurpose.generator:
       return 'generator';
+    case FuelWithdrawPurpose.mayor:
+      return 'mayor';
     case FuelWithdrawPurpose.other:
       return 'other';
   }
@@ -95,6 +97,8 @@ String fuelWithdrawPurposeLabelOf(FuelWithdrawPurpose purpose) {
       return 'รถยนต์';
     case FuelWithdrawPurpose.generator:
       return 'เครื่องปั่นไฟเล็ก';
+    case FuelWithdrawPurpose.mayor:
+      return 'นายกเบิก';
     case FuelWithdrawPurpose.other:
       return 'อื่นๆ';
   }
@@ -108,6 +112,8 @@ FuelWithdrawPurpose? fuelWithdrawPurposeFromCode(String? code) {
       return FuelWithdrawPurpose.car;
     case 'generator':
       return FuelWithdrawPurpose.generator;
+    case 'mayor':
+      return FuelWithdrawPurpose.mayor;
     case 'other':
       return FuelWithdrawPurpose.other;
     default:
@@ -186,7 +192,7 @@ bool isFuelSandSieveRow(AppTransaction t) {
   return (t.subCategory ?? '').trim() == kFuelSandSieveSubCategory;
 }
 
-/// รหัสวัตถุประสงค์ของแถวเบิกน้ำมัน (`machine` | `car` | `generator` | `other`)
+/// รหัสวัตถุประสงค์ของแถวเบิกน้ำมัน (`machine` | `car` | `generator` | `mayor` | `other`)
 String? fuelWithdrawPurposeCode(AppTransaction t) {
   if (!isFuelWithdrawRow(t)) return null;
   final code = (t.workType ?? '').trim().toLowerCase();
