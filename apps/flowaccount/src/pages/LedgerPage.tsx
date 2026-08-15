@@ -20,6 +20,7 @@ export default function LedgerPage() {
   const { user } = useAuth();
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
   const [categories, setCategories] = useState<FaCategory[]>([]);
+  const [filterCategoryId, setFilterCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [entryOpen, setEntryOpen] = useState(false);
@@ -37,6 +38,25 @@ export default function LedgerPage() {
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
+  const filteredEntries = useMemo(() => {
+    if (!filterCategoryId) return entries;
+    return entries.filter((e) => e.categoryId === filterCategoryId);
+  }, [entries, filterCategoryId]);
+
+  const filterCategoryName = filterCategoryId
+    ? catMap.get(filterCategoryId)?.name || 'หมวดที่เลือก'
+    : 'ทุกหมวดหมู่';
+
+  const categoryTotals = useMemo(() => {
+    const income = filteredEntries
+      .filter((e) => e.entryType === 'income')
+      .reduce((s, e) => s + e.amount, 0);
+    const expense = filteredEntries
+      .filter((e) => e.entryType === 'expense')
+      .reduce((s, e) => s + e.amount, 0);
+    return { income, expense, count: filteredEntries.length };
+  }, [filteredEntries]);
+
   const reload = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -44,17 +64,21 @@ export default function LedgerPage() {
       const [e, c] = await Promise.all([listLedgerEntries(), listCategories()]);
       setEntries(e);
       setCategories(c);
-      if (!categoryId && c[0]) setCategoryId(c[0].id);
+      setFilterCategoryId((prev) => {
+        if (prev && c.some((x) => x.id === prev)) return prev;
+        return c[0]?.id || '';
+      });
+      setCategoryId((prev) => prev || c[0]?.id || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดข้อมูลไม่สำเร็จ');
     } finally {
       setLoading(false);
     }
-  }, [categoryId]);
+  }, []);
 
   useEffect(() => {
     void reload();
-  }, []);
+  }, [reload]);
 
   const openCreate = () => {
     setEditing(null);
@@ -62,7 +86,7 @@ export default function LedgerPage() {
     setDescription('');
     setEntryType('expense');
     setAmount('');
-    setCategoryId(categories[0]?.id || '');
+    setCategoryId(filterCategoryId || categories[0]?.id || '');
     setEntryOpen(true);
   };
 
@@ -92,6 +116,7 @@ export default function LedgerPage() {
         createdBy: user?.username,
       });
       setEntryOpen(false);
+      setFilterCategoryId(categoryId);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
@@ -114,11 +139,6 @@ export default function LedgerPage() {
   const columns: Column<FaLedgerEntry>[] = [
     { key: 'date', header: 'วันที่', render: (r) => r.date },
     { key: 'desc', header: 'รายการ', render: (r) => r.description },
-    {
-      key: 'cat',
-      header: 'หมวดหมู่',
-      render: (r) => catMap.get(r.categoryId)?.name || r.categoryId,
-    },
     {
       key: 'type',
       header: 'ประเภท',
@@ -160,7 +180,7 @@ export default function LedgerPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">รายรับ-รายจ่าย</h2>
-          <p className="mt-1 text-sm text-muted">สมุดบัญชีหลัก + หมวดหมู่แบบไดนามิก</p>
+          <p className="mt-1 text-sm text-muted">แสดงรายการแยกตามหมวดหมู่ที่เลือก</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setCatOpen(true)}>
@@ -170,18 +190,76 @@ export default function LedgerPage() {
         </div>
       </div>
 
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[220px] flex-1">
+            <Field id="ledger-filter-cat" label="หมวดหมู่">
+              <Select
+                id="ledger-filter-cat"
+                value={filterCategoryId}
+                onChange={(e) => setFilterCategoryId(e.target.value)}
+                aria-label="เลือกหมวดหมู่เพื่อกรองตาราง"
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm text-muted pb-1">
+            <span>
+              หมวด: <span className="font-medium text-ink">{filterCategoryName}</span>
+            </span>
+            <span>
+              {categoryTotals.count} รายการ
+            </span>
+            <span className="tabular-nums">
+              รับ {formatMoney(categoryTotals.income)}
+            </span>
+            <span className="tabular-nums">
+              จ่าย {formatMoney(categoryTotals.expense)}
+            </span>
+          </div>
+        </div>
+      </Card>
+
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {loading ? <p className="text-sm text-muted">กำลังโหลด…</p> : <DataTable columns={columns} rows={entries} rowKey={(r) => r.id} />}
+      {loading ? (
+        <p className="text-sm text-muted">กำลังโหลด…</p>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={filteredEntries}
+          rowKey={(r) => r.id}
+          emptyText={`ยังไม่มีรายการในหมวด "${filterCategoryName}"`}
+        />
+      )}
 
       <Card className="p-4">
-        <h3 className="text-sm font-medium text-ink">หมวดหมู่ปัจจุบัน</h3>
+        <h3 className="text-sm font-medium text-ink">หมวดหมู่ทั้งหมด</h3>
         <ul className="mt-3 flex flex-wrap gap-2">
           {categories.map((c) => (
-            <li key={c.id} className="flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs">
-              {c.name}
+            <li
+              key={c.id}
+              className={[
+                'flex min-h-9 items-center gap-1 rounded-full border px-1 pl-3 text-xs',
+                filterCategoryId === c.id
+                  ? 'border-accent bg-sky-50 text-ink'
+                  : 'border-border text-muted',
+              ].join(' ')}
+            >
               <button
                 type="button"
-                className="text-muted hover:text-destructive cursor-pointer"
+                className="cursor-pointer py-1 hover:text-ink"
+                onClick={() => setFilterCategoryId(c.id)}
+              >
+                {c.name}
+              </button>
+              <button
+                type="button"
+                className="min-h-8 min-w-8 rounded-full text-muted hover:bg-white hover:text-destructive cursor-pointer"
                 onClick={() => void archiveCategory(c.id).then(reload)}
                 aria-label={`เก็บหมวด ${c.name}`}
               >
