@@ -192,17 +192,72 @@ enum FuelLogic {
     /// ลิตรเครื่องร่อนของวันนั้น: แถว SandSieve ถ้ามี ไม่งั้นชั่วโมงร่อน × 18 L
     static func sandSieveUsage(on date: String, transactions: [Transaction]) -> SandSieveUsage? {
         let dayTx = transactions.filter { String($0.date.prefix(10)) == date }
-        let persistedLiters = dayTx.filter(isSandSieve).reduce(0.0) { $0 + liters(of: $1) }
+        // Use Self.liters — a local `liters` binding would shadow the static method for the whole function.
+        let persistedLiters = dayTx.filter(isSandSieve).reduce(0.0) { $0 + Self.liters(of: $1) }
         if persistedLiters > 0 {
+            // #region agent log
+            Self.debugLog(
+                hypothesisId: "A",
+                location: "FuelLogic.swift:sandSieveUsage",
+                message: "persisted SandSieve liters",
+                data: ["dayKey": date, "liters": persistedLiters, "fromPersistedRow": true]
+            )
+            // #endregion
             return SandSieveUsage(dayKey: date, liters: persistedLiters, hours: 0, fromPersistedRow: true)
         }
         guard let sand = CountRecordLogic.buildSandUnit(dayKey: date, transactions: dayTx) else { return nil }
         let hours = CountRecordAnalytics.computeWorkDuration(lapTimes: sand.lapTimes, dayKey: date)?.totalActiveHours ?? 0
         guard hours > 0 else { return nil }
-        let liters = ((hours * sandSieveLitersPerHour) * 100).rounded() / 100
-        guard liters > 0 else { return nil }
-        return SandSieveUsage(dayKey: date, liters: liters, hours: hours, fromPersistedRow: false)
+        let inferredLiters = ((hours * sandSieveLitersPerHour) * 100).rounded() / 100
+        guard inferredLiters > 0 else { return nil }
+        // #region agent log
+        Self.debugLog(
+            hypothesisId: "A",
+            location: "FuelLogic.swift:sandSieveUsage",
+            message: "inferred sand-sieve liters",
+            data: ["dayKey": date, "hours": hours, "liters": inferredLiters, "fromPersistedRow": false]
+        )
+        // #endregion
+        return SandSieveUsage(dayKey: date, liters: inferredLiters, hours: hours, fromPersistedRow: false)
     }
+
+    // #region agent log
+    private static func debugLog(
+        hypothesisId: String,
+        location: String,
+        message: String,
+        data: [String: Any]
+    ) {
+        let payload: [String: Any] = [
+            "sessionId": "f18a50",
+            "runId": "post-fix",
+            "hypothesisId": hypothesisId,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let json = try? JSONSerialization.data(withJSONObject: payload),
+              let line = String(data: json, encoding: .utf8)
+        else { return }
+        let paths = [
+            "debug-f18a50.log",
+            "../debug-f18a50.log",
+            "c:/Users/HP/.gemini/antigravity/scratch/construction-management-app/debug-f18a50.log",
+        ]
+        let bytes = (line + "\n").data(using: .utf8)
+        for path in paths {
+            if let handle = FileHandle(forWritingAtPath: path) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                if let bytes { try? handle.write(contentsOf: bytes) }
+                return
+            }
+            if FileManager.default.createFile(atPath: path, contents: bytes) { return }
+        }
+    }
+    // #endregion
 
     static func sandSieveLiters(on date: String, transactions: [Transaction]) -> Double {
         sandSieveUsage(on: date, transactions: transactions)?.liters ?? 0
