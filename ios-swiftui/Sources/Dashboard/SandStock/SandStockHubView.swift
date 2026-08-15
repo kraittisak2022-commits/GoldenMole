@@ -52,7 +52,7 @@ struct SandStockHubView: View {
 
                     chartCard(
                         title: "คงเหลือท้ายวัน",
-                        subtitle: "สะสมจากยอดเปิดบ่อ + ขนเข้า − ร่อนออก"
+                        subtitle: "สะสมจาก 4 ส.ค. 2569 · ยอดเปิดบ่อ + ขนเข้า − ร่อนออก"
                     ) {
                         LineChartView(
                             labels: chartLabels,

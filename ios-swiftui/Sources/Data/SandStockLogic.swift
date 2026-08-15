@@ -5,7 +5,7 @@ import Foundation
 /// - **IN** — vehicle trip rows that dump sand into the pond
 /// - **OUT** — sand sieve / wash rows that scoop sand out of the pond
 ///
-/// Remaining = opening + Σ(in) − Σ(out) through the as-of date.
+/// Remaining = opening + Σ(in) − Σ(out) from stock cutover through the as-of date.
 enum SandStockLogic {
     static let openingStockDefaultsKey = "sand_stock_opening_cubic_v1"
     static let pondCapacityDefaultsKey = "sand_stock_pond_capacity_cubic_v1"
@@ -14,6 +14,8 @@ enum SandStockLogic {
     static let maxFeedEvents = 8
     /// Stock outflow keeps 70% of sieve rounds (subtract 30% first).
     static let sieveOutKeepRatio = 0.70
+    /// วันตัดยอด — ก่อนวันนี้ถือว่าบ่อเหลือ 0; ตั้งแต่วันนี้สะสมขนเข้า−ร่อนออก (พ.ศ. 4 ส.ค. 2569)
+    static let stockCutoverYmd = "2026-08-04"
 
     static func applySieveOutHaircut(_ cubic: Double) -> Double {
         max(0, cubic * sieveOutKeepRatio)
@@ -209,7 +211,7 @@ enum SandStockLogic {
         let priorDates = Set(
             transactions
                 .map { String($0.date.prefix(10)) }
-                .filter { !$0.isEmpty && $0 < startDate }
+                .filter { !$0.isEmpty && $0 >= stockCutoverYmd && $0 < startDate }
         )
         return priorDates.reduce(0.0) { $0 + cubicOut(on: $1, transactions: transactions) }
     }
@@ -288,26 +290,61 @@ enum SandStockLogic {
         let capacity = max(pondCapacityCubic, 1)
 
         // Cumulative balance from opening through each day in the selected window,
-        // seeded with movements before the window start (within loaded transactions).
+        // only counting movements on/after stock cutover (within loaded transactions).
         let priorIn = transactions
-            .filter { isTripInRow($0) && String($0.date.prefix(10)) < filter.start }
+            .filter {
+                isTripInRow($0)
+                    && String($0.date.prefix(10)) >= stockCutoverYmd
+                    && String($0.date.prefix(10)) < filter.start
+            }
             .reduce(0.0) { $0 + tripCubicIn($1) }
         let priorOut = cubicOutBefore(filter.start, transactions: transactions)
 
-        var running = opening + priorIn - priorOut
+        let seedRunning: Double = {
+            if filter.start > stockCutoverYmd {
+                return opening + priorIn - priorOut
+            }
+            if filter.start == stockCutoverYmd {
+                return opening
+            }
+            // Window starts before cutover — balance stays 0 until cutover day.
+            return 0
+        }()
+
+        var running = seedRunning
         var series: [DayPoint] = []
         var periodIn = 0.0
         var periodOut = 0.0
-        var priorRemainingCubic = running
+        var priorRemainingCubic = seedRunning
 
         for date in dates {
-            if date == asOf {
-                priorRemainingCubic = running
-            }
             let inn = cubicIn(on: date, transactions: transactions)
             let out = cubicOut(on: date, transactions: transactions)
             periodIn += inn
             periodOut += out
+
+            if date < stockCutoverYmd {
+                if date == asOf {
+                    priorRemainingCubic = 0
+                }
+                series.append(
+                    DayPoint(
+                        date: date,
+                        label: DashboardAggregations.dayLabel(date),
+                        inCubic: inn,
+                        outCubic: out,
+                        remainingEndOfDay: 0
+                    )
+                )
+                continue
+            }
+
+            if date == stockCutoverYmd, filter.start < stockCutoverYmd {
+                running = opening
+            }
+            if date == asOf {
+                priorRemainingCubic = running
+            }
             running += inn - out
             series.append(
                 DayPoint(
@@ -320,7 +357,13 @@ enum SandStockLogic {
             )
         }
 
-        let remaining = series.last?.remainingEndOfDay ?? (opening + priorIn - priorOut)
+        let remaining: Double = {
+            if asOf < stockCutoverYmd { return 0 }
+            return series.last?.remainingEndOfDay ?? seedRunning
+        }()
+        if asOf < stockCutoverYmd {
+            priorRemainingCubic = 0
+        }
         let dayCount = max(dates.count, 1)
         let avgIn = periodIn / Double(dayCount)
         let avgOut = periodOut / Double(dayCount)
