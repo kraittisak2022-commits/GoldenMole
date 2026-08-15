@@ -409,6 +409,66 @@ enum FuelLogic {
         "\(dateYmd.trimmingCharacters(in: .whitespacesAndNewlines))_fuel_sand_sieve"
     }
 
+    // MARK: - Focus calendar day marks (น้ำมัน)
+
+    struct DayFuelMark: Equatable, Sendable {
+        var stockIn: Bool = false
+        var withdraw: Bool = false
+        var sandSieve: Bool = false
+        var macroUsage: Bool = false
+
+        var isEmpty: Bool { !stockIn && !withdraw && !sandSieve && !macroUsage }
+
+        static let none = DayFuelMark()
+    }
+
+    /// Per-day fuel activity marks for the oil report date picker.
+    static func dayFuelMarks(
+        inMonth monthStart: Date,
+        transactions: [Transaction]
+    ) -> [String: DayFuelMark] {
+        let cal = DashboardAggregations.gregorian
+        let year = cal.component(.year, from: monthStart)
+        let month = cal.component(.month, from: monthStart)
+        let prefix = String(format: "%04d-%02d-", year, month)
+
+        var byDay: [String: [Transaction]] = [:]
+        for t in transactions {
+            let key = String(t.date.prefix(10))
+            guard key.hasPrefix(prefix) else { continue }
+            byDay[key, default: []].append(t)
+        }
+
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        guard let first = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: first)
+        else { return [:] }
+
+        var out: [String: DayFuelMark] = [:]
+        for d in range {
+            let key = String(format: "%04d-%02d-%02d", year, month, d)
+            let dayTx = byDay[key] ?? []
+            var mark = DayFuelMark.none
+            for t in dayTx where isFuelExpense(t) {
+                if isStockIn(t) {
+                    mark.stockIn = true
+                } else if isWithdraw(t), !isCarFill(t) {
+                    mark.withdraw = true
+                } else if isVehicleUsage(t), !isCarFill(t), !isSandSieve(t) {
+                    mark.macroUsage = true
+                }
+            }
+            if sandSieveLiters(on: key, transactions: transactions) > 0 {
+                mark.sandSieve = true
+            }
+            out[key] = mark
+        }
+        return out
+    }
+
     // MARK: - Monthly usage report
 
     struct MonthlyDayRow: Identifiable, Equatable, Sendable {

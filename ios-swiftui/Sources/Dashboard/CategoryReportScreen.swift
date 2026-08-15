@@ -32,7 +32,11 @@ struct CategoryReportScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ReportDateBar(scope: $scope)
+            ReportDateBar(
+                scope: $scope,
+                fuelCalendarTransactions: type == .fuel ? appState.transactions : nil,
+                fuelCalendarRevision: type == .fuel ? appState.transactionsRevision : 0
+            )
                 .padding(.horizontal, AppTheme.spaceLG)
                 .padding(.vertical, 10)
                 .background(AppTheme.surfaceSoft.opacity(0.85))

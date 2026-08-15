@@ -197,6 +197,9 @@ struct ReportDateBar: View {
     var style: ReportDateBarStyle = .surface
     /// Hidden for the daily summary card, which is day-only.
     var showsModeSwitch: Bool = true
+    /// When set, day picker uses the fuel activity calendar instead of the system DatePicker.
+    var fuelCalendarTransactions: [Transaction]? = nil
+    var fuelCalendarRevision: Int = 0
 
     @State private var showDayPicker = false
 
@@ -292,7 +295,19 @@ struct ReportDateBar: View {
             }
         }
         .sheet(isPresented: $showDayPicker) {
-            dayPickerSheet
+            if let txs = fuelCalendarTransactions {
+                FuelFocusCalendarSheet(
+                    selection: Binding(
+                        get: { scope.day },
+                        set: { scope.select(day: $0) }
+                    ),
+                    transactions: txs,
+                    transactionsRevision: fuelCalendarRevision,
+                    onDismiss: { showDayPicker = false }
+                )
+            } else {
+                dayPickerSheet
+            }
         }
     }
 
