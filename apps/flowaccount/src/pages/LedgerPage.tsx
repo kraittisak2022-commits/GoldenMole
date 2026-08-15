@@ -45,7 +45,7 @@ export default function LedgerPage() {
 
   const filterCategoryName = filterCategoryId
     ? catMap.get(filterCategoryId)?.name || 'หมวดที่เลือก'
-    : 'ทุกหมวดหมู่';
+    : 'ทั้งหมด';
 
   const categoryTotals = useMemo(() => {
     const income = filteredEntries
@@ -65,8 +65,9 @@ export default function LedgerPage() {
       setEntries(e);
       setCategories(c);
       setFilterCategoryId((prev) => {
+        if (prev === '') return '';
         if (prev && c.some((x) => x.id === prev)) return prev;
-        return c[0]?.id || '';
+        return '';
       });
       setCategoryId((prev) => prev || c[0]?.id || '');
     } catch (err) {
@@ -116,7 +117,6 @@ export default function LedgerPage() {
         createdBy: user?.username,
       });
       setEntryOpen(false);
-      setFilterCategoryId(categoryId);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
@@ -139,6 +139,15 @@ export default function LedgerPage() {
   const columns: Column<FaLedgerEntry>[] = [
     { key: 'date', header: 'วันที่', render: (r) => r.date },
     { key: 'desc', header: 'รายการ', render: (r) => r.description },
+    ...(filterCategoryId
+      ? []
+      : [
+          {
+            key: 'cat',
+            header: 'หมวดหมู่',
+            render: (r: FaLedgerEntry) => catMap.get(r.categoryId)?.name || r.categoryId,
+          } satisfies Column<FaLedgerEntry>,
+        ]),
     {
       key: 'type',
       header: 'ประเภท',
@@ -180,7 +189,7 @@ export default function LedgerPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">รายรับ-รายจ่าย</h2>
-          <p className="mt-1 text-sm text-muted">แสดงรายการแยกตามหมวดหมู่ที่เลือก</p>
+          <p className="mt-1 text-sm text-muted">ดูทั้งหมด หรือกรองตามหมวดหมู่</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setCatOpen(true)}>
@@ -200,6 +209,7 @@ export default function LedgerPage() {
                 onChange={(e) => setFilterCategoryId(e.target.value)}
                 aria-label="เลือกหมวดหมู่เพื่อกรองตาราง"
               >
+                <option value="">ทั้งหมด</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -210,16 +220,13 @@ export default function LedgerPage() {
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-muted pb-1">
             <span>
-              หมวด: <span className="font-medium text-ink">{filterCategoryName}</span>
+              มุมมอง: <span className="font-medium text-ink">{filterCategoryName}</span>
             </span>
-            <span>
-              {categoryTotals.count} รายการ
-            </span>
-            <span className="tabular-nums">
-              รับ {formatMoney(categoryTotals.income)}
-            </span>
-            <span className="tabular-nums">
-              จ่าย {formatMoney(categoryTotals.expense)}
+            <span>{categoryTotals.count} รายการ</span>
+            <span className="tabular-nums">รับ {formatMoney(categoryTotals.income)}</span>
+            <span className="tabular-nums">จ่าย {formatMoney(categoryTotals.expense)}</span>
+            <span className="tabular-nums font-medium text-ink">
+              คงเหลือ {formatMoney(categoryTotals.income - categoryTotals.expense)}
             </span>
           </div>
         </div>
@@ -233,13 +240,33 @@ export default function LedgerPage() {
           columns={columns}
           rows={filteredEntries}
           rowKey={(r) => r.id}
-          emptyText={`ยังไม่มีรายการในหมวด "${filterCategoryName}"`}
+          emptyText={
+            filterCategoryId
+              ? `ยังไม่มีรายการในหมวด "${filterCategoryName}"`
+              : 'ยังไม่มีรายรับ-รายจ่าย'
+          }
         />
       )}
 
       <Card className="p-4">
-        <h3 className="text-sm font-medium text-ink">หมวดหมู่ทั้งหมด</h3>
+        <h3 className="text-sm font-medium text-ink">หมวดหมู่</h3>
         <ul className="mt-3 flex flex-wrap gap-2">
+          <li
+            className={[
+              'flex min-h-9 items-center rounded-full border px-3 text-xs',
+              filterCategoryId === ''
+                ? 'border-accent bg-sky-50 text-ink'
+                : 'border-border text-muted',
+            ].join(' ')}
+          >
+            <button
+              type="button"
+              className="cursor-pointer py-1 hover:text-ink"
+              onClick={() => setFilterCategoryId('')}
+            >
+              ทั้งหมด
+            </button>
+          </li>
           {categories.map((c) => (
             <li
               key={c.id}
