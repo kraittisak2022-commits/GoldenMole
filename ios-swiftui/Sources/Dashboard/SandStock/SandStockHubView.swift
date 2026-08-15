@@ -303,7 +303,7 @@ struct SandStockHubView: View {
     // MARK: - HUD
 
     private var hudRow: some View {
-        let dayNet = snapshot.todayInCubic - snapshot.todayOutCubic
+        let dayNet = snapshot.priorRemainingCubic + snapshot.todayInCubic - snapshot.todayOutCubic
         return HStack(spacing: 10) {
             hudChip(
                 title: "ขนเข้า",

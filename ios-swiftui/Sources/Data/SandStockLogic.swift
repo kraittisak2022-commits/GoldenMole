@@ -88,6 +88,8 @@ enum SandStockLogic {
         let periodNetCubic: Double
         let todayInCubic: Double
         let todayOutCubic: Double
+        /// คงเหลือท้ายวันก่อนวันโฟกัส (ต้นวัน asOf)
+        let priorRemainingCubic: Double
         let avgDailyInCubic: Double
         let avgDailyOutCubic: Double
         let pace: PaceStatus
@@ -107,6 +109,7 @@ enum SandStockLogic {
             periodNetCubic: 0,
             todayInCubic: 0,
             todayOutCubic: 0,
+            priorRemainingCubic: 0,
             avgDailyInCubic: 0,
             avgDailyOutCubic: 0,
             pace: .idle,
@@ -295,8 +298,12 @@ enum SandStockLogic {
         var series: [DayPoint] = []
         var periodIn = 0.0
         var periodOut = 0.0
+        var priorRemainingCubic = running
 
         for date in dates {
+            if date == asOf {
+                priorRemainingCubic = running
+            }
             let inn = cubicIn(on: date, transactions: transactions)
             let out = cubicOut(on: date, transactions: transactions)
             periodIn += inn
@@ -339,6 +346,7 @@ enum SandStockLogic {
             periodNetCubic: periodIn - periodOut,
             todayInCubic: asOfIn,
             todayOutCubic: asOfOut,
+            priorRemainingCubic: priorRemainingCubic,
             avgDailyInCubic: avgIn,
             avgDailyOutCubic: avgOut,
             pace: pace,
