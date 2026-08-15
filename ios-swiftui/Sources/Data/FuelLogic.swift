@@ -408,4 +408,123 @@ enum FuelLogic {
     static func sandSieveTxId(dateYmd: String) -> String {
         "\(dateYmd.trimmingCharacters(in: .whitespacesAndNewlines))_fuel_sand_sieve"
     }
+
+    // MARK: - Monthly usage report
+
+    struct MonthlyDayRow: Identifiable, Equatable, Sendable {
+        var id: String { date }
+        let date: String
+        let liters: Double
+        let subtitle: String?
+    }
+
+    struct MonthlyVehicleRow: Identifiable, Equatable, Sendable {
+        var id: String { vehicleId }
+        let vehicleId: String
+        let liters: Double
+    }
+
+    struct MonthlyUsageReport: Equatable, Sendable {
+        let monthKey: String
+        let carFillLiters: Double
+        let machineLiters: Double
+        let macroLiters: Double
+        let carFillByDay: [MonthlyDayRow]
+        let machineByDay: [MonthlyDayRow]
+        let macroByDay: [MonthlyDayRow]
+        let carFillByVehicle: [MonthlyVehicleRow]
+        let macroByVehicle: [MonthlyVehicleRow]
+
+        var totalLiters: Double { carFillLiters + machineLiters + macroLiters }
+
+        static let empty = MonthlyUsageReport(
+            monthKey: "",
+            carFillLiters: 0,
+            machineLiters: 0,
+            macroLiters: 0,
+            carFillByDay: [],
+            machineByDay: [],
+            macroByDay: [],
+            carFillByVehicle: [],
+            macroByVehicle: []
+        )
+    }
+
+    /// สรุปรายเดือน: เติมรถยนต์ · เครื่องร่อน · แม็คโคร
+    static func buildMonthly(monthStart: Date, transactions: [Transaction]) -> MonthlyUsageReport {
+        let cal = DashboardAggregations.gregorian
+        let year = cal.component(.year, from: monthStart)
+        let month = cal.component(.month, from: monthStart)
+        let monthKey = String(format: "%04d-%02d", year, month)
+
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        guard let first = cal.date(from: comps),
+              let dayRange = cal.range(of: .day, in: .month, for: first)
+        else { return .empty }
+
+        let dates = dayRange.map { day -> String in
+            String(format: "%04d-%02d-%02d", year, month, day)
+        }
+
+        var carByDay: [String: Double] = [:]
+        var macroByDay: [String: Double] = [:]
+        var carByVehicle: [String: Double] = [:]
+        var macroByVehicle: [String: Double] = [:]
+
+        for t in transactions {
+            let day = String(t.date.prefix(10))
+            guard day.hasPrefix(monthKey) else { continue }
+            guard isFuelExpense(t) else { continue }
+            let lit = liters(of: t)
+            guard lit > 0 else { continue }
+
+            if isCarFill(t) {
+                carByDay[day, default: 0] += lit
+                let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                carByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
+            } else if isVehicleUsage(t), !isSandSieve(t) {
+                macroByDay[day, default: 0] += lit
+                let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                macroByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
+            }
+        }
+
+        var machineByDay: [MonthlyDayRow] = []
+        var machineTotal = 0.0
+        for date in dates {
+            guard let usage = sandSieveUsage(on: date, transactions: transactions) else { continue }
+            machineTotal += usage.liters
+            let subtitle: String? = usage.fromPersistedRow
+                ? nil
+                : "\(formatLiters(usage.hours)) ชม. × \(formatLiters(sandSieveLitersPerHour)) L"
+            machineByDay.append(MonthlyDayRow(date: date, liters: usage.liters, subtitle: subtitle))
+        }
+        machineByDay.sort { $0.date > $1.date }
+
+        let carFillLiters = carByDay.values.reduce(0, +)
+        let macroLiters = macroByDay.values.reduce(0, +)
+
+        return MonthlyUsageReport(
+            monthKey: monthKey,
+            carFillLiters: carFillLiters,
+            machineLiters: machineTotal,
+            macroLiters: macroLiters,
+            carFillByDay: carByDay
+                .map { MonthlyDayRow(date: $0.key, liters: $0.value, subtitle: nil) }
+                .sorted { $0.date > $1.date },
+            machineByDay: machineByDay,
+            macroByDay: macroByDay
+                .map { MonthlyDayRow(date: $0.key, liters: $0.value, subtitle: nil) }
+                .sorted { $0.date > $1.date },
+            carFillByVehicle: carByVehicle
+                .map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) }
+                .sorted { $0.liters > $1.liters },
+            macroByVehicle: macroByVehicle
+                .map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) }
+                .sorted { $0.liters > $1.liters }
+        )
+    }
 }

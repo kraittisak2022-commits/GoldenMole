@@ -7,6 +7,7 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
     case drumTrips
     case macro
     case fuel
+    case fuelReport
     case events
     case leave
     case advance
@@ -20,6 +21,7 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return "บันทึกรถดรัมและจำนวนเที่ยว"
         case .macro: return "การใช้รถแม็คโคร"
         case .fuel: return "น้ำมัน"
+        case .fuelReport: return "สรุปรายงาน"
         case .events: return "เหตุการณ์"
         case .leave: return "ลางาน"
         case .advance: return "เบิกเงิน"
@@ -33,6 +35,7 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return "truck.box.fill"
         case .macro: return "gearshape.2.fill"
         case .fuel: return "fuelpump.fill"
+        case .fuelReport: return "doc.text.magnifyingglass"
         case .events: return "exclamationmark.bubble.fill"
         case .leave: return "calendar.badge.minus"
         case .advance: return "banknote.fill"
@@ -46,6 +49,7 @@ enum OpsMenuItem: String, CaseIterable, Identifiable, Hashable {
         case .drumTrips: return AppTheme.vehicle
         case .macro: return AppTheme.warning
         case .fuel: return AppTheme.fuel
+        case .fuelReport: return AppTheme.fuel
         case .events: return AppTheme.purple
         case .leave: return AppTheme.slate
         case .advance: return AppTheme.income
@@ -260,6 +264,8 @@ struct OpsMenuDestinationView: View {
             MacroVehicleHubView()
         case .fuel:
             FuelHubView()
+        case .fuelReport:
+            FuelMonthlyReportView()
         case .events:
             EventHubView()
         case .leave:
