@@ -172,6 +172,12 @@ enum FuelLogic {
         return t.description.hasPrefix("เติมน้ำมันรถยนต์")
     }
 
+    /// เบิกเครื่องปั่นไฟเล็ก (workType=generator)
+    static func isGenerator(_ t: Transaction) -> Bool {
+        guard isWithdraw(t), !isCarFill(t) else { return false }
+        return (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "generator"
+    }
+
     static func isTransfer(_ t: Transaction) -> Bool {
         guard isFuelExpense(t) else { return false }
         return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == transferSubCategory
@@ -471,11 +477,35 @@ enum FuelLogic {
 
     // MARK: - Monthly usage report
 
+    enum MonthlyLineKind: String, Equatable, Sendable {
+        case carFill
+        case generator
+        case macro
+    }
+
+    struct MonthlyLineItem: Identifiable, Equatable, Sendable {
+        let id: String
+        let kind: MonthlyLineKind
+        let title: String
+        let liters: Double
+        let time: String?
+        let tankLabel: String?
+        let detail: String?
+    }
+
     struct MonthlyDayRow: Identifiable, Equatable, Sendable {
         var id: String { date }
         let date: String
         let liters: Double
         let subtitle: String?
+        let items: [MonthlyLineItem]
+
+        init(date: String, liters: Double, subtitle: String? = nil, items: [MonthlyLineItem] = []) {
+            self.date = date
+            self.liters = liters
+            self.subtitle = subtitle
+            self.items = items
+        }
     }
 
     struct MonthlyVehicleRow: Identifiable, Equatable, Sendable {
@@ -486,7 +516,10 @@ enum FuelLogic {
 
     struct MonthlyUsageReport: Equatable, Sendable {
         let monthKey: String
+        /// เติมรถยนต์อย่างเดียว
         let carFillLiters: Double
+        /// เบิกปั่นไฟเล็ก
+        let generatorLiters: Double
         let machineLiters: Double
         let macroLiters: Double
         let carFillByDay: [MonthlyDayRow]
@@ -495,11 +528,14 @@ enum FuelLogic {
         let carFillByVehicle: [MonthlyVehicleRow]
         let macroByVehicle: [MonthlyVehicleRow]
 
-        var totalLiters: Double { carFillLiters + machineLiters + macroLiters }
+        /// รถยนต์ + ปั่นไฟเล็ก (หมวดเดียวกันในรายงาน)
+        var carAndGeneratorLiters: Double { carFillLiters + generatorLiters }
+        var totalLiters: Double { carAndGeneratorLiters + machineLiters + macroLiters }
 
         static let empty = MonthlyUsageReport(
             monthKey: "",
             carFillLiters: 0,
+            generatorLiters: 0,
             machineLiters: 0,
             macroLiters: 0,
             carFillByDay: [],
@@ -510,7 +546,48 @@ enum FuelLogic {
         )
     }
 
-    /// สรุปรายเดือน: เติมรถยนต์ · เครื่องร่อน · แม็คโคร
+    private static func tankLabel(of t: Transaction) -> String {
+        normalizeTank(t.fuelTank) == tankReserve ? "ถังสำรอง" : "ถังหลัก"
+    }
+
+    private static func lineTime(of t: Transaction) -> String? {
+        let details = (t.workDetails ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !details.isEmpty { return details }
+        if let created = t.createdAt, created.count >= 16 {
+            return String(created.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        }
+        return nil
+    }
+
+    private static func monthlyLine(from t: Transaction, kind: MonthlyLineKind) -> MonthlyLineItem {
+        let lit = liters(of: t)
+        let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        switch kind {
+        case .carFill:
+            title = vid.isEmpty ? "รถยนต์" : vid
+        case .generator:
+            title = "ปั่นไฟเล็ก"
+        case .macro:
+            title = vid.isEmpty ? "แม็คโคร" : vid
+        }
+        let desc = stripRecorder(t.description)
+        let detail: String? = {
+            guard !desc.isEmpty, desc != title else { return nil }
+            return desc
+        }()
+        return MonthlyLineItem(
+            id: t.id,
+            kind: kind,
+            title: title,
+            liters: lit,
+            time: lineTime(of: t),
+            tankLabel: tankLabel(of: t),
+            detail: detail
+        )
+    }
+
+    /// สรุปรายเดือน: เติมรถยนต์+ปั่นไฟ · เครื่องร่อน · แม็คโคร
     static func buildMonthly(monthStart: Date, transactions: [Transaction]) -> MonthlyUsageReport {
         let cal = DashboardAggregations.gregorian
         let year = cal.component(.year, from: monthStart)
@@ -530,9 +607,13 @@ enum FuelLogic {
         }
 
         var carByDay: [String: Double] = [:]
+        var genByDay: [String: Double] = [:]
         var macroByDay: [String: Double] = [:]
         var carByVehicle: [String: Double] = [:]
+        var genByLabel: [String: Double] = [:]
         var macroByVehicle: [String: Double] = [:]
+        var carItemsByDay: [String: [MonthlyLineItem]] = [:]
+        var macroItemsByDay: [String: [MonthlyLineItem]] = [:]
 
         for t in transactions {
             let day = String(t.date.prefix(10))
@@ -545,10 +626,16 @@ enum FuelLogic {
                 carByDay[day, default: 0] += lit
                 let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 carByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
-            } else if isVehicleUsage(t), !isSandSieve(t) {
+                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .carFill))
+            } else if isGenerator(t) {
+                genByDay[day, default: 0] += lit
+                genByLabel["ปั่นไฟเล็ก", default: 0] += lit
+                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .generator))
+            } else if isVehicleUsage(t), !isSandSieve(t), !isCarFill(t) {
                 macroByDay[day, default: 0] += lit
                 let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 macroByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
+                macroItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .macro))
             }
         }
 
@@ -565,23 +652,44 @@ enum FuelLogic {
         machineByDay.sort { $0.date > $1.date }
 
         let carFillLiters = carByDay.values.reduce(0, +)
+        let generatorLiters = genByDay.values.reduce(0, +)
         let macroLiters = macroByDay.values.reduce(0, +)
+
+        let allCarDays = Set(carByDay.keys).union(genByDay.keys)
+        let carFillByDay: [MonthlyDayRow] = allCarDays.map { day in
+            let items = (carItemsByDay[day] ?? []).sorted {
+                ($0.time ?? "") > ($1.time ?? "")
+            }
+            return MonthlyDayRow(
+                date: day,
+                liters: (carByDay[day] ?? 0) + (genByDay[day] ?? 0),
+                subtitle: nil,
+                items: items
+            )
+        }.sorted { $0.date > $1.date }
+
+        let macroDayRows: [MonthlyDayRow] = macroByDay.map { day, lit in
+            let items = (macroItemsByDay[day] ?? []).sorted {
+                ($0.time ?? "") > ($1.time ?? "")
+            }
+            return MonthlyDayRow(date: day, liters: lit, subtitle: nil, items: items)
+        }.sorted { $0.date > $1.date }
+
+        var vehicleRows = carByVehicle
+            .map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) }
+        vehicleRows.append(contentsOf: genByLabel.map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) })
+        vehicleRows.sort { $0.liters > $1.liters }
 
         return MonthlyUsageReport(
             monthKey: monthKey,
             carFillLiters: carFillLiters,
+            generatorLiters: generatorLiters,
             machineLiters: machineTotal,
             macroLiters: macroLiters,
-            carFillByDay: carByDay
-                .map { MonthlyDayRow(date: $0.key, liters: $0.value, subtitle: nil) }
-                .sorted { $0.date > $1.date },
+            carFillByDay: carFillByDay,
             machineByDay: machineByDay,
-            macroByDay: macroByDay
-                .map { MonthlyDayRow(date: $0.key, liters: $0.value, subtitle: nil) }
-                .sorted { $0.date > $1.date },
-            carFillByVehicle: carByVehicle
-                .map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) }
-                .sorted { $0.liters > $1.liters },
+            macroByDay: macroDayRows,
+            carFillByVehicle: vehicleRows,
             macroByVehicle: macroByVehicle
                 .map { MonthlyVehicleRow(vehicleId: $0.key, liters: $0.value) }
                 .sorted { $0.liters > $1.liters }
