@@ -46,6 +46,7 @@ export interface FaReimbursement {
   payerName: string;
   payerId?: string | null;
   description: string;
+  quantity: number;
   amount: number;
   status: ReimbursementStatus;
   approvedCategoryId?: string | null;

@@ -9,6 +9,7 @@ const map = (row: any): FaReimbursement => ({
   payerName: row.payer_name,
   payerId: row.payer_id,
   description: row.description || '',
+  quantity: Number(row.quantity) > 0 ? Number(row.quantity) : 1,
   amount: Number(row.amount) || 0,
   status: row.status,
   approvedCategoryId: row.approved_category_id,
@@ -35,16 +36,19 @@ export async function saveReimbursement(input: {
   payerName: string;
   payerId?: string | null;
   description: string;
+  quantity?: number;
   amount: number;
   receiptUrl?: string | null;
 }): Promise<FaReimbursement> {
   const id = input.id || newId('reimb');
+  const quantity = Number(input.quantity);
   const row = {
     id,
     date: input.date,
     payer_name: input.payerName.trim(),
     payer_id: input.payerId || null,
     description: input.description.trim(),
+    quantity: quantity > 0 ? quantity : 1,
     amount: Number(input.amount) || 0,
     status: 'pending',
     receipt_url: input.receiptUrl || null,
@@ -58,11 +62,12 @@ export async function saveReimbursementBatch(input: {
   date: string;
   payerName: string;
   payerId?: string | null;
-  items: Array<{ description: string; amount: number; receiptUrl?: string | null }>;
+  items: Array<{ description: string; quantity?: number; amount: number; receiptUrl?: string | null }>;
 }): Promise<FaReimbursement[]> {
   const cleaned = input.items
     .map((item) => ({
       description: item.description.trim(),
+      quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
       amount: Number(item.amount) || 0,
       receiptUrl: item.receiptUrl || null,
     }))
@@ -77,6 +82,7 @@ export async function saveReimbursementBatch(input: {
         payerName: input.payerName,
         payerId: input.payerId,
         description: item.description,
+        quantity: item.quantity,
         amount: item.amount,
         receiptUrl: item.receiptUrl,
       }),

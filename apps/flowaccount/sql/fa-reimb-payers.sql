@@ -11,7 +11,8 @@ ALTER TABLE fa_reimbursements
   ADD COLUMN IF NOT EXISTS payer_id TEXT REFERENCES fa_reimb_payers(id),
   ADD COLUMN IF NOT EXISTS receipt_url TEXT,
   ADD COLUMN IF NOT EXISTS repayment_proof_url TEXT,
-  ADD COLUMN IF NOT EXISTS repaid_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS repaid_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1;
 
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payer ON fa_reimbursements(payer_id);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payers_token ON fa_reimb_payers(share_token);

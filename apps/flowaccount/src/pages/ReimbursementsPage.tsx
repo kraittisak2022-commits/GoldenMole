@@ -25,7 +25,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-type LineItem = { description: string; amount: number | '' };
+type LineItem = { description: string; quantity: number | ''; amount: number | '' };
 
 export default function ReimbursementsPage() {
   const { user } = useAuth();
@@ -46,7 +46,7 @@ export default function ReimbursementsPage() {
 
   const [date, setDate] = useState(today());
   const [payerId, setPayerId] = useState('');
-  const [items, setItems] = useState<LineItem[]>([{ description: '', amount: '' }]);
+  const [items, setItems] = useState<LineItem[]>([{ description: '', quantity: 1, amount: '' }]);
   const [newPayerName, setNewPayerName] = useState('');
 
   const reload = useCallback(async () => {
@@ -100,7 +100,7 @@ export default function ReimbursementsPage() {
 
   const openCreate = () => {
     setDate(today());
-    setItems([{ description: '', amount: '' }]);
+    setItems([{ description: '', quantity: 1, amount: '' }]);
     setCreateOpen(true);
   };
 
@@ -117,6 +117,7 @@ export default function ReimbursementsPage() {
         payerId: selectedPayer.id,
         items: items.map((item) => ({
           description: item.description,
+          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
           amount: Number(item.amount) || 0,
         })),
       });
@@ -238,8 +239,14 @@ export default function ReimbursementsPage() {
     { key: 'date', header: 'วันที่', render: (r) => r.date },
     { key: 'desc', header: 'รายการ', render: (r) => r.description },
     {
+      key: 'qty',
+      header: 'จำนวน',
+      className: 'text-right tabular-nums',
+      render: (r) => formatMoney(r.quantity),
+    },
+    {
       key: 'amount',
-      header: 'จำนวนเงิน',
+      header: 'ราคา (บาท)',
       className: 'text-right tabular-nums',
       render: (r) => formatMoney(r.amount),
     },
@@ -461,13 +468,13 @@ export default function ReimbursementsPage() {
                 type="button"
                 variant="secondary"
                 className="min-h-9"
-                onClick={() => setItems((prev) => [...prev, { description: '', amount: '' }])}
+                onClick={() => setItems((prev) => [...prev, { description: '', quantity: 1, amount: '' }])}
               >
                 + เพิ่มรายการ
               </Button>
             </div>
             {items.map((item, index) => (
-              <div key={index} className="grid gap-3 rounded-DEFAULT border border-border p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
+              <div key={index} className="space-y-3 rounded-DEFAULT border border-border p-3">
                 <Field id={`admin-item-${index}`} label="รายการ">
                   <Input
                     id={`admin-item-${index}`}
@@ -481,26 +488,41 @@ export default function ReimbursementsPage() {
                     required
                   />
                 </Field>
-                <Field id={`admin-amount-${index}`} label="ราคา (บาท)">
-                  <MoneyInput
-                    id={`admin-amount-${index}`}
-                    placeholder="0"
-                    value={item.amount}
-                    onValueChange={(v) =>
-                      setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
-                    }
-                    required
-                  />
-                </Field>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-11"
-                  disabled={items.length <= 1}
-                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  ลบ
-                </Button>
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <Field id={`admin-qty-${index}`} label="จำนวน">
+                    <MoneyInput
+                      id={`admin-qty-${index}`}
+                      placeholder="1"
+                      value={item.quantity}
+                      onValueChange={(v) =>
+                        setItems((prev) =>
+                          prev.map((row, i) => (i === index ? { ...row, quantity: v === '' ? '' : v } : row)),
+                        )
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field id={`admin-amount-${index}`} label="ราคา (บาท)">
+                    <MoneyInput
+                      id={`admin-amount-${index}`}
+                      placeholder="0"
+                      value={item.amount}
+                      onValueChange={(v) =>
+                        setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
+                      }
+                      required
+                    />
+                  </Field>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="min-h-11"
+                    disabled={items.length <= 1}
+                    onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    ลบ
+                  </Button>
+                </div>
               </div>
             ))}
             <p className="text-sm text-muted">

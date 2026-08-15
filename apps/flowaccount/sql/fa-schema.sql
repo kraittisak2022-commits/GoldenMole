@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS fa_reimbursements (
   payer_name TEXT NOT NULL,
   payer_id TEXT,
   description TEXT NOT NULL DEFAULT '',
+  quantity NUMERIC NOT NULL DEFAULT 1 CHECK (quantity > 0),
   amount NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'approved', 'rejected')),

@@ -13,7 +13,7 @@ import MoneyInput from '../components/ui/MoneyInput';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-type LineItem = { description: string; amount: number | ''; receiptFile: File | null };
+type LineItem = { description: string; quantity: number | ''; amount: number | ''; receiptFile: File | null };
 
 export default function ClaimPage() {
   const { token = '' } = useParams();
@@ -23,7 +23,7 @@ export default function ClaimPage() {
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(today());
-  const [items, setItems] = useState<LineItem[]>([{ description: '', amount: '', receiptFile: null }]);
+  const [items, setItems] = useState<LineItem[]>([{ description: '', quantity: 1, amount: '', receiptFile: null }]);
 
   useEffect(() => {
     void (async () => {
@@ -55,13 +55,14 @@ export default function ClaimPage() {
       const prepared = [];
       for (const item of items) {
         const description = item.description.trim();
+        const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
         const amount = Number(item.amount) || 0;
         if (!description || amount <= 0) continue;
         let receiptUrl: string | null = null;
         if (item.receiptFile) {
           receiptUrl = await uploadReimbProof(item.receiptFile, `claims/${payer.id}`);
         }
-        prepared.push({ description, amount, receiptUrl });
+        prepared.push({ description, quantity, amount, receiptUrl });
       }
       await saveReimbursementBatch({
         date,
@@ -70,7 +71,7 @@ export default function ClaimPage() {
         items: prepared,
       });
       setDone(true);
-      setItems([{ description: '', amount: '', receiptFile: null }]);
+      setItems([{ description: '', quantity: 1, amount: '', receiptFile: null }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
     } finally {
@@ -116,7 +117,7 @@ export default function ClaimPage() {
                     variant="secondary"
                     className="min-h-9"
                     onClick={() =>
-                      setItems((prev) => [...prev, { description: '', amount: '', receiptFile: null }])
+                      setItems((prev) => [...prev, { description: '', quantity: 1, amount: '', receiptFile: null }])
                     }
                   >
                     + เพิ่มรายการ
@@ -137,17 +138,32 @@ export default function ClaimPage() {
                         required
                       />
                     </Field>
-                    <Field id={`claim-amount-${index}`} label="ราคา (บาท)">
-                      <MoneyInput
-                        id={`claim-amount-${index}`}
-                        placeholder="0"
-                        value={item.amount}
-                        onValueChange={(v) =>
-                          setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
-                        }
-                        required
-                      />
-                    </Field>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field id={`claim-qty-${index}`} label="จำนวน">
+                        <MoneyInput
+                          id={`claim-qty-${index}`}
+                          placeholder="1"
+                          value={item.quantity}
+                          onValueChange={(v) =>
+                            setItems((prev) =>
+                              prev.map((row, i) => (i === index ? { ...row, quantity: v === '' ? '' : v } : row)),
+                            )
+                          }
+                          required
+                        />
+                      </Field>
+                      <Field id={`claim-amount-${index}`} label="ราคา (บาท)">
+                        <MoneyInput
+                          id={`claim-amount-${index}`}
+                          placeholder="0"
+                          value={item.amount}
+                          onValueChange={(v) =>
+                            setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
+                          }
+                          required
+                        />
+                      </Field>
+                    </div>
                     <Field id={`claim-file-${index}`} label="แนบใบเสร็จ / หลักฐาน (ถ้ามี)">
                       <Input
                         id={`claim-file-${index}`}
