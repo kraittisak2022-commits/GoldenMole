@@ -15,7 +15,7 @@ import Button from './ui/Button';
 const navItems = [
   { to: '/', label: 'แดชบอร์ด', icon: LayoutDashboard, end: true },
   { to: '/ledger', label: 'รายรับ-รายจ่าย', icon: BookOpen },
-  { to: '/categories', label: 'หมวดหมู่', icon: Tags },
+  { to: '/categories', label: 'สรุปรายรับ-จ่าย', icon: Tags },
   { to: '/reimbursements', label: 'เบิกสำรองจ่าย', icon: ClipboardList },
   { to: '/payroll', label: 'เงินเดือน', icon: Wallet },
   { to: '/fleet', label: 'ต้นทุนรถ', icon: Truck },

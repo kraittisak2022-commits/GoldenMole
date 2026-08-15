@@ -302,7 +302,7 @@ export default function LedgerPage() {
             to="/categories"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-DEFAULT border border-border bg-white px-3 text-sm font-medium text-ink transition-colors hover:bg-slate-50"
           >
-            หมวดหมู่
+            สรุปรายรับ-จ่าย
           </Link>
           <Button onClick={openCreate}>เพิ่มรายการ</Button>
         </div>

@@ -310,7 +310,7 @@ export default function CategoriesPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">หมวดหมู่</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">สรุปรายรับ-จ่าย</h2>
           <p className="mt-1 text-sm text-muted">
             สรุปรายรับ-รายจ่ายแยกรายเดือนและรายปี · แยกตามหมวดหมู่ · และรายจ่ายของฝ่าย
           </p>
