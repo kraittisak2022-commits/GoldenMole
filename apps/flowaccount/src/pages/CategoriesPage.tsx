@@ -232,9 +232,9 @@ export default function CategoriesPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">จัดการหมวดหมู่</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">หมวดหมู่</h2>
           <p className="mt-1 text-sm text-muted">
-            เพิ่ม/ลบหมวดหมู่ และดูสรุปรายการที่เก็บรวมในแต่ละหมวด
+            เพิ่มและลบหมวดหมู่รายรับ-รายจ่าย พร้อมดูสรุปในแต่ละหมวด
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

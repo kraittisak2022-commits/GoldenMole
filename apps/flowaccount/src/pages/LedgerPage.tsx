@@ -1,7 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { archiveCategory, listCategories, saveCategory } from '../data/categories';
+import { Link, useSearchParams } from 'react-router-dom';
+import { listCategories } from '../data/categories';
 import { deleteLedgerEntry, listLedgerEntries, saveLedgerEntry } from '../data/ledger';
-import type { EntryType, FaCategory, FaLedgerEntry } from '../types';
+import type { EntryType, FaLedgerEntry } from '../types';
 import { formatMoney } from '../types';
 import { useAuth } from '../auth/AuthProvider';
 import Button from '../components/ui/Button';
@@ -18,13 +19,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function LedgerPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
-  const [categories, setCategories] = useState<FaCategory[]>([]);
+  const [categories, setCategories] = useState<Awaited<ReturnType<typeof listCategories>>>([]);
   const [filterCategoryId, setFilterCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [entryOpen, setEntryOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
   const [editing, setEditing] = useState<FaLedgerEntry | null>(null);
 
   const [date, setDate] = useState(today());
@@ -32,10 +33,6 @@ export default function LedgerPage() {
   const [categoryId, setCategoryId] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('expense');
   const [amount, setAmount] = useState<number | ''>('');
-
-  const [catName, setCatName] = useState('');
-  const [catKind, setCatKind] = useState<'income' | 'expense' | 'both'>('expense');
-  const [catBusyId, setCatBusyId] = useState('');
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -80,9 +77,11 @@ export default function LedgerPage() {
       const [e, c] = await Promise.all([listLedgerEntries(), listCategories()]);
       setEntries(e);
       setCategories(c);
+      const fromUrl = searchParams.get('category') || '';
       setFilterCategoryId((prev) => {
-        if (prev === '') return '';
-        if (prev && c.some((x) => x.id === prev)) return prev;
+        const preferred = fromUrl || prev;
+        if (preferred === '') return '';
+        if (preferred && c.some((x) => x.id === preferred)) return preferred;
         return '';
       });
       setCategoryId((prev) => prev || c[0]?.id || '');
@@ -91,11 +90,19 @@ export default function LedgerPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const onFilterChange = (value: string) => {
+    setFilterCategoryId(value);
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('category', value);
+    else next.delete('category');
+    setSearchParams(next, { replace: true });
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -136,40 +143,6 @@ export default function LedgerPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
-    }
-  };
-
-  const openCategoryManager = () => {
-    setCatName('');
-    setCatKind('expense');
-    setCatOpen(true);
-  };
-
-  const submitCategory = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!catName.trim()) return;
-    try {
-      await saveCategory({ name: catName, kind: catKind });
-      setCatName('');
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'บันทึกหมวดไม่สำเร็จ');
-    }
-  };
-
-  const removeCategory = async (c: FaCategory) => {
-    const ok = window.confirm(`ลบหมวดหมู่ "${c.name}" ออกจากรายการ?\nรายการเดิมที่อ้างอิงหมวดนี้จะยังอยู่ในสมุด แต่หมวดจะไม่โชว์ให้เลือกใหม่`);
-    if (!ok) return;
-    setCatBusyId(c.id);
-    try {
-      await archiveCategory(c.id);
-      if (filterCategoryId === c.id) setFilterCategoryId('');
-      if (categoryId === c.id) setCategoryId('');
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'ลบหมวดไม่สำเร็จ');
-    } finally {
-      setCatBusyId('');
     }
   };
 
@@ -229,9 +202,12 @@ export default function LedgerPage() {
           <p className="mt-1 text-sm text-muted">ดูทั้งหมด หรือกรองตามหมวดหมู่</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={openCategoryManager}>
-            จัดการหมวดหมู่
-          </Button>
+          <Link
+            to="/categories"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-DEFAULT border border-border bg-white px-3 text-sm font-medium text-ink transition-colors hover:bg-slate-50"
+          >
+            หมวดหมู่
+          </Link>
           <Button onClick={openCreate}>เพิ่มรายการ</Button>
         </div>
       </div>
@@ -243,7 +219,7 @@ export default function LedgerPage() {
               <Select
                 id="ledger-filter-cat"
                 value={filterCategoryId}
-                onChange={(e) => setFilterCategoryId(e.target.value)}
+                onChange={(e) => onFilterChange(e.target.value)}
                 aria-label="เลือกหมวดหมู่เพื่อกรองตาราง"
               >
                 <option value="">ทั้งหมด</option>
@@ -326,65 +302,6 @@ export default function LedgerPage() {
             <MoneyInput id="led-amt" value={amount} onValueChange={setAmount} required />
           </Field>
         </form>
-      </Modal>
-
-      <Modal
-        open={catOpen}
-        title="จัดการหมวดหมู่"
-        onClose={() => setCatOpen(false)}
-        footer={
-          <Button variant="secondary" onClick={() => setCatOpen(false)}>
-            ปิด
-          </Button>
-        }
-      >
-        <div className="space-y-5">
-          <form id="cat-form" className="space-y-3 rounded-xl border border-border p-3" onSubmit={submitCategory}>
-            <p className="text-sm font-medium text-ink">เพิ่มหมวดหมู่</p>
-            <Field id="cat-name" label="ชื่อหมวด">
-              <Input id="cat-name" value={catName} onChange={(e) => setCatName(e.target.value)} required />
-            </Field>
-            <Field id="cat-kind" label="ใช้กับ">
-              <Select id="cat-kind" value={catKind} onChange={(e) => setCatKind(e.target.value as typeof catKind)}>
-                <option value="expense">รายจ่าย</option>
-                <option value="income">รายรับ</option>
-                <option value="both">ทั้งสอง</option>
-              </Select>
-            </Field>
-            <Button type="submit" className="w-full sm:w-auto">
-              บันทึกหมวดใหม่
-            </Button>
-          </form>
-
-          <div>
-            <p className="text-sm font-medium text-ink">หมวดที่มีอยู่</p>
-            <p className="mt-1 text-xs text-muted">กดลบเพื่อเอาออกจากตัวเลือก (รายการเก่ายังอยู่ในสมุด)</p>
-            {categories.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">ยังไม่มีหมวดหมู่</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
-                {categories.map((c) => (
-                  <li key={c.id} className="flex items-center gap-3 px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink">{c.name}</p>
-                      <p className="text-xs text-muted">
-                        {c.kind === 'income' ? 'รายรับ' : c.kind === 'expense' ? 'รายจ่าย' : 'รับ/จ่าย'}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      className="min-h-9 shrink-0 px-2 text-destructive"
-                      disabled={catBusyId === c.id}
-                      onClick={() => void removeCategory(c)}
-                    >
-                      {catBusyId === c.id ? 'กำลังลบ…' : 'ลบ'}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
       </Modal>
     </div>
   );
