@@ -155,6 +155,58 @@ describe('attachRepaymentProof', () => {
     expect(ledgerPayload.date).toBe('2026-07-24');
     expect(ledgerPayload.source).toBe('reimbursement');
     expect(result.ledgerEntryId).toBe('led-new');
-    expect(result.repaymentProofUrl).toBe('https://example.com/slip.jpg');
+  it('marks cash repayment and posts ledger without a slip file', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'reimb-2',
+          date: '2026-08-10',
+          payer_name: 'วิชัย ขยัน',
+          description: 'ค่าอาหาร',
+          quantity: 1,
+          amount: 780,
+          status: 'approved',
+          approved_category_id: 'cat-food',
+          ledger_entry_id: null,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'led-cash',
+          date: '2026-08-10',
+          description: 'เบิกสำรองจ่าย: ค่าอาหาร (วิชัย ขยัน)',
+          category_id: 'cat-food',
+          entry_type: 'expense',
+          quantity: 1,
+          amount: 780,
+          source: 'reimbursement',
+          source_id: 'reimb-2',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'reimb-2',
+          date: '2026-08-10',
+          payer_name: 'วิชัย ขยัน',
+          description: 'ค่าอาหาร',
+          quantity: 1,
+          amount: 780,
+          status: 'approved',
+          approved_category_id: 'cat-food',
+          ledger_entry_id: 'led-cash',
+          repayment_proof_url: 'cash',
+          repaid_at: '2026-08-15T00:00:00.000Z',
+        },
+        error: null,
+      });
+
+    const { markReimbursementRepaid, CASH_REPAYMENT_MARKER } = await import('./reimbursements');
+    const result = await markReimbursementRepaid({ id: 'reimb-2', method: 'cash' });
+
+    expect(result.repaymentProofUrl).toBe(CASH_REPAYMENT_MARKER);
+    expect(result.ledgerEntryId).toBe('led-cash');
+    expect(upsert).toHaveBeenCalled();
   });
 });

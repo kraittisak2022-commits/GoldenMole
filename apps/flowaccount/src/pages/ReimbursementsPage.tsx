@@ -6,8 +6,10 @@ import {
   approveReimbursement,
   attachRepaymentProof,
   buildPayerSummaries,
+  isCashRepayment,
   isReimbursementMovedToLedger,
   listReimbursements,
+  markReimbursementRepaid,
   rejectReimbursement,
   saveReimbursementBatch,
 } from '../data/reimbursements';
@@ -194,10 +196,27 @@ export default function ReimbursementsPage() {
       await attachRepaymentProof({ id: selected.id, proofUrl: url });
       setProofOpen(false);
       setSelected(null);
-      setMessage('จ่ายคืนแล้ว — ย้ายรายการไปรายรับ-รายจ่ายตามวันที่ผู้สำรองจ่ายบันทึก');
+      setMessage('จ่ายคืนแล้ว (สลิป) — ย้ายไปรายรับ-รายจ่ายตามวันที่บันทึก');
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อัปโหลดไม่สำเร็จ');
+    } finally {
+      setProofBusy(false);
+    }
+  };
+
+  const onCashRepay = async () => {
+    if (!selected) return;
+    setProofBusy(true);
+    setError('');
+    try {
+      await markReimbursementRepaid({ id: selected.id, method: 'cash' });
+      setProofOpen(false);
+      setSelected(null);
+      setMessage('จ่ายคืนแล้ว (เงินสด) — ย้ายไปรายรับ-รายจ่ายตามวันที่บันทึก');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
     } finally {
       setProofBusy(false);
     }
@@ -264,14 +283,18 @@ export default function ReimbursementsPage() {
         r.status !== 'approved' ? (
           <span className="text-xs text-muted">—</span>
         ) : r.repaidAt || r.repaymentProofUrl ? (
-          <a
-            className="text-sm text-accent hover:underline"
-            href={r.repaymentProofUrl || undefined}
-            target="_blank"
-            rel="noreferrer"
-          >
-            จ่ายคืนแล้ว
-          </a>
+          isCashRepayment(r) ? (
+            <span className="text-sm text-accent">จ่ายเงินสดแล้ว</span>
+          ) : (
+            <a
+              className="text-sm text-accent hover:underline"
+              href={r.repaymentProofUrl || undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              จ่ายคืนแล้ว (สลิป)
+            </a>
+          )
         ) : (
           <span className="text-sm text-destructive">ยังไม่จ่ายคืน</span>
         ),
@@ -297,7 +320,7 @@ export default function ReimbursementsPage() {
           ) : null}
           {r.status === 'approved' && !isReimbursementMovedToLedger(r) ? (
             <Button variant="secondary" className="min-h-9" onClick={() => openProof(r)}>
-              แนบสลิปจ่ายคืน
+              บันทึกจ่ายคืน
             </Button>
           ) : null}
         </div>
@@ -570,28 +593,38 @@ export default function ReimbursementsPage() {
 
       <Modal
         open={proofOpen}
-        title="แนบสลิป / หลักฐานจ่ายคืน"
-        onClose={() => setProofOpen(false)}
+        title="บันทึกการจ่ายคืน"
+        onClose={() => !proofBusy && setProofOpen(false)}
         footer={
-          <Button variant="secondary" onClick={() => setProofOpen(false)}>
+          <Button variant="secondary" disabled={proofBusy} onClick={() => setProofOpen(false)}>
             ปิด
           </Button>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           <p className="text-sm text-muted">
             {selected?.payerName} — {selected?.description} ({formatMoney(selected?.amount || 0)} บาท)
           </p>
-          <Field id="proof-file" label="ไฟล์สลิปหรือหลักฐาน">
-            <Input
-              id="proof-file"
-              type="file"
-              accept="image/*,.pdf"
-              disabled={proofBusy}
-              onChange={(e) => void onProofFile(e.target.files?.[0] || null)}
-            />
-          </Field>
-          {proofBusy ? <p className="text-sm text-muted">กำลังอัปโหลด…</p> : null}
+          <div className="rounded-lg border border-border px-3 py-3 space-y-3">
+            <p className="text-sm font-medium text-ink">โอน / แนบสลิป</p>
+            <Field id="proof-file" label="ไฟล์สลิปหรือหลักฐาน">
+              <Input
+                id="proof-file"
+                type="file"
+                accept="image/*,.pdf"
+                disabled={proofBusy}
+                onChange={(e) => void onProofFile(e.target.files?.[0] || null)}
+              />
+            </Field>
+          </div>
+          <div className="rounded-lg border border-border px-3 py-3 space-y-3">
+            <p className="text-sm font-medium text-ink">จ่ายเงินสด</p>
+            <p className="text-xs text-muted">ไม่ต้องแนบสลิป — กดยืนยันเมื่อจ่ายเป็นเงินสดแล้ว</p>
+            <Button disabled={proofBusy} onClick={() => void onCashRepay()}>
+              ยืนยันจ่ายเงินสด
+            </Button>
+          </div>
+          {proofBusy ? <p className="text-sm text-muted">กำลังบันทึก…</p> : null}
         </div>
       </Modal>
     </div>

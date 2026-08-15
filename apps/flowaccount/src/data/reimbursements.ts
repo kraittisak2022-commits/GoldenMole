@@ -131,10 +131,22 @@ export function isReimbursementMovedToLedger(row: FaReimbursement): boolean {
   return Boolean(row.repaidAt || row.repaymentProofUrl);
 }
 
-export async function attachRepaymentProof(input: {
+/** Marker stored in repayment_proof_url when repaid in cash (no slip file). */
+export const CASH_REPAYMENT_MARKER = 'cash';
+
+export function isCashRepayment(row: FaReimbursement): boolean {
+  return row.repaymentProofUrl === CASH_REPAYMENT_MARKER;
+}
+
+export async function markReimbursementRepaid(input: {
   id: string;
-  proofUrl: string;
+  method: 'slip' | 'cash';
+  proofUrl?: string | null;
 }): Promise<FaReimbursement> {
+  if (input.method === 'slip' && !input.proofUrl) {
+    throw new Error('กรุณาแนบไฟล์สลิป');
+  }
+
   const { data: existing, error: fetchError } = await supabase
     .from('fa_reimbursements')
     .select('*')
@@ -145,7 +157,7 @@ export async function attachRepaymentProof(input: {
 
   const claim = map(existing);
   if (claim.status !== 'approved') {
-    throw new Error('ต้องอนุมัติรายการก่อนแนบหลักฐานจ่ายคืน');
+    throw new Error('ต้องอนุมัติรายการก่อนบันทึกการจ่ายคืน');
   }
   if (!claim.approvedCategoryId) {
     throw new Error('รายการยังไม่มีหมวดหมู่ที่อนุมัติ');
@@ -167,10 +179,12 @@ export async function attachRepaymentProof(input: {
     ledgerEntryId = ledger.id;
   }
 
+  const proofValue = input.method === 'cash' ? CASH_REPAYMENT_MARKER : input.proofUrl!;
+
   const { data, error } = await supabase
     .from('fa_reimbursements')
     .update({
-      repayment_proof_url: input.proofUrl,
+      repayment_proof_url: proofValue,
       repaid_at: new Date().toISOString(),
       ledger_entry_id: ledgerEntryId,
     })
@@ -179,6 +193,13 @@ export async function attachRepaymentProof(input: {
     .single();
   if (error) throw new Error(error.message);
   return map(data);
+}
+
+export async function attachRepaymentProof(input: {
+  id: string;
+  proofUrl: string;
+}): Promise<FaReimbursement> {
+  return markReimbursementRepaid({ id: input.id, method: 'slip', proofUrl: input.proofUrl });
 }
 
 export function buildPayerSummaries(rows: FaReimbursement[]): PayerReimbSummary[] {
