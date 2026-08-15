@@ -2,6 +2,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { listCategories } from '../data/categories';
 import { deleteLedgerEntry, listLedgerEntries, saveLedgerEntry } from '../data/ledger';
+import {
+  collectMonthKeys,
+  currentMonthKey,
+  defaultDateForMonth,
+  formatMonthLabel,
+  isMonthKey,
+  shiftMonth,
+} from '../lib/ledgerMonth';
 import type { EntryType, FaLedgerEntry } from '../types';
 import { formatMoney } from '../types';
 import { useAuth } from '../auth/AuthProvider';
@@ -15,26 +23,30 @@ import MoneyInput from '../components/ui/MoneyInput';
 import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 export default function LedgerPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
   const [categories, setCategories] = useState<Awaited<ReturnType<typeof listCategories>>>([]);
+  const [monthKey, setMonthKey] = useState(() => currentMonthKey());
   const [filterCategoryId, setFilterCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [entryOpen, setEntryOpen] = useState(false);
   const [editing, setEditing] = useState<FaLedgerEntry | null>(null);
 
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(() => defaultDateForMonth(currentMonthKey()));
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('expense');
   const [amount, setAmount] = useState<number | ''>('');
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  const monthOptions = useMemo(
+    () => collectMonthKeys(entries.map((e) => e.date), currentMonthKey()),
+    [entries],
+  );
 
   const entryCategories = useMemo(
     () => categories.filter((c) => c.kind === 'both' || c.kind === entryType),
@@ -51,10 +63,15 @@ export default function LedgerPage() {
     }
   }, [entryCategories, categoryId]);
 
+  const monthEntries = useMemo(
+    () => entries.filter((e) => e.date.startsWith(monthKey)),
+    [entries, monthKey],
+  );
+
   const filteredEntries = useMemo(() => {
-    if (!filterCategoryId) return entries;
-    return entries.filter((e) => e.categoryId === filterCategoryId);
-  }, [entries, filterCategoryId]);
+    if (!filterCategoryId) return monthEntries;
+    return monthEntries.filter((e) => e.categoryId === filterCategoryId);
+  }, [monthEntries, filterCategoryId]);
 
   const filterCategoryName = filterCategoryId
     ? catMap.get(filterCategoryId)?.name || 'หมวดที่เลือก'
@@ -70,6 +87,22 @@ export default function LedgerPage() {
     return { income, expense, count: filteredEntries.length };
   }, [filteredEntries]);
 
+  const patchParams = useCallback(
+    (patch: { month?: string; category?: string | null }) => {
+      const next = new URLSearchParams(searchParams);
+      if (patch.month !== undefined) {
+        if (patch.month) next.set('month', patch.month);
+        else next.delete('month');
+      }
+      if (patch.category !== undefined) {
+        if (patch.category) next.set('category', patch.category);
+        else next.delete('category');
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
   const reload = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -77,6 +110,20 @@ export default function LedgerPage() {
       const [e, c] = await Promise.all([listLedgerEntries(), listCategories()]);
       setEntries(e);
       setCategories(c);
+
+      const months = collectMonthKeys(
+        e.map((row) => row.date),
+        currentMonthKey(),
+      );
+      const urlMonth = searchParams.get('month') || '';
+      setMonthKey((prev) => {
+        if (isMonthKey(urlMonth) && (months.includes(urlMonth) || urlMonth <= currentMonthKey())) {
+          return urlMonth;
+        }
+        if (months.includes(prev)) return prev;
+        return months[0] || currentMonthKey();
+      });
+
       const fromUrl = searchParams.get('category') || '';
       setFilterCategoryId((prev) => {
         const preferred = fromUrl || prev;
@@ -96,17 +143,29 @@ export default function LedgerPage() {
     void reload();
   }, [reload]);
 
+  const onMonthChange = (value: string) => {
+    if (!isMonthKey(value)) return;
+    setMonthKey(value);
+    patchParams({ month: value });
+  };
+
   const onFilterChange = (value: string) => {
     setFilterCategoryId(value);
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set('category', value);
-    else next.delete('category');
-    setSearchParams(next, { replace: true });
+    patchParams({ category: value || null });
   };
+
+  const goPrevMonth = () => onMonthChange(shiftMonth(monthKey, -1));
+  const goNextMonth = () => {
+    const next = shiftMonth(monthKey, 1);
+    if (next > currentMonthKey() && !monthOptions.includes(next)) return;
+    onMonthChange(next);
+  };
+  const canGoNext =
+    shiftMonth(monthKey, 1) <= currentMonthKey() || monthOptions.includes(shiftMonth(monthKey, 1));
 
   const openCreate = () => {
     setEditing(null);
-    setDate(today());
+    setDate(defaultDateForMonth(monthKey));
     setDescription('');
     setEntryType('expense');
     setAmount('');
@@ -140,6 +199,11 @@ export default function LedgerPage() {
         createdBy: user?.username,
       });
       setEntryOpen(false);
+      const entryMonth = date.slice(0, 7);
+      if (isMonthKey(entryMonth) && entryMonth !== monthKey) {
+        setMonthKey(entryMonth);
+        patchParams({ month: entryMonth });
+      }
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
@@ -199,7 +263,7 @@ export default function LedgerPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">รายรับ-รายจ่าย</h2>
-          <p className="mt-1 text-sm text-muted">ดูทั้งหมด หรือกรองตามหมวดหมู่</p>
+          <p className="mt-1 text-sm text-muted">แยกดูรายเดือน · กรองตามหมวดหมู่ได้</p>
         </div>
         <div className="flex gap-2">
           <Link
@@ -214,6 +278,46 @@ export default function LedgerPage() {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[240px]">
+            <Field id="ledger-filter-month" label="เดือน">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11 min-w-11 px-0"
+                  aria-label="เดือนก่อนหน้า"
+                  onClick={goPrevMonth}
+                >
+                  ‹
+                </Button>
+                <Select
+                  id="ledger-filter-month"
+                  value={monthOptions.includes(monthKey) ? monthKey : monthOptions[0] || monthKey}
+                  onChange={(e) => onMonthChange(e.target.value)}
+                  aria-label="เลือกเดือน"
+                >
+                  {!monthOptions.includes(monthKey) ? (
+                    <option value={monthKey}>{formatMonthLabel(monthKey)}</option>
+                  ) : null}
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {formatMonthLabel(m)}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11 min-w-11 px-0"
+                  aria-label="เดือนถัดไป"
+                  disabled={!canGoNext}
+                  onClick={goNextMonth}
+                >
+                  ›
+                </Button>
+              </div>
+            </Field>
+          </div>
           <div className="min-w-[220px] flex-1">
             <Field id="ledger-filter-cat" label="หมวดหมู่">
               <Select
@@ -233,7 +337,13 @@ export default function LedgerPage() {
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-muted pb-1">
             <span>
-              มุมมอง: <span className="font-medium text-ink">{filterCategoryName}</span>
+              <span className="font-medium text-ink">{formatMonthLabel(monthKey)}</span>
+              {filterCategoryId ? (
+                <>
+                  {' '}
+                  · <span className="font-medium text-ink">{filterCategoryName}</span>
+                </>
+              ) : null}
             </span>
             <span>{categoryTotals.count} รายการ</span>
             <span className="tabular-nums">รับ {formatMoney(categoryTotals.income)}</span>
@@ -255,8 +365,8 @@ export default function LedgerPage() {
           rowKey={(r) => r.id}
           emptyText={
             filterCategoryId
-              ? `ยังไม่มีรายการในหมวด "${filterCategoryName}"`
-              : 'ยังไม่มีรายรับ-รายจ่าย'
+              ? `ยังไม่มีรายการในหมวด "${filterCategoryName}" เดือน${formatMonthLabel(monthKey)}`
+              : `ยังไม่มีรายรับ-รายจ่ายในเดือน${formatMonthLabel(monthKey)}`
           }
         />
       )}
