@@ -123,35 +123,45 @@ export default function ClaimPage() {
                   </Button>
                 </div>
                 {items.map((item, index) => (
-                  <div key={index} className="space-y-2 rounded-DEFAULT border border-border p-3">
-                    <Input
-                      placeholder="รายการ เช่น ค่าน้ำมัน / ค่าวัสดุ"
-                      value={item.description}
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, i) => (i === index ? { ...row, description: e.target.value } : row)),
-                        )
-                      }
-                      required
-                    />
-                    <MoneyInput
-                      value={item.amount}
-                      onValueChange={(v) =>
-                        setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
-                      }
-                      required
-                    />
-                    <Input
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, i) =>
-                            i === index ? { ...row, receiptFile: e.target.files?.[0] || null } : row,
-                          ),
-                        )
-                      }
-                    />
+                  <div key={index} className="space-y-3 rounded-DEFAULT border border-border p-3">
+                    <Field id={`claim-item-${index}`} label="รายการ">
+                      <Input
+                        id={`claim-item-${index}`}
+                        placeholder="เช่น ค่าน้ำมัน / ค่าวัสดุ"
+                        value={item.description}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((row, i) => (i === index ? { ...row, description: e.target.value } : row)),
+                          )
+                        }
+                        required
+                      />
+                    </Field>
+                    <Field id={`claim-amount-${index}`} label="ราคา (บาท)">
+                      <MoneyInput
+                        id={`claim-amount-${index}`}
+                        placeholder="0"
+                        value={item.amount}
+                        onValueChange={(v) =>
+                          setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
+                        }
+                        required
+                      />
+                    </Field>
+                    <Field id={`claim-file-${index}`} label="แนบใบเสร็จ / หลักฐาน (ถ้ามี)">
+                      <Input
+                        id={`claim-file-${index}`}
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((row, i) =>
+                              i === index ? { ...row, receiptFile: e.target.files?.[0] || null } : row,
+                            ),
+                          )
+                        }
+                      />
+                    </Field>
                     {items.length > 1 ? (
                       <Button
                         type="button"

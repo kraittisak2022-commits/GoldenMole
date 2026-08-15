@@ -467,26 +467,31 @@ export default function ReimbursementsPage() {
               </Button>
             </div>
             {items.map((item, index) => (
-              <div key={index} className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
-                <Input
-                  aria-label={`รายการที่ ${index + 1}`}
-                  placeholder="รายการ"
-                  value={item.description}
-                  onChange={(e) =>
-                    setItems((prev) =>
-                      prev.map((row, i) => (i === index ? { ...row, description: e.target.value } : row)),
-                    )
-                  }
-                  required
-                />
-                <MoneyInput
-                  aria-label={`จำนวนเงินรายการที่ ${index + 1}`}
-                  value={item.amount}
-                  onValueChange={(v) =>
-                    setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
-                  }
-                  required
-                />
+              <div key={index} className="grid gap-3 rounded-DEFAULT border border-border p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
+                <Field id={`admin-item-${index}`} label="รายการ">
+                  <Input
+                    id={`admin-item-${index}`}
+                    placeholder="เช่น ค่าน้ำมัน / ค่าวัสดุ"
+                    value={item.description}
+                    onChange={(e) =>
+                      setItems((prev) =>
+                        prev.map((row, i) => (i === index ? { ...row, description: e.target.value } : row)),
+                      )
+                    }
+                    required
+                  />
+                </Field>
+                <Field id={`admin-amount-${index}`} label="ราคา (บาท)">
+                  <MoneyInput
+                    id={`admin-amount-${index}`}
+                    placeholder="0"
+                    value={item.amount}
+                    onValueChange={(v) =>
+                      setItems((prev) => prev.map((row, i) => (i === index ? { ...row, amount: v } : row)))
+                    }
+                    required
+                  />
+                </Field>
                 <Button
                   type="button"
                   variant="ghost"
