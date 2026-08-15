@@ -353,11 +353,11 @@ export default function CategoriesPage() {
             </div>
             {periodMode === 'month' ? (
               <Field id="cat-summary-month" label="เดือนที่สรุป">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-nowrap items-center gap-2">
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-11 min-w-11 px-0"
+                    className="min-h-11 min-w-11 shrink-0 px-0"
                     aria-label="เดือนก่อนหน้า"
                     onClick={goPrevMonth}
                   >
@@ -365,6 +365,7 @@ export default function CategoriesPage() {
                   </Button>
                   <Select
                     id="cat-summary-month"
+                    className="w-auto min-w-[10rem] max-w-[16rem] flex-1"
                     value={monthOptions.includes(monthKey) ? monthKey : monthOptions[0] || monthKey}
                     onChange={(e) => onMonthChange(e.target.value)}
                     aria-label="เลือกเดือนที่สรุป"
@@ -381,23 +382,22 @@ export default function CategoriesPage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-11 min-w-11 px-0"
+                    className="min-h-11 min-w-11 shrink-0 px-0"
                     aria-label="เดือนถัดไป"
                     disabled={!canGoNextMonth}
                     onClick={goNextMonth}
                   >
                     ›
                   </Button>
-                  <span className="text-sm text-muted">{formatMonthLabel(monthKey)}</span>
                 </div>
               </Field>
             ) : (
               <Field id="cat-summary-year" label="ปีที่สรุป">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-nowrap items-center gap-2">
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-11 min-w-11 px-0"
+                    className="min-h-11 min-w-11 shrink-0 px-0"
                     aria-label="ปีก่อนหน้า"
                     onClick={goPrevYear}
                   >
@@ -405,6 +405,7 @@ export default function CategoriesPage() {
                   </Button>
                   <Select
                     id="cat-summary-year"
+                    className="w-auto min-w-[8rem] max-w-[14rem] flex-1"
                     value={yearOptions.includes(yearKey) ? yearKey : yearOptions[0] || yearKey}
                     onChange={(e) => onYearChange(e.target.value)}
                     aria-label="เลือกปีที่สรุป"
@@ -421,14 +422,13 @@ export default function CategoriesPage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-11 min-w-11 px-0"
+                    className="min-h-11 min-w-11 shrink-0 px-0"
                     aria-label="ปีถัดไป"
                     disabled={!canGoNextYear}
                     onClick={goNextYear}
                   >
                     ›
                   </Button>
-                  <span className="text-sm text-muted">{formatYearLabel(yearKey)}</span>
                 </div>
               </Field>
             )}
