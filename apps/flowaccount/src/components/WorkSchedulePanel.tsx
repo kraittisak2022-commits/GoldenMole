@@ -106,43 +106,51 @@ export default function WorkSchedulePanel({ onError }: Props) {
 
   const rowStats = (emp: FaEmployee) => {
     const empLogs = logsForEmployeeInPeriod(emp.id);
-    const dayTotal =
-      emp.type === 'monthly'
-        ? empLogs.some((l) => (Number(l.amount) || 0) > 0 || (Number(l.workDays) || 0) > 0)
-          ? emp.basePay
-          : 0
-        : sumDayAmounts(empLogs);
-    const worked =
-      emp.type === 'monthly' ? countWorkedDays(empLogs) : countWorkedDays(empLogs);
+    const worked = countWorkedDays(empLogs);
+    const dayWageTotal = sumDayAmounts(empLogs);
+    const hasWork = empLogs.some((l) => (Number(l.amount) || 0) > 0 || (Number(l.workDays) || 0) > 0);
+    const dayTotal = emp.type === 'monthly' ? (hasWork ? emp.basePay : 0) : dayWageTotal;
     const summary = summaryIndex.get(emp.id);
     const special = summary?.specialAmount || 0;
     const advance = summary?.advanceAmount || 0;
-    const net =
-      emp.type === 'monthly'
-        ? calcPeriodNet({
-            dayTotal: emp.basePay,
-            specialAmount: special,
-            advanceAmount: advance,
-          })
-        : calcPeriodNet({ dayTotal, specialAmount: special, advanceAmount: advance });
-    return { dayTotal: emp.type === 'monthly' ? emp.basePay : dayTotal, worked, special, advance, net, summary };
+    const net = calcPeriodNet({
+      dayTotal,
+      specialAmount: special,
+      advanceAmount: advance,
+    });
+    return { dayTotal, worked, special, advance, net, summary };
   };
 
-  const sectionTotals = useMemo(() => {
-    let dayTotal = 0;
-    let special = 0;
-    let advance = 0;
-    let net = 0;
-    for (const emp of typedEmployees) {
+  const totalsByType = useMemo(() => {
+    const empty = () => ({ dayTotal: 0, special: 0, advance: 0, net: 0, count: 0 });
+    const map: Record<EmployeeType, ReturnType<typeof empty>> = {
+      monthly: empty(),
+      daily: empty(),
+      daily_driver: empty(),
+    };
+    const active = employees.filter((e) => !e.inactive);
+    for (const emp of active) {
       const s = rowStats(emp);
-      dayTotal += s.dayTotal;
-      special += s.special;
-      advance += s.advance;
-      net += s.net;
+      const bucket = map[emp.type];
+      bucket.dayTotal += s.dayTotal;
+      bucket.special += s.special;
+      bucket.advance += s.advance;
+      bucket.net += s.net;
+      bucket.count += 1;
     }
-    return { dayTotal, special, advance, net };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rowStats depends on logs/summaries
-  }, [typedEmployees, logs, summaries, monthKey, half, empType]);
+    const all = empty();
+    for (const key of Object.keys(map) as EmployeeType[]) {
+      all.dayTotal += map[key].dayTotal;
+      all.special += map[key].special;
+      all.advance += map[key].advance;
+      all.net += map[key].net;
+      all.count += map[key].count;
+    }
+    return { byType: map, all };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, logs, summaries, monthKey, half]);
+
+  const sectionTotals = totalsByType.byType[empType];
 
   const toggleOrSetDay = async (emp: FaEmployee, day: number) => {
     const workDate = dateForDay(monthKey, day);
@@ -286,9 +294,40 @@ export default function WorkSchedulePanel({ onError }: Props) {
           </span>
         </div>
         <p className="text-xs text-muted">
-          คลิกช่องวันเพื่อใส่/ลบค่าแรงตามเรทพนักงาน · ดับเบิลคลิกหรือแก้ตัวเลขในช่องเพื่อปรับยอดรายวัน
+          คลิกช่องวันเพื่อใส่/ลบค่าแรงตามเรทพนักงาน · แก้ตัวเลขในช่องเพื่อปรับยอดรายวัน
         </p>
       </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="p-3">
+          <p className="text-xs text-muted">รวมเงินเดือน (รายเดือน)</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-ink">
+            {formatMoney(totalsByType.byType.monthly.net)}
+          </p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-xs text-muted">รวมค่าแรง (คนงาน)</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-ink">
+            {formatMoney(totalsByType.byType.daily.net)}
+          </p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-xs text-muted">รวมค่ารถ (คนขับรถ)</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-ink">
+            {formatMoney(totalsByType.byType.daily_driver.net)}
+          </p>
+        </Card>
+        <Card className="border-orange-200 bg-orange-50 p-3">
+          <p className="text-xs font-medium text-orange-900">รายจ่ายพนักงานทั้งหมด</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            {formatMoney(totalsByType.all.net)}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            รวม {formatMoney(totalsByType.all.dayTotal)} + พิเศษ{' '}
+            {formatMoney(totalsByType.all.special)} − เบิก {formatMoney(totalsByType.all.advance)}
+          </p>
+        </Card>
+      </div>
 
       {loading ? (
         <p className="text-sm text-muted">กำลังโหลดตาราง…</p>
