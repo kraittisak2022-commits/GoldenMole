@@ -255,7 +255,7 @@ export default function LedgerPage() {
     },
     {
       key: 'paidBy',
-      header: 'ชดใช้แทนบริษัท',
+      header: 'จ่ายคืนแทนบริษัท',
       render: (r) =>
         r.paidBy ? (
           <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
@@ -387,15 +387,15 @@ export default function LedgerPage() {
           {hasPaidByBreakdown ? (
             <div className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-3 space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                ใครชดใช้แทนบริษัท (รายจ่าย)
+                ใครจ่ายคืนแทนบริษัท (รายจ่าย)
               </p>
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
                 <span className="tabular-nums">
-                  A ต้องชดใช้{' '}
+                  A ต้องจ่ายคืน{' '}
                   <span className="font-medium text-ink">{formatMoney(paidByTotals.shareA)}</span>
                 </span>
                 <span className="tabular-nums">
-                  B ต้องชดใช้{' '}
+                  B ต้องจ่ายคืน{' '}
                   <span className="font-medium text-ink">{formatMoney(paidByTotals.shareB)}</span>
                 </span>
               </div>
@@ -478,10 +478,10 @@ export default function LedgerPage() {
           </div>
           <Field
             id="led-paid-by"
-            label="ใครชดใช้แทนบริษัท"
-            hint="รายการที่บริษัทจ่ายไปแล้ว — เลือกใครรับผิดชอบชดใช้ เช่น ของใช้ 200 บาท เลือก A และ B = ฝ่ายละ 100 บาท"
+            label="ใครจ่ายคืนแทนบริษัท"
+            hint="รายการที่บริษัทจ่ายไปแล้ว — เลือกใครรับผิดชอบจ่ายคืน เช่น ของใช้ 200 บาท เลือก A และ B = ฝ่ายละ 100 บาท"
           >
-            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ใครชดใช้แทนบริษัท">
+            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ใครจ่ายคืนแทนบริษัท">
               {(
                 [
                   { value: '', label: 'ไม่ระบุ' },
