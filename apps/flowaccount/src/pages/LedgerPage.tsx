@@ -389,20 +389,40 @@ export default function LedgerPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-muted">
                 ใครจ่ายคืนแทนบริษัท (รายจ่าย)
               </p>
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                <span className="tabular-nums">
-                  A ต้องจ่ายคืน{' '}
-                  <span className="font-medium text-ink">{formatMoney(paidByTotals.shareA)}</span>
-                </span>
-                <span className="tabular-nums">
-                  B ต้องจ่ายคืน{' '}
-                  <span className="font-medium text-ink">{formatMoney(paidByTotals.shareB)}</span>
-                </span>
+              <div className="grid gap-2 sm:grid-cols-3 text-sm">
+                <div className="rounded-md bg-white/70 px-3 py-2">
+                  <p className="text-xs text-muted">A</p>
+                  <p className="tabular-nums font-medium text-ink">
+                    ต้องจ่ายคืน {formatMoney(paidByTotals.A)}
+                  </p>
+                </div>
+                <div className="rounded-md bg-white/70 px-3 py-2">
+                  <p className="text-xs text-muted">B</p>
+                  <p className="tabular-nums font-medium text-ink">
+                    ต้องจ่ายคืน {formatMoney(paidByTotals.B)}
+                  </p>
+                </div>
+                <div className="rounded-md bg-white/70 px-3 py-2">
+                  <p className="text-xs text-muted">A และ B</p>
+                  <p className="tabular-nums font-medium text-ink">
+                    ต้องจ่ายคืน {formatMoney(paidByTotals.AB)}
+                  </p>
+                  {paidByTotals.AB > 0 ? (
+                    <p className="mt-1 text-xs text-muted">
+                      แบ่งฝ่ายละ {formatMoney(paidByTotals.AB / 2)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <p className="text-xs text-muted">
-                ยอดที่ระบุเป็น A {formatMoney(paidByTotals.A)} · B {formatMoney(paidByTotals.B)} · A และ B{' '}
-                {formatMoney(paidByTotals.AB)}
-                {paidByTotals.AB > 0 ? ' (แบ่งฝ่ายละครึ่ง)' : ''}
+              <p className="text-sm text-muted">
+                รวมหลังแบ่งครึ่ง:{' '}
+                <span className="tabular-nums font-medium text-ink">
+                  A {formatMoney(paidByTotals.shareA)}
+                </span>
+                {' · '}
+                <span className="tabular-nums font-medium text-ink">
+                  B {formatMoney(paidByTotals.shareB)}
+                </span>
               </p>
             </div>
           ) : null}
