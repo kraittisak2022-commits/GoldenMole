@@ -352,7 +352,16 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         unawaited(_refreshPendingCount());
         return;
       }
-      _units.clear();
+      // มีการ์ดอยู่แล้ว — อัปเดตในที่เดิม ไม่ clear + skeleton (กันชัพพอตหาย)
+      if (_units.isNotEmpty) {
+        unawaited(() async {
+          final merged = await _mergedPanelDayRows();
+          if (!mounted) return;
+          _applyMergedInPlace(merged);
+          await _refreshPendingCount();
+        }());
+        return;
+      }
       unawaited(_initPanel());
     } else if (oldWidget.serverOnline != widget.serverOnline) {
       if (mounted) setState(() => _isOnline = widget.serverOnline);
@@ -692,7 +701,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     for (final u in _units) {
       final empty = u.rounds <= 0 && u.lapTimes.isEmpty;
       if (empty) {
-        if (u.txId.isNotEmpty) byId.remove(u.txId);
+        // ชัพพอต 0 เที่ยวต้องเก็บแถวไว้ใน merge/cache — ไม่ลบออก
+        if (countRecordShouldKeepEmptyTripRow(isSupport: u.isSupportWork) &&
+            u.txId.isNotEmpty) {
+          byId[u.txId] = _txFor(u);
+        } else if (u.txId.isNotEmpty) {
+          byId.remove(u.txId);
+        }
         continue;
       }
       byId[u.txId] = _txFor(u);
@@ -710,12 +725,35 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   bool _unitIsEmpty(_CounterUnit u) => u.rounds <= 0 && u.lapTimes.isEmpty;
 
+  /// ชัพพอตที่ยังไม่โผล่ใน dayTransactions ของพ่อ — กันเคลียร์แผงระหว่างรอรีเฟรช
+  bool _supportUnitMissingFromParentDay(_CounterUnit u) {
+    if (!u.isSupportWork) return false;
+    final vid = (u.vehicleId ?? '').trim();
+    if (vid.isEmpty) return false;
+    final txId = u.txId.trim();
+    for (final t in widget.dayTransactions) {
+      if (t.date != widget.dateYmd) continue;
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
+        continue;
+      }
+      if (txId.isNotEmpty && t.id == txId) return false;
+      if ((t.vehicleId ?? '').trim() == vid) return false;
+    }
+    return true;
+  }
+
   bool _hasLocalOnlyTripUnits() {
     if (widget.mode != CounterMode.trip) return false;
     return _units.any(
-      (u) =>
-          (u.vehicleId ?? '').trim().isNotEmpty &&
-          (!u.persisted || (_unitIsEmpty(u) && !u.isSupportWork)),
+      (u) {
+        final vid = (u.vehicleId ?? '').trim();
+        if (vid.isEmpty) return false;
+        if (!u.persisted) return true;
+        if (_unitIsEmpty(u) && !u.isSupportWork) return true;
+        if (_supportUnitMissingFromParentDay(u)) return true;
+        return false;
+      },
     );
   }
 
@@ -735,6 +773,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       return;
     }
     if (widget.mode == CounterMode.trip) {
+      final knownVids = <String>{
+        for (final u in _units)
+          if ((u.vehicleId ?? '').trim().isNotEmpty) (u.vehicleId ?? '').trim(),
+      };
       for (final u in _units) {
         if (u.busy) continue;
         final vid = (u.vehicleId ?? '').trim();
@@ -761,6 +803,19 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         u.subtitle = fresh.subtitle;
         u.workDetails = fresh.workDetails;
         u.persisted = fresh.persisted;
+      }
+      // เพิ่มการ์ดจาก merged ที่ยังไม่มี (รวมชัพพอต 0 เที่ยว) — ไม่ลบ local ที่ยังไม่โผล่
+      for (final t in merged) {
+        if (t.category != 'DailyLog') continue;
+        if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
+          continue;
+        }
+        final vid = (t.vehicleId ?? '').trim();
+        if (vid.isEmpty || isMacroVehicleId(vid)) continue;
+        if (knownVids.contains(vid)) continue;
+        if (_hiddenDayTxIds.contains(t.id)) continue;
+        _units.add(_unitFromTx(t, title: vid, vehicleId: vid));
+        knownVids.add(vid);
       }
       setState(() {});
       return;
@@ -1256,7 +1311,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   Future<void> _confirmRemoveUnit(_CounterUnit u) async {
     if (u.busy) return;
     final tripInfo = u.rounds > 0 ? '\n(มี ${u.rounds} เที่ยวที่บันทึกไว้)' : '';
-    final ok = await showDialog<bool>(
+    final ok1 = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
@@ -1279,8 +1334,33 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         ],
       ),
     );
+    if (!mounted || ok1 != true) return;
+
+    final ok2 = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('ยืนยันลบอีกครั้ง?'),
+        content: Text(
+          'กดยืนยันอีกครั้งเพื่อลบ "${u.title}"',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD14343),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ยืนยันลบ'),
+          ),
+        ],
+      ),
+    );
     if (!mounted) return;
-    if (ok == true) await _removeUnit(u);
+    if (ok2 == true) await _removeUnit(u);
   }
 
   Future<void> _removeUnit(_CounterUnit u) async {

@@ -181,4 +181,9 @@ void main() {
     );
     expect(available, isEmpty);
   });
+
+  test('empty sand trip rows are dropped but support rows are kept', () {
+    expect(countRecordShouldKeepEmptyTripRow(isSupport: false), isFalse);
+    expect(countRecordShouldKeepEmptyTripRow(isSupport: true), isTrue);
+  });
 }

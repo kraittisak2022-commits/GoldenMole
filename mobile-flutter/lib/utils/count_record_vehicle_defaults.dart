@@ -5,6 +5,9 @@ import 'daily_module_transactions.dart';
 /// ยอดเที่ยวเริ่มต้นตอนเพิ่มรถใหม่ในแผงนับจำนวน (ก่อนกดการ์ดครั้งแรก)
 const int kCountRecordNewVehicleInitialRounds = 0;
 
+/// แถวว่างทั่วไปตัดออกจาก day rows ได้ แต่ชัพพอต 0 เที่ยวต้องคงไว้
+bool countRecordShouldKeepEmptyTripRow({required bool isSupport}) => isSupport;
+
 /// ค่าเริ่มต้นของหน่วยนับรถคันใหม่ — rounds = 0, ยังไม่มี lap
 ({int rounds, List<String> lapTimes}) countRecordNewVehicleSeed() => (
       rounds: kCountRecordNewVehicleInitialRounds,
