@@ -122,8 +122,8 @@ INSERT INTO fa_categories (id, name, kind, archived, sort_order) VALUES
   ('cat-supplies', 'ของใช้ทั่วไป', 'expense', false, 30),
   ('cat-salary', 'เงินเดือน', 'expense', false, 40),
   ('cat-reimburse', 'สำรองจ่าย', 'expense', false, 50),
-  ('cat-income-job', 'รายได้งาน', 'income', false, 5),
-  ('cat-income-other', 'รายได้อื่น', 'income', false, 6)
+  ('cat-income-job', 'รายรับจากบัญชีบริษัท', 'income', false, 5),
+  ('cat-income-other', 'รายรับจากการขาย', 'income', false, 6)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   kind = EXCLUDED.kind,
