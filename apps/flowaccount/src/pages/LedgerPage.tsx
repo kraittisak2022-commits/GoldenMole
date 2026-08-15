@@ -285,52 +285,6 @@ export default function LedgerPage() {
         />
       )}
 
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-ink">หมวดหมู่</h3>
-          <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={openCategoryManager}>
-            เพิ่ม / ลบหมวดหมู่
-          </Button>
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-2">
-          <li
-            className={[
-              'flex min-h-9 items-center rounded-full border px-3 text-xs',
-              filterCategoryId === ''
-                ? 'border-accent bg-sky-50 text-ink'
-                : 'border-border text-muted',
-            ].join(' ')}
-          >
-            <button
-              type="button"
-              className="cursor-pointer py-1 hover:text-ink"
-              onClick={() => setFilterCategoryId('')}
-            >
-              ทั้งหมด
-            </button>
-          </li>
-          {categories.map((c) => (
-            <li
-              key={c.id}
-              className={[
-                'flex min-h-9 items-center rounded-full border px-3 text-xs',
-                filterCategoryId === c.id
-                  ? 'border-accent bg-sky-50 text-ink'
-                  : 'border-border text-muted',
-              ].join(' ')}
-            >
-              <button
-                type="button"
-                className="cursor-pointer py-1 hover:text-ink"
-                onClick={() => setFilterCategoryId(c.id)}
-              >
-                {c.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
       <Modal
         open={entryOpen}
         title={editing ? 'แก้ไขรายการ' : 'เพิ่มรายการ'}
