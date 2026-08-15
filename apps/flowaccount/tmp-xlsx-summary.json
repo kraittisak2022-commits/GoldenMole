@@ -1,0 +1,73 @@
+{
+  "count": 183,
+  "summary": {
+    "อื่นๆ": {
+      "count": 35,
+      "sum": 35120.01
+    },
+    "ของใช้ทั่วไป": {
+      "count": 72,
+      "sum": 151445.0
+    },
+    "ซ่อมบำรุงเครื่องจักร": {
+      "count": 6,
+      "sum": 78314.0
+    },
+    "บ้านแม่เลียบ": {
+      "count": 29,
+      "sum": 107392.0
+    },
+    "โต๊ะสั่น": {
+      "count": 41,
+      "sum": 99190.0
+    }
+  },
+  "first5": [
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-03",
+      "description": "น้ำดื่ม",
+      "amount": 120.0,
+      "qty": null,
+      "note": null,
+      "date_raw": "244533"
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-04",
+      "description": "น้ำแข็ง",
+      "amount": 240.0,
+      "qty": null,
+      "note": null,
+      "date_raw": "244534"
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "ค่าไฟบ้านแม่ขะจาน",
+      "amount": 2581.91,
+      "qty": null,
+      "note": null,
+      "date_raw": "244535"
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "ค่าไฟท่าทราย",
+      "amount": 10237.8,
+      "qty": null,
+      "note": null,
+      "date_raw": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "น้ำปะปา",
+      "amount": 427.0,
+      "qty": null,
+      "note": null,
+      "date_raw": null
+    }
+  ],
+  "oil_sample": []
+}

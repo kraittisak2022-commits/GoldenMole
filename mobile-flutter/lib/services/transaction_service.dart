@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_transaction.dart';
@@ -7,6 +12,55 @@ class TransactionService {
   TransactionService(this._client);
 
   final SupabaseClient _client;
+
+  // #region agent log
+  static Future<void> _agentLog({
+    required String hypothesisId,
+    required String location,
+    required String message,
+    Map<String, Object?> data = const {},
+    String runId = 'pre-fix',
+  }) async {
+    final payload = <String, Object?>{
+      'sessionId': 'b281b7',
+      'runId': runId,
+      'hypothesisId': hypothesisId,
+      'location': location,
+      'message': message,
+      'data': data,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    debugPrint('DBG_TX500 ${jsonEncode(payload)}');
+    try {
+      final client = HttpClient();
+      final req = await client
+          .postUrl(
+            Uri.parse(
+              'http://127.0.0.1:7534/ingest/8bc82002-6da6-4937-be9c-d7a33a726939',
+            ),
+          )
+          .timeout(const Duration(milliseconds: 800));
+      req.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      req.headers.set('X-Debug-Session-Id', 'b281b7');
+      req.add(utf8.encode(jsonEncode(payload)));
+      await req.close().timeout(const Duration(milliseconds: 800));
+      client.close(force: true);
+    } catch (_) {}
+  }
+
+  static Map<String, Object?> _errData(Object error) {
+    if (error is PostgrestException) {
+      return {
+        'type': 'PostgrestException',
+        'code': error.code,
+        'message': error.message,
+        'details': '${error.details}',
+        'hint': '${error.hint}',
+      };
+    }
+    return {'type': error.runtimeType.toString(), 'message': '$error'};
+  }
+  // #endregion
 
   static Future<List<AppTransaction>>? _inFlightFull;
   static final Map<String, Future<List<AppTransaction>>> _inFlightByDay = {};
@@ -66,14 +120,38 @@ class TransactionService {
     }
 
     try {
+      // #region agent log
+      final sw = Stopwatch()..start();
+      // #endregion
       final rows = await _client
           .from('transactions')
           .select(_transactionColumns)
           .order('created_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsFull(list);
+      // #region agent log
+      sw.stop();
+      unawaited(
+        _agentLog(
+          hypothesisId: 'B',
+          location: 'transaction_service.dart:fetchFull',
+          message: 'full fetch ok',
+          data: {'rows': list.length, 'ms': sw.elapsedMilliseconds},
+        ),
+      );
+      // #endregion
       return list;
-    } catch (_) {
+    } catch (e) {
+      // #region agent log
+      unawaited(
+        _agentLog(
+          hypothesisId: 'A',
+          location: 'transaction_service.dart:fetchFull',
+          message: 'full fetch failed',
+          data: _errData(e),
+        ),
+      );
+      // #endregion
       final stale = await LocalDataCache.readTransactionsFullAny();
       if (stale != null) return stale;
       rethrow;
@@ -127,8 +205,28 @@ class TransactionService {
           .order('created_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsForDay(ymd, list);
+      // #region agent log
+      unawaited(
+        _agentLog(
+          hypothesisId: 'B',
+          location: 'transaction_service.dart:fetchDay',
+          message: 'day fetch ok',
+          data: {'ymd': ymd, 'rows': list.length},
+        ),
+      );
+      // #endregion
       return list;
-    } catch (_) {
+    } catch (e) {
+      // #region agent log
+      unawaited(
+        _agentLog(
+          hypothesisId: 'A',
+          location: 'transaction_service.dart:fetchDay',
+          message: 'day fetch failed',
+          data: {..._errData(e), 'ymd': ymd},
+        ),
+      );
+      // #endregion
       final stale = await LocalDataCache.readTransactionsForDayAny(ymd);
       if (stale != null) return stale;
       rethrow;

@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/dashboard_summary.dart';
@@ -8,8 +13,81 @@ class DashboardService {
 
   final SupabaseClient _client;
 
+  // #region agent log
+  static Future<void> _agentLog({
+    required String hypothesisId,
+    required String location,
+    required String message,
+    Map<String, Object?> data = const {},
+  }) async {
+    final payload = <String, Object?>{
+      'sessionId': 'b281b7',
+      'runId': 'pre-fix',
+      'hypothesisId': hypothesisId,
+      'location': location,
+      'message': message,
+      'data': data,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    debugPrint('DBG_TX500 ${jsonEncode(payload)}');
+    try {
+      final client = HttpClient();
+      final req = await client
+          .postUrl(
+            Uri.parse(
+              'http://127.0.0.1:7534/ingest/8bc82002-6da6-4937-be9c-d7a33a726939',
+            ),
+          )
+          .timeout(const Duration(milliseconds: 800));
+      req.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      req.headers.set('X-Debug-Session-Id', 'b281b7');
+      req.add(utf8.encode(jsonEncode(payload)));
+      await req.close().timeout(const Duration(milliseconds: 800));
+      client.close(force: true);
+    } catch (_) {}
+  }
+  // #endregion
+
   Future<int> _countRows(String tableName) async {
-    return _client.from(tableName).count(CountOption.exact);
+    try {
+      final n = await _client.from(tableName).count(CountOption.exact);
+      // #region agent log
+      if (tableName == 'transactions') {
+        unawaited(
+          _agentLog(
+            hypothesisId: 'C',
+            location: 'dashboard_service.dart:count',
+            message: 'transactions HEAD count ok',
+            data: {'count': n},
+          ),
+        );
+      }
+      // #endregion
+      return n;
+    } catch (e) {
+      // #region agent log
+      if (tableName == 'transactions') {
+        unawaited(
+          _agentLog(
+            hypothesisId: 'C',
+            location: 'dashboard_service.dart:count',
+            message: 'transactions HEAD count failed',
+            data: {
+              'type': e.runtimeType.toString(),
+              'message': '$e',
+              if (e is PostgrestException) ...{
+                'code': e.code,
+                'pgMessage': e.message,
+                'details': '${e.details}',
+                'hint': '${e.hint}',
+              },
+            },
+          ),
+        );
+      }
+      // #endregion
+      rethrow;
+    }
   }
 
   Future<double> _sumTransactionsByType(String type) async {

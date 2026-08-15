@@ -1,0 +1,1445 @@
+{
+  "count": 202,
+  "summary": {
+    "อื่นๆ": {
+      "count": 35,
+      "sum": 35120.01
+    },
+    "ของใช้ทั่วไป": {
+      "count": 72,
+      "sum": 151445.0
+    },
+    "ซ่อมบำรุงเครื่องจักร": {
+      "count": 6,
+      "sum": 78314.0
+    },
+    "น้ำมัน": {
+      "count": 13,
+      "sum": 887102.0
+    },
+    "บ้านแม่เลียบ": {
+      "count": 33,
+      "sum": 177192.0
+    },
+    "โต๊ะสั่น": {
+      "count": 43,
+      "sum": 121470.0
+    }
+  },
+  "rows": [
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-03",
+      "description": "น้ำดื่ม",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-04",
+      "description": "น้ำแข็ง",
+      "amount": 240.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "ค่าไฟบ้านแม่ขะจาน",
+      "amount": 2581.91,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "ค่าไฟท่าทราย",
+      "amount": 10237.8,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-05",
+      "description": "น้ำปะปา",
+      "amount": 427.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-06",
+      "description": "ขอใบรับรองโรงงาน",
+      "amount": 200.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-07",
+      "description": "แก๊ส",
+      "amount": 480.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-07",
+      "description": "กับแกล้ม",
+      "amount": 625.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-07",
+      "description": "น้ำดื่ม",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-09",
+      "description": "ค่าเช่าบ้าน",
+      "amount": 9000.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-11",
+      "description": "ข้าวเที่ยง",
+      "amount": 140.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-11",
+      "description": "น้ำแข็ง",
+      "amount": 320.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-12",
+      "description": "ข้าวเที่ยง",
+      "amount": 160.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-14",
+      "description": "เหล้า",
+      "amount": 1600.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-14",
+      "description": "น้ำดื่ม",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-15",
+      "description": "น้ำแข็ง",
+      "amount": 320.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-17",
+      "description": "เครื่องดื่มคนงาน",
+      "amount": 340.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-19",
+      "description": "น้ำดื่ม",
+      "amount": 130.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-19",
+      "description": "ค่าทิ้งขยะ",
+      "amount": 30.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-20",
+      "description": "น้ำดื่ม (ขวด)",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-21",
+      "description": "ข้าวเที่ยง",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-22",
+      "description": "น้ำแข็ง",
+      "amount": 240.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-23",
+      "description": "ข้าวเที่ยง",
+      "amount": 220.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-23",
+      "description": "เครื่องดื่มให้คนวัดที่ดิน",
+      "amount": 73.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-24",
+      "description": "กับแกล้ม",
+      "amount": 625.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-26",
+      "description": "ข้าวสารคนงาน",
+      "amount": 400.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-26",
+      "description": "ยาแก้ปวด",
+      "amount": 80.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-26",
+      "description": "เหล้า",
+      "amount": 800.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-27",
+      "description": "น้ำแข็ง",
+      "amount": 240.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-27",
+      "description": "น้ำดื่ม",
+      "amount": 150.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-30",
+      "description": "เน็ตบ้าน 2 เดือน",
+      "amount": 631.3,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-31",
+      "description": "เครื่องปรุงและปากกาเคมี",
+      "amount": 305.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-31",
+      "description": "น้ำแข็ง",
+      "amount": 160.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-31",
+      "description": "ค่าข้าวที่พี่เก๋จ่าย (เดือน 5-7)",
+      "amount": 3529.0,
+      "note": null
+    },
+    {
+      "sheet": "อื่นๆ",
+      "date": "2026-07-31",
+      "description": "เครื่องดื่มคนงาน",
+      "amount": 235.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-01",
+      "description": "ข้อต่อท่อจ่ายน้ำมันทองแดง 1 นิ้ว",
+      "amount": 1000.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-02",
+      "description": "ปะเก็นฝาครอบวาล์วคูโบต้า ET95-115RT100-155ZT",
+      "amount": 25.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-02",
+      "description": "ชุดสปริงวาล์วคูโบต้า ET RT",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-02",
+      "description": "ปะเก็นฝาสูบคูโบต้า RT140,RT125DI",
+      "amount": 300.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-02",
+      "description": "วาล์วไอเสีย",
+      "amount": 350.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-02",
+      "description": "วาล์วไอดี",
+      "amount": 350.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-04",
+      "description": "คีมปากนกแก้ว คีมผูกลวด 9 นิ้ว",
+      "amount": 49.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-04",
+      "description": "คีมปอกสายไฟ 7 นิ้ว",
+      "amount": 75.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-04",
+      "description": "ชุดคีม 3 ชิ้น คีมปากจิ้งจก คีมปากแหลม คีมตัดสายไฟ SET8นิ้ว",
+      "amount": 220.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-04",
+      "description": "ค้อนตอกตะปูด้ามหุ้มฉนวน",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "เพรสเชอร์สวิทช์ ปั้มน้ำ เกลียวใน 1/4",
+      "amount": 269.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ชุดเครื่องมือบล็อคหัวเทียน 5ชิ้น",
+      "amount": 79.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "กรองน้ำมันเบนซินเล็ก",
+      "amount": 7.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ก๊อกเปิด-ปิดน้ำมัน วาล์วควบคุมน้ำมัน",
+      "amount": 25.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "กรองน้ำมันเบนซินใหญ่",
+      "amount": 25.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ชุดเครื่องมืองานช่าง 102 ชิ้น",
+      "amount": 690.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ถังน้ำมัน 10,000 ลิตร",
+      "amount": 63000.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ถังปูนไนล่อนเกรดเอ",
+      "amount": 245.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-05",
+      "description": "ก๊อกบอลสนามด้ามแดง",
+      "amount": 79.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-06",
+      "description": "วาล์วทองเหลือง 2 นิ้ว (ต่อปั๊มน้ำมัน)",
+      "amount": 550.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-08",
+      "description": "กรรไกรตัดท่อพีวีซี",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-08",
+      "description": "Masaru SCS-465N เลื่อยไร้สาย 20V ขนาด 11.5 นิ้ว",
+      "amount": 2850.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-08",
+      "description": "แฟ้มพลาสติก",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-09",
+      "description": "ใบพัดทองเหลืองปั๊มน้ำฮิตาชิ Hitachi แกน12 มิล",
+      "amount": 450.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-09",
+      "description": "ค่าส่งเคลมสินค้าชิ้นใหญ่ (เครื่องสูบน้ำและปั๊มน้ำ)",
+      "amount": 700.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-09",
+      "description": "รถจักรยานยนต์",
+      "amount": 7000.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-09",
+      "description": "รถจักรยานยนต์",
+      "amount": 3800.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "วายนัทจับสายไฟ (100ชิ้น/กล่อง)",
+      "amount": 320.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "ถังดับเพลิง 15 ปอนด์",
+      "amount": 850.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "เพรสเชอร์สวิทช์ปั้มน้ำ (3/8ใน0.6-1.4)",
+      "amount": 190.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "ชุดเซฟตี้แบบครึ่งตัว ตะขอใหญ่ รุ่น W737B YAMADA",
+      "amount": 550.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "6 ห่อ กระดาษทิชชู่แบบแขวน",
+      "amount": 220.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "ก๊อกน้ำสแตนเลสต่อ3 ทาง 2 วาล์ว (ใส่ห้องน้ำคนงาน)",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-10",
+      "description": "น้ำมันเกียร์ เฟืองท้าย PTT GL5 เบอร์ 90 (18 ลิตร)",
+      "amount": 1900.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-11",
+      "description": "ตะไบขนาด 4.0 mm. ลับคมโซ่ เลื่อยยนต์",
+      "amount": 70.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-11",
+      "description": "น้ำมันเลี้ยงโซ่ SUPER RED (คัดเกรด) ยกลัง (6กระป๋อง)",
+      "amount": 950.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-11",
+      "description": "น้ำมันเลี้ยงโซ่ SUPER RED",
+      "amount": 175.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-11",
+      "description": "วาล์วและข้อต่อ 6 หุน",
+      "amount": 60.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-12",
+      "description": "ลวดผูกเหล็ก ลวดดำ เบอร์ 18 น้ำหนัก 2.3 กิโลกรัม",
+      "amount": 240.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-12",
+      "description": "ลวดผูกเหล็ก ลวดดำ เบอร์ 18 น้ำหนัก 2.3 กิโลกรัม",
+      "amount": 640.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-12",
+      "description": "ข้อต่อทองเหลืองหางปลา เกลียวใน",
+      "amount": 39.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-12",
+      "description": "น้ำมันเครื่อง 5 ลิตร",
+      "amount": 850.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-13",
+      "description": "น้ำยาหล่อเย็นหม้อน้ำ PTT coolant longlife ขนาด 4 ลิตร",
+      "amount": 700.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-14",
+      "description": "ไม้ฉาก",
+      "amount": 95.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-15",
+      "description": "เกลดสเปรย์ปรับอากาศ 320 มล.",
+      "amount": 570.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-15",
+      "description": "ตัวต่อเชื่อมต่อ RJ45 สายเคเบิลเครือข่ายบรอดแบนด์กลางแจ้ง",
+      "amount": 60.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-17",
+      "description": "ท่อกลวงอะคริลิคใส 36x40 mm.ยาว 100 cm",
+      "amount": 350.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-18",
+      "description": "ระดับน้ำดิจิตอล 400mm",
+      "amount": 450.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-18",
+      "description": "เลื่อยไร้สาย",
+      "amount": 2459.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-18",
+      "description": "แบตเตอรี่ลิเทียม 20V",
+      "amount": 1200.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-18",
+      "description": "ตลับเมตร 10 เมตร",
+      "amount": 100.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-19",
+      "description": "น้ำมันเครื่อง 1 กระป๋อง",
+      "amount": 130.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-20",
+      "description": "ลวด",
+      "amount": 40.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-21",
+      "description": "บล็อคยางกันน้ำปลั๊กไฟ",
+      "amount": 109.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-21",
+      "description": "ร่ม 42 นิ้ว สีเขียว",
+      "amount": 349.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-21",
+      "description": "ร่ม 42 นิ้ว สีแดง",
+      "amount": 349.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-22",
+      "description": "ข้อต่อท่อจ่ายน้ำมันทองแดง 1 นิ้ว",
+      "amount": 500.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-22",
+      "description": "รางเท แม่พิมพ์กราไฟต์",
+      "amount": 420.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-23",
+      "description": "ONE กระดาษถ่ายเอกสาร A4 80 แกรม แพ็ค 5 รีม",
+      "amount": 980.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-23",
+      "description": "ใบเลื่อยชัก บอช รุ่น S1122BF ตัดเหล็ก",
+      "amount": 150.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-24",
+      "description": "ดอกสว่าน 16mm",
+      "amount": 220.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-24",
+      "description": "ท่อกลวงอะคริลิคใส 41x45 mm.ยาว 100 cm",
+      "amount": 450.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-24",
+      "description": "หางปลาทองแดง 70 ตัว",
+      "amount": 125.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-24",
+      "description": "ชุดบล็อคสวมเร็ว 14 ตัว",
+      "amount": 35.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-24",
+      "description": "ชุดไขควง 8 ชิ้น",
+      "amount": 145.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-27",
+      "description": "STT สายไฟ VCT 2x4 (100เมตร)",
+      "amount": 4990.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-28",
+      "description": "ชุดบล็อคประแจ 85 ชิ้น",
+      "amount": 1250.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-31",
+      "description": "ซ่อมอินเวอร์เตอร์",
+      "amount": 2300.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-31",
+      "description": "ค่าส่งซ่อมไดโว่",
+      "amount": 128.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-31",
+      "description": "จานหมุนคัดแร่",
+      "amount": 17000.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-31",
+      "description": "ถังรองทรายจานหมุนคัดแร่",
+      "amount": 500.0,
+      "note": null
+    },
+    {
+      "sheet": "ของใช้ทั่วไป",
+      "date": "2026-07-31",
+      "description": "ปรอท 3 กิโลกรัม (รวมค่าส่ง)",
+      "amount": 25599.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-06",
+      "description": "ตู้ ATS (ต่อกับเครื่องปั่นไฟใหญ่)",
+      "amount": 6411.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-14",
+      "description": "มัดจำรางเหล็ก (เครื่องจักร)",
+      "amount": 10000.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-17",
+      "description": "รางเหล็ก (เครื่องจักร)",
+      "amount": 28400.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-23",
+      "description": "ยางกันโคลนรถบรรทุกไส้ผ้า (5มิล, 70x100cm)",
+      "amount": 1700.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-23",
+      "description": "ยางกันโคลนรถบรรทุกไส้ผ้า (5มิล, 70x100cm)",
+      "amount": 1700.0,
+      "note": null
+    },
+    {
+      "sheet": "ซ่อมบำรุงเครื่องจักร",
+      "date": "2026-07-24",
+      "description": "เหล็กโกบอลเฮาส์ (ทำบันไดเครื่องจักร)",
+      "amount": 30103.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-01",
+      "description": "น้ำมัน 5,000 ลิตร",
+      "amount": 197500.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-07",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 1000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-09",
+      "description": "น้ำมัน 3,000 ลิตร",
+      "amount": 99000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-09",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 1814.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-11",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 1000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-14",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 1000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-14",
+      "description": "น้ำมันเบนซิน",
+      "amount": 1852.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-18",
+      "description": "น้ำมัน 400 ลิตร",
+      "amount": 14000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-19",
+      "description": "น้ำมัน 400 ลิตร",
+      "amount": 14276.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-21",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 1380.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-26",
+      "description": "น้ำมัน 4,000 ลิตร",
+      "amount": 136000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-07-26",
+      "description": "น้ำมันค่าเดินทาง",
+      "amount": 2000.0,
+      "note": null
+    },
+    {
+      "sheet": "น้ำมัน",
+      "date": "2026-08-05",
+      "description": "น้ำมัน 12,000 ลิตร",
+      "amount": 416280.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-01",
+      "description": "ทรายก่อ/เหล็กเส้น/บล็อคทึบ",
+      "amount": 8980.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-01",
+      "description": "ปูนคอนกรีต",
+      "amount": 17200.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-20",
+      "description": "ปูนคอนกรีต",
+      "amount": 3575.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-20",
+      "description": "เหล็กเส้น",
+      "amount": 690.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "สะดืออ่างล้างหน้า",
+      "amount": 88.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "อ่างล้างหน้าพร้อมขาตั้ง",
+      "amount": 788.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "เก้าอี้",
+      "amount": 4800.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "กระจกพลาสติก SET 3 ชิ้น",
+      "amount": 258.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "นาฬิกาแขวนอะลูมิเนียม",
+      "amount": 144.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "ท่อน้ำทิ้งอ่างล้างหน้า",
+      "amount": 128.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "ประตูอะลูมิเนียมบานเลื่อน NK รุ่น 2 บาน",
+      "amount": 5090.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "แผงโซลาร์เซลล์",
+      "amount": 21420.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "โคมไฟเพดาน LED 48 วัตต์",
+      "amount": 672.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "ชุดสายฉีดชำระ",
+      "amount": 298.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "ที่คว่ำจานพลาสติก 2 ชั้น พร้อมที่ใส่ช้อน",
+      "amount": 198.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "แผ่นชั้นไม้ปิดผิวเมลามีน",
+      "amount": 178.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-05",
+      "description": "ฉากรับชั้น",
+      "amount": 46.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-09",
+      "description": "TCL แอร์ Full DC Inverter ขนาด 24,200 BTU",
+      "amount": 15500.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-13",
+      "description": "รายวันทำบ้านลุงวัน",
+      "amount": 22450.0,
+      "note": "22450"
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-14",
+      "description": "ก๊อกน้ำ 3ชิ้น",
+      "amount": 120.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-15",
+      "description": "วัสดุก่อสร้างร้านจิตเกษม",
+      "amount": 18070.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "หน้าต่างบานเลื่อนกระจกใส",
+      "amount": 1350.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "หน้าต่างบานเลื่อนกระจกใส",
+      "amount": 1350.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "พุกเหล็ก 1/2 (ยาว95มิล),2ตัว",
+      "amount": 108.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "สกรูปลายสว่านหัวเหลี่ยมชุบรุ้ง (100ตัว)",
+      "amount": 900.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "ค่าแรงรายวันทำบ้านของลุงวัน",
+      "amount": 5100.0,
+      "note": "5100"
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-16",
+      "description": "แปรง",
+      "amount": 20.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-17",
+      "description": "สีทาบ้าน",
+      "amount": 3346.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-19",
+      "description": "ก่อผนัง",
+      "amount": 15250.0,
+      "note": "15250"
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-22",
+      "description": "ฉาบผนังบ้าน",
+      "amount": 27000.0,
+      "note": "27000"
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-26",
+      "description": "แปรงทาสี 3 นิ้ว 3ชิ้น และลูกกลิ้งทาสี 2ชิ้น",
+      "amount": 385.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-26",
+      "description": "กระดาษทราย",
+      "amount": 340.0,
+      "note": null
+    },
+    {
+      "sheet": "บ้านแม่เลียบ",
+      "date": "2026-07-27",
+      "description": "โถปัสสาวะชาย",
+      "amount": 1350.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "ปูน / บล็อคทึบ",
+      "amount": 2900.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "ทรายก่อ / หินโม่",
+      "amount": 4300.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "ไวย์เมส/ปูน",
+      "amount": 1300.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "ปูนผสมเสร็จ",
+      "amount": 7700.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "ปูน/เหล็กเส้น/บล็อคทึบ",
+      "amount": 3506.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-01",
+      "description": "บล็อคทึบ",
+      "amount": 2400.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-02",
+      "description": "ปูนคอนกรีต",
+      "amount": 4600.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "ฐานเหล็กกล่อง 4 x 4 นิ้ว",
+      "amount": 1188.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "ใบตัดเหล็ก 14 นิ้ว",
+      "amount": 340.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "แอลโบลท์เกลียวมิล M12 x 500 มม.",
+      "amount": 1872.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "เหล็กปลอก GIANT KINGKONG รุ่น 6 มม. ขนาด 15 x 15 ซม.",
+      "amount": 648.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "เหล็กแป๊บโปร่ง 2.5 มม (4 x 4 นิ้ว) ยาว 6 เมตร",
+      "amount": 7170.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "เหล็กแป๊บแบน 1.6 มม. (4 x 2 นิ้ว) ยาว 6 เมตร",
+      "amount": 11860.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-05",
+      "description": "แป๊บแบนกัลวาไนซ์ (2 x 1 นิ้ว)",
+      "amount": 7805.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-06",
+      "description": "ข้อต่อ PVC",
+      "amount": 160.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-07",
+      "description": "เมทรัลชีทหลังคาโต๊ะสั่น",
+      "amount": 24958.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-07",
+      "description": "เทพื้นขัดมันอ่าง",
+      "amount": 17280.0,
+      "note": "17280"
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-09",
+      "description": "ปูนคอนกรีต",
+      "amount": 4600.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-09",
+      "description": "เหล็ก 4x3 (3เล่ม)",
+      "amount": 1770.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-12",
+      "description": "ถาดรองแร่และหิน",
+      "amount": 1500.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-12",
+      "description": "ก่อปูน",
+      "amount": 5000.0,
+      "note": "5000"
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-20",
+      "description": "ท่อปะปาและกระสอบ",
+      "amount": 2700.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-20",
+      "description": "ออกซิเจน 2 ถัง",
+      "amount": 560.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้อต่อ PVC (หนา) 2 นิ้ว ต่อตรง",
+      "amount": 35.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้อต่อ PVC",
+      "amount": 254.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้อต่อลด PVC (หนา) ต่อตรงลด (2 x 1/2นิ้ว)",
+      "amount": 35.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "บอลวาล์ว สวมสายยาง (ด้านเดียว3/4x3/4)",
+      "amount": 54.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "เข็มขัดรัดท่อ (25-35มม.)",
+      "amount": 56.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ที่แขวนสายยาง",
+      "amount": 118.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ฝาปิดปลายท่อ 3 นิ้ว",
+      "amount": 129.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "สามทาง 2 นิ้ว",
+      "amount": 150.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้อลดสามทาง 2นิ้วลด3/4นิ้ว",
+      "amount": 170.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้องอ 45 องศา 2 นิ้ว",
+      "amount": 200.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้องอ 90 องศา 2 นิ้ว",
+      "amount": 300.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "ข้อต่อยูเนียนแบบสวม 3 นิ้ว",
+      "amount": 350.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "บอลวาล์ว 2 นิ้ว",
+      "amount": 550.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-22",
+      "description": "สายยางสีฟ้า 6 หุน 100 เมตร",
+      "amount": 1350.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-26",
+      "description": "บอลวาล์ว สวมสายยาง (ด้านเดียว3/4x3/4)",
+      "amount": 27.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-26",
+      "description": "ข้อลดสามทาง 1-1/2นิ้วลด1นิ้ว",
+      "amount": 55.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-26",
+      "description": "ข้อลดสามทาง 2นิ้วลด3/4นิ้ว",
+      "amount": 85.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-26",
+      "description": "วาล์ว 3 นิ้ว",
+      "amount": 650.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-26",
+      "description": "เกลียวใน 2 นิ้ว",
+      "amount": 85.0,
+      "note": null
+    },
+    {
+      "sheet": "โต๊ะสั่น",
+      "date": "2026-07-27",
+      "description": "แร็คสายไฟ",
+      "amount": 700.0,
+      "note": null
+    }
+  ]
+}
