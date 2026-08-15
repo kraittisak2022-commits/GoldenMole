@@ -1571,13 +1571,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final w =
                   layoutW > safeMq ? safeMq : layoutW;
               final rawMaxH = constraints.maxHeight;
+              // ช่วง AnimatedSize / กลับจากเมนูย่อย maxHeight อาจเป็นเศษส่วนเล็กมาก
+              // ทำให้ clamp(1.0, panelH) พังเมื่อ panelH < 1
               final panelH = !rawMaxH.isFinite
                   ? 120.0 + _kMoreMenusBarHeight
-                  : rawMaxH <= 0
+                  : rawMaxH < 1.0
                       ? 1.0 + _kMoreMenusBarHeight
                       : rawMaxH;
-              final availH =
-                  (panelH - _kMoreMenusBarHeight).clamp(1.0, panelH);
+              final availRaw = panelH - _kMoreMenusBarHeight;
+              final availH = availRaw < 1.0 ? 1.0 : availRaw;
               final rows =
                   (gridItemCount / cross).ceil().clamp(1, 12);
               final usableWidth = w - (sideInset * 2);
