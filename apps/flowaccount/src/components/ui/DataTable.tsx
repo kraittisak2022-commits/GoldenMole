@@ -26,7 +26,7 @@ export default function DataTable<T>({
         <thead className="border-b border-border bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-muted">
           <tr>
             {columns.map((c) => (
-              <th key={c.key} className={`px-4 py-3 whitespace-nowrap ${c.className || ''}`}>
+              <th key={c.key} className={`px-4 py-3 ${c.className || 'whitespace-nowrap'}`}>
                 {c.header}
               </th>
             ))}

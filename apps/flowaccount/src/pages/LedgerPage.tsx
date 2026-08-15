@@ -225,40 +225,55 @@ export default function LedgerPage() {
   };
 
   const columns: Column<FaLedgerEntry>[] = [
-    { key: 'date', header: 'วันที่', render: (r) => r.date },
-    { key: 'desc', header: 'รายการ', render: (r) => r.description },
+    {
+      key: 'date',
+      header: 'วันที่',
+      className: 'w-[6.5rem] whitespace-nowrap px-2 sm:px-3',
+      render: (r) => r.date,
+    },
+    {
+      key: 'desc',
+      header: 'รายการ',
+      className: 'min-w-[14rem] w-[36%] max-w-xl px-2 sm:px-3',
+      render: (r) => <span className="break-words leading-snug">{r.description}</span>,
+    },
     ...(filterCategoryId
       ? []
       : [
           {
             key: 'cat',
             header: 'หมวดหมู่',
-            render: (r: FaLedgerEntry) => catMap.get(r.categoryId)?.name || r.categoryId,
+            className: 'w-[7rem] max-w-[8rem] px-2 sm:px-3',
+            render: (r: FaLedgerEntry) => (
+              <span className="line-clamp-2 break-words">{catMap.get(r.categoryId)?.name || r.categoryId}</span>
+            ),
           } satisfies Column<FaLedgerEntry>,
         ]),
     {
       key: 'type',
       header: 'ประเภท',
+      className: 'w-[4.5rem] whitespace-nowrap px-2',
       render: (r) => <StatusBadge status={r.entryType} />,
     },
     {
       key: 'qty',
-      header: 'จำนวน (ชิ้น)',
-      className: 'text-right tabular-nums',
+      header: 'จำนวน',
+      className: 'w-[4rem] whitespace-nowrap px-2 text-right tabular-nums',
       render: (r) => formatMoney(r.quantity ?? 1),
     },
     {
       key: 'amount',
       header: 'จำนวนเงิน',
-      className: 'text-right tabular-nums',
+      className: 'w-[6rem] whitespace-nowrap px-2 text-right tabular-nums',
       render: (r) => formatMoney(r.amount),
     },
     {
       key: 'paidBy',
-      header: 'รายจ่ายของฝ่าย',
+      header: 'ฝ่าย',
+      className: 'w-[5rem] whitespace-nowrap px-2',
       render: (r) =>
         r.paidBy ? (
-          <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+          <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
             {LEDGER_PAID_BY_LABEL[r.paidBy]}
           </span>
         ) : (
@@ -268,9 +283,10 @@ export default function LedgerPage() {
     {
       key: 'actions',
       header: '',
+      className: 'w-[1%] whitespace-nowrap px-2',
       render: (r) =>
         r.source === 'manual' ? (
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-1 justify-end">
             <Button variant="ghost" className="min-h-9 px-2" onClick={() => openEdit(r)}>
               แก้ไข
             </Button>
@@ -291,7 +307,7 @@ export default function LedgerPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">รายรับ-รายจ่าย</h2>
