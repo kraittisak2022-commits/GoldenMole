@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
 import AppShell from './components/AppShell';
+import CategoriesPage from './pages/CategoriesPage';
 import DashboardPage from './pages/DashboardPage';
 import FleetPage from './pages/FleetPage';
 import FleetStatementPage from './pages/FleetStatementPage';
@@ -28,6 +29,7 @@ export default function App() {
           >
             <Route index element={<DashboardPage />} />
             <Route path="ledger" element={<LedgerPage />} />
+            <Route path="categories" element={<CategoriesPage />} />
             <Route path="reimbursements" element={<ReimbursementsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id/payslip" element={<PayslipPage />} />

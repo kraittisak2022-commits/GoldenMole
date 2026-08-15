@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { archiveCategory, listCategories, saveCategory } from '../data/categories';
+import { Link, useSearchParams } from 'react-router-dom';
+import { listCategories } from '../data/categories';
 import { deleteLedgerEntry, listLedgerEntries, saveLedgerEntry } from '../data/ledger';
 import type { EntryType, FaCategory, FaLedgerEntry } from '../types';
 import { formatMoney } from '../types';
@@ -18,13 +19,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function LedgerPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
   const [categories, setCategories] = useState<FaCategory[]>([]);
   const [filterCategoryId, setFilterCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [entryOpen, setEntryOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
   const [editing, setEditing] = useState<FaLedgerEntry | null>(null);
 
   const [date, setDate] = useState(today());
@@ -33,10 +34,13 @@ export default function LedgerPage() {
   const [entryType, setEntryType] = useState<EntryType>('expense');
   const [amount, setAmount] = useState<number | ''>('');
 
-  const [catName, setCatName] = useState('');
-  const [catKind, setCatKind] = useState<'income' | 'expense' | 'both'>('expense');
-
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  const setFilter = (id: string) => {
+    setFilterCategoryId(id);
+    if (id) setSearchParams({ category: id });
+    else setSearchParams({});
+  };
 
   const filteredEntries = useMemo(() => {
     if (!filterCategoryId) return entries;
@@ -64,11 +68,6 @@ export default function LedgerPage() {
       const [e, c] = await Promise.all([listLedgerEntries(), listCategories()]);
       setEntries(e);
       setCategories(c);
-      setFilterCategoryId((prev) => {
-        if (prev === '') return '';
-        if (prev && c.some((x) => x.id === prev)) return prev;
-        return '';
-      });
       setCategoryId((prev) => prev || c[0]?.id || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดข้อมูลไม่สำเร็จ');
@@ -80,6 +79,16 @@ export default function LedgerPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get('category') || '';
+    if (!fromQuery) {
+      setFilterCategoryId('');
+      return;
+    }
+    if (categories.length === 0) return;
+    setFilterCategoryId(categories.some((c) => c.id === fromQuery) ? fromQuery : '');
+  }, [searchParams, categories]);
 
   const openCreate = () => {
     setEditing(null);
@@ -120,19 +129,6 @@ export default function LedgerPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
-    }
-  };
-
-  const submitCategory = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!catName.trim()) return;
-    try {
-      await saveCategory({ name: catName, kind: catKind });
-      setCatName('');
-      setCatOpen(false);
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'บันทึกหมวดไม่สำเร็จ');
     }
   };
 
@@ -192,9 +188,12 @@ export default function LedgerPage() {
           <p className="mt-1 text-sm text-muted">ดูทั้งหมด หรือกรองตามหมวดหมู่</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setCatOpen(true)}>
+          <Link
+            to="/categories"
+            className="inline-flex min-h-11 items-center rounded-DEFAULT border border-border bg-white px-3 text-sm text-ink hover:bg-slate-50"
+          >
             จัดการหมวดหมู่
-          </Button>
+          </Link>
           <Button onClick={openCreate}>เพิ่มรายการ</Button>
         </div>
       </div>
@@ -206,7 +205,7 @@ export default function LedgerPage() {
               <Select
                 id="ledger-filter-cat"
                 value={filterCategoryId}
-                onChange={(e) => setFilterCategoryId(e.target.value)}
+                onChange={(e) => setFilter(e.target.value)}
                 aria-label="เลือกหมวดหมู่เพื่อกรองตาราง"
               >
                 <option value="">ทั้งหมด</option>
@@ -262,7 +261,7 @@ export default function LedgerPage() {
             <button
               type="button"
               className="cursor-pointer py-1 hover:text-ink"
-              onClick={() => setFilterCategoryId('')}
+              onClick={() => setFilter('')}
             >
               ทั้งหมด
             </button>
@@ -271,7 +270,7 @@ export default function LedgerPage() {
             <li
               key={c.id}
               className={[
-                'flex min-h-9 items-center gap-1 rounded-full border px-1 pl-3 text-xs',
+                'flex min-h-9 items-center gap-1 rounded-full border px-3 text-xs',
                 filterCategoryId === c.id
                   ? 'border-accent bg-sky-50 text-ink'
                   : 'border-border text-muted',
@@ -280,17 +279,9 @@ export default function LedgerPage() {
               <button
                 type="button"
                 className="cursor-pointer py-1 hover:text-ink"
-                onClick={() => setFilterCategoryId(c.id)}
+                onClick={() => setFilter(c.id)}
               >
                 {c.name}
-              </button>
-              <button
-                type="button"
-                className="min-h-8 min-w-8 rounded-full text-muted hover:bg-white hover:text-destructive cursor-pointer"
-                onClick={() => void archiveCategory(c.id).then(reload)}
-                aria-label={`เก็บหมวด ${c.name}`}
-              >
-                ×
               </button>
             </li>
           ))}
@@ -336,35 +327,6 @@ export default function LedgerPage() {
           </Field>
           <Field id="led-amt" label="จำนวนเงิน">
             <MoneyInput id="led-amt" value={amount} onValueChange={setAmount} required />
-          </Field>
-        </form>
-      </Modal>
-
-      <Modal
-        open={catOpen}
-        title="เพิ่มหมวดหมู่"
-        onClose={() => setCatOpen(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCatOpen(false)}>
-              ปิด
-            </Button>
-            <Button type="submit" form="cat-form">
-              บันทึกหมวด
-            </Button>
-          </>
-        }
-      >
-        <form id="cat-form" className="space-y-4" onSubmit={submitCategory}>
-          <Field id="cat-name" label="ชื่อหมวด">
-            <Input id="cat-name" value={catName} onChange={(e) => setCatName(e.target.value)} required />
-          </Field>
-          <Field id="cat-kind" label="ใช้กับ">
-            <Select id="cat-kind" value={catKind} onChange={(e) => setCatKind(e.target.value as typeof catKind)}>
-              <option value="expense">รายจ่าย</option>
-              <option value="income">รายรับ</option>
-              <option value="both">ทั้งสอง</option>
-            </Select>
           </Field>
         </form>
       </Modal>
