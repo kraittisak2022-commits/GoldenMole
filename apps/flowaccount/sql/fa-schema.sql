@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS fa_ledger_entries (
   entry_type TEXT NOT NULL CHECK (entry_type IN ('income', 'expense')),
   quantity NUMERIC NOT NULL DEFAULT 1 CHECK (quantity > 0),
   amount NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  paid_by TEXT CHECK (paid_by IS NULL OR paid_by IN ('A', 'B', 'AB')),
   source TEXT NOT NULL DEFAULT 'manual'
     CHECK (source IN ('manual', 'reimbursement', 'payroll', 'fleet')),
   source_id TEXT,

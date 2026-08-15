@@ -1,6 +1,11 @@
 import { supabase } from '../lib/supabase';
-import type { EntryType, FaLedgerEntry, LedgerSource } from '../types';
+import type { EntryType, FaLedgerEntry, LedgerPaidBy, LedgerSource } from '../types';
 import { newId } from '../types';
+
+function normalizePaidBy(value: unknown): LedgerPaidBy | null {
+  if (value === 'A' || value === 'B' || value === 'AB') return value;
+  return null;
+}
 
 const map = (row: any): FaLedgerEntry => ({
   id: row.id,
@@ -10,6 +15,7 @@ const map = (row: any): FaLedgerEntry => ({
   entryType: row.entry_type,
   quantity: Number(row.quantity) > 0 ? Number(row.quantity) : 1,
   amount: Number(row.amount) || 0,
+  paidBy: normalizePaidBy(row.paid_by),
   source: row.source || 'manual',
   sourceId: row.source_id,
   createdBy: row.created_by,
@@ -34,6 +40,7 @@ export async function saveLedgerEntry(input: {
   entryType: EntryType;
   quantity?: number;
   amount: number;
+  paidBy?: LedgerPaidBy | null;
   source?: LedgerSource;
   sourceId?: string | null;
   createdBy?: string | null;
@@ -48,6 +55,7 @@ export async function saveLedgerEntry(input: {
     entry_type: input.entryType,
     quantity: quantity > 0 ? quantity : 1,
     amount: Number(input.amount) || 0,
+    paid_by: normalizePaidBy(input.paidBy),
     source: input.source || 'manual',
     source_id: input.sourceId ?? null,
     created_by: input.createdBy ?? null,

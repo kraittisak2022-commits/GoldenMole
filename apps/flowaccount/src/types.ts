@@ -1,6 +1,7 @@
 export type CategoryKind = 'income' | 'expense' | 'both';
 export type EntryType = 'income' | 'expense';
 export type LedgerSource = 'manual' | 'reimbursement' | 'payroll' | 'fleet';
+export type LedgerPaidBy = 'A' | 'B' | 'AB';
 export type EmployeeType = 'monthly' | 'daily' | 'daily_driver';
 export type ReimbursementStatus = 'pending' | 'approved' | 'rejected';
 
@@ -35,6 +36,7 @@ export interface FaLedgerEntry {
   entryType: EntryType;
   quantity: number;
   amount: number;
+  paidBy?: LedgerPaidBy | null;
   source: LedgerSource;
   sourceId?: string | null;
   createdBy?: string | null;
@@ -113,6 +115,12 @@ export const EMPLOYEE_TYPE_LABEL: Record<EmployeeType, string> = {
   monthly: 'พนักงานเงินเดือน',
   daily: 'พนักงานรายวัน',
   daily_driver: 'พนักงานขับรถรายวัน',
+};
+
+export const LEDGER_PAID_BY_LABEL: Record<LedgerPaidBy, string> = {
+  A: 'A',
+  B: 'B',
+  AB: 'A และ B',
 };
 
 export function newId(prefix: string): string {

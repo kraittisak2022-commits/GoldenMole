@@ -15,7 +15,19 @@ ALTER TABLE fa_reimbursements
   ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1;
 
 ALTER TABLE fa_ledger_entries
-  ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1;
+  ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS paid_by TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fa_ledger_entries_paid_by_check'
+  ) THEN
+    ALTER TABLE fa_ledger_entries
+      ADD CONSTRAINT fa_ledger_entries_paid_by_check
+      CHECK (paid_by IS NULL OR paid_by IN ('A', 'B', 'AB'));
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payer ON fa_reimbursements(payer_id);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payers_token ON fa_reimb_payers(share_token);

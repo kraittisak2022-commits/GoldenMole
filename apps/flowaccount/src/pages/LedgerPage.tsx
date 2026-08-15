@@ -10,8 +10,8 @@ import {
   isMonthKey,
   shiftMonth,
 } from '../lib/ledgerMonth';
-import type { EntryType, FaLedgerEntry } from '../types';
-import { formatMoney } from '../types';
+import type { EntryType, FaLedgerEntry, LedgerPaidBy } from '../types';
+import { formatMoney, LEDGER_PAID_BY_LABEL } from '../types';
 import { useAuth } from '../auth/AuthProvider';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -41,6 +41,7 @@ export default function LedgerPage() {
   const [entryType, setEntryType] = useState<EntryType>('expense');
   const [quantity, setQuantity] = useState<number | ''>(1);
   const [amount, setAmount] = useState<number | ''>('');
+  const [paidBy, setPaidBy] = useState<LedgerPaidBy | ''>('');
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -171,6 +172,7 @@ export default function LedgerPage() {
     setEntryType('expense');
     setQuantity(1);
     setAmount('');
+    setPaidBy('');
     setCategoryId(filterCategoryId || categories[0]?.id || '');
     setEntryOpen(true);
   };
@@ -183,6 +185,7 @@ export default function LedgerPage() {
     setEntryType(row.entryType);
     setQuantity(row.quantity || 1);
     setAmount(row.amount);
+    setPaidBy(row.paidBy || '');
     setCategoryId(row.categoryId);
     setEntryOpen(true);
   };
@@ -200,6 +203,7 @@ export default function LedgerPage() {
         entryType,
         quantity: qty > 0 ? qty : 1,
         amount: Number(amount),
+        paidBy: paidBy || null,
         source: 'manual',
         createdBy: user?.username,
       });
@@ -243,6 +247,18 @@ export default function LedgerPage() {
       header: 'จำนวนเงิน',
       className: 'text-right tabular-nums',
       render: (r) => formatMoney(r.amount),
+    },
+    {
+      key: 'paidBy',
+      header: 'ผู้จ่าย',
+      render: (r) =>
+        r.paidBy ? (
+          <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+            {LEDGER_PAID_BY_LABEL[r.paidBy]}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
     },
     {
       key: 'actions',
@@ -433,6 +449,29 @@ export default function LedgerPage() {
               <MoneyInput id="led-amt" placeholder="0" value={amount} onValueChange={setAmount} required />
             </Field>
           </div>
+          <Field id="led-paid-by" label="ผู้จ่าย (กรณีแบ่งจ่าย)">
+            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ผู้จ่าย">
+              {(
+                [
+                  { value: '', label: 'ไม่ระบุ' },
+                  { value: 'A' as const, label: 'A' },
+                  { value: 'B' as const, label: 'B' },
+                  { value: 'AB' as const, label: 'A และ B' },
+                ] as const
+              ).map((opt) => (
+                <label key={opt.value || 'none'} className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
+                  <input
+                    type="radio"
+                    name="led-paid-by"
+                    className="size-4 accent-sky-600"
+                    checked={paidBy === opt.value}
+                    onChange={() => setPaidBy(opt.value)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </Field>
         </form>
       </Modal>
     </div>
