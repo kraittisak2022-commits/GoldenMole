@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS fa_work_period_summaries (
   UNIQUE (period_key, employee_id)
 );
 
+CREATE TABLE IF NOT EXISTS fa_salary_advances (
+  id TEXT PRIMARY KEY,
+  advance_date TEXT NOT NULL,
+  employee_id TEXT NOT NULL REFERENCES fa_employees(id),
+  employee_name TEXT NOT NULL DEFAULT '',
+  amount NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS fa_fleet_logs (
   id TEXT PRIMARY KEY,
   work_date TEXT NOT NULL,
@@ -139,6 +149,8 @@ CREATE INDEX IF NOT EXISTS idx_fa_payroll_date ON fa_payroll_slips(pay_date);
 CREATE INDEX IF NOT EXISTS idx_fa_work_logs_emp_date ON fa_work_logs(employee_id, work_date);
 CREATE INDEX IF NOT EXISTS idx_fa_work_logs_date ON fa_work_logs(work_date);
 CREATE INDEX IF NOT EXISTS idx_fa_work_period_key ON fa_work_period_summaries(period_key);
+CREATE INDEX IF NOT EXISTS idx_fa_salary_advances_date ON fa_salary_advances(advance_date);
+CREATE INDEX IF NOT EXISTS idx_fa_salary_advances_emp ON fa_salary_advances(employee_id);
 CREATE INDEX IF NOT EXISTS idx_fa_fleet_date ON fa_fleet_logs(work_date);
 
 ALTER TABLE fa_categories ENABLE ROW LEVEL SECURITY;
@@ -150,6 +162,7 @@ ALTER TABLE fa_reimb_payers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_payroll_slips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_work_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_work_period_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fa_salary_advances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_fleet_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all on fa_categories" ON fa_categories;
@@ -161,6 +174,7 @@ DROP POLICY IF EXISTS "Allow all on fa_reimb_payers" ON fa_reimb_payers;
 DROP POLICY IF EXISTS "Allow all on fa_payroll_slips" ON fa_payroll_slips;
 DROP POLICY IF EXISTS "Allow all on fa_work_logs" ON fa_work_logs;
 DROP POLICY IF EXISTS "Allow all on fa_work_period_summaries" ON fa_work_period_summaries;
+DROP POLICY IF EXISTS "Allow all on fa_salary_advances" ON fa_salary_advances;
 DROP POLICY IF EXISTS "Allow all on fa_fleet_logs" ON fa_fleet_logs;
 
 CREATE POLICY "Allow all on fa_categories" ON fa_categories FOR ALL USING (true) WITH CHECK (true);
@@ -172,6 +186,7 @@ CREATE POLICY "Allow all on fa_reimb_payers" ON fa_reimb_payers FOR ALL USING (t
 CREATE POLICY "Allow all on fa_payroll_slips" ON fa_payroll_slips FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_work_logs" ON fa_work_logs FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_work_period_summaries" ON fa_work_period_summaries FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on fa_salary_advances" ON fa_salary_advances FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_fleet_logs" ON fa_fleet_logs FOR ALL USING (true) WITH CHECK (true);
 
 -- Seed mock data (idempotent upserts)

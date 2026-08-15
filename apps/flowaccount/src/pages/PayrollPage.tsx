@@ -15,14 +15,16 @@ import Modal from '../components/ui/Modal';
 import MoneyInput from '../components/ui/MoneyInput';
 import Select from '../components/ui/Select';
 import WorkSchedulePanel from '../components/WorkSchedulePanel';
+import SalaryAdvancesPanel from '../components/SalaryAdvancesPanel';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-type MainTab = 'schedule' | 'slips';
+type MainTab = 'schedule' | 'advances' | 'slips';
 
 export default function PayrollPage() {
   const { user } = useAuth();
   const [mainTab, setMainTab] = useState<MainTab>('schedule');
+  const [empReloadToken, setEmpReloadToken] = useState(0);
   const [slips, setSlips] = useState<FaPayrollSlip[]>([]);
   const [employees, setEmployees] = useState<FaEmployee[]>([]);
   const [categories, setCategories] = useState<FaCategory[]>([]);
@@ -132,7 +134,7 @@ export default function PayrollPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">เงินเดือนพนักงาน</h2>
           <p className="mt-1 text-sm text-muted">
-            ตารางการทำงานแบบ Excel · แยกรายเดือน / คนงาน / คนขับรถ · และออกสลิปได้
+            ตารางการทำงาน · เพิ่ม/ลบรายชื่อ · รายการเบิกเงิน · และออกสลิปได้
           </p>
         </div>
         {mainTab === 'slips' ? <Button onClick={() => setOpen(true)}>สร้างสลิป</Button> : null}
@@ -151,6 +153,15 @@ export default function PayrollPage() {
         <Button
           type="button"
           role="tab"
+          aria-selected={mainTab === 'advances'}
+          variant={mainTab === 'advances' ? 'primary' : 'ghost'}
+          onClick={() => setMainTab('advances')}
+        >
+          รายการเบิกเงิน
+        </Button>
+        <Button
+          type="button"
+          role="tab"
           aria-selected={mainTab === 'slips'}
           variant={mainTab === 'slips' ? 'primary' : 'ghost'}
           onClick={() => setMainTab('slips')}
@@ -162,7 +173,20 @@ export default function PayrollPage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {mainTab === 'schedule' ? (
-        <WorkSchedulePanel onError={setError} />
+        <WorkSchedulePanel
+          onError={setError}
+          reloadToken={empReloadToken}
+          onEmployeesChanged={() => {
+            setEmpReloadToken((n) => n + 1);
+            void reload();
+          }}
+        />
+      ) : mainTab === 'advances' ? (
+        <SalaryAdvancesPanel
+          onError={setError}
+          reloadToken={empReloadToken}
+          onChanged={() => setEmpReloadToken((n) => n + 1)}
+        />
       ) : (
         <DataTable columns={columns} rows={slips} rowKey={(r) => r.id} />
       )}

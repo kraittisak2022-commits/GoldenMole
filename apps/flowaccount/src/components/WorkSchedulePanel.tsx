@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { listEmployees } from '../data/employees';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { listEmployees, saveEmployee, setEmployeeInactive } from '../data/employees';
+import { listSalaryAdvances, sumAdvancesByEmployee } from '../data/salaryAdvances';
 import { listWorkLogs, setWorkDayAmount } from '../data/workLogs';
 import { listWorkPeriodSummaries, saveWorkPeriodSummary } from '../data/workPeriodSummaries';
 import {
@@ -19,10 +20,14 @@ import {
   isMonthKey,
   shiftMonth,
 } from '../lib/ledgerMonth';
-import type { EmployeeType, FaEmployee, FaWorkLog, FaWorkPeriodSummary } from '../types';
+import type { EmployeeType, FaEmployee, FaSalaryAdvance, FaWorkLog, FaWorkPeriodSummary } from '../types';
 import { EMPLOYEE_TYPE_LABEL, formatMoney } from '../types';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import Field from './ui/Field';
+import Input from './ui/Input';
+import Modal from './ui/Modal';
+import MoneyInput from './ui/MoneyInput';
 import Select from './ui/Select';
 
 const TYPE_TABS: { type: EmployeeType; label: string; totalLabel: string }[] = [
@@ -33,25 +38,39 @@ const TYPE_TABS: { type: EmployeeType; label: string; totalLabel: string }[] = [
 
 type Props = {
   onError: (message: string) => void;
+  onEmployeesChanged?: () => void;
+  reloadToken?: number;
 };
 
-export default function WorkSchedulePanel({ onError }: Props) {
+export default function WorkSchedulePanel({ onError, onEmployeesChanged, reloadToken = 0 }: Props) {
   const [employees, setEmployees] = useState<FaEmployee[]>([]);
   const [logs, setLogs] = useState<FaWorkLog[]>([]);
   const [summaries, setSummaries] = useState<FaWorkPeriodSummary[]>([]);
+  const [advances, setAdvances] = useState<FaSalaryAdvance[]>([]);
   const [monthKey, setMonthKey] = useState(() => currentMonthKey());
   const [half, setHalf] = useState<PayHalf>('1-15');
   const [empType, setEmpType] = useState<EmployeeType>('daily');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newBasePay, setNewBasePay] = useState<number | ''>('');
 
   const monthOptions = useMemo(
-    () => collectMonthKeys(logs.map((l) => l.workDate), currentMonthKey()),
-    [logs],
+    () =>
+      collectMonthKeys(
+        [...logs.map((l) => l.workDate), ...advances.map((a) => a.advanceDate)],
+        currentMonthKey(),
+      ),
+    [logs, advances],
   );
 
   const pKey = useMemo(() => periodKey(monthKey, half), [monthKey, half]);
   const dayNums = useMemo(() => daysForHalf(monthKey, half), [monthKey, half]);
+  const periodDates = useMemo(
+    () => new Set(dayNums.map((d) => dateForDay(monthKey, d))),
+    [dayNums, monthKey],
+  );
 
   const typedEmployees = useMemo(
     () => employees.filter((e) => e.type === empType && !e.inactive),
@@ -63,6 +82,10 @@ export default function WorkSchedulePanel({ onError }: Props) {
     () => new Map(summaries.map((s) => [s.employeeId, s])),
     [summaries],
   );
+  const advanceByEmp = useMemo(
+    () => sumAdvancesByEmployee(advances, periodDates),
+    [advances, periodDates],
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -70,12 +93,14 @@ export default function WorkSchedulePanel({ onError }: Props) {
       const emps = await listEmployees();
       setEmployees(emps);
       const ids = emps.map((e) => e.id);
-      const [w, s] = await Promise.all([
+      const [w, s, a] = await Promise.all([
         listWorkLogs({ monthKey, employeeIds: ids }),
         listWorkPeriodSummaries(periodKey(monthKey, half)),
+        listSalaryAdvances({ monthKey }),
       ]);
       setLogs(w);
       setSummaries(s);
+      setAdvances(a);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'โหลดตารางงานไม่สำเร็จ');
     } finally {
@@ -85,7 +110,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
 
   useEffect(() => {
     void reload();
-  }, [reload]);
+  }, [reload, reloadToken]);
 
   const onMonthChange = (value: string) => {
     if (!isMonthKey(value)) return;
@@ -100,8 +125,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
   };
 
   const logsForEmployeeInPeriod = (employeeId: string) => {
-    const dates = new Set(dayNums.map((d) => dateForDay(monthKey, d)));
-    return logs.filter((l) => l.employeeId === employeeId && dates.has(l.workDate));
+    return logs.filter((l) => l.employeeId === employeeId && periodDates.has(l.workDate));
   };
 
   const rowStats = (emp: FaEmployee) => {
@@ -112,7 +136,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
     const dayTotal = emp.type === 'monthly' ? (hasWork ? emp.basePay : 0) : dayWageTotal;
     const summary = summaryIndex.get(emp.id);
     const special = summary?.specialAmount || 0;
-    const advance = summary?.advanceAmount || 0;
+    const advance = advanceByEmp.get(emp.id) || 0;
     const net = calcPeriodNet({
       dayTotal,
       specialAmount: special,
@@ -148,9 +172,46 @@ export default function WorkSchedulePanel({ onError }: Props) {
     }
     return { byType: map, all };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, logs, summaries, monthKey, half]);
+  }, [employees, logs, summaries, advances, monthKey, half]);
 
   const sectionTotals = totalsByType.byType[empType];
+
+  const submitAddEmployee = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setBusy(true);
+    try {
+      await saveEmployee({
+        name: newName,
+        type: empType,
+        basePay: Number(newBasePay) || 0,
+      });
+      setAddOpen(false);
+      setNewName('');
+      setNewBasePay('');
+      await reload();
+      onEmployeesChanged?.();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'เพิ่มพนักงานไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDeleteEmployee = async (emp: FaEmployee) => {
+    const ok = window.confirm(`ลบรายชื่อ "${emp.name}" ออกจากรายการใช้งาน?\n(ข้อมูลวันที่ทำงาน/เบิกเก่ายังเก็บไว้ในระบบ)`);
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await setEmployeeInactive(emp.id, true);
+      await reload();
+      onEmployeesChanged?.();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'ลบพนักงานไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggleOrSetDay = async (emp: FaEmployee, day: number) => {
     const workDate = dateForDay(monthKey, day);
@@ -203,7 +264,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
 
   const patchSummary = async (
     emp: FaEmployee,
-    patch: Partial<Pick<FaWorkPeriodSummary, 'paid' | 'specialAmount' | 'advanceAmount' | 'notes'>>,
+    patch: Partial<Pick<FaWorkPeriodSummary, 'paid' | 'specialAmount' | 'notes'>>,
   ) => {
     const current = summaryIndex.get(emp.id);
     setBusy(true);
@@ -214,7 +275,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
         employeeId: emp.id,
         paid: patch.paid ?? current?.paid ?? false,
         specialAmount: patch.specialAmount ?? current?.specialAmount ?? 0,
-        advanceAmount: patch.advanceAmount ?? current?.advanceAmount ?? 0,
+        advanceAmount: current?.advanceAmount ?? 0,
         notes: patch.notes ?? current?.notes ?? '',
       });
       await reload();
@@ -229,19 +290,24 @@ export default function WorkSchedulePanel({ onError }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="ประเภทพนักงาน">
-        {TYPE_TABS.map((t) => (
-          <Button
-            key={t.type}
-            type="button"
-            role="tab"
-            aria-selected={empType === t.type}
-            variant={empType === t.type ? 'primary' : 'ghost'}
-            onClick={() => setEmpType(t.type)}
-          >
-            {t.label}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="ประเภทพนักงาน">
+          {TYPE_TABS.map((t) => (
+            <Button
+              key={t.type}
+              type="button"
+              role="tab"
+              aria-selected={empType === t.type}
+              variant={empType === t.type ? 'primary' : 'ghost'}
+              onClick={() => setEmpType(t.type)}
+            >
+              {t.label}
+            </Button>
+          ))}
+        </div>
+        <Button type="button" onClick={() => setAddOpen(true)}>
+          เพิ่มรายชื่อ
+        </Button>
       </div>
 
       <Card className="space-y-3 p-4">
@@ -294,7 +360,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
           </span>
         </div>
         <p className="text-xs text-muted">
-          คลิกช่องวันเพื่อใส่/ลบค่าแรงตามเรทพนักงาน · แก้ตัวเลขในช่องเพื่อปรับยอดรายวัน
+          คลิกช่องวันเพื่อใส่/ลบค่าแรงตามเรทพนักงาน · คอลัมน์เบิกดึงจากแท็บ “รายการเบิกเงิน” ตามวันที่ในงวด
         </p>
       </Card>
 
@@ -334,7 +400,7 @@ export default function WorkSchedulePanel({ onError }: Props) {
       ) : typedEmployees.length === 0 ? (
         <Card className="p-4">
           <p className="text-sm text-muted">
-            ยังไม่มี{activeTab.label} — เพิ่มที่เมนูข้อมูลหลัก
+            ยังไม่มี{activeTab.label} — กด “เพิ่มรายชื่อ” เพื่อเริ่มต้น
           </p>
         </Card>
       ) : (
@@ -367,7 +433,17 @@ export default function WorkSchedulePanel({ onError }: Props) {
                     className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/80'}
                   >
                     <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium text-ink whitespace-nowrap">
-                      {emp.name}
+                      <div className="flex items-center gap-2">
+                        <span>{emp.name}</span>
+                        <button
+                          type="button"
+                          className="text-xs text-destructive hover:underline disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => void onDeleteEmployee(emp)}
+                        >
+                          ลบ
+                        </button>
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <input
@@ -433,21 +509,8 @@ export default function WorkSchedulePanel({ onError }: Props) {
                         aria-label={`พิเศษ ${emp.name}`}
                       />
                     </td>
-                    <td className="px-1 py-1">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        disabled={busy}
-                        className="w-16 rounded border border-border bg-white px-1 py-1 text-right tabular-nums"
-                        defaultValue={stats.advance || ''}
-                        key={`ad-${emp.id}-${stats.advance}`}
-                        onBlur={(e) => {
-                          const next = Number(String(e.target.value).replace(/,/g, '')) || 0;
-                          if (next === stats.advance) return;
-                          void patchSummary(emp, { advanceAmount: next });
-                        }}
-                        aria-label={`เบิก ${emp.name}`}
-                      />
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted">
+                      {stats.advance > 0 ? formatMoney(stats.advance) : '—'}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-ink">
                       {formatMoney(stats.net)}
@@ -486,6 +549,41 @@ export default function WorkSchedulePanel({ onError }: Props) {
           </table>
         </div>
       )}
+
+      <Modal
+        open={addOpen}
+        title={`เพิ่ม${activeTab.label}`}
+        onClose={() => !busy && setAddOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" disabled={busy} onClick={() => setAddOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button type="submit" form="add-emp-form" disabled={busy}>
+              บันทึกรายชื่อ
+            </Button>
+          </>
+        }
+      >
+        <form id="add-emp-form" className="space-y-4" onSubmit={submitAddEmployee}>
+          <Field id="new-emp-name" label="ชื่อพนักงาน">
+            <Input
+              id="new-emp-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+              placeholder="เช่น สมชาย ใจดี"
+            />
+          </Field>
+          <Field
+            id="new-emp-pay"
+            label={empType === 'monthly' ? 'เงินเดือน (บาท)' : 'ค่าแรงต่อวัน (บาท)'}
+          >
+            <MoneyInput id="new-emp-pay" value={newBasePay} onValueChange={setNewBasePay} required />
+          </Field>
+          <p className="text-xs text-muted">ประเภท: {EMPLOYEE_TYPE_LABEL[empType]}</p>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -119,6 +119,16 @@ export interface FaWorkPeriodSummary {
   createdAt?: string;
 }
 
+export interface FaSalaryAdvance {
+  id: string;
+  advanceDate: string;
+  employeeId: string;
+  employeeName: string;
+  amount: number;
+  notes: string;
+  createdAt?: string;
+}
+
 export interface FaFleetLog {
   id: string;
   workDate: string;
