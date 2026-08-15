@@ -255,7 +255,7 @@ export default function LedgerPage() {
     },
     {
       key: 'paidBy',
-      header: 'จ่ายคืนแทนบริษัท',
+      header: 'รายจ่ายของฝ่าย',
       render: (r) =>
         r.paidBy ? (
           <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
@@ -387,25 +387,25 @@ export default function LedgerPage() {
           {hasPaidByBreakdown ? (
             <div className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-3 space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                ใครจ่ายคืนแทนบริษัท (รายจ่าย)
+                รายจ่ายของฝ่าย (รายจ่าย)
               </p>
               <div className="grid gap-2 sm:grid-cols-3 text-sm">
                 <div className="rounded-md bg-white/70 px-3 py-2">
-                  <p className="text-xs text-muted">A</p>
+                  <p className="text-xs text-muted">รายจ่ายของฝ่าย A</p>
                   <p className="tabular-nums font-medium text-ink">
-                    ต้องจ่ายคืน {formatMoney(paidByTotals.A)}
+                    {formatMoney(paidByTotals.A)}
                   </p>
                 </div>
                 <div className="rounded-md bg-white/70 px-3 py-2">
-                  <p className="text-xs text-muted">B</p>
+                  <p className="text-xs text-muted">รายจ่ายของฝ่าย B</p>
                   <p className="tabular-nums font-medium text-ink">
-                    ต้องจ่ายคืน {formatMoney(paidByTotals.B)}
+                    {formatMoney(paidByTotals.B)}
                   </p>
                 </div>
                 <div className="rounded-md bg-white/70 px-3 py-2">
-                  <p className="text-xs text-muted">A และ B</p>
+                  <p className="text-xs text-muted">รายจ่ายของฝ่าย A และ B</p>
                   <p className="tabular-nums font-medium text-ink">
-                    ต้องจ่ายคืน {formatMoney(paidByTotals.AB)}
+                    {formatMoney(paidByTotals.AB)}
                   </p>
                   {paidByTotals.AB > 0 ? (
                     <p className="mt-1 text-xs text-muted">
@@ -498,10 +498,10 @@ export default function LedgerPage() {
           </div>
           <Field
             id="led-paid-by"
-            label="ใครจ่ายคืนแทนบริษัท"
-            hint="รายการที่บริษัทจ่ายไปแล้ว — เลือกใครรับผิดชอบจ่ายคืน เช่น ของใช้ 200 บาท เลือก A และ B = ฝ่ายละ 100 บาท"
+            label="รายจ่ายของฝ่าย"
+            hint="รายการที่บริษัทจ่ายไปแล้ว — เลือกฝ่ายที่รับผิดชอบ เช่น ของใช้ 200 บาท เลือก A และ B = ฝ่ายละ 100 บาท"
           >
-            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ใครจ่ายคืนแทนบริษัท">
+            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="รายจ่ายของฝ่าย">
               {(
                 [
                   { value: '', label: 'ไม่ระบุ' },
