@@ -6,6 +6,7 @@ import {
   approveReimbursement,
   attachRepaymentProof,
   buildPayerSummaries,
+  isReimbursementMovedToLedger,
   listReimbursements,
   rejectReimbursement,
   saveReimbursementBatch,
@@ -78,6 +79,7 @@ export default function ReimbursementsPage() {
   const groupedClaims = useMemo(() => {
     const map = new Map<string, { key: string; name: string; rows: FaReimbursement[]; total: number }>();
     for (const row of rows) {
+      if (row.status === 'rejected' || isReimbursementMovedToLedger(row)) continue;
       const key = row.payerId || `name:${row.payerName}`;
       const group = map.get(key) || { key, name: row.payerName, rows: [], total: 0 };
       group.rows.push(row);
@@ -171,7 +173,7 @@ export default function ReimbursementsPage() {
       });
       setApproveOpen(false);
       setSelected(null);
-      setMessage('อนุมัติการเบิกเงินแล้ว');
+      setMessage('อนุมัติแล้ว — เมื่อแนบสลิปจ่ายคืน ระบบจะย้ายไปรายรับ-รายจ่ายตามวันที่บันทึก');
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อนุมัติไม่สำเร็จ');
@@ -192,7 +194,7 @@ export default function ReimbursementsPage() {
       await attachRepaymentProof({ id: selected.id, proofUrl: url });
       setProofOpen(false);
       setSelected(null);
-      setMessage('แนบหลักฐานการจ่ายเงินคืนแล้ว');
+      setMessage('จ่ายคืนแล้ว — ย้ายรายการไปรายรับ-รายจ่ายตามวันที่ผู้สำรองจ่ายบันทึก');
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อัปโหลดไม่สำเร็จ');
@@ -293,7 +295,7 @@ export default function ReimbursementsPage() {
               </Button>
             </>
           ) : null}
-          {r.status === 'approved' ? (
+          {r.status === 'approved' && !isReimbursementMovedToLedger(r) ? (
             <Button variant="secondary" className="min-h-9" onClick={() => openProof(r)}>
               แนบสลิปจ่ายคืน
             </Button>
@@ -309,7 +311,7 @@ export default function ReimbursementsPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">เบิกสำรองจ่าย</h2>
           <p className="mt-1 text-sm text-muted">
-            เพิ่มผู้สำรองจ่าย · บันทึกรายการ · ส่งลิงก์ให้กรอกเอง · ติดตามการเบิกและหลักฐานจ่ายคืน
+            รายการแยกตามชื่อ · อนุมัติแล้วแนบสลิปจ่ายคืน → ย้ายไปรายรับ-รายจ่ายตามวันที่บันทึก
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -376,7 +378,9 @@ export default function ReimbursementsPage() {
           <div className="space-y-4">
             <div>
               <h3 className="text-sm font-medium text-ink">รายการเบิกแยกตามชื่อ</h3>
-              <p className="mt-1 text-xs text-muted">แต่ละคนมีรายการย่อยของตนเอง</p>
+              <p className="mt-1 text-xs text-muted">
+                แสดงรายการที่ยังไม่จ่ายคืน — เมื่อจ่ายคืนแล้วจะย้ายไปหน้ารายรับ-รายจ่ายอัตโนมัติ
+              </p>
             </div>
             {groupedClaims.length === 0 ? (
               <Card className="p-4">

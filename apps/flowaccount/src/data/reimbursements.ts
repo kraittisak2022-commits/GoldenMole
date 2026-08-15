@@ -100,24 +100,12 @@ export async function approveReimbursement(input: {
     throw new Error('รายการนี้ถูกอนุมัติแล้ว');
   }
 
-  const ledger = await saveLedgerEntry({
-    date: input.reimbursement.date,
-    description: `เบิกสำรองจ่าย: ${input.reimbursement.description} (${input.reimbursement.payerName})`,
-    categoryId: input.categoryId,
-    entryType: 'expense',
-    quantity: input.reimbursement.quantity,
-    amount: input.reimbursement.amount,
-    source: 'reimbursement',
-    sourceId: input.reimbursement.id,
-    createdBy: input.approvedBy,
-  });
-
+  // Ledger posts only after repayment proof — see attachRepaymentProof.
   const { data, error } = await supabase
     .from('fa_reimbursements')
     .update({
       status: 'approved',
       approved_category_id: input.categoryId,
-      ledger_entry_id: ledger.id,
       approved_by: input.approvedBy,
       approved_at: new Date().toISOString(),
     })
@@ -138,15 +126,53 @@ export async function rejectReimbursement(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** True when company has repaid the advance and the claim should leave the active list. */
+export function isReimbursementMovedToLedger(row: FaReimbursement): boolean {
+  return Boolean(row.repaidAt || row.repaymentProofUrl);
+}
+
 export async function attachRepaymentProof(input: {
   id: string;
   proofUrl: string;
 }): Promise<FaReimbursement> {
+  const { data: existing, error: fetchError } = await supabase
+    .from('fa_reimbursements')
+    .select('*')
+    .eq('id', input.id)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!existing) throw new Error('ไม่พบรายการเบิก');
+
+  const claim = map(existing);
+  if (claim.status !== 'approved') {
+    throw new Error('ต้องอนุมัติรายการก่อนแนบหลักฐานจ่ายคืน');
+  }
+  if (!claim.approvedCategoryId) {
+    throw new Error('รายการยังไม่มีหมวดหมู่ที่อนุมัติ');
+  }
+
+  let ledgerEntryId = claim.ledgerEntryId || null;
+  if (!ledgerEntryId) {
+    const ledger = await saveLedgerEntry({
+      date: claim.date,
+      description: `เบิกสำรองจ่าย: ${claim.description} (${claim.payerName})`,
+      categoryId: claim.approvedCategoryId,
+      entryType: 'expense',
+      quantity: claim.quantity,
+      amount: claim.amount,
+      source: 'reimbursement',
+      sourceId: claim.id,
+      createdBy: claim.approvedBy || null,
+    });
+    ledgerEntryId = ledger.id;
+  }
+
   const { data, error } = await supabase
     .from('fa_reimbursements')
     .update({
       repayment_proof_url: input.proofUrl,
       repaid_at: new Date().toISOString(),
+      ledger_entry_id: ledgerEntryId,
     })
     .eq('id', input.id)
     .select('*')
