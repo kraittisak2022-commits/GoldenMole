@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCategorySummaries } from './categories';
+import { buildCategorySummaries, sumLedgerTotals } from './categories';
 import type { FaCategory, FaLedgerEntry } from '../types';
 
 describe('buildCategorySummaries', () => {
@@ -50,6 +50,14 @@ describe('buildCategorySummaries', () => {
       entryCount: 1,
       incomeTotal: 200,
       expenseTotal: 0,
+    });
+  });
+
+  it('sums income and expense across all ledger rows', () => {
+    expect(sumLedgerTotals(entries)).toEqual({
+      entryCount: 3,
+      incomeTotal: 200,
+      expenseTotal: 150,
     });
   });
 });

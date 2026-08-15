@@ -6,8 +6,16 @@ import {
   listCategories,
   restoreCategory,
   saveCategory,
+  sumLedgerTotals,
 } from '../data/categories';
 import { listLedgerEntries } from '../data/ledger';
+import {
+  collectMonthKeys,
+  currentMonthKey,
+  formatMonthLabel,
+  isMonthKey,
+  shiftMonth,
+} from '../lib/ledgerMonth';
 import type { CategoryKind, FaCategory, FaLedgerEntry } from '../types';
 import { formatMoney } from '../types';
 import Button from '../components/ui/Button';
@@ -27,6 +35,7 @@ const KIND_LABEL: Record<CategoryKind, string> = {
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<FaCategory[]>([]);
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
+  const [monthKey, setMonthKey] = useState(() => currentMonthKey());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -45,6 +54,11 @@ export default function CategoriesPage() {
       ]);
       setCategories(c);
       setEntries(e);
+      const months = collectMonthKeys(
+        e.map((row) => row.date),
+        currentMonthKey(),
+      );
+      setMonthKey((prev) => (months.includes(prev) ? prev : months[0] || currentMonthKey()));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดไม่สำเร็จ');
     } finally {
@@ -56,15 +70,41 @@ export default function CategoriesPage() {
     void reload();
   }, [reload]);
 
+  const monthOptions = useMemo(
+    () => collectMonthKeys(entries.map((e) => e.date), currentMonthKey()),
+    [entries],
+  );
+
+  const monthEntries = useMemo(
+    () => entries.filter((e) => e.date.startsWith(monthKey)),
+    [entries, monthKey],
+  );
+
   const visibleCategories = useMemo(
     () => categories.filter((c) => (showArchived ? true : !c.archived)),
     [categories, showArchived],
   );
 
   const summaries = useMemo(
-    () => buildCategorySummaries(visibleCategories, entries),
-    [visibleCategories, entries],
+    () => buildCategorySummaries(visibleCategories, monthEntries),
+    [visibleCategories, monthEntries],
   );
+
+  const monthTotals = useMemo(() => sumLedgerTotals(monthEntries), [monthEntries]);
+
+  const onMonthChange = (value: string) => {
+    if (!isMonthKey(value)) return;
+    setMonthKey(value);
+  };
+
+  const goPrevMonth = () => onMonthChange(shiftMonth(monthKey, -1));
+  const goNextMonth = () => {
+    const next = shiftMonth(monthKey, 1);
+    if (next > currentMonthKey() && !monthOptions.includes(next)) return;
+    onMonthChange(next);
+  };
+  const canGoNext =
+    shiftMonth(monthKey, 1) <= currentMonthKey() || monthOptions.includes(shiftMonth(monthKey, 1));
 
   const submitCategory = async (e: FormEvent) => {
     e.preventDefault();
@@ -121,7 +161,7 @@ export default function CategoriesPage() {
       header: 'หมวดหมู่',
       render: (r) => (
         <Link
-          to={`/ledger?category=${encodeURIComponent(r.category.id)}`}
+          to={`/ledger?month=${encodeURIComponent(monthKey)}&category=${encodeURIComponent(r.category.id)}`}
           className="font-medium text-ink hover:underline"
         >
           {r.category.name}
@@ -144,13 +184,13 @@ export default function CategoriesPage() {
     },
     {
       key: 'income',
-      header: 'รับ',
+      header: 'รายรับ',
       className: 'text-right tabular-nums',
       render: (r) => formatMoney(r.incomeTotal),
     },
     {
       key: 'expense',
-      header: 'จ่าย',
+      header: 'รายจ่าย',
       className: 'text-right tabular-nums',
       render: (r) => formatMoney(r.expenseTotal),
     },
@@ -189,7 +229,7 @@ export default function CategoriesPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">หมวดหมู่</h2>
           <p className="mt-1 text-sm text-muted">
-            เพิ่มและลบหมวดหมู่รายรับ-รายจ่าย พร้อมดูสรุปในแต่ละหมวด
+            สรุปรายรับ-รายจ่ายแยกรายเดือน และแยกตามหมวดหมู่
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -206,17 +246,88 @@ export default function CategoriesPage() {
       {loading ? (
         <p className="text-sm text-muted">กำลังโหลด…</p>
       ) : (
-        <Card className="overflow-hidden p-0">
-          <div className="border-b border-border px-4 py-3">
-            <h3 className="text-sm font-medium text-ink">สรุปตามหมวดหมู่</h3>
+        <>
+          <Card className="p-4">
+            <Field id="cat-summary-month" label="เดือนที่สรุป">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11 min-w-11 px-0"
+                  aria-label="เดือนก่อนหน้า"
+                  onClick={goPrevMonth}
+                >
+                  ‹
+                </Button>
+                <Select
+                  id="cat-summary-month"
+                  value={monthOptions.includes(monthKey) ? monthKey : monthOptions[0] || monthKey}
+                  onChange={(e) => onMonthChange(e.target.value)}
+                  aria-label="เลือกเดือนที่สรุป"
+                >
+                  {!monthOptions.includes(monthKey) ? (
+                    <option value={monthKey}>{formatMonthLabel(monthKey)}</option>
+                  ) : null}
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {formatMonthLabel(m)}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11 min-w-11 px-0"
+                  aria-label="เดือนถัดไป"
+                  disabled={!canGoNext}
+                  onClick={goNextMonth}
+                >
+                  ›
+                </Button>
+                <span className="text-sm text-muted">{formatMonthLabel(monthKey)}</span>
+              </div>
+            </Field>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card className="p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">รายรับรวม</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
+                {formatMoney(monthTotals.incomeTotal)}
+              </p>
+              <p className="mt-1 text-xs text-muted">{formatMonthLabel(monthKey)}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">รายจ่ายรวม</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
+                {formatMoney(monthTotals.expenseTotal)}
+              </p>
+              <p className="mt-1 text-xs text-muted">{monthTotals.entryCount} รายการ</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">คงเหลือ</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
+                {formatMoney(monthTotals.incomeTotal - monthTotals.expenseTotal)}
+              </p>
+              <p className="mt-1 text-xs text-muted">รับ − จ่าย ในเดือนนี้</p>
+            </Card>
           </div>
-          <DataTable
-            columns={summaryColumns}
-            rows={summaries}
-            rowKey={(r) => r.category.id}
-            emptyText="ยังไม่มีหมวดหมู่ — กดเพิ่มหมวดหมู่เพื่อเริ่มต้น"
-          />
-        </Card>
+
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="text-sm font-medium text-ink">
+                สรุปตามหมวดหมู่ · {formatMonthLabel(monthKey)}
+              </h3>
+              <p className="mt-1 text-xs text-muted">แยกรายรับและรายจ่ายในแต่ละหัวข้อหมวดหมู่</p>
+            </div>
+            <DataTable
+              columns={summaryColumns}
+              rows={summaries}
+              rowKey={(r) => r.category.id}
+              emptyText="ยังไม่มีหมวดหมู่ — กดเพิ่มหมวดหมู่เพื่อเริ่มต้น"
+            />
+          </Card>
+        </>
       )}
 
       <Modal

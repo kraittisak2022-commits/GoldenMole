@@ -89,3 +89,15 @@ export function buildCategorySummaries(
     };
   });
 }
+
+export function sumLedgerTotals(entries: FaLedgerEntry[]): {
+  entryCount: number;
+  incomeTotal: number;
+  expenseTotal: number;
+} {
+  return {
+    entryCount: entries.length,
+    incomeTotal: entries.filter((e) => e.entryType === 'income').reduce((s, e) => s + e.amount, 0),
+    expenseTotal: entries.filter((e) => e.entryType === 'expense').reduce((s, e) => s + e.amount, 0),
+  };
+}
