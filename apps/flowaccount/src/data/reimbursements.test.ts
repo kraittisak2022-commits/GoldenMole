@@ -155,6 +155,9 @@ describe('attachRepaymentProof', () => {
     expect(ledgerPayload.date).toBe('2026-07-24');
     expect(ledgerPayload.source).toBe('reimbursement');
     expect(result.ledgerEntryId).toBe('led-new');
+    expect(result.repaymentProofUrl).toBe('https://example.com/slip.jpg');
+  });
+
   it('marks cash repayment and posts ledger without a slip file', async () => {
     maybeSingle
       .mockResolvedValueOnce({
