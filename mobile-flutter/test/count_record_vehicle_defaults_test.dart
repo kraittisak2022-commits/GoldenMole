@@ -143,4 +143,42 @@ void main() {
     expect(seed.rounds, 0);
     expect(seed.lapTimes, isEmpty);
   });
+
+  test('availableCountRecordVehicles hides already-added cards', () {
+    final available = availableCountRecordVehicles(
+      cars: const ['รถดรัมเอ', 'รถดรัมบี', 'รถดรัมซี'],
+      alreadyAdded: const ['รถดรัมบี'],
+    );
+    expect(available, isNot(contains('รถดรัมบี')));
+    expect(available, containsAll(['รถดรัมเอ', 'รถดรัมซี']));
+  });
+
+  test('availableCountRecordVehicles hides picks from other dialog rows', () {
+    final available = availableCountRecordVehicles(
+      cars: const ['รถดรัมเอ', 'รถดรัมบี', 'รถดรัมซี'],
+      selectedInOtherRows: const ['รถดรัมเอ'],
+      currentSelection: 'รถดรัมบี',
+    );
+    expect(available, isNot(contains('รถดรัมเอ')));
+    expect(available, contains('รถดรัมบี'));
+    expect(available, contains('รถดรัมซี'));
+  });
+
+  test('availableCountRecordVehicles keeps current selection in own row', () {
+    final available = availableCountRecordVehicles(
+      cars: const ['รถดรัมเอ', 'รถดรัมบี'],
+      selectedInOtherRows: const ['รถดรัมเอ'],
+      currentSelection: 'รถดรัมเอ',
+    );
+    expect(available, contains('รถดรัมเอ'));
+  });
+
+  test('availableCountRecordVehicles returns empty when all taken', () {
+    final available = availableCountRecordVehicles(
+      cars: const ['รถดรัมเอ', 'รถดรัมบี'],
+      alreadyAdded: const ['รถดรัมเอ'],
+      selectedInOtherRows: const ['รถดรัมบี'],
+    );
+    expect(available, isEmpty);
+  });
 }

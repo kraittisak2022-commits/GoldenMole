@@ -1331,17 +1331,20 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       return;
     }
     final already = _units
-        .map((u) => u.vehicleId ?? '')
+        .map((u) => (u.vehicleId ?? '').trim())
         .where((v) => v.isNotEmpty)
         .toSet();
+    if (availableCountRecordVehicles(
+      cars: _cars,
+      alreadyAdded: already,
+    ).isEmpty) {
+      return;
+    }
     final picks = await showDialog<List<_Pick>>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => _SelectDialog(
-        cars: sortCountRecordVehicles(
-          cars: _cars,
-          tripHistory: widget.tripHistoryTransactions,
-        ),
+        cars: _cars,
         drivers: _drivers,
         alreadyAdded: already,
         tripHistory: widget.tripHistoryTransactions,
@@ -2186,6 +2189,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   Widget _buildTripPanel() {
     final totals = _panelPeriodTotals();
+    final alreadyVehicleIds = _units
+        .map((u) => (u.vehicleId ?? '').trim())
+        .where((v) => v.isNotEmpty)
+        .toSet();
+    final canAddMoreVehicles = availableCountRecordVehicles(
+      cars: _cars,
+      alreadyAdded: alreadyVehicleIds,
+    ).isNotEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Column(
@@ -2233,10 +2244,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      onPressed: () {
-                        _openSelectDialog();
-                        _hideAddVehiclePanel();
-                      },
+                      onPressed: canAddMoreVehicles
+                          ? () {
+                              _openSelectDialog();
+                              _hideAddVehiclePanel();
+                            }
+                          : null,
                       icon: const Icon(Icons.add_rounded, size: 20),
                       label: const Text(
                         'เพิ่มรถเพิ่มเติม',
@@ -4906,18 +4919,49 @@ class _SelectDialogState extends State<_SelectDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_rows.length != 1 || _rows.first.vehicleId.isNotEmpty) return;
-      final available = _availableCars;
+      final available = _carsForRow(0);
       if (available.isEmpty) return;
       _onVehicleChanged(_rows.first, available.first);
     });
   }
 
-  List<String> get _availableCars => sortCountRecordVehicles(
-        cars: widget.cars
-            .where((c) => !widget.alreadyAdded.contains(c))
-            .toList(growable: false),
-        tripHistory: widget.tripHistory,
-      );
+  /// รถที่แถวอื่นใน dialog เลือกแล้ว (ไม่รวมแถว [rowIndex])
+  Set<String> _selectedInOtherRows(int rowIndex) {
+    final out = <String>{};
+    for (var i = 0; i < _rows.length; i++) {
+      if (i == rowIndex) continue;
+      final v = _rows[i].vehicleId.trim();
+      if (v.isNotEmpty) out.add(v);
+    }
+    return out;
+  }
+
+  List<String> _carsForRow(int rowIndex) {
+    final current = rowIndex >= 0 && rowIndex < _rows.length
+        ? _rows[rowIndex].vehicleId.trim()
+        : '';
+    return availableCountRecordVehicles(
+      cars: widget.cars,
+      alreadyAdded: widget.alreadyAdded,
+      selectedInOtherRows: _selectedInOtherRows(rowIndex),
+      currentSelection: current.isEmpty ? null : current,
+      tripHistory: widget.tripHistory,
+    );
+  }
+
+  /// ยังมีรถว่างสำหรับแถวใหม่หรือไม่
+  bool get _canAddAnotherRow {
+    final pool = availableCountRecordVehicles(
+      cars: widget.cars,
+      alreadyAdded: widget.alreadyAdded,
+      selectedInOtherRows: [
+        for (final r in _rows)
+          if (r.vehicleId.trim().isNotEmpty) r.vehicleId.trim(),
+      ],
+      tripHistory: widget.tripHistory,
+    );
+    return pool.isNotEmpty;
+  }
 
   void _applyDefaultDriverForRow(_Pick row) {
     final vehicleId = row.vehicleId.trim();
@@ -4962,7 +5006,6 @@ class _SelectDialogState extends State<_SelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final available = _availableCars;
     return Dialog(
       backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -5005,7 +5048,7 @@ class _SelectDialogState extends State<_SelectDialog> {
                           key: ValueKey('row_$i'),
                           index: i,
                           row: _rows[i],
-                          cars: available,
+                          cars: _carsForRow(i),
                           drivers: widget.drivers,
                           tripHistory: widget.tripHistory,
                           vehicleDefaultDrivers: widget.vehicleDefaultDrivers,
@@ -5023,7 +5066,9 @@ class _SelectDialogState extends State<_SelectDialog> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: () => setState(() => _rows.add(_Pick())),
+                  onPressed: _canAddAnotherRow
+                      ? () => setState(() => _rows.add(_Pick()))
+                      : null,
                   icon: const Icon(Icons.add_circle_outline_rounded),
                   label: const Text('เพิ่มรถอีกคัน'),
                 ),

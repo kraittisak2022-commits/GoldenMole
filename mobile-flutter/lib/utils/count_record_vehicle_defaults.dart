@@ -148,3 +148,35 @@ List<String> sortCountRecordVehicles({
   });
   return sorted;
 }
+
+/// รถที่เลือกได้ในแถว dialog — ซ่อนคันที่มีการ์ดแล้วและคันที่แถวอื่นเลือกแล้ว
+///
+/// [currentSelection] คงอยู่ในรายการของแถวตัวเองแม้ถูก exclude จากแถวอื่น
+/// จับคู่ด้วยชื่อที่ trim แล้ว (exact) ไม่ใช้ contains
+List<String> availableCountRecordVehicles({
+  required Iterable<String> cars,
+  Iterable<String> alreadyAdded = const [],
+  Iterable<String> selectedInOtherRows = const [],
+  String? currentSelection,
+  Iterable<AppTransaction> tripHistory = const [],
+}) {
+  final blocked = <String>{
+    for (final c in alreadyAdded)
+      if (c.trim().isNotEmpty) c.trim(),
+    for (final c in selectedInOtherRows)
+      if (c.trim().isNotEmpty) c.trim(),
+  };
+  final keep = currentSelection?.trim() ?? '';
+  final filtered = <String>[];
+  final seen = <String>{};
+  for (final raw in cars) {
+    final c = raw.trim();
+    if (c.isEmpty || !seen.add(c)) continue;
+    if (blocked.contains(c) && c != keep) continue;
+    filtered.add(c);
+  }
+  if (keep.isNotEmpty && !seen.contains(keep) && !filtered.contains(keep)) {
+    filtered.insert(0, keep);
+  }
+  return sortCountRecordVehicles(cars: filtered, tripHistory: tripHistory);
+}
