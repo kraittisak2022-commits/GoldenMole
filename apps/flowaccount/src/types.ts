@@ -33,6 +33,7 @@ export interface FaLedgerEntry {
   description: string;
   categoryId: string;
   entryType: EntryType;
+  quantity: number;
   amount: number;
   source: LedgerSource;
   sourceId?: string | null;

@@ -105,6 +105,7 @@ export async function approveReimbursement(input: {
     description: `เบิกสำรองจ่าย: ${input.reimbursement.description} (${input.reimbursement.payerName})`,
     categoryId: input.categoryId,
     entryType: 'expense',
+    quantity: input.reimbursement.quantity,
     amount: input.reimbursement.amount,
     source: 'reimbursement',
     sourceId: input.reimbursement.id,

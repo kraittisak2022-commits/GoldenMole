@@ -14,6 +14,9 @@ ALTER TABLE fa_reimbursements
   ADD COLUMN IF NOT EXISTS repaid_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1;
 
+ALTER TABLE fa_ledger_entries
+  ADD COLUMN IF NOT EXISTS quantity NUMERIC NOT NULL DEFAULT 1;
+
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payer ON fa_reimbursements(payer_id);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payers_token ON fa_reimb_payers(share_token);
 

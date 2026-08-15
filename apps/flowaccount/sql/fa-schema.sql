@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS fa_ledger_entries (
   description TEXT NOT NULL DEFAULT '',
   category_id TEXT NOT NULL REFERENCES fa_categories(id),
   entry_type TEXT NOT NULL CHECK (entry_type IN ('income', 'expense')),
+  quantity NUMERIC NOT NULL DEFAULT 1 CHECK (quantity > 0),
   amount NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
   source TEXT NOT NULL DEFAULT 'manual'
     CHECK (source IN ('manual', 'reimbursement', 'payroll', 'fleet')),

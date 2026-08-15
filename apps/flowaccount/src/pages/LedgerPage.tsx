@@ -39,6 +39,7 @@ export default function LedgerPage() {
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('expense');
+  const [quantity, setQuantity] = useState<number | ''>(1);
   const [amount, setAmount] = useState<number | ''>('');
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -168,6 +169,7 @@ export default function LedgerPage() {
     setDate(defaultDateForMonth(monthKey));
     setDescription('');
     setEntryType('expense');
+    setQuantity(1);
     setAmount('');
     setCategoryId(filterCategoryId || categories[0]?.id || '');
     setEntryOpen(true);
@@ -179,6 +181,7 @@ export default function LedgerPage() {
     setDate(row.date);
     setDescription(row.description);
     setEntryType(row.entryType);
+    setQuantity(row.quantity || 1);
     setAmount(row.amount);
     setCategoryId(row.categoryId);
     setEntryOpen(true);
@@ -187,6 +190,7 @@ export default function LedgerPage() {
   const submitEntry = async (e: FormEvent) => {
     e.preventDefault();
     if (!categoryId || amount === '' || Number(amount) < 0) return;
+    const qty = Number(quantity);
     try {
       await saveLedgerEntry({
         id: editing?.id,
@@ -194,6 +198,7 @@ export default function LedgerPage() {
         description,
         categoryId,
         entryType,
+        quantity: qty > 0 ? qty : 1,
         amount: Number(amount),
         source: 'manual',
         createdBy: user?.username,
@@ -226,6 +231,12 @@ export default function LedgerPage() {
       key: 'type',
       header: 'ประเภท',
       render: (r) => <StatusBadge status={r.entryType} />,
+    },
+    {
+      key: 'qty',
+      header: 'จำนวน (ชิ้น)',
+      className: 'text-right tabular-nums',
+      render: (r) => formatMoney(r.quantity ?? 1),
     },
     {
       key: 'amount',
@@ -408,9 +419,20 @@ export default function LedgerPage() {
               ))}
             </Select>
           </Field>
-          <Field id="led-amt" label="จำนวนเงิน">
-            <MoneyInput id="led-amt" value={amount} onValueChange={setAmount} required />
-          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="led-qty" label="จำนวน (ชิ้น)">
+              <MoneyInput
+                id="led-qty"
+                placeholder="1"
+                value={quantity}
+                onValueChange={(v) => setQuantity(v === '' ? '' : v)}
+                required
+              />
+            </Field>
+            <Field id="led-amt" label="จำนวนเงิน (บาท)">
+              <MoneyInput id="led-amt" placeholder="0" value={amount} onValueChange={setAmount} required />
+            </Field>
+          </div>
         </form>
       </Modal>
     </div>

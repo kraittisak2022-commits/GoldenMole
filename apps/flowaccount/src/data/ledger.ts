@@ -8,6 +8,7 @@ const map = (row: any): FaLedgerEntry => ({
   description: row.description || '',
   categoryId: row.category_id,
   entryType: row.entry_type,
+  quantity: Number(row.quantity) > 0 ? Number(row.quantity) : 1,
   amount: Number(row.amount) || 0,
   source: row.source || 'manual',
   sourceId: row.source_id,
@@ -31,18 +32,21 @@ export async function saveLedgerEntry(input: {
   description: string;
   categoryId: string;
   entryType: EntryType;
+  quantity?: number;
   amount: number;
   source?: LedgerSource;
   sourceId?: string | null;
   createdBy?: string | null;
 }): Promise<FaLedgerEntry> {
   const id = input.id || newId('led');
+  const quantity = Number(input.quantity);
   const row = {
     id,
     date: input.date,
     description: input.description.trim(),
     category_id: input.categoryId,
     entry_type: input.entryType,
+    quantity: quantity > 0 ? quantity : 1,
     amount: Number(input.amount) || 0,
     source: input.source || 'manual',
     source_id: input.sourceId ?? null,
