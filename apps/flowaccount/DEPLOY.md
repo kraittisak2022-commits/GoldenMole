@@ -2,25 +2,23 @@
 
 The app code is on `main` under `apps/flowaccount/`.
 
-## Create / configure project (Vercel Dashboard)
+**Vercel project:** `goldenmole-flowaccount` (id `prj_rbJ921rOo6hzLGRK2n8OqZS7tD2k`)  
+**Root Directory:** `apps/flowaccount` (already set)  
+**Git:** `kraittisak2022-commits/GoldenMole` → production branch `main`
 
-1. **Add New Project** → import `kraittisak2022-commits/GoldenMole`
-2. **Root Directory:** `apps/flowaccount`
-3. **Framework:** Vite
-4. **Environment Variables** (same values as `golden-mole`):
+## Remaining setup (Dashboard)
+
+1. Open the project → **Settings → Environment Variables** and add (same values as `golden-mole`):
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-5. **Ignored Build Step** (optional, Root Directory context):
+2. **Settings → Domains** → add `flowaccount.goldenmole.pro`  
+   (If DNS for `goldenmole.pro` is already on Vercel, verification is automatic; otherwise CNAME → `cname.vercel-dns.com`)
+3. Optional **Ignored Build Step** (runs in Root Directory):
    ```bash
    git diff --quiet HEAD^ HEAD -- .
    ```
-6. Deploy
-
-## Domain
-
-1. Project → Settings → Domains → add `flowaccount.goldenmole.pro`
-2. If DNS is already on Vercel for `goldenmole.pro`, it should verify automatically; otherwise add a CNAME to `cname.vercel-dns.com`
+4. **Deployments → Redeploy** the latest production deployment (needed after adding env vars)
 
 ## Verify
 
-Open `https://flowaccount.goldenmole.pro/login` and sign in with a **SuperAdmin** account from `admin_users`.
+Open `https://flowaccount.goldenmole.pro/login` (or the `*.vercel.app` URL) and sign in with a **SuperAdmin** from `admin_users`.
