@@ -469,14 +469,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _hydrateMacroDraftFromTransaction(row, byVehicle[car]!);
       }
       // เติมคนขับเริ่มต้นจากเว็บ เมื่อยังไม่บันทึกและยังไม่ได้เลือกคนขับ
-      if ((row.txId == null || row.txId!.trim().isEmpty) &&
-          row.driverId.trim().isEmpty) {
-        final defId = _defaultDriverIdForVehicle(car);
-        if (defId != null &&
-            _macroDriverEmployees.any((e) => e.id == defId)) {
-          row.driverId = defId;
-        }
-      }
+      // (รองรับคนขับที่เว็บตั้งจากตำแหน่ง «คนขับรถ» ไม่ใช่เฉพาะแม็คโคร)
+      _applyMacroDefaultDriver(row);
       next.add(row);
     }
 
@@ -1577,6 +1571,41 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       .where((e) => !e.inactive)
       .where(_isMacroExcavatorDriverEmployee)
       .toList();
+
+  /// คนขับที่เลือกได้ในแถวแม็คโคร — ตำแหน่งแม็คโคร + คนขับเริ่มต้นจากเว็บ
+  /// (เว็บตั้งค่าจากตำแหน่ง «คนขับรถ» ซึ่งอาจไม่อยู่ในรายชื่อแม็คโคร)
+  List<Employee> _macroSelectableDriversFor(String vehicle) {
+    final byId = <String, Employee>{
+      for (final e in _macroDriverEmployees) e.id: e,
+    };
+    final defId = _defaultDriverIdForVehicle(vehicle);
+    if (defId != null) {
+      final emp = _employeesById[defId];
+      if (emp != null && !emp.inactive) {
+        byId.putIfAbsent(emp.id, () => emp);
+      }
+    }
+    return byId.values.toList();
+  }
+
+  bool _isAllowedMacroDriverId(String driverId, String vehicle) {
+    final id = driverId.trim();
+    if (id.isEmpty) return false;
+    if (_macroDriverEmployees.any((e) => e.id == id)) return true;
+    final defId = _defaultDriverIdForVehicle(vehicle);
+    return defId != null && defId == id && _employeesById[id] != null;
+  }
+
+  /// เติมคนขับเริ่มต้นจากเว็บเมื่อแถวยังว่าง — ไม่บังคับตำแหน่งแม็คโคร
+  void _applyMacroDefaultDriver(_MacroVehicleDraft row) {
+    if (row.txId != null && row.txId!.trim().isNotEmpty) return;
+    if (row.driverId.trim().isNotEmpty) return;
+    final defId = _defaultDriverIdForVehicle(row.vehicleId);
+    if (defId == null || defId.isEmpty) return;
+    final emp = _employeesById[defId];
+    if (emp == null || emp.inactive) return;
+    row.driverId = defId;
+  }
 
   String _driverLabelFromId(String driverId) {
     final id = driverId.trim();
@@ -3560,8 +3589,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (driver.isEmpty) {
       _failSave('กรุณาเลือกคนขับสำหรับ $vehicle');
     }
-    if (!_macroDriverEmployees.any((e) => e.id == driver)) {
-      _failSave('เลือกคนขับจากรายชื่อตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น');
+    if (!_isAllowedMacroDriverId(driver, vehicle)) {
+      _failSave(
+        'เลือกคนขับจากรายชื่อตำแหน่ง «คนขับรถแม็คโคร» '
+        'หรือคนขับเริ่มต้นของรถคันนี้เท่านั้น',
+      );
     }
     final dayLabel = workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
     final txId =
@@ -3606,6 +3638,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (macroCars.isEmpty) {
           _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
         }
+        // เติมคนขับเริ่มต้นอีกครั้งก่อนบันทึก (กันกรณีโหลดพนักงาน/ตั้งค่าช้า)
+        _syncMacroVehicleDraftsFromMacroCars();
         final activeRows = _macroVehicleDrafts.where((row) {
           final hasDriver = row.driverId.trim().isNotEmpty;
           final hasDetails =
@@ -3613,7 +3647,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           return hasDriver || row.txId != null || hasDetails;
         }).toList();
         if (activeRows.isEmpty) {
-          _failSave('กรุณาระบุคนขับอย่างน้อย 1 คัน');
+          _failSave(
+            'กรุณาระบุคนขับอย่างน้อย 1 คัน '
+            '(หรือตั้งคนขับเริ่มต้นที่เว็บ: ตั้งค่า > รถ/เครื่องจักร)',
+          );
         }
         final date = _selectedDateYmd();
 
@@ -9908,7 +9945,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final hasDetails = tags.isNotEmpty;
     final isFilled = hasDriver && (isSaved || hasDetails);
     final defaultDriverId = _defaultDriverIdForVehicle(vehicleName);
-    final drivers = [..._macroDriverEmployees]
+    final drivers = [..._macroSelectableDriversFor(vehicleName)]
       ..sort((a, b) {
         if (a.id == defaultDriverId) return -1;
         if (b.id == defaultDriverId) return 1;
@@ -10022,7 +10059,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _macroSectionLabel('คนขับ — แตะเลือก'),
           if (drivers.isEmpty)
             Text(
-              'ยังไม่พบพนักงานตำแหน่ง «คนขับรถแม็คโคร»',
+              'ยังไม่พบพนักงานตำแหน่ง «คนขับรถแม็คโคร» '
+              'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถคันนี้บนเว็บ',
               style: GoogleFonts.kanit(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
@@ -10223,11 +10261,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
               ] else ...[
-                if (_macroDriverEmployees.isEmpty)
+                if (_macroDriverEmployees.isEmpty &&
+                    !_macroVehicleDrafts.any(
+                      (r) => _macroSelectableDriversFor(r.vehicleId).isNotEmpty,
+                    ))
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
-                      'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" (ตั้งค่าในเมนูพนักงาน)',
+                      'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" '
+                      'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถแม็คโครบนเว็บ '
+                      '(ตั้งค่า > รถ/เครื่องจักร)',
                       style: GoogleFonts.kanit(
                         color: const Color(0xFFD14343),
                         fontWeight: FontWeight.w700,
