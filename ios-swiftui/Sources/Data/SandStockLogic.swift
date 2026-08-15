@@ -12,14 +12,8 @@ enum SandStockLogic {
     static let defaultPondCapacityCubic: Double = 500
     static let unitLabel = "คิว"
     static let maxFeedEvents = 8
-    /// Stock outflow keeps 70% of sieve rounds (subtract 30% first).
-    static let sieveOutKeepRatio = 0.70
     /// วันตัดยอด — ก่อนวันนี้ถือว่าบ่อเหลือ 0; ตั้งแต่วันนี้สะสมขนเข้า−ร่อนออก (พ.ศ. 4 ส.ค. 2569)
     static let stockCutoverYmd = "2026-08-04"
-
-    static func applySieveOutHaircut(_ cubic: Double) -> Double {
-        max(0, cubic * sieveOutKeepRatio)
-    }
 
     enum PaceStatus: String, Sendable {
         case keepingUp
@@ -195,16 +189,15 @@ enum SandStockLogic {
             .reduce(0.0) { $0 + tripCubicIn($1) }
     }
 
-    /// ร่อนออก = รอบจากเมนูร่อนทราย (1 รอบ = 1 คิว) แล้วหัก 30%. Fallback คิวฟอร์มล้างทรายเมื่อไม่มีแถวนับร่อน.
+    /// ร่อนออก = รอบจากเมนูร่อนทราย (1 รอบ = 1 คิว). Fallback คิวฟอร์มล้างทรายเมื่อไม่มีแถวนับร่อน.
     static func cubicOut(on date: String, transactions: [Transaction]) -> Double {
         let dayTx = transactions.filter { String($0.date.prefix(10)) == date }
         if let sand = CountRecordLogic.buildSandUnit(dayKey: date, transactions: dayTx), sand.rounds > 0 {
-            return applySieveOutHaircut(Double(sand.rounds))
+            return Double(sand.rounds)
         }
-        let raw = dayTx
+        return dayTx
             .filter(isLegacyWashCubicRow)
             .reduce(0.0) { $0 + washCubicOut($1) }
-        return applySieveOutHaircut(raw)
     }
 
     static func cubicOutBefore(_ startDate: String, transactions: [Transaction]) -> Double {
@@ -246,22 +239,22 @@ enum SandStockLogic {
                 FeedEvent(
                     id: "out-\(sand.id)",
                     direction: .outbound,
-                    cubic: applySieveOutHaircut(Double(sand.rounds)),
-                    label: "ร่อนทราย \(sand.rounds) รอบ −30%",
+                    cubic: Double(sand.rounds),
+                    label: "ร่อนทราย \(sand.rounds) รอบ",
                     timeLabel: formatEventTime(tap),
                     sortKey: eventSortKey(tap)
                 )
             )
         } else {
             for t in dayTx where isLegacyWashCubicRow(t) {
-                let cubic = applySieveOutHaircut(washCubicOut(t))
+                let cubic = washCubicOut(t)
                 guard cubic > 0 else { continue }
                 events.append(
                     FeedEvent(
                         id: "out-\(t.id)",
                         direction: .outbound,
                         cubic: cubic,
-                        label: "ร่อนทราย −30%",
+                        label: "ร่อนทราย",
                         timeLabel: formatEventTime(t),
                         sortKey: eventSortKey(t)
                     )
