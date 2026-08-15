@@ -10,6 +10,7 @@ import {
   isMonthKey,
   shiftMonth,
 } from '../lib/ledgerMonth';
+import { sumPaidByTotals } from '../lib/ledgerPaidBy';
 import type { EntryType, FaLedgerEntry, LedgerPaidBy } from '../types';
 import { formatMoney, LEDGER_PAID_BY_LABEL } from '../types';
 import { useAuth } from '../auth/AuthProvider';
@@ -88,6 +89,10 @@ export default function LedgerPage() {
       .reduce((s, e) => s + e.amount, 0);
     return { income, expense, count: filteredEntries.length };
   }, [filteredEntries]);
+
+  const paidByTotals = useMemo(() => sumPaidByTotals(filteredEntries), [filteredEntries]);
+  const hasPaidByBreakdown =
+    paidByTotals.A > 0 || paidByTotals.B > 0 || paidByTotals.AB > 0;
 
   const patchParams = useCallback(
     (patch: { month?: string; category?: string | null }) => {
@@ -379,6 +384,32 @@ export default function LedgerPage() {
               คงเหลือ {formatMoney(categoryTotals.income - categoryTotals.expense)}
             </span>
           </div>
+          {hasPaidByBreakdown ? (
+            <div className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-3 space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">สรุปผู้จ่าย (รายจ่าย)</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                <span className="tabular-nums">
+                  A <span className="font-medium text-ink">{formatMoney(paidByTotals.A)}</span>
+                </span>
+                <span className="tabular-nums">
+                  B <span className="font-medium text-ink">{formatMoney(paidByTotals.B)}</span>
+                </span>
+                <span className="tabular-nums">
+                  A และ B <span className="font-medium text-ink">{formatMoney(paidByTotals.AB)}</span>
+                </span>
+              </div>
+              <p className="text-sm text-muted">
+                ส่วนแบ่งจริง (A และ B คนละครึ่ง):{' '}
+                <span className="tabular-nums font-medium text-ink">
+                  A {formatMoney(paidByTotals.shareA)}
+                </span>
+                {' · '}
+                <span className="tabular-nums font-medium text-ink">
+                  B {formatMoney(paidByTotals.shareB)}
+                </span>
+              </p>
+            </div>
+          ) : null}
         </div>
       </Card>
 
