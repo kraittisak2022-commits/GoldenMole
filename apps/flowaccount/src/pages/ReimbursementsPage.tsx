@@ -75,6 +75,22 @@ export default function ReimbursementsPage() {
 
   const activePayers = useMemo(() => payers.filter((p) => !p.inactive), [payers]);
   const summaries = useMemo(() => buildPayerSummaries(rows), [rows]);
+  const groupedClaims = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; rows: FaReimbursement[]; total: number }>();
+    for (const row of rows) {
+      const key = row.payerId || `name:${row.payerName}`;
+      const group = map.get(key) || { key, name: row.payerName, rows: [], total: 0 };
+      group.rows.push(row);
+      group.total += row.amount;
+      map.set(key, group);
+    }
+    return [...map.values()]
+      .map((g) => ({
+        ...g,
+        rows: g.rows.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  }, [rows]);
   const itemsTotal = useMemo(
     () => items.reduce((s, item) => s + (typeof item.amount === 'number' ? item.amount : 0), 0),
     [items],
@@ -220,7 +236,6 @@ export default function ReimbursementsPage() {
 
   const columns: Column<FaReimbursement>[] = [
     { key: 'date', header: 'วันที่', render: (r) => r.date },
-    { key: 'payer', header: 'ผู้สำรองจ่าย', render: (r) => r.payerName },
     { key: 'desc', header: 'รายการ', render: (r) => r.description },
     {
       key: 'amount',
@@ -351,12 +366,33 @@ export default function ReimbursementsPage() {
             </ul>
           </Card>
 
-          <Card className="overflow-hidden p-0">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="text-sm font-medium text-ink">รายการเบิกทั้งหมด</h3>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-ink">รายการเบิกแยกตามชื่อ</h3>
+              <p className="mt-1 text-xs text-muted">แต่ละคนมีรายการย่อยของตนเอง</p>
             </div>
-            <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} emptyText="ยังไม่มีรายการ" />
-          </Card>
+            {groupedClaims.length === 0 ? (
+              <Card className="p-4">
+                <p className="text-sm text-muted">ยังไม่มีรายการ</p>
+              </Card>
+            ) : (
+              groupedClaims.map((group) => (
+                <Card key={group.key} className="overflow-hidden p-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-slate-50 px-4 py-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-ink">{group.name}</h4>
+                      <p className="text-xs text-muted">{group.rows.length} รายการ</p>
+                    </div>
+                    <p className="text-sm tabular-nums text-muted">
+                      รวม{' '}
+                      <span className="font-semibold text-ink">{formatMoney(group.total)}</span> บาท
+                    </p>
+                  </div>
+                  <DataTable columns={columns} rows={group.rows} rowKey={(r) => r.id} />
+                </Card>
+              ))
+            )}
+          </div>
         </>
       )}
 
