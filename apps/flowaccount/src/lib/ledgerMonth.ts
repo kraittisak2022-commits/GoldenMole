@@ -1,4 +1,4 @@
-/** YYYY-MM helpers for ledger monthly views */
+/** YYYY-MM helpers for ledger monthly / yearly views */
 
 const TH_MONTHS = [
   'มกราคม',
@@ -21,8 +21,16 @@ export function currentMonthKey(now = new Date()): string {
   return `${y}-${m}`;
 }
 
+export function currentYearKey(now = new Date()): string {
+  return String(now.getFullYear());
+}
+
 export function isMonthKey(value: string): boolean {
   return /^\d{4}-\d{2}$/.test(value);
+}
+
+export function isYearKey(value: string): boolean {
+  return /^\d{4}$/.test(value);
 }
 
 export function shiftMonth(monthKey: string, delta: number): string {
@@ -31,10 +39,19 @@ export function shiftMonth(monthKey: string, delta: number): string {
   return currentMonthKey(d);
 }
 
+export function shiftYear(yearKey: string, delta: number): string {
+  return String(Number(yearKey) + delta);
+}
+
 export function formatMonthLabel(monthKey: string): string {
   if (!isMonthKey(monthKey)) return monthKey;
   const [y, m] = monthKey.split('-').map(Number);
   return `${TH_MONTHS[m - 1]} ${y + 543}`;
+}
+
+export function formatYearLabel(yearKey: string): string {
+  if (!isYearKey(yearKey)) return yearKey;
+  return `ปี ${Number(yearKey) + 543}`;
 }
 
 /** Unique YYYY-MM from entry dates, newest first, always includes `fallback`. */
@@ -44,6 +61,17 @@ export function collectMonthKeys(dates: string[], fallback: string): string[] {
   for (const date of dates) {
     const key = date.slice(0, 7);
     if (isMonthKey(key)) set.add(key);
+  }
+  return [...set].sort((a, b) => b.localeCompare(a));
+}
+
+/** Unique YYYY from entry dates, newest first, always includes `fallback`. */
+export function collectYearKeys(dates: string[], fallback: string): string[] {
+  const set = new Set<string>();
+  if (isYearKey(fallback)) set.add(fallback);
+  for (const date of dates) {
+    const key = date.slice(0, 4);
+    if (isYearKey(key)) set.add(key);
   }
   return [...set].sort((a, b) => b.localeCompare(a));
 }

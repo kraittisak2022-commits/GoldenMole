@@ -11,10 +11,15 @@ import {
 import { listLedgerEntries } from '../data/ledger';
 import {
   collectMonthKeys,
+  collectYearKeys,
   currentMonthKey,
+  currentYearKey,
   formatMonthLabel,
+  formatYearLabel,
   isMonthKey,
+  isYearKey,
   shiftMonth,
+  shiftYear,
 } from '../lib/ledgerMonth';
 import { listExpensesByPaidBy, sumPaidByTotals } from '../lib/ledgerPaidBy';
 import type { CategoryKind, FaCategory, FaLedgerEntry, LedgerPaidBy } from '../types';
@@ -35,10 +40,14 @@ const KIND_LABEL: Record<CategoryKind, string> = {
 
 const PARTY_ORDER: LedgerPaidBy[] = ['A', 'B', 'AB'];
 
+type PeriodMode = 'month' | 'year';
+
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<FaCategory[]>([]);
   const [entries, setEntries] = useState<FaLedgerEntry[]>([]);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
   const [monthKey, setMonthKey] = useState(() => currentMonthKey());
+  const [yearKey, setYearKey] = useState(() => currentYearKey());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -58,11 +67,11 @@ export default function CategoriesPage() {
       ]);
       setCategories(c);
       setEntries(e);
-      const months = collectMonthKeys(
-        e.map((row) => row.date),
-        currentMonthKey(),
-      );
+      const dates = e.map((row) => row.date);
+      const months = collectMonthKeys(dates, currentMonthKey());
+      const years = collectYearKeys(dates, currentYearKey());
       setMonthKey((prev) => (months.includes(prev) ? prev : months[0] || currentMonthKey()));
+      setYearKey((prev) => (years.includes(prev) ? prev : years[0] || currentYearKey()));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดไม่สำเร็จ');
     } finally {
@@ -79,10 +88,17 @@ export default function CategoriesPage() {
     [entries],
   );
 
-  const monthEntries = useMemo(
-    () => entries.filter((e) => e.date.startsWith(monthKey)),
-    [entries, monthKey],
+  const yearOptions = useMemo(
+    () => collectYearKeys(entries.map((e) => e.date), currentYearKey()),
+    [entries],
   );
+
+  const periodEntries = useMemo(() => {
+    if (periodMode === 'year') return entries.filter((e) => e.date.startsWith(yearKey));
+    return entries.filter((e) => e.date.startsWith(monthKey));
+  }, [entries, periodMode, monthKey, yearKey]);
+
+  const periodLabel = periodMode === 'year' ? formatYearLabel(yearKey) : formatMonthLabel(monthKey);
 
   const visibleCategories = useMemo(
     () => categories.filter((c) => (showArchived ? true : !c.archived)),
@@ -90,13 +106,13 @@ export default function CategoriesPage() {
   );
 
   const summaries = useMemo(
-    () => buildCategorySummaries(visibleCategories, monthEntries),
-    [visibleCategories, monthEntries],
+    () => buildCategorySummaries(visibleCategories, periodEntries),
+    [visibleCategories, periodEntries],
   );
 
-  const monthTotals = useMemo(() => sumLedgerTotals(monthEntries), [monthEntries]);
+  const periodTotals = useMemo(() => sumLedgerTotals(periodEntries), [periodEntries]);
 
-  const paidByTotals = useMemo(() => sumPaidByTotals(monthEntries), [monthEntries]);
+  const paidByTotals = useMemo(() => sumPaidByTotals(periodEntries), [periodEntries]);
   const hasPaidByBreakdown =
     paidByTotals.A > 0 || paidByTotals.B > 0 || paidByTotals.AB > 0;
 
@@ -108,12 +124,12 @@ export default function CategoriesPage() {
   const partySections = useMemo(
     () =>
       PARTY_ORDER.map((party) => {
-        const rows = listExpensesByPaidBy(monthEntries, party);
+        const rows = listExpensesByPaidBy(periodEntries, party);
         const total =
           party === 'A' ? paidByTotals.A : party === 'B' ? paidByTotals.B : paidByTotals.AB;
         return { party, rows, total };
       }),
-    [monthEntries, paidByTotals],
+    [periodEntries, paidByTotals],
   );
 
   const activeParty = useMemo(
@@ -145,15 +161,34 @@ export default function CategoriesPage() {
     setMonthKey(value);
   };
 
+  const onYearChange = (value: string) => {
+    if (!isYearKey(value)) return;
+    setYearKey(value);
+  };
+
   const goPrevMonth = () => onMonthChange(shiftMonth(monthKey, -1));
   const goNextMonth = () => {
     const next = shiftMonth(monthKey, 1);
     if (next > currentMonthKey() && !monthOptions.includes(next)) return;
     onMonthChange(next);
   };
-  const canGoNext =
+  const canGoNextMonth =
     shiftMonth(monthKey, 1) <= currentMonthKey() || monthOptions.includes(shiftMonth(monthKey, 1));
 
+  const goPrevYear = () => onYearChange(shiftYear(yearKey, -1));
+  const goNextYear = () => {
+    const next = shiftYear(yearKey, 1);
+    if (next > currentYearKey() && !yearOptions.includes(next)) return;
+    onYearChange(next);
+  };
+  const canGoNextYear =
+    shiftYear(yearKey, 1) <= currentYearKey() || yearOptions.includes(shiftYear(yearKey, 1));
+
+  const categoryLedgerHref = (categoryId: string) => {
+    const params = new URLSearchParams({ category: categoryId });
+    if (periodMode === 'month') params.set('month', monthKey);
+    return `/ledger?${params.toString()}`;
+  };
   const submitCategory = async (e: FormEvent) => {
     e.preventDefault();
     if (!catName.trim()) return;
@@ -209,7 +244,7 @@ export default function CategoriesPage() {
       header: 'หมวดหมู่',
       render: (r) => (
         <Link
-          to={`/ledger?month=${encodeURIComponent(monthKey)}&category=${encodeURIComponent(r.category.id)}`}
+          to={categoryLedgerHref(r.category.id)}
           className="font-medium text-ink hover:underline"
         >
           {r.category.name}
@@ -277,7 +312,7 @@ export default function CategoriesPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">หมวดหมู่</h2>
           <p className="mt-1 text-sm text-muted">
-            สรุปรายรับ-รายจ่ายแยกรายเดือน · แยกตามหมวดหมู่ · และรายจ่ายของฝ่าย
+            สรุปรายรับ-รายจ่ายแยกรายเดือนและรายปี · แยกตามหมวดหมู่ · และรายจ่ายของฝ่าย
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -295,77 +330,139 @@ export default function CategoriesPage() {
         <p className="text-sm text-muted">กำลังโหลด…</p>
       ) : (
         <>
-          <Card className="p-4">
-            <Field id="cat-summary-month" label="เดือนที่สรุป">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-11 min-w-11 px-0"
-                  aria-label="เดือนก่อนหน้า"
-                  onClick={goPrevMonth}
-                >
-                  ‹
-                </Button>
-                <Select
-                  id="cat-summary-month"
-                  value={monthOptions.includes(monthKey) ? monthKey : monthOptions[0] || monthKey}
-                  onChange={(e) => onMonthChange(e.target.value)}
-                  aria-label="เลือกเดือนที่สรุป"
-                >
-                  {!monthOptions.includes(monthKey) ? (
-                    <option value={monthKey}>{formatMonthLabel(monthKey)}</option>
-                  ) : null}
-                  {monthOptions.map((m) => (
-                    <option key={m} value={m}>
-                      {formatMonthLabel(m)}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-11 min-w-11 px-0"
-                  aria-label="เดือนถัดไป"
-                  disabled={!canGoNext}
-                  onClick={goNextMonth}
-                >
-                  ›
-                </Button>
-                <span className="text-sm text-muted">{formatMonthLabel(monthKey)}</span>
-              </div>
-            </Field>
+          <Card className="space-y-4 p-4">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="ช่วงเวลาสรุป">
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={periodMode === 'month'}
+                variant={periodMode === 'month' ? 'primary' : 'ghost'}
+                onClick={() => setPeriodMode('month')}
+              >
+                รายเดือน
+              </Button>
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={periodMode === 'year'}
+                variant={periodMode === 'year' ? 'primary' : 'ghost'}
+                onClick={() => setPeriodMode('year')}
+              >
+                รายปี
+              </Button>
+            </div>
+            {periodMode === 'month' ? (
+              <Field id="cat-summary-month" label="เดือนที่สรุป">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11 min-w-11 px-0"
+                    aria-label="เดือนก่อนหน้า"
+                    onClick={goPrevMonth}
+                  >
+                    ‹
+                  </Button>
+                  <Select
+                    id="cat-summary-month"
+                    value={monthOptions.includes(monthKey) ? monthKey : monthOptions[0] || monthKey}
+                    onChange={(e) => onMonthChange(e.target.value)}
+                    aria-label="เลือกเดือนที่สรุป"
+                  >
+                    {!monthOptions.includes(monthKey) ? (
+                      <option value={monthKey}>{formatMonthLabel(monthKey)}</option>
+                    ) : null}
+                    {monthOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {formatMonthLabel(m)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11 min-w-11 px-0"
+                    aria-label="เดือนถัดไป"
+                    disabled={!canGoNextMonth}
+                    onClick={goNextMonth}
+                  >
+                    ›
+                  </Button>
+                  <span className="text-sm text-muted">{formatMonthLabel(monthKey)}</span>
+                </div>
+              </Field>
+            ) : (
+              <Field id="cat-summary-year" label="ปีที่สรุป">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11 min-w-11 px-0"
+                    aria-label="ปีก่อนหน้า"
+                    onClick={goPrevYear}
+                  >
+                    ‹
+                  </Button>
+                  <Select
+                    id="cat-summary-year"
+                    value={yearOptions.includes(yearKey) ? yearKey : yearOptions[0] || yearKey}
+                    onChange={(e) => onYearChange(e.target.value)}
+                    aria-label="เลือกปีที่สรุป"
+                  >
+                    {!yearOptions.includes(yearKey) ? (
+                      <option value={yearKey}>{formatYearLabel(yearKey)}</option>
+                    ) : null}
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {formatYearLabel(y)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11 min-w-11 px-0"
+                    aria-label="ปีถัดไป"
+                    disabled={!canGoNextYear}
+                    onClick={goNextYear}
+                  >
+                    ›
+                  </Button>
+                  <span className="text-sm text-muted">{formatYearLabel(yearKey)}</span>
+                </div>
+              </Field>
+            )}
           </Card>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Card className="p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">รายรับรวม</p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
-                {formatMoney(monthTotals.incomeTotal)}
+                {formatMoney(periodTotals.incomeTotal)}
               </p>
-              <p className="mt-1 text-xs text-muted">{formatMonthLabel(monthKey)}</p>
+              <p className="mt-1 text-xs text-muted">{periodLabel}</p>
             </Card>
             <Card className="p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">รายจ่ายรวม</p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
-                {formatMoney(monthTotals.expenseTotal)}
+                {formatMoney(periodTotals.expenseTotal)}
               </p>
-              <p className="mt-1 text-xs text-muted">{monthTotals.entryCount} รายการ</p>
+              <p className="mt-1 text-xs text-muted">{periodTotals.entryCount} รายการ</p>
             </Card>
             <Card className="p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">คงเหลือ</p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
-                {formatMoney(monthTotals.incomeTotal - monthTotals.expenseTotal)}
+                {formatMoney(periodTotals.incomeTotal - periodTotals.expenseTotal)}
               </p>
-              <p className="mt-1 text-xs text-muted">รับ − จ่าย ในเดือนนี้</p>
+              <p className="mt-1 text-xs text-muted">
+                รับ − จ่าย {periodMode === 'year' ? 'ในปีนี้' : 'ในเดือนนี้'}
+              </p>
             </Card>
           </div>
 
           <Card className="overflow-hidden p-0">
             <div className="border-b border-border px-4 py-3">
-              <h3 className="text-sm font-medium text-ink">
-                สรุปตามหมวดหมู่ · {formatMonthLabel(monthKey)}
-              </h3>
+              <h3 className="text-sm font-medium text-ink">สรุปตามหมวดหมู่ · {periodLabel}</h3>
               <p className="mt-1 text-xs text-muted">แยกรายรับและรายจ่ายในแต่ละหัวข้อหมวดหมู่</p>
             </div>
             <DataTable
@@ -379,15 +476,16 @@ export default function CategoriesPage() {
           <Card className="overflow-hidden p-0">
             <div className="border-b border-border px-4 py-3">
               <h3 className="text-sm font-medium text-ink">
-                รายจ่ายของฝ่าย · {formatMonthLabel(monthKey)}
+                รายจ่ายของฝ่าย · {periodLabel}
               </h3>
               <p className="mt-1 text-xs text-muted">
-                แยกจากสรุปหมวดหมู่ — แต่ละฝ่ายดูได้ว่าตนเองจ่ายค่าอะไรบ้างในเดือนนี้
+                แยกจากสรุปหมวดหมู่ — แต่ละฝ่ายดูได้ว่าตนเองจ่ายค่าอะไรบ้างใน
+                {periodMode === 'year' ? 'ปีนี้' : 'เดือนนี้'}
               </p>
             </div>
             {!hasPaidByBreakdown ? (
               <p className="px-4 py-6 text-sm text-muted">
-                ยังไม่มีรายจ่ายที่ระบุฝ่ายในเดือนนี้ — ตั้งค่าที่หน้ารายรับ-รายจ่าย
+                ยังไม่มีรายจ่ายที่ระบุฝ่ายใน{periodMode === 'year' ? 'ปี' : 'เดือน'}นี้ — ตั้งค่าที่หน้ารายรับ-รายจ่าย
               </p>
             ) : (
               <div className="space-y-4 p-4">
@@ -464,7 +562,7 @@ export default function CategoriesPage() {
                       columns={partyLineColumns}
                       rows={activeParty.rows}
                       rowKey={(r) => r.id}
-                      emptyText={`ยังไม่มีรายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[activeParty.party]} ในเดือนนี้`}
+                      emptyText={`ยังไม่มีรายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[activeParty.party]} ใน${periodMode === 'year' ? 'ปี' : 'เดือน'}นี้`}
                     />
                   </div>
                 </div>
