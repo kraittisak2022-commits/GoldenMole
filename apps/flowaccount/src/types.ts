@@ -96,6 +96,29 @@ export interface FaPayrollSlip {
   createdAt?: string;
 }
 
+export interface FaWorkLog {
+  id: string;
+  workDate: string;
+  employeeId: string;
+  workDays: number;
+  /** Daily wage amount for that date (Excel day cell). */
+  amount: number;
+  otAmount: number;
+  notes: string;
+  createdAt?: string;
+}
+
+export interface FaWorkPeriodSummary {
+  id: string;
+  periodKey: string;
+  employeeId: string;
+  paid: boolean;
+  specialAmount: number;
+  advanceAmount: number;
+  notes: string;
+  createdAt?: string;
+}
+
 export interface FaFleetLog {
   id: string;
   workDate: string;
@@ -112,9 +135,9 @@ export interface FaFleetLog {
 }
 
 export const EMPLOYEE_TYPE_LABEL: Record<EmployeeType, string> = {
-  monthly: 'พนักงานเงินเดือน',
-  daily: 'พนักงานรายวัน',
-  daily_driver: 'พนักงานขับรถรายวัน',
+  monthly: 'พนักงานรายเดือน',
+  daily: 'พนักงานรายวัน (คนงาน)',
+  daily_driver: 'พนักงานรายวัน (คนขับรถ)',
 };
 
 export const LEDGER_PAID_BY_LABEL: Record<LedgerPaidBy, string> = {

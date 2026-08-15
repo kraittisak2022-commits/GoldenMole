@@ -91,6 +91,30 @@ CREATE TABLE IF NOT EXISTS fa_payroll_slips (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS fa_work_logs (
+  id TEXT PRIMARY KEY,
+  work_date TEXT NOT NULL,
+  employee_id TEXT NOT NULL REFERENCES fa_employees(id),
+  work_days NUMERIC NOT NULL DEFAULT 1 CHECK (work_days > 0),
+  amount NUMERIC NOT NULL DEFAULT 0,
+  ot_amount NUMERIC NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (employee_id, work_date)
+);
+
+CREATE TABLE IF NOT EXISTS fa_work_period_summaries (
+  id TEXT PRIMARY KEY,
+  period_key TEXT NOT NULL,
+  employee_id TEXT NOT NULL REFERENCES fa_employees(id),
+  paid BOOLEAN NOT NULL DEFAULT FALSE,
+  special_amount NUMERIC NOT NULL DEFAULT 0,
+  advance_amount NUMERIC NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (period_key, employee_id)
+);
+
 CREATE TABLE IF NOT EXISTS fa_fleet_logs (
   id TEXT PRIMARY KEY,
   work_date TEXT NOT NULL,
@@ -112,6 +136,9 @@ CREATE INDEX IF NOT EXISTS idx_fa_reimb_status ON fa_reimbursements(status);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payer ON fa_reimbursements(payer_id);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_payers_token ON fa_reimb_payers(share_token);
 CREATE INDEX IF NOT EXISTS idx_fa_payroll_date ON fa_payroll_slips(pay_date);
+CREATE INDEX IF NOT EXISTS idx_fa_work_logs_emp_date ON fa_work_logs(employee_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_fa_work_logs_date ON fa_work_logs(work_date);
+CREATE INDEX IF NOT EXISTS idx_fa_work_period_key ON fa_work_period_summaries(period_key);
 CREATE INDEX IF NOT EXISTS idx_fa_fleet_date ON fa_fleet_logs(work_date);
 
 ALTER TABLE fa_categories ENABLE ROW LEVEL SECURITY;
@@ -121,6 +148,8 @@ ALTER TABLE fa_ledger_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_reimbursements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_reimb_payers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_payroll_slips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fa_work_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fa_work_period_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_fleet_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all on fa_categories" ON fa_categories;
@@ -130,6 +159,8 @@ DROP POLICY IF EXISTS "Allow all on fa_ledger_entries" ON fa_ledger_entries;
 DROP POLICY IF EXISTS "Allow all on fa_reimbursements" ON fa_reimbursements;
 DROP POLICY IF EXISTS "Allow all on fa_reimb_payers" ON fa_reimb_payers;
 DROP POLICY IF EXISTS "Allow all on fa_payroll_slips" ON fa_payroll_slips;
+DROP POLICY IF EXISTS "Allow all on fa_work_logs" ON fa_work_logs;
+DROP POLICY IF EXISTS "Allow all on fa_work_period_summaries" ON fa_work_period_summaries;
 DROP POLICY IF EXISTS "Allow all on fa_fleet_logs" ON fa_fleet_logs;
 
 CREATE POLICY "Allow all on fa_categories" ON fa_categories FOR ALL USING (true) WITH CHECK (true);
@@ -139,6 +170,8 @@ CREATE POLICY "Allow all on fa_ledger_entries" ON fa_ledger_entries FOR ALL USIN
 CREATE POLICY "Allow all on fa_reimbursements" ON fa_reimbursements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_reimb_payers" ON fa_reimb_payers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_payroll_slips" ON fa_payroll_slips FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on fa_work_logs" ON fa_work_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on fa_work_period_summaries" ON fa_work_period_summaries FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_fleet_logs" ON fa_fleet_logs FOR ALL USING (true) WITH CHECK (true);
 
 -- Seed mock data (idempotent upserts)

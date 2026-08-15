@@ -14,11 +14,15 @@ import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import MoneyInput from '../components/ui/MoneyInput';
 import Select from '../components/ui/Select';
+import WorkSchedulePanel from '../components/WorkSchedulePanel';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+type MainTab = 'schedule' | 'slips';
+
 export default function PayrollPage() {
   const { user } = useAuth();
+  const [mainTab, setMainTab] = useState<MainTab>('schedule');
   const [slips, setSlips] = useState<FaPayrollSlip[]>([]);
   const [employees, setEmployees] = useState<FaEmployee[]>([]);
   const [categories, setCategories] = useState<FaCategory[]>([]);
@@ -123,17 +127,45 @@ export default function PayrollPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-[1400px] space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">เงินเดือนพนักงาน</h2>
-          <p className="mt-1 text-sm text-muted">คำนวณอัตโนมัติและออกใบจ่ายเงินเดือนรายบุคคล</p>
+          <p className="mt-1 text-sm text-muted">
+            ตารางการทำงานแบบ Excel · แยกรายเดือน / คนงาน / คนขับรถ · และออกสลิปได้
+          </p>
         </div>
-        <Button onClick={() => setOpen(true)}>สร้างสลิป</Button>
+        {mainTab === 'slips' ? <Button onClick={() => setOpen(true)}>สร้างสลิป</Button> : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-border pb-2" role="tablist" aria-label="เงินเดือน">
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === 'schedule'}
+          variant={mainTab === 'schedule' ? 'primary' : 'ghost'}
+          onClick={() => setMainTab('schedule')}
+        >
+          ตารางการทำงาน
+        </Button>
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === 'slips'}
+          variant={mainTab === 'slips' ? 'primary' : 'ghost'}
+          onClick={() => setMainTab('slips')}
+        >
+          สลิปเงินเดือน
+        </Button>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <DataTable columns={columns} rows={slips} rowKey={(r) => r.id} />
+
+      {mainTab === 'schedule' ? (
+        <WorkSchedulePanel onError={setError} />
+      ) : (
+        <DataTable columns={columns} rows={slips} rowKey={(r) => r.id} />
+      )}
 
       <Modal
         open={open}
