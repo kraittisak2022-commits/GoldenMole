@@ -1,17 +1,17 @@
 import type { FaLedgerEntry } from '../types';
 
 export type PaidByTotals = {
-  /** Full amounts marked as paid by A only */
+  /** Expense total assigned to A alone (company to be reimbursed by A) */
   A: number;
-  /** Full amounts marked as paid by B only */
+  /** Expense total assigned to B alone */
   B: number;
-  /** Full amounts marked as split A และ B */
+  /** Expense total assigned to A และ B (split half each) */
   AB: number;
-  /** Expense amounts with no payer selected */
+  /** Expense amounts with no assignee */
   unset: number;
-  /** A's burden: A-only + half of AB */
+  /** Amount A must cover: A-only + half of AB */
   shareA: number;
-  /** B's burden: B-only + half of AB */
+  /** Amount B must cover: B-only + half of AB */
   shareB: number;
 };
 

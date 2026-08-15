@@ -34,14 +34,18 @@ describe('sumPaidByTotals', () => {
     });
   });
 
-  it('returns zeros for empty list', () => {
-    expect(sumPaidByTotals([])).toEqual({
-      A: 0,
-      B: 0,
-      AB: 0,
-      unset: 0,
-      shareA: 0,
-      shareB: 0,
-    });
+  it('splits a 200 baht company expense marked A และ B into 100 each', () => {
+    const totals = sumPaidByTotals([
+      entry({
+        id: 'ofuse',
+        amount: 200,
+        description: 'ของใช้ทั่วไป',
+        paidBy: 'AB',
+      }),
+    ]);
+
+    expect(totals.AB).toBe(200);
+    expect(totals.shareA).toBe(100);
+    expect(totals.shareB).toBe(100);
   });
 });

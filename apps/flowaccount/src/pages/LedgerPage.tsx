@@ -255,7 +255,7 @@ export default function LedgerPage() {
     },
     {
       key: 'paidBy',
-      header: 'ผู้จ่าย',
+      header: 'ชดใช้แทนบริษัท',
       render: (r) =>
         r.paidBy ? (
           <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
@@ -386,27 +386,23 @@ export default function LedgerPage() {
           </div>
           {hasPaidByBreakdown ? (
             <div className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-3 space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">สรุปผู้จ่าย (รายจ่าย)</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                ใครชดใช้แทนบริษัท (รายจ่าย)
+              </p>
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
                 <span className="tabular-nums">
-                  A <span className="font-medium text-ink">{formatMoney(paidByTotals.A)}</span>
+                  A ต้องชดใช้{' '}
+                  <span className="font-medium text-ink">{formatMoney(paidByTotals.shareA)}</span>
                 </span>
                 <span className="tabular-nums">
-                  B <span className="font-medium text-ink">{formatMoney(paidByTotals.B)}</span>
-                </span>
-                <span className="tabular-nums">
-                  A และ B <span className="font-medium text-ink">{formatMoney(paidByTotals.AB)}</span>
+                  B ต้องชดใช้{' '}
+                  <span className="font-medium text-ink">{formatMoney(paidByTotals.shareB)}</span>
                 </span>
               </div>
-              <p className="text-sm text-muted">
-                ส่วนแบ่งจริง (A และ B คนละครึ่ง):{' '}
-                <span className="tabular-nums font-medium text-ink">
-                  A {formatMoney(paidByTotals.shareA)}
-                </span>
-                {' · '}
-                <span className="tabular-nums font-medium text-ink">
-                  B {formatMoney(paidByTotals.shareB)}
-                </span>
+              <p className="text-xs text-muted">
+                ยอดที่ระบุเป็น A {formatMoney(paidByTotals.A)} · B {formatMoney(paidByTotals.B)} · A และ B{' '}
+                {formatMoney(paidByTotals.AB)}
+                {paidByTotals.AB > 0 ? ' (แบ่งฝ่ายละครึ่ง)' : ''}
               </p>
             </div>
           ) : null}
@@ -480,8 +476,12 @@ export default function LedgerPage() {
               <MoneyInput id="led-amt" placeholder="0" value={amount} onValueChange={setAmount} required />
             </Field>
           </div>
-          <Field id="led-paid-by" label="ผู้จ่าย (กรณีแบ่งจ่าย)">
-            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ผู้จ่าย">
+          <Field
+            id="led-paid-by"
+            label="ใครชดใช้แทนบริษัท"
+            hint="รายการที่บริษัทจ่ายไปแล้ว — เลือกใครรับผิดชอบชดใช้ เช่น ของใช้ 200 บาท เลือก A และ B = ฝ่ายละ 100 บาท"
+          >
+            <div id="led-paid-by" className="flex flex-wrap gap-3 pt-1" role="radiogroup" aria-label="ใครชดใช้แทนบริษัท">
               {(
                 [
                   { value: '', label: 'ไม่ระบุ' },
