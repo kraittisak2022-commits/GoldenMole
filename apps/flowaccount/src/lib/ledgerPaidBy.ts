@@ -1,4 +1,4 @@
-import type { FaLedgerEntry } from '../types';
+import type { FaLedgerEntry, LedgerPaidBy } from '../types';
 
 export type PaidByTotals = {
   /** Expense total assigned to A alone (company to be reimbursed by A) */
@@ -38,4 +38,15 @@ export function sumPaidByTotals(entries: FaLedgerEntry[]): PaidByTotals {
     shareA: A + AB / 2,
     shareB: B + AB / 2,
   };
+}
+
+/** Expense lines tagged to a party, newest date first. */
+export function listExpensesByPaidBy(
+  entries: FaLedgerEntry[],
+  paidBy: LedgerPaidBy,
+): FaLedgerEntry[] {
+  return entries
+    .filter((e) => e.entryType === 'expense' && e.paidBy === paidBy)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 }

@@ -16,8 +16,9 @@ import {
   isMonthKey,
   shiftMonth,
 } from '../lib/ledgerMonth';
-import type { CategoryKind, FaCategory, FaLedgerEntry } from '../types';
-import { formatMoney } from '../types';
+import { listExpensesByPaidBy, sumPaidByTotals } from '../lib/ledgerPaidBy';
+import type { CategoryKind, FaCategory, FaLedgerEntry, LedgerPaidBy } from '../types';
+import { formatMoney, LEDGER_PAID_BY_LABEL } from '../types';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import DataTable, { Column } from '../components/ui/DataTable';
@@ -31,6 +32,8 @@ const KIND_LABEL: Record<CategoryKind, string> = {
   expense: 'รายจ่าย',
   both: 'รับ/จ่าย',
 };
+
+const PARTY_ORDER: LedgerPaidBy[] = ['A', 'B', 'AB'];
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<FaCategory[]>([]);
@@ -91,6 +94,45 @@ export default function CategoriesPage() {
   );
 
   const monthTotals = useMemo(() => sumLedgerTotals(monthEntries), [monthEntries]);
+
+  const paidByTotals = useMemo(() => sumPaidByTotals(monthEntries), [monthEntries]);
+  const hasPaidByBreakdown =
+    paidByTotals.A > 0 || paidByTotals.B > 0 || paidByTotals.AB > 0;
+
+  const catNameById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.name])),
+    [categories],
+  );
+
+  const partySections = useMemo(
+    () =>
+      PARTY_ORDER.map((party) => {
+        const rows = listExpensesByPaidBy(monthEntries, party);
+        const total =
+          party === 'A' ? paidByTotals.A : party === 'B' ? paidByTotals.B : paidByTotals.AB;
+        return { party, rows, total };
+      }),
+    [monthEntries, paidByTotals],
+  );
+
+  const partyLineColumns: Column<FaLedgerEntry>[] = useMemo(
+    () => [
+      { key: 'date', header: 'วันที่', render: (r) => r.date },
+      { key: 'desc', header: 'รายการ', render: (r) => r.description },
+      {
+        key: 'cat',
+        header: 'หมวดหมู่',
+        render: (r) => catNameById.get(r.categoryId) || r.categoryId,
+      },
+      {
+        key: 'amount',
+        header: 'จำนวนเงิน',
+        className: 'text-right tabular-nums',
+        render: (r) => formatMoney(r.amount),
+      },
+    ],
+    [catNameById],
+  );
 
   const onMonthChange = (value: string) => {
     if (!isMonthKey(value)) return;
@@ -229,7 +271,7 @@ export default function CategoriesPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">หมวดหมู่</h2>
           <p className="mt-1 text-sm text-muted">
-            สรุปรายรับ-รายจ่ายแยกรายเดือน และแยกตามหมวดหมู่
+            สรุปรายรับ-รายจ่ายแยกรายเดือน · แยกตามหมวดหมู่ · และรายจ่ายของฝ่าย
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -326,6 +368,76 @@ export default function CategoriesPage() {
               rowKey={(r) => r.category.id}
               emptyText="ยังไม่มีหมวดหมู่ — กดเพิ่มหมวดหมู่เพื่อเริ่มต้น"
             />
+          </Card>
+
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="text-sm font-medium text-ink">
+                รายจ่ายของฝ่าย · {formatMonthLabel(monthKey)}
+              </h3>
+              <p className="mt-1 text-xs text-muted">
+                แยกจากสรุปหมวดหมู่ — แต่ละฝ่ายดูได้ว่าตนเองจ่ายค่าอะไรบ้างในเดือนนี้
+              </p>
+            </div>
+            {!hasPaidByBreakdown ? (
+              <p className="px-4 py-6 text-sm text-muted">
+                ยังไม่มีรายจ่ายที่ระบุฝ่ายในเดือนนี้ — ตั้งค่าที่หน้ารายรับ-รายจ่าย
+              </p>
+            ) : (
+              <div className="space-y-6 p-4">
+                <div className="grid gap-2 sm:grid-cols-3 text-sm">
+                  <div className="rounded-md border border-border bg-slate-50 px-3 py-2">
+                    <p className="text-xs text-muted">รายจ่ายของฝ่าย A</p>
+                    <p className="tabular-nums font-medium text-ink">{formatMoney(paidByTotals.A)}</p>
+                  </div>
+                  <div className="rounded-md border border-border bg-slate-50 px-3 py-2">
+                    <p className="text-xs text-muted">รายจ่ายของฝ่าย B</p>
+                    <p className="tabular-nums font-medium text-ink">{formatMoney(paidByTotals.B)}</p>
+                  </div>
+                  <div className="rounded-md border border-border bg-slate-50 px-3 py-2">
+                    <p className="text-xs text-muted">รายจ่ายของฝ่าย A และ B</p>
+                    <p className="tabular-nums font-medium text-ink">{formatMoney(paidByTotals.AB)}</p>
+                    {paidByTotals.AB > 0 ? (
+                      <p className="mt-1 text-xs text-muted">
+                        แบ่งฝ่ายละ {formatMoney(paidByTotals.AB / 2)}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-sm text-muted">
+                  รวมหลังแบ่งครึ่ง:{' '}
+                  <span className="tabular-nums font-medium text-ink">
+                    A {formatMoney(paidByTotals.shareA)}
+                  </span>
+                  {' · '}
+                  <span className="tabular-nums font-medium text-ink">
+                    B {formatMoney(paidByTotals.shareB)}
+                  </span>
+                </p>
+                {partySections.map(({ party, rows, total }) => (
+                  <div key={party} className="overflow-hidden rounded-lg border border-border">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-slate-50 px-4 py-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-ink">
+                          รายจ่ายของฝ่าย {LEDGER_PAID_BY_LABEL[party]}
+                        </h4>
+                        <p className="text-xs text-muted">{rows.length} รายการ</p>
+                      </div>
+                      <p className="text-sm tabular-nums text-muted">
+                        รวม{' '}
+                        <span className="font-semibold text-ink">{formatMoney(total)}</span> บาท
+                      </p>
+                    </div>
+                    <DataTable
+                      columns={partyLineColumns}
+                      rows={rows}
+                      rowKey={(r) => r.id}
+                      emptyText={`ยังไม่มีรายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[party]} ในเดือนนี้`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </>
       )}

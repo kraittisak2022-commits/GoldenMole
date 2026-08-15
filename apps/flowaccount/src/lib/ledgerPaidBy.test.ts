@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sumPaidByTotals } from './ledgerPaidBy';
+import { listExpensesByPaidBy, sumPaidByTotals } from './ledgerPaidBy';
 import type { FaLedgerEntry } from '../types';
 
 function entry(partial: Partial<FaLedgerEntry> & Pick<FaLedgerEntry, 'id' | 'amount'>): FaLedgerEntry {
@@ -47,5 +47,18 @@ describe('sumPaidByTotals', () => {
     expect(totals.AB).toBe(200);
     expect(totals.shareA).toBe(100);
     expect(totals.shareB).toBe(100);
+  });
+
+  it('lists expense lines for one party newest first', () => {
+    const rows = listExpensesByPaidBy(
+      [
+        entry({ id: '1', amount: 100, paidBy: 'A', date: '2026-07-01' }),
+        entry({ id: '2', amount: 50, paidBy: 'B', date: '2026-07-02' }),
+        entry({ id: '3', amount: 200, paidBy: 'A', date: '2026-07-10' }),
+        entry({ id: '4', amount: 9, paidBy: 'A', entryType: 'income', date: '2026-07-11' }),
+      ],
+      'A',
+    );
+    expect(rows.map((r) => r.id)).toEqual(['3', '1']);
   });
 });
