@@ -184,9 +184,9 @@ export default function MastersPage() {
           </Field>
           <Field id="e-type" label="ประเภท">
             <Select id="e-type" value={empType} onChange={(e) => setEmpType(e.target.value as EmployeeType)}>
-              <option value="monthly">พนักงานเงินเดือน</option>
-              <option value="daily">พนักงานรายวัน</option>
-              <option value="daily_driver">พนักงานขับรถรายวัน</option>
+              <option value="monthly">พนักงานรายเดือน</option>
+              <option value="daily">พนักงานรายวัน (คนงาน)</option>
+              <option value="daily_driver">พนักงานรายวัน (คนขับรถ)</option>
             </Select>
           </Field>
           <Field id="e-pay" label={empType === 'monthly' ? 'เงินเดือน' : 'ค่าแรงต่อวัน'}>
