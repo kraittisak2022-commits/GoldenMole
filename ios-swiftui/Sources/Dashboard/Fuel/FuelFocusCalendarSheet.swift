@@ -341,7 +341,14 @@ struct FuelFocusCalendarSheet: View {
     // MARK: - Actions
 
     private func rebuildMarks() {
-        marks = FuelLogic.dayFuelMarks(inMonth: visibleMonth, transactions: transactions)
+        let month = visibleMonth
+        let txs = transactions
+        Task(priority: .userInitiated) {
+            let next = await Task.detached(priority: .userInitiated) {
+                FuelLogic.dayFuelMarks(inMonth: month, transactions: txs)
+            }.value
+            marks = next
+        }
     }
 
     private func shiftMonth(_ delta: Int) {

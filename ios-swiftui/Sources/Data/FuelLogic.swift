@@ -201,14 +201,6 @@ enum FuelLogic {
         // Use Self.liters — a local `liters` binding would shadow the static method for the whole function.
         let persistedLiters = dayTx.filter(isSandSieve).reduce(0.0) { $0 + Self.liters(of: $1) }
         if persistedLiters > 0 {
-            // #region agent log
-            Self.debugLog(
-                hypothesisId: "A",
-                location: "FuelLogic.swift:sandSieveUsage",
-                message: "persisted SandSieve liters",
-                data: ["dayKey": date, "liters": persistedLiters, "fromPersistedRow": true]
-            )
-            // #endregion
             return SandSieveUsage(dayKey: date, liters: persistedLiters, hours: 0, fromPersistedRow: true)
         }
         guard let sand = CountRecordLogic.buildSandUnit(dayKey: date, transactions: dayTx) else { return nil }
@@ -216,54 +208,8 @@ enum FuelLogic {
         guard hours > 0 else { return nil }
         let inferredLiters = ((hours * sandSieveLitersPerHour) * 100).rounded() / 100
         guard inferredLiters > 0 else { return nil }
-        // #region agent log
-        Self.debugLog(
-            hypothesisId: "A",
-            location: "FuelLogic.swift:sandSieveUsage",
-            message: "inferred sand-sieve liters",
-            data: ["dayKey": date, "hours": hours, "liters": inferredLiters, "fromPersistedRow": false]
-        )
-        // #endregion
         return SandSieveUsage(dayKey: date, liters: inferredLiters, hours: hours, fromPersistedRow: false)
     }
-
-    // #region agent log
-    private static func debugLog(
-        hypothesisId: String,
-        location: String,
-        message: String,
-        data: [String: Any]
-    ) {
-        let payload: [String: Any] = [
-            "sessionId": "f18a50",
-            "runId": "post-fix",
-            "hypothesisId": hypothesisId,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
-        ]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let json = try? JSONSerialization.data(withJSONObject: payload),
-              let line = String(data: json, encoding: .utf8)
-        else { return }
-        let paths = [
-            "debug-f18a50.log",
-            "../debug-f18a50.log",
-            "c:/Users/HP/.gemini/antigravity/scratch/construction-management-app/debug-f18a50.log",
-        ]
-        let bytes = (line + "\n").data(using: .utf8)
-        for path in paths {
-            if let handle = FileHandle(forWritingAtPath: path) {
-                defer { try? handle.close() }
-                try? handle.seekToEnd()
-                if let bytes { try? handle.write(contentsOf: bytes) }
-                return
-            }
-            if FileManager.default.createFile(atPath: path, contents: bytes) { return }
-        }
-    }
-    // #endregion
 
     static func sandSieveLiters(on date: String, transactions: [Transaction]) -> Double {
         sandSieveUsage(on: date, transactions: transactions)?.liters ?? 0
@@ -325,10 +271,15 @@ enum FuelLogic {
         let persistedSieveDays = Set(
             transactions.filter(isSandSieve).map { String($0.date.prefix(10)) }
         )
-        let candidateDays = Set(transactions.map { String($0.date.prefix(10)) })
-            .filter { $0 >= stockCutoverYmd && !persistedSieveDays.contains($0) }
+        var txByDay: [String: [Transaction]] = [:]
+        for t in transactions {
+            let day = String(t.date.prefix(10))
+            guard day >= stockCutoverYmd else { continue }
+            txByDay[day, default: []].append(t)
+        }
+        let candidateDays = Set(txByDay.keys).filter { !persistedSieveDays.contains($0) }
         for date in candidateDays {
-            let inferred = inferredSandSieveLiters(on: date, transactions: transactions)
+            let inferred = inferredSandSieveLiters(on: date, transactions: txByDay[date] ?? [])
             guard inferred > 0 else { continue }
             let key = "\(date)|\(tankReserve)|D"
             var b = buckets[key] ?? Bucket()
@@ -467,7 +418,8 @@ enum FuelLogic {
                     mark.macroUsage = true
                 }
             }
-            if sandSieveLiters(on: key, transactions: transactions) > 0 {
+            // Pass dayTx only — sandSieveUsage filters/scans its input; full list per day was O(days × n).
+            if sandSieveLiters(on: key, transactions: dayTx) > 0 {
                 mark.sandSieve = true
             }
             out[key] = mark
@@ -641,8 +593,14 @@ enum FuelLogic {
 
         var machineByDay: [MonthlyDayRow] = []
         var machineTotal = 0.0
+        var monthTxByDay: [String: [Transaction]] = [:]
+        for t in transactions {
+            let day = String(t.date.prefix(10))
+            guard day.hasPrefix(monthKey) else { continue }
+            monthTxByDay[day, default: []].append(t)
+        }
         for date in dates {
-            guard let usage = sandSieveUsage(on: date, transactions: transactions) else { continue }
+            guard let usage = sandSieveUsage(on: date, transactions: monthTxByDay[date] ?? []) else { continue }
             machineTotal += usage.liters
             let subtitle: String? = usage.fromPersistedRow
                 ? nil
