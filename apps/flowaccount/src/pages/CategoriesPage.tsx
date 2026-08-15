@@ -46,6 +46,7 @@ export default function CategoriesPage() {
   const [catName, setCatName] = useState('');
   const [catKind, setCatKind] = useState<CategoryKind>('expense');
   const [showArchived, setShowArchived] = useState(false);
+  const [partyTab, setPartyTab] = useState<LedgerPaidBy>('A');
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -113,6 +114,11 @@ export default function CategoriesPage() {
         return { party, rows, total };
       }),
     [monthEntries, paidByTotals],
+  );
+
+  const activeParty = useMemo(
+    () => partySections.find((s) => s.party === partyTab) || partySections[0],
+    [partySections, partyTab],
   );
 
   const partyLineColumns: Column<FaLedgerEntry>[] = useMemo(
@@ -384,7 +390,7 @@ export default function CategoriesPage() {
                 ยังไม่มีรายจ่ายที่ระบุฝ่ายในเดือนนี้ — ตั้งค่าที่หน้ารายรับ-รายจ่าย
               </p>
             ) : (
-              <div className="space-y-6 p-4">
+              <div className="space-y-4 p-4">
                 <div className="grid gap-2 sm:grid-cols-3 text-sm">
                   <div className="rounded-md border border-border bg-slate-50 px-3 py-2">
                     <p className="text-xs text-muted">รายจ่ายของฝ่าย A</p>
@@ -414,28 +420,54 @@ export default function CategoriesPage() {
                     B {formatMoney(paidByTotals.shareB)}
                   </span>
                 </p>
-                {partySections.map(({ party, rows, total }) => (
-                  <div key={party} className="overflow-hidden rounded-lg border border-border">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-slate-50 px-4 py-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-ink">
-                          รายจ่ายของฝ่าย {LEDGER_PAID_BY_LABEL[party]}
-                        </h4>
-                        <p className="text-xs text-muted">{rows.length} รายการ</p>
-                      </div>
-                      <p className="text-sm tabular-nums text-muted">
-                        รวม{' '}
-                        <span className="font-semibold text-ink">{formatMoney(total)}</span> บาท
-                      </p>
-                    </div>
+
+                <div
+                  className="flex flex-wrap gap-2 border-b border-border pb-2"
+                  role="tablist"
+                  aria-label="รายจ่ายของฝ่าย"
+                >
+                  {partySections.map(({ party, rows, total }) => (
+                    <Button
+                      key={party}
+                      type="button"
+                      role="tab"
+                      aria-selected={partyTab === party}
+                      variant={partyTab === party ? 'primary' : 'ghost'}
+                      className="min-h-10"
+                      onClick={() => setPartyTab(party)}
+                    >
+                      ฝ่าย {LEDGER_PAID_BY_LABEL[party]}
+                      <span className="ml-2 text-xs opacity-80">
+                        ({rows.length} · {formatMoney(total)})
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+
+                <div role="tabpanel" aria-label={`รายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[activeParty.party]}`}>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-muted">
+                      รายการย่อยฝ่าย {LEDGER_PAID_BY_LABEL[activeParty.party]} · {activeParty.rows.length}{' '}
+                      รายการ
+                    </p>
+                    <p className="text-sm tabular-nums text-muted">
+                      รวม{' '}
+                      <span className="font-semibold text-ink">{formatMoney(activeParty.total)}</span>{' '}
+                      บาท
+                      {activeParty.party === 'AB' && activeParty.total > 0
+                        ? ` (ฝ่ายละ ${formatMoney(activeParty.total / 2)})`
+                        : ''}
+                    </p>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-border">
                     <DataTable
                       columns={partyLineColumns}
-                      rows={rows}
+                      rows={activeParty.rows}
                       rowKey={(r) => r.id}
-                      emptyText={`ยังไม่มีรายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[party]} ในเดือนนี้`}
+                      emptyText={`ยังไม่มีรายจ่ายของฝ่าย ${LEDGER_PAID_BY_LABEL[activeParty.party]} ในเดือนนี้`}
                     />
                   </div>
-                ))}
+                </div>
               </div>
             )}
           </Card>
