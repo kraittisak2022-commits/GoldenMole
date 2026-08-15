@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS fa_reimbursements (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   payer_name TEXT NOT NULL,
+  payer_id TEXT,
   description TEXT NOT NULL DEFAULT '',
   amount NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
   status TEXT NOT NULL DEFAULT 'pending'
@@ -52,8 +53,25 @@ CREATE TABLE IF NOT EXISTS fa_reimbursements (
   ledger_entry_id TEXT REFERENCES fa_ledger_entries(id),
   approved_by TEXT,
   approved_at TIMESTAMPTZ,
+  receipt_url TEXT,
+  repayment_proof_url TEXT,
+  repaid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS fa_reimb_payers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  share_token TEXT NOT NULL UNIQUE,
+  inactive BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE fa_reimbursements
+  DROP CONSTRAINT IF EXISTS fa_reimbursements_payer_id_fkey;
+ALTER TABLE fa_reimbursements
+  ADD CONSTRAINT fa_reimbursements_payer_id_fkey
+  FOREIGN KEY (payer_id) REFERENCES fa_reimb_payers(id);
 
 CREATE TABLE IF NOT EXISTS fa_payroll_slips (
   id TEXT PRIMARY KEY,
@@ -88,6 +106,8 @@ CREATE TABLE IF NOT EXISTS fa_fleet_logs (
 CREATE INDEX IF NOT EXISTS idx_fa_ledger_date ON fa_ledger_entries(date);
 CREATE INDEX IF NOT EXISTS idx_fa_ledger_category ON fa_ledger_entries(category_id);
 CREATE INDEX IF NOT EXISTS idx_fa_reimb_status ON fa_reimbursements(status);
+CREATE INDEX IF NOT EXISTS idx_fa_reimb_payer ON fa_reimbursements(payer_id);
+CREATE INDEX IF NOT EXISTS idx_fa_reimb_payers_token ON fa_reimb_payers(share_token);
 CREATE INDEX IF NOT EXISTS idx_fa_payroll_date ON fa_payroll_slips(pay_date);
 CREATE INDEX IF NOT EXISTS idx_fa_fleet_date ON fa_fleet_logs(work_date);
 
@@ -96,6 +116,7 @@ ALTER TABLE fa_employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_fleet_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_ledger_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_reimbursements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fa_reimb_payers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_payroll_slips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fa_fleet_logs ENABLE ROW LEVEL SECURITY;
 
@@ -104,6 +125,7 @@ DROP POLICY IF EXISTS "Allow all on fa_employees" ON fa_employees;
 DROP POLICY IF EXISTS "Allow all on fa_fleet_assets" ON fa_fleet_assets;
 DROP POLICY IF EXISTS "Allow all on fa_ledger_entries" ON fa_ledger_entries;
 DROP POLICY IF EXISTS "Allow all on fa_reimbursements" ON fa_reimbursements;
+DROP POLICY IF EXISTS "Allow all on fa_reimb_payers" ON fa_reimb_payers;
 DROP POLICY IF EXISTS "Allow all on fa_payroll_slips" ON fa_payroll_slips;
 DROP POLICY IF EXISTS "Allow all on fa_fleet_logs" ON fa_fleet_logs;
 
@@ -112,6 +134,7 @@ CREATE POLICY "Allow all on fa_employees" ON fa_employees FOR ALL USING (true) W
 CREATE POLICY "Allow all on fa_fleet_assets" ON fa_fleet_assets FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_ledger_entries" ON fa_ledger_entries FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_reimbursements" ON fa_reimbursements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on fa_reimb_payers" ON fa_reimb_payers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_payroll_slips" ON fa_payroll_slips FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on fa_fleet_logs" ON fa_fleet_logs FOR ALL USING (true) WITH CHECK (true);
 

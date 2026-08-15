@@ -44,6 +44,7 @@ export interface FaReimbursement {
   id: string;
   date: string;
   payerName: string;
+  payerId?: string | null;
   description: string;
   amount: number;
   status: ReimbursementStatus;
@@ -51,7 +52,29 @@ export interface FaReimbursement {
   ledgerEntryId?: string | null;
   approvedBy?: string | null;
   approvedAt?: string | null;
+  receiptUrl?: string | null;
+  repaymentProofUrl?: string | null;
+  repaidAt?: string | null;
   createdAt?: string;
+}
+
+export interface FaReimbPayer {
+  id: string;
+  name: string;
+  shareToken: string;
+  inactive: boolean;
+  createdAt?: string;
+}
+
+export interface PayerReimbSummary {
+  payerId: string | null;
+  payerName: string;
+  totalPaid: number;
+  pendingAmount: number;
+  approvedAmount: number;
+  repaidAmount: number;
+  unpaidApprovedAmount: number;
+  claimCount: number;
 }
 
 export interface FaPayrollSlip {

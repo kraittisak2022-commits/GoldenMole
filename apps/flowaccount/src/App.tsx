@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
 import AppShell from './components/AppShell';
 import CategoriesPage from './pages/CategoriesPage';
+import ClaimPage from './pages/ClaimPage';
 import DashboardPage from './pages/DashboardPage';
 import FleetPage from './pages/FleetPage';
 import FleetStatementPage from './pages/FleetStatementPage';
@@ -19,6 +20,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/claim/:token" element={<ClaimPage />} />
           <Route
             path="/"
             element={
