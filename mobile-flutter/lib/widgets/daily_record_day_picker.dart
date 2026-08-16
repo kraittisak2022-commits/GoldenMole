@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/app_transaction.dart';
 import '../utils/daily_module_transactions.dart';
 
-/// เปิดปฏิทินเลือกวันสำหรับแผง «บันทึกและนับจำนวน»
-/// แสดงจุดฟ้า = มีเที่ยว · จุดเขียว = มีร่อนทราย และสรุปวันนั้น
-Future<DateTime?> showCountRecordDayPicker({
+/// เปิดปฏิทินเลือกวันสำหรับหน้าบันทึกประจำวัน
+/// จุดเขียวอมฟ้า = เช็คชื่อ · ฟ้า = รถดรัม · เหลือง = น้ำมัน · ส้ม = เหตุการณ์
+Future<DateTime?> showDailyRecordDayPicker({
   required BuildContext context,
   required DateTime initialDate,
   required Iterable<AppTransaction> transactions,
@@ -17,7 +17,7 @@ Future<DateTime?> showCountRecordDayPicker({
   final last = lastDate ?? DateTime.now().add(const Duration(days: 365));
   return showDialog<DateTime>(
     context: context,
-    builder: (ctx) => _CountRecordDayPickerDialog(
+    builder: (ctx) => _DailyRecordDayPickerDialog(
       initialDate: initialDate,
       transactions: transactions,
       firstDate: first,
@@ -26,8 +26,8 @@ Future<DateTime?> showCountRecordDayPicker({
   );
 }
 
-class _CountRecordDayPickerDialog extends StatefulWidget {
-  const _CountRecordDayPickerDialog({
+class _DailyRecordDayPickerDialog extends StatefulWidget {
+  const _DailyRecordDayPickerDialog({
     required this.initialDate,
     required this.transactions,
     required this.firstDate,
@@ -40,19 +40,21 @@ class _CountRecordDayPickerDialog extends StatefulWidget {
   final DateTime lastDate;
 
   @override
-  State<_CountRecordDayPickerDialog> createState() =>
-      _CountRecordDayPickerDialogState();
+  State<_DailyRecordDayPickerDialog> createState() =>
+      _DailyRecordDayPickerDialogState();
 }
 
-class _CountRecordDayPickerDialogState
-    extends State<_CountRecordDayPickerDialog> {
+class _DailyRecordDayPickerDialogState
+    extends State<_DailyRecordDayPickerDialog> {
+  static const _attendanceDot = Color(0xFF2FB6A6);
   static const _tripDot = Color(0xFF1565C0);
-  static const _sandDot = Color(0xFF2E7D32);
+  static const _fuelDot = Color(0xFFFFAB00);
+  static const _eventDot = Color(0xFFFF7A1A);
   static const _teal = Color(0xFF0D98A5);
 
   late DateTime _month;
   late DateTime _selected;
-  late Map<String, CountRecordDayMark> _marks;
+  late Map<String, DailyRecordDayMark> _marks;
 
   @override
   void initState() {
@@ -68,7 +70,7 @@ class _CountRecordDayPickerDialogState
   }
 
   void _reloadMarks() {
-    _marks = countRecordDayMarksForMonth(
+    _marks = dailyRecordDayMarksForMonth(
       year: _month.year,
       month: _month.month,
       transactions: widget.transactions,
@@ -138,7 +140,7 @@ class _CountRecordDayPickerDialogState
   @override
   Widget build(BuildContext context) {
     final selectedMark = _marks[_ymd(_selected)];
-    final summary = selectedMark?.label ?? 'ยังไม่มีนับเที่ยว/ร่อนทราย';
+    final summary = selectedMark?.label ?? 'ยังไม่มีบันทึกประจำวัน';
     final today = DateTime.now();
     final todayDay = DateTime(today.year, today.month, today.day);
 
@@ -156,18 +158,20 @@ class _CountRecordDayPickerDialogState
       final selected = _sameDay(date, _selected);
       final isToday = _sameDay(date, todayDay);
       cells.add(
-        _DayCell(
+        _DailyRecordDayCell(
           day: day,
           enabled: enabled,
           selected: selected,
           isToday: isToday,
+          hasAttendance: mark?.hasAttendance ?? false,
           hasTrips: mark?.hasTrips ?? false,
-          hasSand: mark?.hasSand ?? false,
+          hasFuel: mark?.hasFuel ?? false,
+          hasEvent: mark?.hasEvent ?? false,
+          attendanceColor: _attendanceDot,
           tripColor: _tripDot,
-          sandColor: _sandDot,
-          onTap: enabled
-              ? () => setState(() => _selected = date)
-              : null,
+          fuelColor: _fuelDot,
+          eventColor: _eventDot,
+          onTap: enabled ? () => setState(() => _selected = date) : null,
         ),
       );
     }
@@ -179,7 +183,7 @@ class _CountRecordDayPickerDialogState
       contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       title: Text(
-        'เลือกวันที่นับจำนวน',
+        'เลือกวันที่บันทึกประจำวัน',
         style: GoogleFonts.kanit(
           fontWeight: FontWeight.w800,
           fontSize: 20,
@@ -243,11 +247,14 @@ class _CountRecordDayPickerDialogState
               children: cells,
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                _LegendDot(color: _tripDot, label: 'เที่ยว'),
-                const SizedBox(width: 14),
-                _LegendDot(color: _sandDot, label: 'ร่อนทราย'),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: const [
+                _LegendDot(color: _attendanceDot, label: 'เช็คชื่อ'),
+                _LegendDot(color: _tripDot, label: 'รถดรัม'),
+                _LegendDot(color: _fuelDot, label: 'น้ำมัน'),
+                _LegendDot(color: _eventDot, label: 'เหตุการณ์'),
               ],
             ),
             const SizedBox(height: 10),
@@ -337,16 +344,20 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
-class _DayCell extends StatelessWidget {
-  const _DayCell({
+class _DailyRecordDayCell extends StatelessWidget {
+  const _DailyRecordDayCell({
     required this.day,
     required this.enabled,
     required this.selected,
     required this.isToday,
+    required this.hasAttendance,
     required this.hasTrips,
-    required this.hasSand,
+    required this.hasFuel,
+    required this.hasEvent,
+    required this.attendanceColor,
     required this.tripColor,
-    required this.sandColor,
+    required this.fuelColor,
+    required this.eventColor,
     this.onTap,
   });
 
@@ -354,11 +365,26 @@ class _DayCell extends StatelessWidget {
   final bool enabled;
   final bool selected;
   final bool isToday;
+  final bool hasAttendance;
   final bool hasTrips;
-  final bool hasSand;
+  final bool hasFuel;
+  final bool hasEvent;
+  final Color attendanceColor;
   final Color tripColor;
-  final Color sandColor;
+  final Color fuelColor;
+  final Color eventColor;
   final VoidCallback? onTap;
+
+  Widget _dot(Color color) {
+    return Container(
+      width: 4.5,
+      height: 4.5,
+      decoration: BoxDecoration(
+        color: selected ? Colors.white.withValues(alpha: 0.92) : color,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +394,20 @@ class _DayCell extends StatelessWidget {
     final fg = selected
         ? Colors.white
         : (enabled ? const Color(0xFF1A2433) : const Color(0xFFB0B8C4));
+    final dots = <Widget>[];
+    if (hasAttendance) dots.add(_dot(attendanceColor));
+    if (hasTrips) {
+      if (dots.isNotEmpty) dots.add(const SizedBox(width: 2));
+      dots.add(_dot(tripColor));
+    }
+    if (hasFuel) {
+      if (dots.isNotEmpty) dots.add(const SizedBox(width: 2));
+      dots.add(_dot(fuelColor));
+    }
+    if (hasEvent) {
+      if (dots.isNotEmpty) dots.add(const SizedBox(width: 2));
+      dots.add(_dot(eventColor));
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -392,34 +432,15 @@ class _DayCell extends StatelessWidget {
                   color: fg,
                 ),
               ),
-              const SizedBox(height: 3),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (hasTrips)
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: selected ? Colors.white : tripColor,
-                        shape: BoxShape.circle,
+              const SizedBox(height: 2),
+              SizedBox(
+                height: 5,
+                child: dots.isEmpty
+                    ? const SizedBox.shrink()
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: dots,
                       ),
-                    ),
-                  if (hasTrips && hasSand) const SizedBox(width: 3),
-                  if (hasSand)
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? Colors.white.withValues(alpha: 0.85)
-                            : sandColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  if (!hasTrips && !hasSand)
-                    const SizedBox(width: 5, height: 5),
-                ],
               ),
             ],
           ),

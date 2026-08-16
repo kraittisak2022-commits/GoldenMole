@@ -1157,118 +1157,112 @@ Map<String, CountRecordDayMark> countRecordDayMarksForMonth({
   return out;
 }
 
-/// หมวดเมนูบันทึกประจำวันที่ใช้ทำจุดบนปฏิทิน (ลำดับเดียวกับหน้าแรก)
-const kDailyRecordCalendarModules = <String>[
-  'เช็คชื่อ',
-  'บันทึกการร่อนทราย',
-  'จำนวนเที่ยวรถ',
-  'การใช้รถแม็คโคร',
-  'น้ำมัน',
-  'เหตุการณ์',
-  'ค่าแรง',
-  'OT',
-  'ลางาน',
-  'เบิกเงิน',
-  'รายจ่ายรายรับ',
-];
-
-String dailyRecordModuleShortLabel(String moduleCategory) {
-  switch (moduleCategory) {
-    case 'เช็คชื่อ':
-      return 'เช็คชื่อ';
-    case 'บันทึกการร่อนทราย':
-      return 'ร่อนทราย';
-    case 'จำนวนเที่ยวรถ':
-      return 'รถดรัม';
-    case 'การใช้รถแม็คโคร':
-      return 'แม็คโคร';
-    case 'น้ำมัน':
-      return 'น้ำมัน';
-    case 'เหตุการณ์':
-      return 'เหตุการณ์';
-    case 'ค่าแรง':
-      return 'ค่าแรง';
-    case 'OT':
-      return 'OT';
-    case 'ลางาน':
-      return 'ลางาน';
-    case 'เบิกเงิน':
-      return 'เบิกเงิน';
-    case 'รายจ่ายรายรับ':
-      return 'รายรับ-รายจ่าย';
-    default:
-      return moduleCategory;
-  }
-}
-
-/// จุด/สรุปวันในปฏิทินหน้า «บันทึกประจำวัน»
+/// จุด/สรุปวันในปฏิทินเลือกวันหน้าบันทึกประจำวัน
 class DailyRecordDayMark {
   const DailyRecordDayMark({
-    required this.hasData,
+    required this.hasAttendance,
+    required this.hasTrips,
+    required this.hasFuel,
+    required this.hasEvent,
     this.label,
-    this.modules = const [],
   });
 
-  final bool hasData;
+  final bool hasAttendance;
+  final bool hasTrips;
+  final bool hasFuel;
+  final bool hasEvent;
   final String? label;
-  final List<String> modules;
+
+  bool get hasDot =>
+      hasAttendance || hasTrips || hasFuel || hasEvent;
+
+  bool get hasAny =>
+      hasDot || (label != null && label!.trim().isNotEmpty);
 }
 
-/// สรุปเครื่องหมายวันเดียว — มีข้อมูลอย่างน้อย 1 หมวดบันทึกประจำวัน
-///
-/// [moduleCategory] ถ้าไม่ null จะนับเฉพาะหมวดนั้น (ใช้ในฟอร์มโมดูล)
-DailyRecordDayMark dailyRecordDayMark(
+/// หมวดที่ใช้สร้างจุดสีหลักบนปฏิทินบันทึกประจำวัน
+const List<({String category, String shortLabel})> kDailyRecordDotModules = [
+  (category: 'เช็คชื่อ', shortLabel: 'เช็คชื่อ'),
+  (category: 'จำนวนเที่ยวรถ', shortLabel: 'รถดรัม'),
+  (category: 'น้ำมัน', shortLabel: 'น้ำมัน'),
+  (category: 'เหตุการณ์', shortLabel: 'เหตุการณ์'),
+];
+
+/// หมวดทั้งหมดที่รวมในข้อความสรุปวัน (ลำดับตามเมนูหน้าแรก)
+const List<({String category, String shortLabel})> kDailyRecordSummaryModules = [
+  (category: 'เช็คชื่อ', shortLabel: 'เช็คชื่อ'),
+  (category: 'บันทึกการร่อนทราย', shortLabel: 'ร่อนทราย'),
+  (category: 'จำนวนเที่ยวรถ', shortLabel: 'รถดรัม'),
+  (category: 'การใช้รถแม็คโคร', shortLabel: 'แม็คโคร'),
+  (category: 'น้ำมัน', shortLabel: 'น้ำมัน'),
+  (category: 'เหตุการณ์', shortLabel: 'เหตุการณ์'),
+  (category: 'ค่าแรง', shortLabel: 'ค่าแรง'),
+  (category: 'OT', shortLabel: 'OT'),
+  (category: 'ลางาน', shortLabel: 'ลางาน'),
+  (category: 'เบิกเงิน', shortLabel: 'เบิกเงิน'),
+  (category: 'รายจ่ายรายรับ', shortLabel: 'รายรับ-รายจ่าย'),
+];
+
+bool _dayHasModule(
   String dayKey,
-  Iterable<AppTransaction> transactions, {
-  String? moduleCategory,
-}) {
-  final day = dayKey.trim();
-  final cats = moduleCategory != null && moduleCategory.trim().isNotEmpty
-      ? <String>[moduleCategory.trim()]
-      : kDailyRecordCalendarModules;
-  final hit = <String>[];
-  for (final cat in cats) {
-    for (final t in transactions) {
-      if (transactionMatchesDailyModule(t, day, cat)) {
-        hit.add(cat);
-        break;
-      }
+  Iterable<AppTransaction> transactions,
+  String moduleCategory,
+) {
+  for (final t in transactions) {
+    if (transactionMatchesDailyModule(t, dayKey, moduleCategory)) {
+      return true;
     }
   }
-  if (hit.isEmpty) {
-    return const DailyRecordDayMark(hasData: false);
+  return false;
+}
+
+/// ข้อความสรุปหมวดที่มีข้อมูลในวันนั้น เช่น `เช็คชื่อ · รถดรัม · เหตุการณ์`
+String? dailyRecordDayStatusLabel(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  final parts = <String>[];
+  var listedAttendance = false;
+  for (final m in kDailyRecordSummaryModules) {
+    if (!_dayHasModule(dayKey, transactions, m.category)) continue;
+    // เช็คชื่อครอบคลุม Labor อยู่แล้ว — ไม่ซ้ำเป็น «ค่าแรง»
+    if (m.category == 'ค่าแรง' && listedAttendance) continue;
+    if (m.category == 'เช็คชื่อ') listedAttendance = true;
+    parts.add(m.shortLabel);
   }
-  final shorts = hit.map(dailyRecordModuleShortLabel).toList(growable: false);
+  if (parts.isEmpty) return null;
+  return parts.join(' · ');
+}
+
+/// สรุปเครื่องหมายวันเดียวสำหรับปฏิทินหน้าบันทึกประจำวัน
+DailyRecordDayMark dailyRecordDayMark(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
   return DailyRecordDayMark(
-    hasData: true,
-    label: shorts.join(' · '),
-    modules: hit,
+    hasAttendance: _dayHasModule(dayKey, transactions, 'เช็คชื่อ'),
+    hasTrips: _dayHasModule(dayKey, transactions, 'จำนวนเที่ยวรถ'),
+    hasFuel: _dayHasModule(dayKey, transactions, 'น้ำมัน'),
+    hasEvent: _dayHasModule(dayKey, transactions, 'เหตุการณ์'),
+    label: dailyRecordDayStatusLabel(dayKey, transactions),
   );
 }
 
-/// สร้าง map yyyy-MM-dd → เครื่องหมายบันทึกประจำวันสำหรับเดือนที่ระบุ
+/// สร้าง map yyyy-MM-dd → เครื่องหมาย สำหรับเดือนที่ระบุ (เฉพาะวันที่มีข้อมูล)
 Map<String, DailyRecordDayMark> dailyRecordDayMarksForMonth({
   required int year,
   required int month,
   required Iterable<AppTransaction> transactions,
-  String? moduleCategory,
 }) {
-  final byDay = <String, List<AppTransaction>>{};
-  final prefix =
-      '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}-';
-  for (final t in transactions) {
-    final d = t.date.trim();
-    if (!d.startsWith(prefix)) continue;
-    (byDay[d] ??= <AppTransaction>[]).add(t);
-  }
+  final list = List<AppTransaction>.of(transactions);
   final out = <String, DailyRecordDayMark>{};
-  for (final entry in byDay.entries) {
-    final mark = dailyRecordDayMark(
-      entry.key,
-      entry.value,
-      moduleCategory: moduleCategory,
-    );
-    if (mark.hasData) out[entry.key] = mark;
+  final daysInMonth = DateTime(year, month + 1, 0).day;
+  final y = year.toString().padLeft(4, '0');
+  final m = month.toString().padLeft(2, '0');
+  for (var day = 1; day <= daysInMonth; day++) {
+    final ymd = '$y-$m-${day.toString().padLeft(2, '0')}';
+    final mark = dailyRecordDayMark(ymd, list);
+    if (mark.hasAny) out[ymd] = mark;
   }
   return out;
 }

@@ -30,6 +30,7 @@ import '../utils/record_success_speaker.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_day_picker.dart';
+import '../widgets/daily_record_day_picker.dart';
 import '../widgets/count_record_menu_shell.dart';
 import '../widgets/count_record_tutorial.dart';
 import '../widgets/count_record_work_mode_picker.dart';

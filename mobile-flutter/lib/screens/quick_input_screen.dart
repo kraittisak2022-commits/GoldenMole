@@ -15,7 +15,7 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/attendance_sub_mode_picker.dart';
-import '../widgets/count_record_day_picker.dart';
+import '../widgets/daily_record_day_picker.dart';
 import '../widgets/fuel_sub_mode_picker.dart';
 import '../widgets/fuel_time_picker_dialog.dart';
 import '../widgets/thai_bank_brand_icon.dart';
@@ -5670,13 +5670,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final txs = await LocalDataCache.readTransactionsFullAny() ??
         _moduleDayAllTransactions;
     if (!mounted) return;
-    final moduleCat = widget.initialCategory?.trim();
     final picked = await showDailyRecordDayPicker(
       context: context,
       initialDate: _selectedDate,
       transactions: txs,
-      moduleCategory:
-          moduleCat != null && moduleCat.isNotEmpty ? moduleCat : null,
     );
     if (picked != null) {
       setState(
