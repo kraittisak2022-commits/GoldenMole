@@ -364,38 +364,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  void _resetVehicleTripDraftInPlace(_VehicleTripDraft row) {
-    row.tripTxId = null;
-    row.vehicleId = '';
-    row.driverId = '';
-    row.workType = 'FullDay';
-    row.tripBillingMode = 'LumpSum';
-    row.hourlyHours = '';
-    row.workDetails = '';
-    row.tripMorning = '';
-    row.tripAfternoon = '';
-    row.cubicPerTrip = '';
-    row.lumpSumTotalCubic = '';
-    row.workDetailsController.clear();
-    row.hourlyHoursController.clear();
-    row.tripMorningController.clear();
-    row.tripAfternoonController.clear();
-    row.cubicPerTripController.clear();
-    row.lumpSumTotalCubicController.clear();
-  }
-
-  void _clearVehicleTripFormAfterSave() {
-    while (_vehicleTripDrafts.length > 1) {
-      final removed = _vehicleTripDrafts.removeLast();
-      _deferDisposeVehicleDrafts([removed]);
-    }
-    if (_vehicleTripDrafts.isEmpty) {
-      _vehicleTripDrafts.add(_VehicleTripDraft.empty());
-      return;
-    }
-    _resetVehicleTripDraftInPlace(_vehicleTripDrafts.first);
-  }
-
   void _hydrateMacroDraftFromTransaction(
     _MacroVehicleDraft row,
     AppTransaction t,
@@ -2089,8 +2057,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isVehicleTripMode) {
-      // ฟอร์มว่างสำหรับเพิ่ม/แก้ไขทีละคัน — รายการที่บันทึกแล้วแสดงด้านล่าง
-      if (!_saving) _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
+      // วันที่มีบันทึก: โหลดแถวต่อคันเข้าฟอร์มเลย — วันว่าง: แถวเปล่า 1 แถว
+      if (!_saving) {
+        final pool = dayTransactions ?? txs;
+        final latest = latestVehicleTripsByVehicle(
+          pool,
+          ymd: _quickYmd(_selectedDate),
+        );
+        if (latest.isEmpty) {
+          _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
+        } else {
+          final drafts = latest
+              .map(_vehicleTripDraftFromAppTransaction)
+              .toList(growable: false);
+          _replaceVehicleDrafts(drafts);
+        }
+      }
       return;
     }
 
@@ -3315,7 +3297,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveButtonLabel: 'บันทึกรถคันนี้',
       requireSignature: false,
       stayOnPage: true,
-      onStayOnPageCleared: _clearVehicleTripFormAfterSave,
+      // คงแถวที่เพิ่งบันทึกไว้ให้ตรวจต่อ — _loadModuleTransactions จะ refill เมื่อ !_saving
+      onStayOnPageCleared: null,
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           final lumpFilled =
@@ -3490,20 +3473,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ]) {
       if (seenIds.add(t.id)) pool.add(t);
     }
-    AppTransaction? best;
-    for (final t in pool) {
-      if (!_isVehicleTripHydrateSource(t)) continue;
-      if (t.date.trim() != ymd) continue;
-      if ((t.vehicleId ?? '').trim() != vehicle) continue;
-      if (best == null) {
-        best = t;
-        continue;
-      }
-      final tb = t.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final tab = best.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      if (tb.isAfter(tab)) best = t;
+    for (final t in latestVehicleTripsByVehicle(pool, ymd: ymd)) {
+      if ((t.vehicleId ?? '').trim() == vehicle) return t;
     }
-    return best;
+    return null;
   }
 
   void _mergeVehicleTripDraftFrom(
@@ -9857,17 +9830,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   /// แถวที่โหลดเข้าฟอร์มรถดรัมได้ (เว็บ Daily Wizard / เลกาซี category Vehicle)
-  bool _isVehicleTripHydrateSource(AppTransaction t) {
-    if (isMacroVehicleTransaction(t)) return false;
-    if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
-    if (isHomeSandRoundCloseRow(t)) return false;
-    if (t.category == 'DailyLog' &&
-        (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
-      return true;
-    }
-    if (t.category == 'Vehicle') return true;
-    return false;
-  }
+  bool _isVehicleTripHydrateSource(AppTransaction t) =>
+      isVehicleTripHydrateSource(t);
 
   _VehicleTripDraft _vehicleTripDraftFromAppTransaction(AppTransaction t) {
     final d = _VehicleTripDraft.empty();

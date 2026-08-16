@@ -1419,6 +1419,59 @@ bool transactionMatchesVehicleTripModuleList(AppTransaction t) {
   return false;
 }
 
+/// แถวที่โหลดเข้าฟอร์มรถดรัมได้ (เว็บ Daily Wizard / เลกาซี category Vehicle)
+/// ไม่รวมแม็คโคร / ทรายบ้าน / ปิดรอบทรายบ้าน
+bool isVehicleTripHydrateSource(AppTransaction t) {
+  if (isMacroVehicleTransaction(t)) return false;
+  if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
+  if (isHomeSandRoundCloseRow(t)) return false;
+  if (t.category == 'DailyLog' &&
+      (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
+    return true;
+  }
+  if (t.category == 'Vehicle') return true;
+  return false;
+}
+
+bool _vehicleTripIsNewerThan(AppTransaction a, AppTransaction b) {
+  // แถวออฟไลน์ที่ยังไม่มี createdAt ถือว่าใหม่กว่าแถวที่ขึ้นเซิร์ฟเวอร์แล้ว
+  final aa = a.createdAt;
+  final bb = b.createdAt;
+  if (aa == null && bb == null) return false;
+  if (aa == null) return true;
+  if (bb == null) return false;
+  return aa.isAfter(bb);
+}
+
+/// รวมแถวเที่ยวรถดรัมของวัน [ymd] เป็น **คันละ 1 แถว** (ล่าสุดตาม [createdAt])
+/// เรียงตามชื่อรถให้อ่านง่าย — ใช้ hydrate ฟอร์มเมนูบันทึกรถดรัม
+List<AppTransaction> latestVehicleTripsByVehicle(
+  Iterable<AppTransaction> rows, {
+  required String ymd,
+}) {
+  final day = ymd.trim();
+  final byVehicle = <String, AppTransaction>{};
+  for (final t in rows) {
+    if (!isVehicleTripHydrateSource(t)) continue;
+    if (t.date.trim() != day) continue;
+    final vid = (t.vehicleId ?? '').trim();
+    if (vid.isEmpty) continue;
+    final existing = byVehicle[vid];
+    if (existing == null || _vehicleTripIsNewerThan(t, existing)) {
+      byVehicle[vid] = t;
+    }
+  }
+  final list = byVehicle.values.toList();
+  list.sort((a, b) {
+    final va = (a.vehicleId ?? '').trim();
+    final vb = (b.vehicleId ?? '').trim();
+    final byName = va.compareTo(vb);
+    if (byName != 0) return byName;
+    return a.id.compareTo(b.id);
+  });
+  return list;
+}
+
 /// จับคู่แถว [transactions] กับเมนูบันทึกประจำวันที่เลือก (หมวดจากแดชบอร์ด)
 bool transactionMatchesDailyModule(
   AppTransaction t,
