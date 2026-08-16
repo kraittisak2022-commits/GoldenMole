@@ -209,6 +209,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _dailyEventDescController = TextEditingController();
   String _dailyEventType = 'info';
   String _dailyEventPriority = 'normal';
+  /// id เหตุการณ์ที่กำลังแก้ไข — null = บันทึกใหม่
+  String? _dailyEventTxId;
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
   final _advanceAmountPerPersonController = TextEditingController();
@@ -1028,6 +1030,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _homeSandTxId = null;
     _homeSandRoundTxId = null;
     _genericTxId = null;
+    _dailyEventTxId = null;
   }
 
   void _disposeVehicleDrafts() {
@@ -1203,9 +1206,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _otDescController.clear();
       }
     } else if (_isDailyEventMode) {
-      _dailyEventDescController.clear();
-      _dailyEventType = 'info';
-      _dailyEventPriority = 'normal';
+      if (!_saving) {
+        _dailyEventTxId = null;
+        _dailyEventDescController.clear();
+        _dailyEventType = 'info';
+        _dailyEventPriority = 'normal';
+      }
     } else if (_isIncomeUtilitiesEntryMode) {
       _iuEntryKind = null;
       _iuExpenseChoice = null;
@@ -2031,8 +2037,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _hydrateAttendanceFromTransactions(txs);
       return;
     }
+    if (_isDailyEventMode) {
+      if (!_saving) _hydrateDailyEventFromTransactions(txs);
+      return;
+    }
     if (txs.isEmpty) return;
-    if (_isDailyEventMode) return;
     void setIfEmpty(TextEditingController c, String val) {
       if (val.isEmpty) return;
       if (c.text.trim().isEmpty) c.text = val;
@@ -5425,13 +5434,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     await _runSaveWithPopups(
       successMessage: 'บันทึกเหตุการณ์สำเร็จ',
       saveActionLabel: 'บันทึกเหตุการณ์ประจำวัน',
-      saveButtonLabel: 'บันทึก',
+      saveButtonLabel: _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty
+          ? 'อัปเดตเหตุการณ์'
+          : 'บันทึกเหตุการณ์',
       stayOnPage: true,
-      onStayOnPageCleared: () {
-        _dailyEventDescController.clear();
-        _dailyEventType = 'info';
-        _dailyEventPriority = 'normal';
-      },
+      // คงฟอร์มไว้ให้ตรวจ/แก้ต่อ — hydrate ตอนโหลดวันจะเติมเมื่อ !_saving
+      onStayOnPageCleared: null,
       body: () async {
         final text = _dailyEventDescController.text.trim();
         if (text.isEmpty) {
@@ -5441,7 +5449,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-        final id = '${DateTime.now().millisecondsSinceEpoch}_event';
+        final id = (_dailyEventTxId != null && _dailyEventTxId!.trim().isNotEmpty)
+            ? _dailyEventTxId!.trim()
+            : '${DateTime.now().millisecondsSinceEpoch}_event';
+        _dailyEventTxId = id;
         await _persist(
           AppTransaction(
             id: id,
@@ -5462,6 +5473,66 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
       },
     );
+  }
+
+  void _applyDailyEventToForm(AppTransaction t) {
+    _dailyEventTxId = t.id;
+    _dailyEventDescController.text = _stripRecorderSuffix(t.description);
+    final et = (t.eventType ?? '').trim();
+    _dailyEventType = et.isEmpty ? 'info' : et;
+    final ep = (t.eventPriority ?? '').trim();
+    _dailyEventPriority = ep.isEmpty ? 'normal' : ep;
+    _persistOmitCreatedForIds.add(t.id);
+  }
+
+  void _hydrateDailyEventFromTransactions(List<AppTransaction> txs) {
+    AppTransaction? best;
+    for (final t in txs) {
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim() != 'Event') continue;
+      if (t.description.trim().isEmpty) continue;
+      best = t;
+      break; // matched เรียงใหม่สุดก่อน
+    }
+    if (best == null) {
+      _dailyEventTxId = null;
+      _dailyEventDescController.clear();
+      _dailyEventType = 'info';
+      _dailyEventPriority = 'normal';
+      return;
+    }
+    _applyDailyEventToForm(best);
+  }
+
+  void _loadDailyEventIntoForm(AppTransaction t) {
+    _applyDailyEventToForm(t);
+    _scheduleUiRefresh();
+  }
+
+  void _startNewDailyEvent() {
+    setState(() {
+      _dailyEventTxId = null;
+      _dailyEventDescController.clear();
+      _dailyEventType = 'info';
+      _dailyEventPriority = 'normal';
+    });
+  }
+
+  String _dailyEventTypeLabel(String? raw) {
+    switch ((raw ?? '').trim()) {
+      case 'warning':
+        return 'เตือน';
+      case 'problem':
+        return 'ปัญหา';
+      case 'success':
+        return 'สำเร็จ';
+      case 'complaint':
+        return 'ข้อร้องเรียน';
+      case 'request':
+        return 'ความต้องการ';
+      default:
+        return 'ข้อมูล';
+    }
   }
 
   /// จำนวนวันลาจากช่วงวันที่เลือก (นับรวมวันแรกและวันสุดท้าย)
@@ -15507,6 +15578,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_dailyEventTxId != null && _dailyEventTxId!.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFCC80)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.edit_note_rounded,
+                      size: 20,
+                      color: Color(0xFFE65100),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'กำลังแก้ไขเหตุการณ์ที่มีอยู่ — กดอัปเดตเพื่อบันทึก หรือเพิ่มใหม่ด้านล่าง',
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFBF360C),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Text(
               'ประเภท',
               style: GoogleFonts.kanit(
@@ -15655,9 +15757,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               enabled: !_saving,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveQuickEntry,
-                icon: const Icon(Icons.save_outlined),
+                icon: Icon(
+                  _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty
+                      ? Icons.update_rounded
+                      : Icons.save_outlined,
+                ),
                 label: Text(
-                  _saving ? 'กำลังบันทึก...' : 'บันทึกเหตุการณ์',
+                  _saving
+                      ? 'กำลังบันทึก...'
+                      : (_dailyEventTxId != null &&
+                                _dailyEventTxId!.isNotEmpty
+                            ? 'อัปเดตเหตุการณ์'
+                            : 'บันทึกเหตุการณ์'),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
@@ -15670,9 +15781,133 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
             ),
+            if (_dailyEventTxId != null && _dailyEventTxId!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _startNewDailyEvent,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(
+                  'เพิ่มเหตุการณ์ใหม่',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+            _buildDailyEventSavedTodaySection(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _dailyEventSavedDetailCard(AppTransaction t) {
+    final desc = _stripRecorderSuffix(t.description).trim();
+    final typeLabel = _dailyEventTypeLabel(t.eventType);
+    final pri = ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
+    final created = t.createdAt;
+    final timeHint = created != null
+        ? 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
+        : null;
+    final isCurrent = t.id == _dailyEventTxId;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isCurrent ? const Color(0xFFFFF8E1) : const Color(0xFFFFFBF5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isCurrent ? const Color(0xFFFFB74D) : const Color(0xFFFFE0B2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$typeLabel • $pri${isCurrent ? ' • กำลังแก้ไข' : ''}',
+            style: GoogleFonts.kanit(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFE65100),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            desc.isEmpty ? '(ไม่มีรายละเอียด)' : desc,
+            style: GoogleFonts.kanit(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1D2A3A),
+              height: 1.3,
+            ),
+          ),
+          if (timeHint != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              timeHint,
+              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black45),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyEventSavedTodaySection() {
+    final saved = _moduleDayTransactions
+        .where(
+          (t) =>
+              t.category == 'DailyLog' &&
+              (t.subCategory ?? '').trim() == 'Event' &&
+              t.description.trim().isNotEmpty,
+        )
+        .toList();
+    if (saved.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(
+          'ยังไม่มีเหตุการณ์ในวันที่เลือก — กรอกด้านบนแล้วกดบันทึก',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 14),
+        Text(
+          'เหตุการณ์วันนี้ (${saved.length} รายการ) — แตะเพื่อแก้ไข',
+          style: GoogleFonts.kanit(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFFE65100),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...saved.map(
+          (t) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  _loadDailyEventIntoForm(t);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'โหลดเหตุการณ์มาแก้ไขด้านบนแล้ว',
+                        style: GoogleFonts.kanit(),
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: _dailyEventSavedDetailCard(t),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
