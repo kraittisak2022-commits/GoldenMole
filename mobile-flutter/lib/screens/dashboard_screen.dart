@@ -29,6 +29,7 @@ import '../utils/mobile_screen_ids.dart';
 import '../utils/record_success_speaker.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
+import '../widgets/count_record_day_picker.dart';
 import '../widgets/count_record_menu_shell.dart';
 import '../widgets/count_record_tutorial.dart';
 import '../widgets/count_record_work_mode_picker.dart';
@@ -753,6 +754,18 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  /// ปฏิทินในหน้าบันทึกและนับจำนวน — แสดงวันที่มีเที่ยว/ร่อนทราย
+  Future<void> _pickCountRecordDay() async {
+    final picked = await showCountRecordDayPicker(
+      context: context,
+      initialDate: _selectedDay,
+      transactions: _lastHomePayload?.allTransactions ?? const [],
+    );
+    if (picked != null) {
+      _applySelectedDay(picked);
+    }
+  }
+
   void _applySelectedDay(DateTime picked) {
     if (!mounted) return;
     final next = DateTime(picked.year, picked.month, picked.day);
@@ -916,6 +929,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                             _refreshAfterCountRecordChange,
                                         onRequireToday: _forceCountRecordToday,
                                         onPickDay: _pickDay,
+                                        onPickCountRecordDay: _pickCountRecordDay,
                                         dateKey: _dateKey,
                                         formatBuddhistDateButton:
                                             _formatBuddhistDateButton,
@@ -1018,6 +1032,7 @@ class _DailyHomeContent extends StatefulWidget {
     required this.onCountRecordDataChanged,
     required this.onRequireToday,
     required this.onPickDay,
+    required this.onPickCountRecordDay,
     required this.dateKey,
     required this.formatBuddhistDateButton,
     required this.onOpenModule,
@@ -1038,6 +1053,7 @@ class _DailyHomeContent extends StatefulWidget {
   /// สลับวันที่เลือกเป็นวันนี้เมื่อกดนับขณะดูวันอื่น
   final VoidCallback onRequireToday;
   final VoidCallback onPickDay;
+  final VoidCallback onPickCountRecordDay;
   final String Function(DateTime) dateKey;
   final String Function(DateTime) formatBuddhistDateButton;
   final void Function(_DailyModuleDef m) onOpenModule;
@@ -1401,6 +1417,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
                 final backLabel =
                     modeSelected ? 'เลือกงานใหม่' : 'กลับเมนูหลัก';
+                final d = widget.selectedDay;
+                final dayShort =
+                    '${d.day.toString().padLeft(2, '0')}/'
+                    '${d.month.toString().padLeft(2, '0')}/'
+                    '${d.year + 543}';
 
                 return CountRecordMenuShell(
                   child: Padding(
@@ -1501,6 +1522,52 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      SoftPressButton(
+                        onTap: widget.onPickCountRecordDay,
+                        size: SoftPressSize.small,
+                        borderRadius: 14,
+                        isDarkSurface: false,
+                        liftWhenIdle: true,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE6F7F9),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFA9DCE4)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                size: 18,
+                                color: Color(0xFF0D98A5),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'วันที่ $dayShort · แตะเพื่อเปลี่ยนวัน',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.kanit(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0A6270),
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: Color(0xFF4A5A70),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Expanded(

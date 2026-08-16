@@ -1099,6 +1099,64 @@ String? countRecordMenuStatusLabel(
   return _joinStatusParts(parts);
 }
 
+/// จุด/สรุปวันในปฏิทินแผง «บันทึกและนับจำนวน»
+class CountRecordDayMark {
+  const CountRecordDayMark({
+    required this.hasTrips,
+    required this.hasSand,
+    this.label,
+  });
+
+  final bool hasTrips;
+  final bool hasSand;
+  final String? label;
+
+  bool get hasAny => hasTrips || hasSand;
+}
+
+/// สรุปเครื่องหมายวันเดียวจากรายการธุรกรรม (นับเที่ยว + ร่อนทราย)
+CountRecordDayMark countRecordDayMark(
+  String dayKey,
+  Iterable<AppTransaction> transactions,
+) {
+  var hasTrips = false;
+  var hasSand = false;
+  for (final t in transactions) {
+    if (t.date.trim() != dayKey.trim()) continue;
+    if (!countRecordRowHasSavedData(t)) continue;
+    if (_isCountRecordVehicleRow(t)) hasTrips = true;
+    if (_isCountRecordSandRow(t)) hasSand = true;
+    if (hasTrips && hasSand) break;
+  }
+  return CountRecordDayMark(
+    hasTrips: hasTrips,
+    hasSand: hasSand,
+    label: countRecordMenuStatusLabel(dayKey, transactions),
+  );
+}
+
+/// สร้าง map yyyy-MM-dd → เครื่องหมาย สำหรับเดือนที่ระบุ
+Map<String, CountRecordDayMark> countRecordDayMarksForMonth({
+  required int year,
+  required int month,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final byDay = <String, List<AppTransaction>>{};
+  final prefix =
+      '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}-';
+  for (final t in transactions) {
+    final d = t.date.trim();
+    if (!d.startsWith(prefix)) continue;
+    if (!countRecordRowHasSavedData(t)) continue;
+    (byDay[d] ??= <AppTransaction>[]).add(t);
+  }
+  final out = <String, CountRecordDayMark>{};
+  for (final entry in byDay.entries) {
+    out[entry.key] = countRecordDayMark(entry.key, entry.value);
+  }
+  return out;
+}
+
 /// รวมจำนวนรอบที่นับได้ในวันนั้นแยกช่วงเช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
 ({int morning, int afternoon}) countRecordSandPeriodTotals(
   String dayKey,

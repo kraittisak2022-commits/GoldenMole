@@ -421,6 +421,96 @@ void main() {
     );
   });
 
+  test('countRecordDayMark flags trips and sand with status label', () {
+    final txs = [
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม-1: 3 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 3,
+        perCarTrips: 3,
+      ),
+      AppTransaction(
+        id: 'sand1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 2 รอบ',
+        amount: 0,
+        drumsObtained: 2,
+      ),
+    ];
+    final mark = countRecordDayMark(day, txs);
+    expect(mark.hasTrips, isTrue);
+    expect(mark.hasSand, isTrue);
+    expect(mark.hasAny, isTrue);
+    expect(mark.label, '1 คัน · 3 เที่ยว · ร่อน 2 รอบ');
+  });
+
+  test('countRecordDayMark empty day has no flags or label', () {
+    final mark = countRecordDayMark(day, const []);
+    expect(mark.hasTrips, isFalse);
+    expect(mark.hasSand, isFalse);
+    expect(mark.hasAny, isFalse);
+    expect(mark.label, isNull);
+  });
+
+  test('countRecordDayMarksForMonth indexes only days with data', () {
+    final txs = [
+      AppTransaction(
+        id: 't1',
+        date: '2026-05-19',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม: 1 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        tripCount: 1,
+        perCarTrips: 1,
+      ),
+      AppTransaction(
+        id: 's1',
+        date: '2026-05-20',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Sand',
+        description: 'ร่อนทราย: 5 รอบ',
+        amount: 0,
+        drumsObtained: 5,
+      ),
+      AppTransaction(
+        id: 'other',
+        date: '2026-06-01',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม: 2 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-2',
+        tripCount: 2,
+        perCarTrips: 2,
+      ),
+    ];
+    final marks = countRecordDayMarksForMonth(
+      year: 2026,
+      month: 5,
+      transactions: txs,
+    );
+    expect(marks.keys, containsAll(['2026-05-19', '2026-05-20']));
+    expect(marks.containsKey('2026-06-01'), isFalse);
+    expect(marks['2026-05-19']!.hasTrips, isTrue);
+    expect(marks['2026-05-19']!.hasSand, isFalse);
+    expect(marks['2026-05-20']!.hasSand, isTrue);
+    expect(marks['2026-05-20']!.hasTrips, isFalse);
+  });
+
   test('count record card respects trip-only work mode', () {
     final txs = [
       AppTransaction(
