@@ -29,6 +29,8 @@ struct DashboardShell: View {
     @State private var showOpsMenu = false
     @State private var opsMenuDrag: CGFloat = 0
     @State private var opsDestination: OpsMenuItem?
+    /// Shared focus day for ร่อนทราย / เที่ยวรถ / สต๊อกทราย (in-session only).
+    @State private var opsFocusDate = Date()
 
     private var isRealtimeTabActive: Bool {
         mainTab == .realtimeTrip || mainTab == .realtimeSand
@@ -54,7 +56,7 @@ struct DashboardShell: View {
                 .tag(AppMainTab.realtimeSand)
 
                 NavigationStack {
-                    SandStockHubView()
+                    SandStockHubView(focusDate: $opsFocusDate)
                 }
                 .tabItem { Label("สต๊อกทราย", systemImage: "cylinder.split.1x2.fill") }
                 .tag(AppMainTab.sandStock)
@@ -304,7 +306,8 @@ struct DashboardShell: View {
                         settings: appState.settings,
                         transactionsRevision: appState.transactionsRevision,
                         mode: mode,
-                        isRealtimeTabActive: isRealtimeTabActive
+                        isRealtimeTabActive: isRealtimeTabActive,
+                        focusDate: $opsFocusDate
                     )
                 }
                 .padding(AppTheme.spaceLG)

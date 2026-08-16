@@ -5,7 +5,8 @@ struct SandStockHubView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var focusDate = Date()
+    /// Shared with เที่ยวรถ / ร่อนทราย via DashboardShell.
+    @Binding var focusDate: Date
     @State private var showDatePicker = false
     @State private var snapshot = SandStockLogic.Snapshot.empty
     @State private var openingDraft = ""

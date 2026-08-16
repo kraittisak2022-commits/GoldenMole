@@ -210,8 +210,9 @@ struct RealtimeV4View: View {
     var mode: RealtimeBoardMode = .trip
     /// True when either Real-time bottom tab is selected — drives snapshot rebuilds.
     var isRealtimeTabActive: Bool = true
+    /// Shared with เที่ยวรถ / ร่อนทราย / สต๊อกทราย via DashboardShell.
+    @Binding var focusDate: Date
 
-    @State private var focusDate = Date()
     @State private var snapshot = RealtimeV4Snapshot.empty()
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showDatePicker = false
