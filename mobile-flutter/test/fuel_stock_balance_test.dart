@@ -12,6 +12,9 @@ AppTransaction _fuel({
   String? tank,
   String? workType,
   String? vehicleId,
+  String? note,
+  String? workDetails,
+  DateTime? createdAt,
   String date = _day,
 }) =>
     AppTransaction(
@@ -29,6 +32,9 @@ AppTransaction _fuel({
       fuelTank: tank,
       workType: workType,
       vehicleId: vehicleId,
+      note: note,
+      workDetails: workDetails,
+      createdAt: createdAt,
     );
 
 AppTransaction _sand({
@@ -323,6 +329,158 @@ void main() {
       expect(next, isNotNull);
       expect(next!.mainDiesel, 920);
       expect(next.reserveDiesel, 280);
+    });
+  });
+
+  group('latest fuel day rows', () {
+    test('isFuelCarFillRow only for withdraw+car', () {
+      expect(
+        isFuelCarFillRow(
+          _fuel(
+            id: 'car',
+            sub: kFuelWithdrawSubCategory,
+            movement: 'stock_out',
+            liters: 40,
+            workType: 'car',
+            vehicleId: kFuelCarFillMighty,
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        isFuelCarFillRow(
+          _fuel(
+            id: 'gen',
+            sub: kFuelWithdrawSubCategory,
+            movement: 'stock_out',
+            liters: 20,
+            workType: 'generator',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('latestFuelCarFillForVehicle picks newest by createdAt', () {
+      final older = _fuel(
+        id: 'old',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 20,
+        workType: 'car',
+        vehicleId: kFuelCarFillMighty,
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final newer = _fuel(
+        id: 'new',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 40,
+        workType: 'car',
+        vehicleId: kFuelCarFillMighty,
+        createdAt: DateTime.utc(2026, 8, 10, 15),
+      );
+      final hit = latestFuelCarFillForVehicle(
+        dayYmd: _day,
+        transactions: [older, newer],
+        vehicleId: kFuelCarFillMighty,
+      );
+      expect(hit?.id, 'new');
+      expect(fuelTxLiters(hit!), 40);
+    });
+
+    test('latestFuelCarFillForVehicle empty vehicleId matches other cars', () {
+      final known = _fuel(
+        id: 'mighty',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 10,
+        workType: 'car',
+        vehicleId: kFuelCarFillMighty,
+        createdAt: DateTime.utc(2026, 8, 10, 12),
+      );
+      final other = _fuel(
+        id: 'other',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 25,
+        workType: 'car',
+        vehicleId: 'รถปิคอัพ',
+        createdAt: DateTime.utc(2026, 8, 10, 9),
+      );
+      final hit = latestFuelCarFillForVehicle(
+        dayYmd: _day,
+        transactions: [known, other],
+        vehicleId: '',
+      );
+      expect(hit?.id, 'other');
+    });
+
+    test('latestFuelWithdrawForPurpose picks transfer out for machine', () {
+      final outTx = _fuel(
+        id: 'xfer_out',
+        sub: kFuelTransferSubCategory,
+        movement: 'stock_out',
+        liters: 100,
+        tank: kFuelTankMain,
+        workType: 'machine',
+        note: 'xfer:1',
+        createdAt: DateTime.utc(2026, 8, 10, 10),
+      );
+      final inTx = _fuel(
+        id: 'xfer_in',
+        sub: kFuelTransferSubCategory,
+        movement: 'stock_in',
+        liters: 100,
+        tank: kFuelTankReserve,
+        workType: 'machine',
+        note: 'xfer:1',
+        createdAt: DateTime.utc(2026, 8, 10, 10),
+      );
+      final gen = _fuel(
+        id: 'gen',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 30,
+        workType: 'generator',
+        createdAt: DateTime.utc(2026, 8, 10, 11),
+      );
+      final hit = latestFuelWithdrawForPurpose(
+        dayYmd: _day,
+        transactions: [outTx, inTx, gen],
+        purpose: FuelWithdrawPurpose.machine,
+      );
+      expect(hit?.id, 'xfer_out');
+      final pair = fuelMachineTransferPair(
+        outTx: hit!,
+        transactions: [outTx, inTx, gen],
+      );
+      expect(pair.inTx?.id, 'xfer_in');
+    });
+
+    test('latestFuelWithdrawForPurpose picks newest generator', () {
+      final older = _fuel(
+        id: 'g1',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 10,
+        workType: 'generator',
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final newer = _fuel(
+        id: 'g2',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 35,
+        workType: 'generator',
+        createdAt: DateTime.utc(2026, 8, 10, 16),
+      );
+      final hit = latestFuelWithdrawForPurpose(
+        dayYmd: _day,
+        transactions: [older, newer],
+        purpose: FuelWithdrawPurpose.generator,
+      );
+      expect(hit?.id, 'g2');
     });
   });
 }

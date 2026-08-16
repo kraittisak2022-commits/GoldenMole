@@ -199,6 +199,114 @@ String? fuelWithdrawPurposeCode(AppTransaction t) {
   return code.isEmpty ? null : code;
 }
 
+/// แถวเติมน้ำมันรถยนต์ (เมนู «เติมน้ำมันรถยนต์»)
+bool isFuelCarFillRow(AppTransaction t) {
+  if (!isFuelWithdrawRow(t)) return false;
+  return fuelWithdrawPurposeCode(t) == 'car';
+}
+
+const Set<String> _kFuelCarFillKnownVehicleIds = {
+  kFuelCarFillMighty,
+  kFuelCarFillTaplien,
+  kFuelCarFillAhming,
+};
+
+bool isKnownFuelCarFillVehicleId(String? vehicleId) {
+  final v = (vehicleId ?? '').trim();
+  return v.isNotEmpty && _kFuelCarFillKnownVehicleIds.contains(v);
+}
+
+int _fuelRowRecencyMs(AppTransaction t) =>
+    t.createdAt?.millisecondsSinceEpoch ?? 0;
+
+AppTransaction? _latestFuelRow(Iterable<AppTransaction> rows) {
+  AppTransaction? best;
+  var bestMs = -1;
+  for (final t in rows) {
+    final ms = _fuelRowRecencyMs(t);
+    if (best == null || ms >= bestMs) {
+      best = t;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
+/// รายการเติมน้ำมันรถยนต์ล่าสุดของวันนั้นสำหรับคันที่เลือก
+///
+/// [vehicleId] ว่าง = กลุ่ม «อื่นๆ» (ไม่ใช่ 3 คันหลัก)
+AppTransaction? latestFuelCarFillForVehicle({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required String vehicleId,
+}) {
+  final day = dayYmd.trim();
+  final vid = vehicleId.trim();
+  final wantOther = vid.isEmpty;
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelCarFillRow(t)) continue;
+    final rowVid = (t.vehicleId ?? '').trim();
+    if (wantOther) {
+      if (rowVid.isEmpty || isKnownFuelCarFillVehicleId(rowVid)) continue;
+    } else if (rowVid != vid) {
+      continue;
+    }
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// แถวเบิก/โอนล่าสุดของวันตามวัตถุประสงค์ (ไม่รวม car)
+///
+/// เครื่องจักรใช้แถว Transfer ที่ `stock_out` (โอนออกจากถังหลัก)
+AppTransaction? latestFuelWithdrawForPurpose({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required FuelWithdrawPurpose purpose,
+}) {
+  if (purpose == FuelWithdrawPurpose.car) return null;
+  final day = dayYmd.trim();
+  final code = fuelWithdrawPurposeCodeOf(purpose);
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (purpose == FuelWithdrawPurpose.machine) {
+      if (!isFuelTransferRow(t)) continue;
+      if ((t.workType ?? '').trim().toLowerCase() != 'machine') continue;
+      if ((t.fuelMovement ?? '').trim().toLowerCase() != 'stock_out') continue;
+      matches.add(t);
+      continue;
+    }
+    if (!isFuelWithdrawRow(t)) continue;
+    if (fuelWithdrawPurposeCode(t) != code) continue;
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// คู่โอนหลัก→สำรองที่จับคู่ด้วย note `xfer:...` ของแถว stock_out
+({AppTransaction? outTx, AppTransaction? inTx}) fuelMachineTransferPair({
+  required AppTransaction outTx,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final note = (outTx.note ?? '').trim();
+  if (!note.startsWith('xfer:')) {
+    return (outTx: outTx, inTx: null);
+  }
+  AppTransaction? inTx;
+  for (final t in transactions) {
+    if (t.id == outTx.id) continue;
+    if (!isFuelTransferRow(t)) continue;
+    if ((t.note ?? '').trim() != note) continue;
+    if ((t.fuelMovement ?? '').trim().toLowerCase() != 'stock_in') continue;
+    inTx = t;
+    break;
+  }
+  return (outTx: outTx, inTx: inTx);
+}
+
 class FuelStockBalance {
   const FuelStockBalance({
     required this.mainDiesel,

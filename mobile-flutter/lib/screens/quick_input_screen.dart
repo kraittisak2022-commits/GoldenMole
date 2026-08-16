@@ -602,10 +602,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelWithdrawTimeController = TextEditingController();
   final _fuelWithdrawOtherController = TextEditingController();
   FuelWithdrawPurpose _fuelWithdrawPurpose = FuelWithdrawPurpose.machine;
+  /// id แถวเบิก/โอนออกที่กำลังแก้ — null = รายการใหม่
+  String? _fuelWithdrawTxId;
+  /// คู่รับเข้าถังสำรอง (เฉพาะเครื่องจักร)
+  String? _fuelWithdrawTransferInTxId;
   final _fuelCarFillLitersController = TextEditingController();
   final _fuelCarFillTimeController = TextEditingController();
   final _fuelCarFillOtherController = TextEditingController();
   FuelCarFillVehicle? _fuelCarFillVehicle;
+  /// id แถวเติมรถยนต์ที่กำลังแก้ — null = รายการใหม่
+  String? _fuelCarFillTxId;
   bool _macroExtraVehiclesExpanded = false;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
@@ -2032,6 +2038,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _hydrateFuelStockInFromDay(
         dayRows: dayTransactions ?? txs,
       );
+      if (_fuelSubMode == FuelSubMode.carFill) {
+        _hydrateFuelCarFillForSelectedVehicle();
+      } else if (_fuelSubMode == FuelSubMode.withdraw) {
+        _hydrateFuelWithdrawForSelectedPurpose();
+      }
       return;
     }
     if (_isMacroVehicleMode) {
@@ -3752,6 +3763,158 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _applyFuelStockInFromTx(target);
   }
 
+  String _fuelLookupVehicleIdForCarFill() {
+    final v = _fuelCarFillVehicle;
+    if (v == null) return '';
+    if (v == FuelCarFillVehicle.other) {
+      return _fuelCarFillOtherController.text.trim();
+    }
+    return fuelCarFillVehicleIdOf(v);
+  }
+
+  AppTransaction? _dayFuelCarFillLatest({String? vehicleId}) {
+    return latestFuelCarFillForVehicle(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+      vehicleId: vehicleId ?? _fuelLookupVehicleIdForCarFill(),
+    );
+  }
+
+  void _applyFuelCarFillFromTx(AppTransaction t) {
+    _fuelCarFillTxId = t.id;
+    _persistOmitCreatedForIds.add(t.id);
+    final liters = fuelTxLiters(t);
+    _fuelCarFillLitersController.text =
+        liters > 0 ? formatFuelLiters(liters) : '';
+    _fuelCarFillTimeController.text =
+        _stripRecorderSuffix(t.workDetails ?? '').trim();
+    final vid = (t.vehicleId ?? '').trim();
+    if (!isKnownFuelCarFillVehicleId(vid) && vid.isNotEmpty) {
+      _fuelCarFillVehicle = FuelCarFillVehicle.other;
+      _fuelCarFillOtherController.text = vid;
+    }
+  }
+
+  void _hydrateFuelCarFillForSelectedVehicle() {
+    final vehicle = _fuelCarFillVehicle;
+    if (vehicle == null) {
+      _fuelCarFillTxId = null;
+      _fuelCarFillLitersController.clear();
+      _fuelCarFillTimeController.clear();
+      return;
+    }
+    final hit = _dayFuelCarFillLatest();
+    if (hit == null) {
+      _fuelCarFillTxId = null;
+      _fuelCarFillLitersController.clear();
+      _fuelCarFillTimeController.clear();
+      return;
+    }
+    _applyFuelCarFillFromTx(hit);
+  }
+
+  String _fuelCarFillSummaryForVehicle(FuelCarFillVehicle vehicle) {
+    final vid = vehicle == FuelCarFillVehicle.other
+        ? ''
+        : fuelCarFillVehicleIdOf(vehicle);
+    final hit = _dayFuelCarFillLatest(vehicleId: vid);
+    if (hit == null) return '';
+    final liters = fuelTxLiters(hit);
+    final time = _stripRecorderSuffix(hit.workDetails ?? '').trim();
+    final parts = <String>[
+      if (liters > 0) '${formatFuelLiters(liters)} ลิตร',
+      if (time.isNotEmpty) time,
+    ];
+    return parts.join(' · ');
+  }
+
+  AppTransaction? _dayFuelWithdrawLatest(FuelWithdrawPurpose purpose) {
+    return latestFuelWithdrawForPurpose(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+      purpose: purpose,
+    );
+  }
+
+  String? _fuelOtherDetailFromDescription(String description) {
+    final plain = _stripRecorderSuffix(description);
+    const marker = ' — ';
+    final i = plain.indexOf(marker);
+    if (i < 0) return null;
+    var rest = plain.substring(i + marker.length).trim();
+    final lit = RegExp(r'\s+\d').firstMatch(rest);
+    if (lit != null) {
+      rest = rest.substring(0, lit.start).trim();
+    }
+    return rest.isEmpty ? null : rest;
+  }
+
+  void _applyFuelWithdrawFromTx(AppTransaction t) {
+    _fuelWithdrawTxId = t.id;
+    _persistOmitCreatedForIds.add(t.id);
+    final liters = fuelTxLiters(t);
+    _fuelWithdrawLitersController.text =
+        liters > 0 ? formatFuelLiters(liters) : '';
+    _fuelWithdrawTimeController.text =
+        _stripRecorderSuffix(t.workDetails ?? '').trim();
+    final purpose = fuelWithdrawPurposeFromCode(t.workType) ??
+        (isFuelTransferRow(t)
+            ? FuelWithdrawPurpose.machine
+            : FuelWithdrawPurpose.other);
+    _fuelWithdrawPurpose = purpose == FuelWithdrawPurpose.car
+        ? FuelWithdrawPurpose.other
+        : purpose;
+    if (_fuelWithdrawPurpose == FuelWithdrawPurpose.other) {
+      _fuelWithdrawOtherController.text =
+          _fuelOtherDetailFromDescription(t.description) ?? '';
+    } else {
+      _fuelWithdrawOtherController.clear();
+    }
+    _fuelWithdrawTransferInTxId = null;
+    if (isFuelTransferRow(t)) {
+      final pair = fuelMachineTransferPair(
+        outTx: t,
+        transactions: _moduleDayAllTransactions,
+      );
+      final inId = pair.inTx?.id.trim();
+      if (inId != null && inId.isNotEmpty) {
+        _fuelWithdrawTransferInTxId = inId;
+        _persistOmitCreatedForIds.add(inId);
+      }
+    }
+  }
+
+  void _hydrateFuelWithdrawForSelectedPurpose() {
+    final hit = _dayFuelWithdrawLatest(_fuelWithdrawPurpose);
+    if (hit == null) {
+      _fuelWithdrawTxId = null;
+      _fuelWithdrawTransferInTxId = null;
+      _fuelWithdrawLitersController.clear();
+      _fuelWithdrawTimeController.clear();
+      if (_fuelWithdrawPurpose != FuelWithdrawPurpose.other) {
+        _fuelWithdrawOtherController.clear();
+      }
+      return;
+    }
+    _applyFuelWithdrawFromTx(hit);
+  }
+
+  String _fuelWithdrawSummaryForPurpose(FuelWithdrawPurpose purpose) {
+    final hit = _dayFuelWithdrawLatest(purpose);
+    if (hit == null) return '';
+    final liters = fuelTxLiters(hit);
+    final time = _stripRecorderSuffix(hit.workDetails ?? '').trim();
+    final parts = <String>[
+      if (liters > 0) '${formatFuelLiters(liters)} ลิตร',
+      if (time.isNotEmpty) time,
+    ];
+    if (purpose == FuelWithdrawPurpose.other) {
+      final detail = _fuelOtherDetailFromDescription(hit.description);
+      if (detail != null && detail.isNotEmpty) parts.add(detail);
+    }
+    return parts.join(' · ');
+  }
+
   /// เพิ่มน้ำมันเข้าถัง (รถน้ำมันมาเติม) — สร้างใหม่หรืออัปเดตรายการเดิม
   Future<void> _saveFuelStockInEntry() async {
     final liters =
@@ -3855,17 +4018,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final otherText = _fuelWithdrawOtherController.text.trim();
     const fuelType = 'Diesel';
     final isMachine = purpose == FuelWithdrawPurpose.machine;
+    final existingId = _fuelWithdrawTxId?.trim();
+    final isUpdate = existingId != null && existingId.isNotEmpty;
     await _runSaveWithPopups(
-      successMessage: isMachine
-          ? 'เติมถังสำรองสำเร็จ'
-          : 'บันทึกเบิกน้ำมันสำเร็จ',
+      successMessage: isUpdate
+          ? (isMachine ? 'อัปเดตเติมถังสำรองสำเร็จ' : 'อัปเดตเบิกน้ำมันสำเร็จ')
+          : (isMachine ? 'เติมถังสำรองสำเร็จ' : 'บันทึกเบิกน้ำมันสำเร็จ'),
       saveActionLabel: isMachine ? 'เติมถังสำรอง' : 'เบิกน้ำมันออกจากถังหลัก',
-      saveButtonLabel: 'บันทึกเบิกน้ำมัน',
+      saveButtonLabel: isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเบิกน้ำมัน',
       stayOnPage: true,
       onStayOnPageCleared: () {
-        _fuelWithdrawLitersController.clear();
-        _fuelWithdrawTimeController.clear();
-        _fuelWithdrawOtherController.clear();
+        // คงค่าในช่องเพื่อแก้ต่อ — txId ตั้งจากรายการที่เพิ่งบันทึก
       },
       body: () async {
         if (liters <= 0) {
@@ -3880,20 +4043,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (purpose == FuelWithdrawPurpose.other && otherText.isEmpty) {
           _failSave('กรุณาระบุรายละเอียดการเบิก', field: 'ระบุรายละเอียด');
         }
+        var priorLiters = 0.0;
+        String? priorXferNote;
+        if (isUpdate) {
+          for (final r in _moduleDayAllTransactions) {
+            if (r.id == existingId) {
+              priorLiters = fuelTxLiters(r);
+              final n = (r.note ?? '').trim();
+              if (n.startsWith('xfer:')) priorXferNote = n;
+              break;
+            }
+          }
+        }
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
+        final availableMain =
+            _fuelStock.mainDiesel + (isUpdate ? priorLiters : 0);
 
         if (isMachine) {
-          if (liters > _fuelStock.mainDiesel + 1e-9) {
+          if (liters > availableMain + 1e-9) {
             _failSave(
-              'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(_fuelStock.mainDiesel)} ลิตร)',
+              'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(availableMain)} ลิตร)',
               field: 'จำนวนลิตรที่เบิกออก',
             );
           }
+          final reserveAfterReverse =
+              _fuelStock.reserveDiesel - (isUpdate ? priorLiters : 0);
           final reserveRoom =
-              kFuelTankCapacityReserveLiters - _fuelStock.reserveDiesel;
+              kFuelTankCapacityReserveLiters - reserveAfterReverse;
           if (liters > reserveRoom + 1e-9) {
             _failSave(
               'ถังสำรองว่างเหลือ ${formatFuelLiters(reserveRoom < 0 ? 0 : reserveRoom)} ลิตร',
@@ -3901,9 +4080,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             );
           }
           final ts = DateTime.now().millisecondsSinceEpoch;
-          final pairNote = 'xfer:$ts';
+          final existingInId = _fuelWithdrawTransferInTxId?.trim();
+          final outId =
+              isUpdate ? existingId : '${ts}_fuel_xfer_out';
+          final inId = isUpdate &&
+                  existingInId != null &&
+                  existingInId.isNotEmpty
+              ? existingInId
+              : '${ts}_fuel_xfer_in';
+          final pairNote = (isUpdate &&
+                  priorXferNote != null &&
+                  priorXferNote.isNotEmpty)
+              ? priorXferNote
+              : 'xfer:$ts';
           final outTx = AppTransaction(
-            id: '${ts}_fuel_xfer_out',
+            id: outId,
             date: date,
             type: 'Expense',
             category: 'Fuel',
@@ -3923,7 +4114,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             workDetails: _appendRecorder(time),
           );
           final inTx = AppTransaction(
-            id: '${ts}_fuel_xfer_in',
+            id: inId,
             date: date,
             type: 'Expense',
             category: 'Fuel',
@@ -3944,14 +4135,64 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
           await _persist(outTx);
           await _persist(inTx);
-          await _applyLocalFuelStockAfterSave([outTx, inTx]);
+          _fuelWithdrawTxId = outTx.id;
+          _fuelWithdrawTransferInTxId = inTx.id;
+          if (isUpdate && priorLiters > 0) {
+            final oldOut = AppTransaction(
+              id: outId,
+              date: date,
+              type: 'Expense',
+              category: 'Fuel',
+              subCategory: kFuelTransferSubCategory,
+              description: '',
+              amount: 0,
+              note: pairNote,
+              quantity: priorLiters,
+              unit: 'L',
+              fuelType: fuelType,
+              fuelMovement: 'stock_out',
+              fuelTank: kFuelTankMain,
+              workType: 'machine',
+            );
+            final oldIn = AppTransaction(
+              id: inId,
+              date: date,
+              type: 'Expense',
+              category: 'Fuel',
+              subCategory: kFuelTransferSubCategory,
+              description: '',
+              amount: 0,
+              note: pairNote,
+              quantity: priorLiters,
+              unit: 'L',
+              fuelType: fuelType,
+              fuelMovement: 'stock_in',
+              fuelTank: kFuelTankReserve,
+              workType: 'machine',
+            );
+            await _applyLocalFuelStockAfterSave(
+              [outTx, inTx],
+              reverseFirst: [oldOut, oldIn],
+            );
+          } else {
+            await _applyLocalFuelStockAfterSave([outTx, inTx]);
+          }
         } else {
           final label = fuelWithdrawPurposeLabelOf(purpose);
           final desc = purpose == FuelWithdrawPurpose.other
               ? 'เบิกน้ำมัน: $label — $otherText'
               : 'เบิกน้ำมัน: $label';
+          if (liters > availableMain + 1e-9) {
+            _failSave(
+              'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(availableMain)} ลิตร)',
+              field: 'จำนวนลิตรที่เบิกออก',
+            );
+          }
+          final txId = isUpdate
+              ? existingId
+              : '${DateTime.now().millisecondsSinceEpoch}_fuel_wd';
           final tx = AppTransaction(
-            id: '${DateTime.now().millisecondsSinceEpoch}_fuel_wd',
+            id: txId,
             date: date,
             type: 'Expense',
             category: 'Fuel',
@@ -3970,7 +4211,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             workDetails: _appendRecorder(time),
           );
           await _persist(tx);
-          await _applyLocalFuelStockAfterSave([tx]);
+          _fuelWithdrawTxId = tx.id;
+          _fuelWithdrawTransferInTxId = null;
+          if (isUpdate && priorLiters > 0) {
+            final oldTx = AppTransaction(
+              id: txId,
+              date: date,
+              type: 'Expense',
+              category: 'Fuel',
+              subCategory: kFuelWithdrawSubCategory,
+              description: '',
+              amount: 0,
+              quantity: priorLiters,
+              unit: 'L',
+              fuelType: fuelType,
+              fuelMovement: 'stock_out',
+              fuelTank: kFuelTankMain,
+            );
+            await _applyLocalFuelStockAfterSave([tx], reverseFirst: [oldTx]);
+          } else {
+            await _applyLocalFuelStockAfterSave([tx]);
+          }
         }
       },
     );
@@ -3984,16 +4245,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final vehicle = _fuelCarFillVehicle;
     final otherText = _fuelCarFillOtherController.text.trim();
     const fuelType = 'Diesel';
+    final existingId = _fuelCarFillTxId?.trim();
+    final isUpdate = existingId != null && existingId.isNotEmpty;
     await _runSaveWithPopups(
-      successMessage: 'บันทึกเติมน้ำมันรถยนต์สำเร็จ',
+      successMessage: isUpdate
+          ? 'อัปเดตเติมน้ำมันรถยนต์สำเร็จ'
+          : 'บันทึกเติมน้ำมันรถยนต์สำเร็จ',
       saveActionLabel: 'เติมน้ำมันรถยนต์',
-      saveButtonLabel: 'บันทึกเติมน้ำมันรถยนต์',
+      saveButtonLabel:
+          isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเติมน้ำมันรถยนต์',
       stayOnPage: true,
       onStayOnPageCleared: () {
-        _fuelCarFillLitersController.clear();
-        _fuelCarFillTimeController.clear();
-        _fuelCarFillOtherController.clear();
-        _fuelCarFillVehicle = null;
+        // คงค่าในช่องเพื่อแก้ต่อ — txId ตั้งจากรายการที่เพิ่งบันทึก
       },
       body: () async {
         if (vehicle == null) {
@@ -4011,9 +4274,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (vehicle == FuelCarFillVehicle.other && otherText.isEmpty) {
           _failSave('กรุณาระบุชื่อรถ', field: 'ระบุชื่อรถ');
         }
-        if (liters > _fuelStock.mainDiesel + 1e-9) {
+        var priorLiters = 0.0;
+        if (isUpdate) {
+          for (final r in _moduleDayAllTransactions) {
+            if (r.id == existingId) {
+              priorLiters = fuelTxLiters(r);
+              break;
+            }
+          }
+        }
+        final availableMain =
+            _fuelStock.mainDiesel + (isUpdate ? priorLiters : 0);
+        if (liters > availableMain + 1e-9) {
           _failSave(
-            'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(_fuelStock.mainDiesel)} ลิตร)',
+            'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(availableMain)} ลิตร)',
             field: 'จำนวนลิตรที่เติม',
           );
         }
@@ -4028,9 +4302,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final txId = isUpdate
+            ? existingId
+            : '${DateTime.now().millisecondsSinceEpoch}_fuel_car';
         final tx = AppTransaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_fuel_car',
-          date: '$y-$m-$d',
+          id: txId,
+          date: date,
           type: 'Expense',
           category: 'Fuel',
           subCategory: kFuelWithdrawSubCategory,
@@ -4050,7 +4328,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           workDetails: _appendRecorder(time),
         );
         await _persist(tx);
-        await _applyLocalFuelStockAfterSave([tx]);
+        _fuelCarFillTxId = tx.id;
+        if (isUpdate && priorLiters > 0) {
+          final oldTx = AppTransaction(
+            id: txId,
+            date: date,
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelWithdrawSubCategory,
+            description: '',
+            amount: 0,
+            quantity: priorLiters,
+            unit: 'L',
+            fuelType: fuelType,
+            fuelMovement: 'stock_out',
+            fuelTank: kFuelTankMain,
+          );
+          await _applyLocalFuelStockAfterSave([tx], reverseFirst: [oldTx]);
+        } else {
+          await _applyLocalFuelStockAfterSave([tx]);
+        }
       },
     );
   }
@@ -10787,6 +11084,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 _fuelSubMode = selected;
                 if (selected == FuelSubMode.stockIn) {
                   _hydrateFuelStockInFromDay();
+                } else if (selected == FuelSubMode.withdraw) {
+                  _hydrateFuelWithdrawForSelectedPurpose();
+                } else if (selected == FuelSubMode.carFill) {
+                  _hydrateFuelCarFillForSelectedVehicle();
                 }
               });
             },
@@ -11287,21 +11588,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       dayKey,
       _moduleDayAllTransactions,
     );
+    final editing =
+        _fuelWithdrawTxId != null && _fuelWithdrawTxId!.isNotEmpty;
 
     Widget purposeTile(FuelWithdrawPurpose purpose, IconData icon) {
       final isSelected = _fuelWithdrawPurpose == purpose;
       final label = purpose == FuelWithdrawPurpose.other
           ? 'อื่นๆ (ระบุ)'
           : fuelWithdrawPurposeLabelOf(purpose);
+      final summary = _fuelWithdrawSummaryForPurpose(purpose);
       return Material(
         color: isSelected ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFD),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
-            setState(() => _fuelWithdrawPurpose = purpose);
-            // อื่นๆ: เปิดแป้นพิมพ์ภาษาไทยทันที
-            if (purpose == FuelWithdrawPurpose.other) {
+            setState(() {
+              _fuelWithdrawPurpose = purpose;
+              _hydrateFuelWithdrawForSelectedPurpose();
+            });
+            // อื่นๆ: เปิดแป้นพิมพ์ภาษาไทยเมื่อช่องยังว่าง
+            if (purpose == FuelWithdrawPurpose.other &&
+                _fuelWithdrawOtherController.text.trim().isEmpty) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
                 unawaited(
@@ -11338,15 +11646,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    label,
-                    style: GoogleFonts.kanit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: isSelected
-                          ? const Color(0xFF8A4B00)
-                          : const Color(0xFF546E7A),
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: GoogleFonts.kanit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: isSelected
+                              ? const Color(0xFF8A4B00)
+                              : const Color(0xFF546E7A),
+                        ),
+                      ),
+                      if (summary.isNotEmpty)
+                        Text(
+                          summary,
+                          style: GoogleFonts.kanit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: const Color(0xFF78909C),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 if (isSelected)
@@ -11527,9 +11849,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveFuelWithdrawEntry,
-              icon: const Icon(Icons.output_rounded),
+              icon: Icon(
+                editing ? Icons.edit_outlined : Icons.output_rounded,
+              ),
               label: Text(
-                'บันทึกเบิกน้ำมัน',
+                editing ? 'อัปเดตรายการนี้' : 'บันทึกเบิกน้ำมัน',
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
                   fontSize: 20,
@@ -11549,27 +11873,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildFuelCarFillFormCard() {
     final liters =
         double.tryParse(_fuelCarFillLitersController.text.trim()) ?? 0;
+    final editing =
+        _fuelCarFillTxId != null && _fuelCarFillTxId!.isNotEmpty;
 
     Widget vehicleTile(FuelCarFillVehicle vehicle, IconData icon) {
       final isSelected = _fuelCarFillVehicle == vehicle;
       final label = vehicle == FuelCarFillVehicle.other
           ? 'อื่นๆ (ระบุ)'
           : fuelCarFillVehicleLabelOf(vehicle);
+      final summary = _fuelCarFillSummaryForVehicle(vehicle);
       return Material(
         color: isSelected ? const Color(0xFFF3E5F5) : const Color(0xFFF8FAFD),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
-            setState(() => _fuelCarFillVehicle = vehicle);
-            if (vehicle == FuelCarFillVehicle.other) {
+            setState(() {
+              _fuelCarFillVehicle = vehicle;
+              _hydrateFuelCarFillForSelectedVehicle();
+            });
+            if (vehicle == FuelCarFillVehicle.other &&
+                _fuelCarFillOtherController.text.trim().isEmpty) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
                 unawaited(
                   _openThaiTextPad(
                     controller: _fuelCarFillOtherController,
                     label: 'ระบุชื่อรถ (ภาษาไทย)',
-                    onChanged: () => _scheduleUiRefresh(),
+                    onChanged: () {
+                      _hydrateFuelCarFillForSelectedVehicle();
+                      _scheduleUiRefresh();
+                    },
                     minLines: 1,
                     maxLines: 2,
                   ),
@@ -11599,15 +11933,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    label,
-                    style: GoogleFonts.kanit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: isSelected
-                          ? const Color(0xFF4A148C)
-                          : const Color(0xFF546E7A),
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: GoogleFonts.kanit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: isSelected
+                              ? const Color(0xFF4A148C)
+                              : const Color(0xFF546E7A),
+                        ),
+                      ),
+                      if (summary.isNotEmpty)
+                        Text(
+                          summary,
+                          style: GoogleFonts.kanit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: const Color(0xFF78909C),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 if (isSelected)
@@ -11730,7 +12078,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onTap: () => _openThaiTextPad(
                 controller: _fuelCarFillOtherController,
                 label: 'ระบุชื่อรถ (ภาษาไทย)',
-                onChanged: () => _scheduleUiRefresh(),
+                onChanged: () {
+                  _hydrateFuelCarFillForSelectedVehicle();
+                  _scheduleUiRefresh();
+                },
                 minLines: 1,
                 maxLines: 2,
               ),
@@ -11751,9 +12102,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveFuelCarFillEntry,
-              icon: const Icon(Icons.directions_car_filled_rounded),
+              icon: Icon(
+                editing
+                    ? Icons.edit_outlined
+                    : Icons.directions_car_filled_rounded,
+              ),
               label: Text(
-                'บันทึกเติมน้ำมันรถยนต์',
+                editing ? 'อัปเดตรายการนี้' : 'บันทึกเติมน้ำมันรถยนต์',
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
                   fontSize: 20,
