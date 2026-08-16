@@ -741,13 +741,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _pickDay() async {
-    final first = DateTime(2020);
-    final last = DateTime.now().add(const Duration(days: 365));
-    final picked = await showDatePicker(
+    final picked = await showDailyRecordDayPicker(
       context: context,
       initialDate: _selectedDay,
-      firstDate: first,
-      lastDate: last,
+      transactions: _lastHomePayload?.allTransactions ?? const [],
     );
     if (picked != null) {
       _applySelectedDay(picked);

@@ -1157,6 +1157,122 @@ Map<String, CountRecordDayMark> countRecordDayMarksForMonth({
   return out;
 }
 
+/// หมวดเมนูบันทึกประจำวันที่ใช้ทำจุดบนปฏิทิน (ลำดับเดียวกับหน้าแรก)
+const kDailyRecordCalendarModules = <String>[
+  'เช็คชื่อ',
+  'บันทึกการร่อนทราย',
+  'จำนวนเที่ยวรถ',
+  'การใช้รถแม็คโคร',
+  'น้ำมัน',
+  'เหตุการณ์',
+  'ค่าแรง',
+  'OT',
+  'ลางาน',
+  'เบิกเงิน',
+  'รายจ่ายรายรับ',
+];
+
+String dailyRecordModuleShortLabel(String moduleCategory) {
+  switch (moduleCategory) {
+    case 'เช็คชื่อ':
+      return 'เช็คชื่อ';
+    case 'บันทึกการร่อนทราย':
+      return 'ร่อนทราย';
+    case 'จำนวนเที่ยวรถ':
+      return 'รถดรัม';
+    case 'การใช้รถแม็คโคร':
+      return 'แม็คโคร';
+    case 'น้ำมัน':
+      return 'น้ำมัน';
+    case 'เหตุการณ์':
+      return 'เหตุการณ์';
+    case 'ค่าแรง':
+      return 'ค่าแรง';
+    case 'OT':
+      return 'OT';
+    case 'ลางาน':
+      return 'ลางาน';
+    case 'เบิกเงิน':
+      return 'เบิกเงิน';
+    case 'รายจ่ายรายรับ':
+      return 'รายรับ-รายจ่าย';
+    default:
+      return moduleCategory;
+  }
+}
+
+/// จุด/สรุปวันในปฏิทินหน้า «บันทึกประจำวัน»
+class DailyRecordDayMark {
+  const DailyRecordDayMark({
+    required this.hasData,
+    this.label,
+    this.modules = const [],
+  });
+
+  final bool hasData;
+  final String? label;
+  final List<String> modules;
+}
+
+/// สรุปเครื่องหมายวันเดียว — มีข้อมูลอย่างน้อย 1 หมวดบันทึกประจำวัน
+///
+/// [moduleCategory] ถ้าไม่ null จะนับเฉพาะหมวดนั้น (ใช้ในฟอร์มโมดูล)
+DailyRecordDayMark dailyRecordDayMark(
+  String dayKey,
+  Iterable<AppTransaction> transactions, {
+  String? moduleCategory,
+}) {
+  final day = dayKey.trim();
+  final cats = moduleCategory != null && moduleCategory.trim().isNotEmpty
+      ? <String>[moduleCategory.trim()]
+      : kDailyRecordCalendarModules;
+  final hit = <String>[];
+  for (final cat in cats) {
+    for (final t in transactions) {
+      if (transactionMatchesDailyModule(t, day, cat)) {
+        hit.add(cat);
+        break;
+      }
+    }
+  }
+  if (hit.isEmpty) {
+    return const DailyRecordDayMark(hasData: false);
+  }
+  final shorts = hit.map(dailyRecordModuleShortLabel).toList(growable: false);
+  return DailyRecordDayMark(
+    hasData: true,
+    label: shorts.join(' · '),
+    modules: hit,
+  );
+}
+
+/// สร้าง map yyyy-MM-dd → เครื่องหมายบันทึกประจำวันสำหรับเดือนที่ระบุ
+Map<String, DailyRecordDayMark> dailyRecordDayMarksForMonth({
+  required int year,
+  required int month,
+  required Iterable<AppTransaction> transactions,
+  String? moduleCategory,
+}) {
+  final byDay = <String, List<AppTransaction>>{};
+  final prefix =
+      '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}-';
+  for (final t in transactions) {
+    final d = t.date.trim();
+    if (!d.startsWith(prefix)) continue;
+    (byDay[d] ??= <AppTransaction>[]).add(t);
+  }
+  final out = <String, DailyRecordDayMark>{};
+  for (final entry in byDay.entries) {
+    final mark = dailyRecordDayMark(
+      entry.key,
+      entry.value,
+      moduleCategory: moduleCategory,
+    );
+    if (mark.hasData) out[entry.key] = mark;
+  }
+  return out;
+}
+
 /// รวมจำนวนรอบที่นับได้ในวันนั้นแยกช่วงเช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
 ({int morning, int afternoon}) countRecordSandPeriodTotals(
   String dayKey,

@@ -4,6 +4,15 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/app_transaction.dart';
 import '../utils/daily_module_transactions.dart';
 
+/// โหมดจุดบนปฏิทินเลือกวัน
+enum DayPickerMarkMode {
+  /// จุดฟ้า = เที่ยว · จุดเขียว = ร่อนทราย (แผงนับจำนวน)
+  countRecord,
+
+  /// จุด teal = มีบันทึกประจำวัน (หัวแดชบอร์ด / ฟอร์มโมดูล)
+  dailyRecord,
+}
+
 /// เปิดปฏิทินเลือกวันสำหรับแผง «บันทึกและนับจำนวน»
 /// แสดงจุดฟ้า = มีเที่ยว · จุดเขียว = มีร่อนทราย และสรุปวันนั้น
 Future<DateTime?> showCountRecordDayPicker({
@@ -13,46 +22,106 @@ Future<DateTime?> showCountRecordDayPicker({
   DateTime? firstDate,
   DateTime? lastDate,
 }) {
+  return _showMarkedDayPicker(
+    context: context,
+    initialDate: initialDate,
+    transactions: transactions,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    mode: DayPickerMarkMode.countRecord,
+    title: 'เลือกวันที่นับจำนวน',
+    moduleCategory: null,
+  );
+}
+
+/// เปิดปฏิทินเลือกวันสำหรับหน้า «บันทึกประจำวัน»
+/// แสดงจุด teal = มีบันทึก และสรุปหมวดของวันนั้น
+///
+/// [moduleCategory] ถ้าไม่ null จะทำจุดเฉพาะหมวดนั้น (ฟอร์มโมดูล)
+Future<DateTime?> showDailyRecordDayPicker({
+  required BuildContext context,
+  required DateTime initialDate,
+  required Iterable<AppTransaction> transactions,
+  String? moduleCategory,
+  DateTime? firstDate,
+  DateTime? lastDate,
+}) {
+  final title = moduleCategory != null && moduleCategory.trim().isNotEmpty
+      ? 'เลือกวันที่ · ${dailyRecordModuleShortLabel(moduleCategory.trim())}'
+      : 'เลือกวันที่บันทึกประจำวัน';
+  return _showMarkedDayPicker(
+    context: context,
+    initialDate: initialDate,
+    transactions: transactions,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    mode: DayPickerMarkMode.dailyRecord,
+    title: title,
+    moduleCategory: moduleCategory,
+  );
+}
+
+Future<DateTime?> _showMarkedDayPicker({
+  required BuildContext context,
+  required DateTime initialDate,
+  required Iterable<AppTransaction> transactions,
+  required DayPickerMarkMode mode,
+  required String title,
+  required String? moduleCategory,
+  DateTime? firstDate,
+  DateTime? lastDate,
+}) {
   final first = firstDate ?? DateTime(2020);
   final last = lastDate ?? DateTime.now().add(const Duration(days: 365));
   return showDialog<DateTime>(
     context: context,
-    builder: (ctx) => _CountRecordDayPickerDialog(
+    builder: (ctx) => _MarkedDayPickerDialog(
       initialDate: initialDate,
       transactions: transactions,
       firstDate: first,
       lastDate: last,
+      mode: mode,
+      title: title,
+      moduleCategory: moduleCategory,
     ),
   );
 }
 
-class _CountRecordDayPickerDialog extends StatefulWidget {
-  const _CountRecordDayPickerDialog({
+class _MarkedDayPickerDialog extends StatefulWidget {
+  const _MarkedDayPickerDialog({
     required this.initialDate,
     required this.transactions,
     required this.firstDate,
     required this.lastDate,
+    required this.mode,
+    required this.title,
+    required this.moduleCategory,
   });
 
   final DateTime initialDate;
   final Iterable<AppTransaction> transactions;
   final DateTime firstDate;
   final DateTime lastDate;
+  final DayPickerMarkMode mode;
+  final String title;
+  final String? moduleCategory;
 
   @override
-  State<_CountRecordDayPickerDialog> createState() =>
-      _CountRecordDayPickerDialogState();
+  State<_MarkedDayPickerDialog> createState() => _MarkedDayPickerDialogState();
 }
 
-class _CountRecordDayPickerDialogState
-    extends State<_CountRecordDayPickerDialog> {
+class _MarkedDayPickerDialogState extends State<_MarkedDayPickerDialog> {
   static const _tripDot = Color(0xFF1565C0);
   static const _sandDot = Color(0xFF2E7D32);
   static const _teal = Color(0xFF0D98A5);
+  static const _dailyDot = Color(0xFF0D98A5);
 
   late DateTime _month;
   late DateTime _selected;
-  late Map<String, CountRecordDayMark> _marks;
+  late Map<String, CountRecordDayMark> _countMarks;
+  late Map<String, DailyRecordDayMark> _dailyMarks;
+
+  bool get _isCount => widget.mode == DayPickerMarkMode.countRecord;
 
   @override
   void initState() {
@@ -68,11 +137,22 @@ class _CountRecordDayPickerDialogState
   }
 
   void _reloadMarks() {
-    _marks = countRecordDayMarksForMonth(
-      year: _month.year,
-      month: _month.month,
-      transactions: widget.transactions,
-    );
+    if (_isCount) {
+      _countMarks = countRecordDayMarksForMonth(
+        year: _month.year,
+        month: _month.month,
+        transactions: widget.transactions,
+      );
+      _dailyMarks = const {};
+    } else {
+      _dailyMarks = dailyRecordDayMarksForMonth(
+        year: _month.year,
+        month: _month.month,
+        transactions: widget.transactions,
+        moduleCategory: widget.moduleCategory,
+      );
+      _countMarks = const {};
+    }
   }
 
   String _ymd(DateTime d) {
@@ -135,10 +215,18 @@ class _CountRecordDayPickerDialogState
     });
   }
 
+  String get _emptySummary =>
+      _isCount ? 'ยังไม่มีนับเที่ยว/ร่อนทราย' : 'ยังไม่มีบันทึกประจำวัน';
+
+  String? _summaryForSelected() {
+    final key = _ymd(_selected);
+    if (_isCount) return _countMarks[key]?.label;
+    return _dailyMarks[key]?.label;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selectedMark = _marks[_ymd(_selected)];
-    final summary = selectedMark?.label ?? 'ยังไม่มีนับเที่ยว/ร่อนทราย';
+    final summary = _summaryForSelected() ?? _emptySummary;
     final today = DateTime.now();
     final todayDay = DateTime(today.year, today.month, today.day);
 
@@ -152,7 +240,9 @@ class _CountRecordDayPickerDialogState
     for (var day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_month.year, _month.month, day);
       final enabled = _inRange(date);
-      final mark = _marks[_ymd(date)];
+      final key = _ymd(date);
+      final countMark = _countMarks[key];
+      final dailyMark = _dailyMarks[key];
       final selected = _sameDay(date, _selected);
       final isToday = _sameDay(date, todayDay);
       cells.add(
@@ -161,13 +251,13 @@ class _CountRecordDayPickerDialogState
           enabled: enabled,
           selected: selected,
           isToday: isToday,
-          hasTrips: mark?.hasTrips ?? false,
-          hasSand: mark?.hasSand ?? false,
+          hasTrips: _isCount && (countMark?.hasTrips ?? false),
+          hasSand: _isCount && (countMark?.hasSand ?? false),
+          hasDaily: !_isCount && (dailyMark?.hasData ?? false),
           tripColor: _tripDot,
           sandColor: _sandDot,
-          onTap: enabled
-              ? () => setState(() => _selected = date)
-              : null,
+          dailyColor: _dailyDot,
+          onTap: enabled ? () => setState(() => _selected = date) : null,
         ),
       );
     }
@@ -179,7 +269,7 @@ class _CountRecordDayPickerDialogState
       contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       title: Text(
-        'เลือกวันที่นับจำนวน',
+        widget.title,
         style: GoogleFonts.kanit(
           fontWeight: FontWeight.w800,
           fontSize: 20,
@@ -245,9 +335,12 @@ class _CountRecordDayPickerDialogState
             const SizedBox(height: 12),
             Row(
               children: [
-                _LegendDot(color: _tripDot, label: 'เที่ยว'),
-                const SizedBox(width: 14),
-                _LegendDot(color: _sandDot, label: 'ร่อนทราย'),
+                if (_isCount) ...[
+                  _LegendDot(color: _tripDot, label: 'เที่ยว'),
+                  const SizedBox(width: 14),
+                  _LegendDot(color: _sandDot, label: 'ร่อนทราย'),
+                ] else
+                  _LegendDot(color: _dailyDot, label: 'มีบันทึก'),
               ],
             ),
             const SizedBox(height: 10),
@@ -345,8 +438,10 @@ class _DayCell extends StatelessWidget {
     required this.isToday,
     required this.hasTrips,
     required this.hasSand,
+    required this.hasDaily,
     required this.tripColor,
     required this.sandColor,
+    required this.dailyColor,
     this.onTap,
   });
 
@@ -356,8 +451,10 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool hasTrips;
   final bool hasSand;
+  final bool hasDaily;
   final Color tripColor;
   final Color sandColor;
+  final Color dailyColor;
   final VoidCallback? onTap;
 
   @override
@@ -368,6 +465,7 @@ class _DayCell extends StatelessWidget {
     final fg = selected
         ? Colors.white
         : (enabled ? const Color(0xFF1A2433) : const Color(0xFFB0B8C4));
+    final showAnyDot = hasTrips || hasSand || hasDaily;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -417,8 +515,16 @@ class _DayCell extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                     ),
-                  if (!hasTrips && !hasSand)
-                    const SizedBox(width: 5, height: 5),
+                  if (hasDaily)
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : dailyColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  if (!showAnyDot) const SizedBox(width: 5, height: 5),
                 ],
               ),
             ],

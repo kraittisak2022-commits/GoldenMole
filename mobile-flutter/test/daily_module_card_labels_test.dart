@@ -511,6 +511,126 @@ void main() {
     expect(marks['2026-05-20']!.hasTrips, isFalse);
   });
 
+  test('dailyRecordDayMark flags modules with data', () {
+    final txs = [
+      AppTransaction(
+        id: 'ev1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Event',
+        description: 'ฝนตก',
+        amount: 0,
+        eventType: 'info',
+      ),
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม: 2 เที่ยว',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        driverId: 'd1',
+        tripCount: 2,
+        perCarTrips: 2,
+      ),
+    ];
+    final mark = dailyRecordDayMark(day, txs);
+    expect(mark.hasData, isTrue);
+    expect(mark.modules, containsAll(['จำนวนเที่ยวรถ', 'เหตุการณ์']));
+    expect(mark.label, contains('รถดรัม'));
+    expect(mark.label, contains('เหตุการณ์'));
+  });
+
+  test('dailyRecordDayMark empty day has no data', () {
+    final mark = dailyRecordDayMark(day, const []);
+    expect(mark.hasData, isFalse);
+    expect(mark.label, isNull);
+    expect(mark.modules, isEmpty);
+  });
+
+  test('dailyRecordDayMark can filter to one module', () {
+    final txs = [
+      AppTransaction(
+        id: 'ev1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Event',
+        description: 'ฝนตก',
+        amount: 0,
+      ),
+      AppTransaction(
+        id: 'trip1',
+        date: day,
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'VehicleTrip',
+        description: 'ดรัม',
+        amount: 0,
+        vehicleId: 'ดรัม-1',
+        driverId: 'd1',
+      ),
+    ];
+    final onlyEvent = dailyRecordDayMark(
+      day,
+      txs,
+      moduleCategory: 'เหตุการณ์',
+    );
+    expect(onlyEvent.hasData, isTrue);
+    expect(onlyEvent.modules, ['เหตุการณ์']);
+    expect(onlyEvent.label, 'เหตุการณ์');
+
+    final onlyFuel = dailyRecordDayMark(
+      day,
+      txs,
+      moduleCategory: 'น้ำมัน',
+    );
+    expect(onlyFuel.hasData, isFalse);
+  });
+
+  test('dailyRecordDayMarksForMonth indexes only days with module data', () {
+    final txs = [
+      AppTransaction(
+        id: 'ev1',
+        date: '2026-05-19',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Event',
+        description: 'ฝน',
+        amount: 0,
+      ),
+      AppTransaction(
+        id: 'fuel1',
+        date: '2026-05-21',
+        type: 'Expense',
+        category: 'Fuel',
+        description: 'เติม',
+        amount: 100,
+      ),
+      AppTransaction(
+        id: 'otherMonth',
+        date: '2026-06-01',
+        type: 'Expense',
+        category: 'DailyLog',
+        subCategory: 'Event',
+        description: 'อื่น',
+        amount: 0,
+      ),
+    ];
+    final marks = dailyRecordDayMarksForMonth(
+      year: 2026,
+      month: 5,
+      transactions: txs,
+    );
+    expect(marks.keys, containsAll(['2026-05-19', '2026-05-21']));
+    expect(marks.containsKey('2026-06-01'), isFalse);
+    expect(marks['2026-05-19']!.label, 'เหตุการณ์');
+    expect(marks['2026-05-21']!.label, 'น้ำมัน');
+  });
+
   test('count record card respects trip-only work mode', () {
     final txs = [
       AppTransaction(
