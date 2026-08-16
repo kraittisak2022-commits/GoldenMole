@@ -232,8 +232,8 @@ enum FuelLogic {
         return (t.quantity ?? 0) > 0
     }
 
-    /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 5 ส.ค. 2569)
-    static let stockCutoverYmd = "2026-08-05"
+    /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 1 ส.ค. 2569)
+    static let stockCutoverYmd = "2026-08-01"
 
     /// Dual-tank balance: each row hits only the tank stored on it.
     /// `delta = stockIn − withdraw − vehicleUsage` (no machine-quota offset).

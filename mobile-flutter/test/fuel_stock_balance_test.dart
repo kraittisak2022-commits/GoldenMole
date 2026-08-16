@@ -263,6 +263,59 @@ void main() {
       expect(b.reserveDiesel, 0);
     });
 
+    test('rows on cutover day 2026-08-01 are counted', () {
+      final b = computeFuelStockBalance(
+        [
+          _fuel(
+            id: 'in',
+            sub: kFuelStockInSubCategory,
+            movement: 'stock_in',
+            liters: 500,
+            tank: kFuelTankMain,
+            date: '2026-08-01',
+          ),
+          _fuel(
+            id: 'out',
+            sub: kFuelWithdrawSubCategory,
+            movement: 'stock_out',
+            liters: 100,
+            tank: kFuelTankMain,
+            workType: 'car',
+            date: '2026-08-01',
+          ),
+        ],
+        openingDiesel: 1000,
+      );
+      expect(b.mainDiesel, 1400); // 1000 + 500 - 100
+    });
+
+    test('rows before cutover 2026-07-31 are ignored', () {
+      final b = computeFuelStockBalance(
+        [
+          _fuel(
+            id: 'in',
+            sub: kFuelStockInSubCategory,
+            movement: 'stock_in',
+            liters: 9000,
+            tank: kFuelTankMain,
+            date: '2026-07-31',
+          ),
+          _fuel(
+            id: 'out',
+            sub: kFuelWithdrawSubCategory,
+            movement: 'stock_out',
+            liters: 200,
+            tank: kFuelTankMain,
+            workType: 'car',
+            date: '2026-07-31',
+          ),
+        ],
+        openingDiesel: 8500,
+      );
+      expect(b.mainDiesel, 8500);
+      expect(b.reserveDiesel, 0);
+    });
+
     test('sand sieve hours × 18 L from reserve, lunch deducted', () {
       // 08:00–15:00 minus lunch 12–13 = 6 hours × 18 = 108 L
       final b = computeFuelStockBalance([

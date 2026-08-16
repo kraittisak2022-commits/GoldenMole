@@ -26,11 +26,14 @@ class FuelSubModePicker extends StatefulWidget {
     required this.onSelect,
     required this.mainDieselLiters,
     required this.reserveDieselLiters,
+    required this.dateLabel,
   });
 
   final ValueChanged<FuelSubMode> onSelect;
   final double mainDieselLiters;
   final double reserveDieselLiters;
+  /// วันที่ที่จะบันทึก เช่น 16/08/2569
+  final String dateLabel;
 
   @override
   State<FuelSubModePicker> createState() => _FuelSubModePickerState();
@@ -128,12 +131,19 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
                   ),
                 ),
               ),
-              Text(
-                '${formatFuelLiters(liters)} / ${formatFuelLiters(cap)} L',
-                style: TextStyle(
-                  fontSize: isTablet ? 15 : 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: barColor,
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '${formatFuelLiters(liters)} / ${formatFuelLiters(cap)} ลิตร',
+                    style: TextStyle(
+                      fontSize: isTablet ? 15 : 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: barColor,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -227,6 +237,16 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
               height: 1.1,
               letterSpacing: -0.5,
               color: const Color(0xFF1A2433),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'วันที่ ${widget.dateLabel}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: isTablet ? 16.0 : 14.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF546E7A),
             ),
           ),
           const SizedBox(height: 10),

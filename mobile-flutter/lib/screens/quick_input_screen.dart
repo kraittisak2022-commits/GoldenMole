@@ -2710,21 +2710,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool allowNetworkFetch = true,
   }) async {
     try {
-      if (!forceNetwork) {
-        final snap = await LocalDataCache.readFuelStockSnapshot(
-          LocalDataCache.fuelStockSnapshotTtl,
-        );
-        if (snap != null) {
-          if (mounted) setState(() => _fuelStock = snap);
-          return;
-        }
-        final any = await LocalDataCache.readFuelStockSnapshotAny();
-        if (any != null) {
-          if (mounted) setState(() => _fuelStock = any);
-          return;
-        }
-      }
-
+      // อย่าเชื่อ snapshot เป็นคำตอบสุดท้าย — ต้องคิดจากยอดยกมา + รายการ
+      // (snapshot ที่แคชตอนยังไม่มี opening จะค้างที่ 0)
       List<AppTransaction>? baseRows;
       if (forceNetwork) {
         baseRows = await widget.service.fetchTransactions(forceRefresh: true);
@@ -2735,6 +2722,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
       }
       if (baseRows == null) {
+        // ไม่มีแคชธุรกรรม — ใช้ snapshot ชั่วคราวถ้ามี
+        if (!forceNetwork) {
+          final snap = await LocalDataCache.readFuelStockSnapshot(
+            LocalDataCache.fuelStockSnapshotTtl,
+          );
+          if (snap != null && mounted) {
+            setState(() => _fuelStock = snap);
+            return;
+          }
+        }
         final stale = await LocalDataCache.readFuelStockSnapshotAny();
         if (stale != null && mounted) {
           setState(() => _fuelStock = stale);
@@ -4357,6 +4354,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
       saveActionLabel: 'บันทึกการใช้น้ำมันรายรถ',
       saveButtonLabel: 'บันทึก',
+      requireSignature: false,
       stayOnPage: true,
       body: () async {
         final fuelCars = _fuelMacroCars();
@@ -11079,6 +11077,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ? FuelSubModePicker(
             mainDieselLiters: _fuelStock.mainDiesel,
             reserveDieselLiters: _fuelStock.reserveDiesel,
+            dateLabel: _formatDate(_selectedDate),
             onSelect: (selected) {
               setState(() {
                 _fuelSubMode = selected;

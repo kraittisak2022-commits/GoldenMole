@@ -16,8 +16,8 @@ const String kFuelTankMain = 'main';
 const String kFuelTankReserve = 'reserve';
 
 /// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
-/// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
-const String kFuelStockCutoverYmd = '2026-08-05';
+/// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
+const String kFuelStockCutoverYmd = '2026-08-01';
 
 /// `subCategory` ของแถวรับน้ำมันเข้าถัง (รถน้ำมันมาเติม)
 const String kFuelStockInSubCategory = 'StockIn';
