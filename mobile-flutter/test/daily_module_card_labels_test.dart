@@ -64,6 +64,63 @@ void main() {
     expect(dailyMacroVehicleModuleStatusLabel(day, txs), 'ใช้แม็คโคร 2 คัน');
   });
 
+  test('macro vehicle card counts unique vehicles when rows are duplicated', () {
+    final txs = [
+      AppTransaction(
+        id: 'm1a',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 01',
+        driverId: 'd1',
+      ),
+      AppTransaction(
+        id: 'm1b',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 01',
+        driverId: 'd1',
+      ),
+      AppTransaction(
+        id: 'm2a',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 02',
+        driverId: 'd2',
+      ),
+      AppTransaction(
+        id: 'm2b',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 02',
+        driverId: 'd2',
+      ),
+      AppTransaction(
+        id: 'm3',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 03',
+        driverId: 'd3',
+      ),
+    ];
+    expect(macroVehicleUsageCountForDay(day, txs), 3);
+    expect(dailyMacroVehicleModuleStatusLabel(day, txs), 'ใช้แม็คโคร 3 คัน');
+  });
+
   test('fuel card sums vehicle usage liters and coverage', () {
     final txs = [
       AppTransaction(

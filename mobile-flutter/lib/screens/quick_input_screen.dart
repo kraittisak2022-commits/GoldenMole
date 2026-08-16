@@ -456,6 +456,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       row.vehicleId = car;
       final typed = row.driverId.trim().isNotEmpty ||
           (!row.isDisposed && row.workDetailsController.text.trim().isNotEmpty);
+      final missingTxId =
+          row.txId == null || row.txId!.trim().isEmpty;
       if (forceHydrate) {
         if (byVehicle.containsKey(car)) {
           _hydrateMacroDraftFromTransaction(row, byVehicle[car]!);
@@ -465,7 +467,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           row.workType = 'FullDay';
           if (!row.isDisposed) row.workDetailsController.clear();
         }
-      } else if (!typed && byVehicle.containsKey(car)) {
+      } else if (byVehicle.containsKey(car) && (!typed || missingTxId)) {
+        // มีแถวของคันนี้แล้ว — hydrate เสมอเมื่อยังไม่ผูก txId
+        // (คนขับเริ่มต้นจากเว็บต้องไม่บล็อกการติด id กันสร้างแถวซ้ำ)
         _hydrateMacroDraftFromTransaction(row, byVehicle[car]!);
       }
       // เติมคนขับเริ่มต้นจากเว็บ เมื่อยังไม่บันทึกและยังไม่ได้เลือกคนขับ
@@ -3604,9 +3608,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
     final dayLabel = workType == 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน';
-    final txId =
-        row.txId?.trim() ??
-        '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle_$index';
+    var txId = row.txId?.trim() ?? '';
+    if (txId.isEmpty) {
+      // ใช้แถวเดิมของคัน+วันถ้ามี — กันสร้าง *_macro_vehicle_* ซ้ำ
+      AppTransaction? existing;
+      for (final t in _moduleDayAllTransactions) {
+        if (t.date.trim() != date.trim()) continue;
+        if (!isMacroVehicleTransaction(t)) continue;
+        if ((t.vehicleId ?? '').trim() != vehicle) continue;
+        final ea = existing?.createdAt;
+        final ta = t.createdAt;
+        if (existing == null ||
+            ta == null ||
+            (ea != null && ta.isAfter(ea))) {
+          existing = t;
+        }
+      }
+      txId = existing?.id.trim() ?? '';
+    }
+    if (txId.isEmpty) {
+      txId =
+          '${DateTime.now().millisecondsSinceEpoch}_macro_vehicle_$index';
+    }
     row.txId = txId;
     await _persist(
       AppTransaction(
@@ -3648,11 +3671,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         // เติมคนขับเริ่มต้นอีกครั้งก่อนบันทึก (กันกรณีโหลดพนักงาน/ตั้งค่าช้า)
         _syncMacroVehicleDraftsFromMacroCars();
+        final pinnedSet = _fuelPinnedMacroCars(macroCars).toSet();
         final activeRows = _macroVehicleDrafts.where((row) {
-          final hasDriver = row.driverId.trim().isNotEmpty;
-          final hasDetails =
-              !row.isDisposed && row.workDetailsController.text.trim().isNotEmpty;
-          return hasDriver || row.txId != null || hasDetails;
+          final hasTx =
+              row.txId != null && row.txId!.trim().isNotEmpty;
+          final hasDetails = !row.isDisposed &&
+              row.workDetailsController.text.trim().isNotEmpty;
+          final driver = row.driverId.trim();
+          if (hasTx || hasDetails) return true;
+          if (driver.isEmpty) return false;
+          // คันเพิ่มเติมที่มีแค่คนขับเริ่มต้นจากเว็บ — ยังไม่ถือว่าใช้งาน
+          if (!pinnedSet.contains(row.vehicleId.trim())) {
+            final defId = _defaultDriverIdForVehicle(row.vehicleId);
+            if (defId != null && defId == driver) return false;
+          }
+          return true;
         }).toList();
         if (activeRows.isEmpty) {
           _failSave(

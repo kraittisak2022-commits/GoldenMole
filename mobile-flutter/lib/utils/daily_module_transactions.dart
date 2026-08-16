@@ -433,18 +433,12 @@ bool isOtLaborRow(AppTransaction t) {
   );
 }
 
+/// จำนวนคันแม็คโครที่ใช้ในวันนั้น — นับ [vehicleId] ไม่ซ้ำ (แถวซ้ำของคันเดิมไม่เพิ่ม)
 int macroVehicleUsageCountForDay(
   String dayKey,
   Iterable<AppTransaction> transactions,
-) {
-  var n = 0;
-  for (final t in transactions) {
-    if (t.date.trim() != dayKey.trim()) continue;
-    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
-    n++;
-  }
-  return n;
-}
+) =>
+    macroVehicleIdsUsedForDay(dayKey, transactions).length;
 
 double fuelLitersTotalForDay(
   String dayKey,
