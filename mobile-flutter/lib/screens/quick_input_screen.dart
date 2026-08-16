@@ -319,8 +319,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String? _genericTxId;
   bool get _isSandWashMode =>
       (widget.initialCategory ?? '').contains('ร่อนทราย');
-  bool get _isVehicleTripMode =>
-      (widget.initialCategory ?? '').contains('เที่ยวรถ');
+  /// เมนูบันทึกรถดรัม / จำนวนเที่ยว — จับทั้งรหัสหมวดและชื่อที่แสดง
+  bool get _isVehicleTripMode {
+    final c = (widget.initialCategory ?? '').trim();
+    return c.contains('เที่ยวรถ') || c.contains('รถดรัม');
+  }
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
   bool get _isMacroVehicleMode => widget.initialCategory == 'การใช้รถแม็คโคร';
 
