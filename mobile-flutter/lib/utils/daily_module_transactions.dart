@@ -433,6 +433,16 @@ bool isOtLaborRow(AppTransaction t) {
   );
 }
 
+/// แถวแม็คโครที่ถือว่า «ใช้งานจริง» — ต้องมีรายละเอียดงาน (ไม่นับแถวที่มีแค่คนขับเริ่มต้น)
+bool isMacroVehicleRealUsageRow(AppTransaction t) {
+  if (!isMacroVehicleTransaction(t)) return false;
+  if ((t.vehicleId ?? '').trim().isEmpty) return false;
+  final details = (t.workDetails ?? '')
+      .replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '')
+      .trim();
+  return details.isNotEmpty;
+}
+
 /// จำนวนคันแม็คโครที่ใช้ในวันนั้น — นับ [vehicleId] ไม่ซ้ำ (แถวซ้ำของคันเดิมไม่เพิ่ม)
 int macroVehicleUsageCountForDay(
   String dayKey,
@@ -477,14 +487,14 @@ Set<String> macroVehicleIdsUsedForDay(
   final ids = <String>{};
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
+    if (!isMacroVehicleRealUsageRow(t)) continue;
     final v = (t.vehicleId ?? '').trim();
     if (v.isNotEmpty) ids.add(v);
   }
   return ids;
 }
 
-/// คนขับจากบันทึกการใช้รถแม็คโครวันนั้น (driverId ไม่ซ้ำ)
+/// คนขับจากบันทึกการใช้รถแม็คโครวันนั้น (driverId ไม่ซ้ำ) — เฉพาะคันที่มีงานจริง
 Set<String> macroDriverIdsUsedForDay(
   String dayKey,
   Iterable<AppTransaction> transactions,
@@ -492,7 +502,7 @@ Set<String> macroDriverIdsUsedForDay(
   final ids = <String>{};
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (!transactionTouchesDailyModule(t, dayKey, 'การใช้รถแม็คโคร')) continue;
+    if (!isMacroVehicleRealUsageRow(t)) continue;
     final d = (t.driverId ?? '').trim();
     if (d.isNotEmpty) ids.add(d);
   }

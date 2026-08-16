@@ -3657,20 +3657,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         // เติมคนขับเริ่มต้นอีกครั้งก่อนบันทึก (กันกรณีโหลดพนักงาน/ตั้งค่าช้า)
         _syncMacroVehicleDraftsFromMacroCars();
-        final pinnedSet = _fuelPinnedMacroCars(macroCars).toSet();
         final activeRows = _macroVehicleDrafts.where((row) {
-          final hasTx =
-              row.txId != null && row.txId!.trim().isNotEmpty;
           final hasDetails = !row.isDisposed &&
               row.workDetailsController.text.trim().isNotEmpty;
+          if (hasDetails) return true;
           final driver = row.driverId.trim();
-          if (hasTx || hasDetails) return true;
           if (driver.isEmpty) return false;
-          // คันเพิ่มเติมที่มีแค่คนขับเริ่มต้นจากเว็บ — ยังไม่ถือว่าใช้งาน
-          if (!pinnedSet.contains(row.vehicleId.trim())) {
-            final defId = _defaultDriverIdForVehicle(row.vehicleId);
-            if (defId != null && defId == driver) return false;
-          }
+          // คันที่มีแค่คนขับเริ่มต้นจากเว็บ — ยังไม่ถือว่าใช้งาน (รวมคันปักหมุด)
+          final defId = _defaultDriverIdForVehicle(row.vehicleId);
+          if (defId != null && defId == driver) return false;
+          // ผู้ใช้เลือกคนขับเอง (ไม่ใช่ค่าเริ่มต้น) — บันทึกได้แม้ยังไม่กรอกรายละเอียด
           return true;
         }).toList();
         if (activeRows.isEmpty) {

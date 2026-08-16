@@ -38,7 +38,7 @@ void main() {
     );
   });
 
-  test('macro vehicle card counts saved rows', () {
+  test('macro vehicle card counts only rows with work details', () {
     final txs = [
       AppTransaction(
         id: 'm1',
@@ -61,7 +61,8 @@ void main() {
         workDetails: 'ขุด',
       ),
     ];
-    expect(dailyMacroVehicleModuleStatusLabel(day, txs), 'ใช้แม็คโคร 2 คัน');
+    expect(macroVehicleUsageCountForDay(day, txs), 1);
+    expect(dailyMacroVehicleModuleStatusLabel(day, txs), 'ใช้แม็คโคร 1 คัน');
   });
 
   test('macro vehicle card counts unique vehicles when rows are duplicated', () {
@@ -75,6 +76,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 01',
         driverId: 'd1',
+        workDetails: 'ขุดแร่',
       ),
       AppTransaction(
         id: 'm1b',
@@ -85,6 +87,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 01',
         driverId: 'd1',
+        workDetails: 'ขุดแร่',
       ),
       AppTransaction(
         id: 'm2a',
@@ -95,6 +98,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 02',
         driverId: 'd2',
+        workDetails: 'ขุดแร่',
       ),
       AppTransaction(
         id: 'm2b',
@@ -105,6 +109,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 02',
         driverId: 'd2',
+        workDetails: 'ขุดแร่',
       ),
       AppTransaction(
         id: 'm3',
@@ -115,6 +120,18 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 03',
         driverId: 'd3',
+        workDetails: 'ขุดแร่',
+      ),
+      // placeholder — มีคนขับไม่มีรายละเอียด ต้องไม่ถูกนับ
+      AppTransaction(
+        id: 'placeholder',
+        date: day,
+        type: 'Expense',
+        category: 'Vehicle',
+        description: 'แม็คโคร',
+        amount: 0,
+        vehicleId: 'แม็คโคร 04',
+        driverId: 'd4',
       ),
     ];
     expect(macroVehicleUsageCountForDay(day, txs), 3);
@@ -132,6 +149,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 01',
         driverId: 'd1',
+        workDetails: 'ขุด',
       ),
       AppTransaction(
         id: 'm2',
@@ -142,6 +160,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 02',
         driverId: 'd2',
+        workDetails: 'ขุด',
       ),
       AppTransaction(
         id: 'f1',
@@ -176,6 +195,7 @@ void main() {
         amount: 0,
         vehicleId: 'แม็คโคร 01',
         driverId: 'd1',
+        workDetails: 'ขุด',
       ),
       AppTransaction(
         id: 'f1',
