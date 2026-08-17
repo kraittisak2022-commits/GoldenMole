@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan } from '../types';
 import { coercePositionSources } from '../utils/advanceEmployeeFilter';
+import { resolveCarsForSave } from '../utils/appSettingsCarsGuard';
 import { visibleIncomeTypes } from '../utils/incomeTypes';
 
 // ============================================
@@ -231,13 +232,15 @@ export const fetchSettings = async (): Promise<AppSettings | null> => {
 };
 
 export const saveSettings = async (s: AppSettings): Promise<boolean> => {
+    const existing = await fetchSettings();
+    const cars = resolveCarsForSave(s.cars, existing?.cars);
     const row = {
         id: 'default',
         app_name: s.appName,
         app_subtext: s.appSubtext,
         app_icon: s.appIcon,
         app_icon_dark: s.appIconDark || '',
-        cars: s.cars,
+        cars,
         job_descriptions: s.jobDescriptions,
         income_types: s.incomeTypes,
         expense_types: s.expenseTypes,

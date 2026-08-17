@@ -28,6 +28,7 @@ const RecordManager = lazyWithRetry(() => import('./modules/DataList/RecordManag
 const AdminModule = lazyWithRetry(() => import('./modules/Admin/AdminModule'));
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
+import { isExactMockSeedCars } from './utils/appSettingsCarsGuard';
 import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
 import { readSavedLocale, saveLocale, t, type AppLocale } from './utils/i18n';
@@ -460,6 +461,8 @@ function App() {
     }, [isLoading, visibleTransactions, settings.appDefaults?.dataQualityThresholds, settings.appDefaults?.dataQualityDailyAlert?.lastAlertDate]);
     const hasSeeded = useRef(false);
     const hasAutoVersionSynced = useRef(false);
+    /** true เฉพาะเมื่อโหลด app_settings จากเซิร์ฟเวอร์สำเร็จ — กัน MOCK/timeout ถูก save ทับของจริง */
+    const settingsPersistableRef = useRef(false);
     const hasRestoredAuthSession = useRef(false);
     const autoBackupRunningRef = useRef(false);
     const currentAdminRef = useRef<AdminUser | null>(null);
@@ -536,7 +539,9 @@ function App() {
         hasAutoVersionSynced.current = true;
         const next = { ...settings, versionNotes: [...autoVersionNotes] };
         setSettings(next);
-        db.saveSettings(next);
+        if (settingsPersistableRef.current) {
+            db.saveSettings(next);
+        }
     }, [isLoading, autoVersionNotes, settings]);
 
     useEffect(() => {
@@ -628,11 +633,22 @@ function App() {
                 // Load all data in parallel
                 setLoadProgress(55);
                 setLoadMessage(t(locale, 'loadingRemote'));
-                const [emps, txs, projs, sett, adms, logs] = await Promise.all([
+                const fetchSettingsGuarded = async () => {
+                    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+                    try {
+                        const timeoutPromise = new Promise<'timeout'>((resolve) => {
+                            timeoutHandle = window.setTimeout(() => resolve('timeout'), 12000);
+                        });
+                        return await Promise.race([db.fetchSettings(), timeoutPromise]);
+                    } finally {
+                        if (timeoutHandle) window.clearTimeout(timeoutHandle);
+                    }
+                };
+                const [emps, txs, projs, settOrTimeout, adms, logs] = await Promise.all([
                     withTimeout(db.fetchEmployees(), 12000, MOCK_EMPLOYEES),
                     withTimeout(db.fetchTransactions(), 12000, MOCK_TRANSACTIONS),
                     withTimeout(db.fetchProjects(), 12000, MOCK_PROJECTS),
-                    withTimeout(db.fetchSettings(), 12000, MOCK_SETTINGS),
+                    fetchSettingsGuarded(),
                     withTimeout(db.fetchAdmins(), 12000, DEFAULT_ADMINS),
                     withTimeout(db.fetchAdminLogs(), 12000, [] as AdminLog[]),
                 ]);
@@ -642,7 +658,19 @@ function App() {
                 setEmployees(emps);
                 setTransactions(normalizeTransactionsCreatedAt(txs));
                 setProjects(projs);
-                const nextSettings = sett || MOCK_SETTINGS;
+                const cachedSettings = cached?.settings;
+                const fetchedSettings = settOrTimeout === 'timeout' ? null : settOrTimeout;
+                let nextSettings: AppSettings;
+                if (fetchedSettings) {
+                    nextSettings = fetchedSettings;
+                    settingsPersistableRef.current = true;
+                } else if (cachedSettings && !isExactMockSeedCars(cachedSettings.cars)) {
+                    nextSettings = cachedSettings;
+                    settingsPersistableRef.current = false;
+                } else {
+                    nextSettings = cachedSettings || MOCK_SETTINGS;
+                    settingsPersistableRef.current = false;
+                }
                 const nextAdmins = adms.length > 0 ? adms : DEFAULT_ADMINS;
                 setSettings(nextSettings);
                 setAdmins(nextAdmins);
@@ -651,7 +679,11 @@ function App() {
                     employees: emps,
                     transactions: normalizeTransactionsCreatedAt(txs),
                     projects: projs,
-                    settings: nextSettings,
+                    settings: settingsPersistableRef.current
+                        ? nextSettings
+                        : (cachedSettings && !isExactMockSeedCars(cachedSettings.cars)
+                            ? cachedSettings
+                            : nextSettings),
                     admins: nextAdmins,
                     adminLogs: logs,
                 });
@@ -661,12 +693,14 @@ function App() {
                 console.error('Failed to load data from Supabase:', err);
                 setLoadProgress(80);
                 setLoadMessage(t(locale, 'loadingFallback'));
-                // Fallback to mock data
-                setEmployees(MOCK_EMPLOYEES);
-                setTransactions(normalizeTransactionsCreatedAt(MOCK_TRANSACTIONS));
-                setProjects(MOCK_PROJECTS);
-                setSettings(MOCK_SETTINGS);
-                setAdmins(DEFAULT_ADMINS);
+                settingsPersistableRef.current = false;
+                if (!cached) {
+                    setEmployees(MOCK_EMPLOYEES);
+                    setTransactions(normalizeTransactionsCreatedAt(MOCK_TRANSACTIONS));
+                    setProjects(MOCK_PROJECTS);
+                    setSettings(MOCK_SETTINGS);
+                    setAdmins(DEFAULT_ADMINS);
+                }
                 setLoadProgress(100);
                 setLoadMessage(t(locale, 'loadingFallbackOk'));
             } finally {
@@ -1370,7 +1404,9 @@ function App() {
                         hiddenTransactionIds: hidden.filter(x => x !== id),
                     },
                 };
-                void db.saveSettings(next);
+                if (settingsPersistableRef.current) {
+                    void db.saveSettings(next);
+                }
                 return next;
             });
         }
@@ -1458,7 +1494,9 @@ function App() {
     const handleSetSettings = useCallback((updater: AppSettings | ((prev: AppSettings) => AppSettings)) => {
         setSettings(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            db.saveSettings(next);
+            if (settingsPersistableRef.current) {
+                db.saveSettings(next);
+            }
             return next;
         });
     }, []);
