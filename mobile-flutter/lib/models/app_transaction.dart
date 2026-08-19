@@ -23,7 +23,9 @@ class AppTransaction {
     this.sandAfternoonStart,
     this.sandEveningEnd,
     this.vehicleId,
+    this.vehicleName,
     this.driverId,
+    this.driverName,
     this.driverWage,
     this.vehicleWage,
     this.workDetails,
@@ -82,7 +84,11 @@ class AppTransaction {
   final String? sandAfternoonStart;
   final String? sandEveningEnd;
   final String? vehicleId;
+  /// ชื่อรถที่แสดง — คู่กับ [vehicleId] (รหัสแคตตาล็อกหรือชื่อเดิม)
+  final String? vehicleName;
   final String? driverId;
+  /// ชื่อคนขับที่แสดง — คู่กับ [driverId]
+  final String? driverName;
   final double? driverWage;
   final double? vehicleWage;
   final String? workDetails;
@@ -166,7 +172,9 @@ class AppTransaction {
       sandAfternoonStart: row['sand_afternoon_start']?.toString(),
       sandEveningEnd: row['sand_evening_end']?.toString(),
       vehicleId: row['vehicle_id']?.toString(),
+      vehicleName: row['vehicle_name']?.toString(),
       driverId: row['driver_id']?.toString(),
+      driverName: row['driver_name']?.toString(),
       driverWage: _toDouble(row['driver_wage']),
       vehicleWage: _toDouble(row['vehicle_wage']),
       workDetails: row['work_details']?.toString(),
@@ -240,7 +248,11 @@ class AppTransaction {
       if (sandEveningEnd != null && sandEveningEnd!.isNotEmpty)
         'sand_evening_end': sandEveningEnd,
       if (vehicleId != null && vehicleId!.isNotEmpty) 'vehicle_id': vehicleId,
+      if (vehicleName != null && vehicleName!.isNotEmpty)
+        'vehicle_name': vehicleName,
       if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
+      if (driverName != null && driverName!.isNotEmpty)
+        'driver_name': driverName,
       if (driverWage != null) 'driver_wage': driverWage,
       if (vehicleWage != null) 'vehicle_wage': vehicleWage,
       if (workDetails != null)
@@ -316,7 +328,11 @@ class AppTransaction {
       if (sandEveningEnd != null && sandEveningEnd!.isNotEmpty)
         'sand_evening_end': sandEveningEnd,
       if (vehicleId != null && vehicleId!.isNotEmpty) 'vehicle_id': vehicleId,
+      if (vehicleName != null && vehicleName!.isNotEmpty)
+        'vehicle_name': vehicleName,
       if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
+      if (driverName != null && driverName!.isNotEmpty)
+        'driver_name': driverName,
       if (driverWage != null) 'driver_wage': driverWage,
       if (vehicleWage != null) 'vehicle_wage': vehicleWage,
       if (workDetails != null)
@@ -385,7 +401,9 @@ class AppTransaction {
     String? sandAfternoonStart,
     String? sandEveningEnd,
     String? vehicleId,
+    String? vehicleName,
     String? driverId,
+    String? driverName,
     double? driverWage,
     double? vehicleWage,
     String? workDetails,
@@ -442,7 +460,9 @@ class AppTransaction {
       sandAfternoonStart: sandAfternoonStart ?? this.sandAfternoonStart,
       sandEveningEnd: sandEveningEnd ?? this.sandEveningEnd,
       vehicleId: vehicleId ?? this.vehicleId,
+      vehicleName: vehicleName ?? this.vehicleName,
       driverId: driverId ?? this.driverId,
+      driverName: driverName ?? this.driverName,
       driverWage: driverWage ?? this.driverWage,
       vehicleWage: vehicleWage ?? this.vehicleWage,
       workDetails: workDetails ?? this.workDetails,

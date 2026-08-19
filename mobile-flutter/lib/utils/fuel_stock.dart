@@ -172,7 +172,7 @@ bool isFuelStockInRow(AppTransaction t) {
   final mov = (t.fuelMovement ?? '').trim().toLowerCase();
   if (mov == 'stock_in') return true;
   if (mov == 'stock_out') return false;
-  return (t.vehicleId ?? '').trim().isEmpty;
+  return !transactionHasVehicle(t);
 }
 
 /// แถวเบิกน้ำมันออกจากถัง (เมนู «เบิกน้ำมัน»)
@@ -247,7 +247,7 @@ AppTransaction? latestFuelCarFillForVehicle({
   for (final t in transactions) {
     if (t.date.trim() != day) continue;
     if (!isFuelCarFillRow(t)) continue;
-    final rowVid = (t.vehicleId ?? '').trim();
+    final rowVid = transactionVehicleLabel(t);
     if (wantOther) {
       if (rowVid.isEmpty || isKnownFuelCarFillVehicleId(rowVid)) continue;
     } else if (rowVid != vid) {

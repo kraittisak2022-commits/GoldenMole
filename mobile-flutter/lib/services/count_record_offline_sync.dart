@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_sync_snapshot.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
+import '../utils/vehicle_catalog.dart';
 import 'employee_service.dart';
 import 'local_data_cache.dart';
 import 'transaction_service.dart';
@@ -28,6 +29,7 @@ class CountRecordOfflineSync {
   static const _kQueue = 'v1_count_record_offline_queue_v1';
   static const _kFailedQueue = 'v1_count_record_failed_queue_v1';
   static const _kCars = 'v1_count_record_cars_json';
+  static const _kVehicleCatalog = 'v1_count_record_vehicle_catalog_json';
   static const _kVehicleDefaultDrivers = 'v1_count_record_vehicle_default_drivers_json';
   static const _kFuelOpeningStock = 'v1_count_record_fuel_opening_stock_json';
   static const _kEmployees = 'v1_count_record_employees_json';
@@ -66,6 +68,7 @@ class CountRecordOfflineSync {
   List<_PendingOp>? _memoryFailedQueue;
   bool _queueLoaded = false;
   bool _failedQueueLoaded = false;
+  VehicleCatalog _vehicleCatalogMemory = VehicleCatalog.empty;
 
   NetworkLinkState _networkLinkState = NetworkLinkState.unknown;
   ServerReachState _serverReachState = ServerReachState.unknown;
@@ -520,6 +523,96 @@ class CountRecordOfflineSync {
     }
   }
 
+  Future<void> cacheVehicleCatalog(List<VehicleCatalogRow> rows) async {
+    if (rows.isEmpty) return;
+    _vehicleCatalogMemory = VehicleCatalog(List<VehicleCatalogRow>.from(rows));
+    final p = await _prefs();
+    await p.setString(
+      _kVehicleCatalog,
+      jsonEncode(rows.map((r) => r.toJson()).toList()),
+    );
+  }
+
+  Future<VehicleCatalog> readCachedVehicleCatalog() async {
+    if (_vehicleCatalogMemory.rows.isNotEmpty) return _vehicleCatalogMemory;
+    final p = await _prefs();
+    final raw = p.getString(_kVehicleCatalog);
+    if (raw == null || raw.isEmpty) return VehicleCatalog.empty;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return VehicleCatalog.empty;
+      final rows = <VehicleCatalogRow>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final row = VehicleCatalogRow.fromMap(Map<String, dynamic>.from(item));
+        if (row.id.isEmpty || row.name.isEmpty) continue;
+        rows.add(row);
+      }
+      rows.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      _vehicleCatalogMemory = VehicleCatalog(rows);
+      return _vehicleCatalogMemory;
+    } catch (_) {
+      return VehicleCatalog.empty;
+    }
+  }
+
+  List<VehicleCatalogRow> _parseVehicleTableRows(dynamic rows) {
+    final out = <VehicleCatalogRow>[];
+    if (rows is! List) return out;
+    for (final item in rows) {
+      if (item is! Map) continue;
+      final row = VehicleCatalogRow.fromMap(Map<String, dynamic>.from(item));
+      if (row.id.isEmpty || row.name.isEmpty) continue;
+      out.add(row);
+    }
+    out.sort((a, b) {
+      final byOrder = a.sortOrder.compareTo(b.sortOrder);
+      if (byOrder != 0) return byOrder;
+      return a.name.compareTo(b.name);
+    });
+    return out;
+  }
+
+  Future<VehicleCatalog> fetchAndCacheVehicleCatalog(
+    SupabaseClient client,
+  ) async {
+    try {
+      final rows = await client
+          .from('vehicles')
+          .select('id, name, default_driver_id, sort_order')
+          .order('sort_order')
+          .timeout(_probeTimeout);
+      final parsed = _parseVehicleTableRows(rows);
+      if (parsed.isNotEmpty) {
+        await cacheVehicleCatalog(parsed);
+        await cacheCars(parsed.map((r) => r.name).toList());
+        final drivers = <String, String>{};
+        for (final r in parsed) {
+          final d = (r.defaultDriverId ?? '').trim();
+          if (d.isEmpty) continue;
+          drivers[r.name] = d;
+        }
+        if (drivers.isNotEmpty) {
+          await cacheVehicleDefaultDrivers(drivers);
+        }
+        return VehicleCatalog(parsed);
+      }
+    } catch (e) {
+      debugPrint('CountRecordOfflineSync.fetchAndCacheVehicleCatalog: $e');
+    }
+    return readCachedVehicleCatalog();
+  }
+
+  Future<AppTransaction> stampPersistedTransaction(AppTransaction t) async {
+    final catalog = await readCachedVehicleCatalog();
+    final employees = await mergedEmployeeSources();
+    return stampVehicleAndDriverNames(
+      t,
+      catalog: catalog,
+      employees: employees,
+    );
+  }
+
   Future<void> cacheVehicleDefaultDrivers(
     Map<String, String> map, {
     bool allowEmpty = false,
@@ -648,8 +741,18 @@ class CountRecordOfflineSync {
     var cars = await readCachedCars();
     var employees = await mergedEmployeeSources(widgetEmployees);
     var vehicleDefaultDrivers = await readCachedVehicleDefaultDrivers();
+    final cachedCatalog = await readCachedVehicleCatalog();
+    if (cachedCatalog.names.isNotEmpty) {
+      cars = cachedCatalog.names;
+      if (cachedCatalog.defaultDriversByName.isNotEmpty) {
+        vehicleDefaultDrivers = cachedCatalog.defaultDriversByName;
+      }
+    }
 
-    if (!forceNetwork && cars.isNotEmpty && employees.isNotEmpty) {
+    if (!forceNetwork &&
+        cars.isNotEmpty &&
+        employees.isNotEmpty &&
+        cachedCatalog.rows.isNotEmpty) {
       return (
         cars: cars,
         employees: employees,
@@ -667,6 +770,19 @@ class CountRecordOfflineSync {
       );
     }
 
+    try {
+      final catalog = await fetchAndCacheVehicleCatalog(client);
+      if (catalog.names.isNotEmpty) {
+        cars = catalog.names;
+        if (catalog.defaultDriversByName.isNotEmpty) {
+          vehicleDefaultDrivers = catalog.defaultDriversByName;
+        }
+      }
+    } catch (e) {
+      debugPrint('CountRecordOfflineSync.loadDropdownCatalog vehicles: $e');
+    }
+
+    if (cars.isEmpty) {
     try {
       final rows = await client
           .from('app_settings')
@@ -702,6 +818,7 @@ class CountRecordOfflineSync {
       }
     } catch (e) {
       debugPrint('CountRecordOfflineSync.loadDropdownCatalog cars: $e');
+    }
     }
 
     try {
@@ -890,24 +1007,25 @@ class CountRecordOfflineSync {
     bool serverOnlineHint = true,
   }) async {
     final ymd = transaction.date;
+    final stamped = await stampPersistedTransaction(transaction);
     if (await isOnline(client, forceProbe: !serverOnlineHint)) {
       try {
         await service.upsertTransaction(
-          transaction,
+          stamped,
           omitCreatedAt: omitCreatedAt,
         );
         final ops = await _readQueue();
         ops.removeWhere(
           (o) =>
-              o.transaction?.id == transaction.id ||
-              o.deleteId == transaction.id,
+              o.transaction?.id == stamped.id ||
+              o.deleteId == stamped.id,
         );
         await _writeQueue(ops);
-        final merged = _mergedDayRowsAfterUpsert(ymd, dayServerRows, transaction);
+        final merged = _mergedDayRowsAfterUpsert(ymd, dayServerRows, stamped);
         await _syncLocalCaches(
           ymd: ymd,
           mergedDayRows: merged,
-          touchedTx: transaction,
+          touchedTx: stamped,
         );
         noteServerReachable();
         return false;
@@ -919,10 +1037,10 @@ class CountRecordOfflineSync {
 
     await _persistOffline(
       ymd: ymd,
-      transaction: transaction,
+      transaction: stamped,
       omitCreatedAt: omitCreatedAt,
       dayServerRows: dayServerRows,
-      knownServerCreatedAtMs: _createdAtMsForId(dayServerRows, transaction.id),
+      knownServerCreatedAtMs: _createdAtMsForId(dayServerRows, stamped.id),
     );
     _awaitingUploadAfterOffline = true;
     return true;
@@ -1050,7 +1168,10 @@ class CountRecordOfflineSync {
       for (final op in chunk) {
         final tx = op.transaction;
         if (tx != null) {
-          batchItems.add((item: tx, omitCreatedAt: op.omitCreatedAt));
+          batchItems.add((
+            item: await stampPersistedTransaction(tx),
+            omitCreatedAt: op.omitCreatedAt,
+          ));
         }
       }
       if (batchItems.isEmpty) continue;

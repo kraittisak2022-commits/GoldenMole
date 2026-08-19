@@ -33,6 +33,7 @@ import '../utils/fuel_stock.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
+import '../utils/vehicle_catalog.dart';
 import '../services/mobile_error_report_service.dart';
 import '../services/session_service.dart';
 import '../services/local_data_cache.dart';
@@ -258,6 +259,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<Employee> _driverEmployees = const [];
   Map<String, Employee> _employeesById = const {};
   List<String> _cars = const [];
+  VehicleCatalog _vehicleCatalog = VehicleCatalog.empty;
   Map<String, String> _vehicleDefaultDrivers = const {};
 
   late DateTime _selectedDate;
@@ -372,7 +374,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     AppTransaction t,
   ) {
     row.txId = t.id;
-    final vid = (t.vehicleId ?? '').trim();
+    final vid = transactionVehicleLabel(t);
     if (vid.isNotEmpty) row.vehicleId = vid;
     row.driverId = (t.driverId ?? '').trim();
     final wt = (t.workType ?? '').trim();
@@ -397,7 +399,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     for (final t in source) {
       if (t.date.trim() != ymd.trim()) continue;
       if (!isMacroVehicleTransaction(t)) continue;
-      final vid = (t.vehicleId ?? '').trim();
+      final vid = transactionVehicleLabel(t);
       if (vid.isEmpty) continue;
       final existing = byVehicle[vid];
       if (existing == null) {
@@ -471,7 +473,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _hydrateFuelDraftFromTransaction(_FuelVehicleDraft row, AppTransaction t) {
     row.txId = t.id;
-    final vid = (t.vehicleId ?? '').trim();
+    final vid = transactionVehicleLabel(t);
     if (vid.isNotEmpty) row.vehicleId = vid;
     final ft = (t.fuelType ?? 'Diesel').trim();
     row.fuelType = ft.isEmpty ? 'Diesel' : ft;
@@ -501,7 +503,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (t.category != 'Fuel') continue;
       final mov = (t.fuelMovement ?? '').trim();
       if (mov.isNotEmpty && mov != 'stock_out') continue;
-      final vid = (t.vehicleId ?? '').trim();
+      final vid = transactionVehicleLabel(t);
       if (vid.isEmpty) continue;
       fuelByVehicle[vid] = t;
     }
@@ -944,20 +946,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _persist(AppTransaction t) async {
+    final stamped = stampVehicleAndDriverNames(
+      t,
+      catalog: _vehicleCatalog,
+      employees: _employees,
+    );
     final omitCreated =
-        _persistOmitCreatedForIds.contains(t.id) ||
-        _persistOmitCreatedSessionIds.contains(t.id);
+        _persistOmitCreatedForIds.contains(stamped.id) ||
+        _persistOmitCreatedSessionIds.contains(stamped.id);
     if (_isOfflineCapableCategory) {
       final queued = await CountRecordOfflineSync.instance.persist(
         service: widget.service,
         client: Supabase.instance.client,
-        transaction: t,
+        transaction: stamped,
         omitCreatedAt: omitCreated,
         dayServerRows: _moduleDayAllTransactions,
         serverOnlineHint: widget.serverOnlineHint,
       );
       _lastPersistQueued = queued;
-      _persistOmitCreatedSessionIds.add(t.id);
+      _persistOmitCreatedSessionIds.add(stamped.id);
       final ymd = t.date;
       final mergedDay = await _mergeOfflineQueue(
         _moduleDayAllTransactions,
@@ -980,8 +987,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return;
     }
     _lastPersistQueued = false;
-    await widget.service.upsertTransaction(t, omitCreatedAt: omitCreated);
-    _persistOmitCreatedSessionIds.add(t.id);
+    await widget.service.upsertTransaction(stamped, omitCreatedAt: omitCreated);
+    _persistOmitCreatedSessionIds.add(stamped.id);
   }
 
   Future<bool> _deleteTransactionOfflineAware(
@@ -2371,9 +2378,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       setState(() => _fuelOpeningStock = opening);
     }
 
+    Future<void> applyCatalog(VehicleCatalog catalog) async {
+      if (catalog.rows.isEmpty || !mounted) return;
+      setState(() => _vehicleCatalog = catalog);
+    }
+
     final sync = CountRecordOfflineSync.instance;
     // แคชก่อน — แถวแม็คโคร/คนขับเริ่มต้นขึ้นทันทีหลังเข้าแดชบอร์ด
-    final cachedCars = await sync.readCachedCars();
+    final cachedCatalog = await sync.readCachedVehicleCatalog();
+    await applyCatalog(cachedCatalog);
+    final cachedCars = cachedCatalog.names.isNotEmpty
+        ? cachedCatalog.names
+        : await sync.readCachedCars();
     final cachedDrivers = await sync.readCachedVehicleDefaultDrivers();
     final cachedOpening = await sync.readCachedFuelOpeningStock();
     await applyCars(cachedCars);
@@ -2389,6 +2405,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     Future<void> refreshFromNetwork() async {
       try {
         final client = Supabase.instance.client;
+        final catalog = await sync.fetchAndCacheVehicleCatalog(client);
+        await applyCatalog(catalog);
+        if (catalog.names.isNotEmpty) {
+          await applyCars(catalog.names);
+          if (catalog.defaultDriversByName.isNotEmpty) {
+            await applyDefaultDrivers(catalog.defaultDriversByName);
+          }
+        }
         final rows = await client
             .from('app_settings')
             .select('cars, app_defaults, fuel_opening_stock')
@@ -2410,24 +2434,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         } else if (!hadCarsCache) {
           await applyOpeningStock(await sync.readCachedFuelOpeningStock());
         }
-        final raw = rows.first['cars'];
-        final cars = <String>[
-          if (raw is List)
-            ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
-        ];
-        if (cars.isNotEmpty) {
-          await sync.cacheCars(cars);
-          await applyCars(cars);
+        if (catalog.names.isEmpty) {
+          final raw = rows.first['cars'];
+          final cars = <String>[
+            if (raw is List)
+              ...raw.map((e) => '$e').where((e) => e.trim().isNotEmpty),
+          ];
+          if (cars.isNotEmpty) {
+            await sync.cacheCars(cars);
+            await applyCars(cars);
+          }
         }
-        final appDefaults = rows.first['app_defaults'];
-        var defaults = await sync.readCachedVehicleDefaultDrivers();
-        if (appDefaults is Map) {
-          final parsed = CountRecordOfflineSync.parseVehicleDefaultDrivers(
-            appDefaults['vehicleDefaultDrivers'],
-          );
-          if (parsed.isNotEmpty) {
-            defaults = parsed;
-            await sync.cacheVehicleDefaultDrivers(defaults);
+        var defaults = catalog.defaultDriversByName.isNotEmpty
+            ? catalog.defaultDriversByName
+            : await sync.readCachedVehicleDefaultDrivers();
+        if (catalog.defaultDriversByName.isEmpty) {
+          final appDefaults = rows.first['app_defaults'];
+          if (appDefaults is Map) {
+            final parsed = CountRecordOfflineSync.parseVehicleDefaultDrivers(
+              appDefaults['vehicleDefaultDrivers'],
+            );
+            if (parsed.isNotEmpty) {
+              defaults = parsed;
+              await sync.cacheVehicleDefaultDrivers(defaults);
+            }
           }
         }
         await applyDefaultDrivers(defaults);
@@ -3358,7 +3388,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             if (selfId != null && selfId.isNotEmpty && t.id == selfId) {
               continue;
             }
-            if ((t.vehicleId ?? '').trim() == vehicle) {
+            if (transactionVehicleMatches(t, vehicle)) {
               _failSave('มีบันทึกรถ "$vehicle" ในวันนี้แล้ว — เลือกรถคันนี้จากรายการอีกครั้งเพื่อโหลดมาแก้ไข');
             }
           }
@@ -3484,7 +3514,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (seenIds.add(t.id)) pool.add(t);
     }
     for (final t in latestVehicleTripsByVehicle(pool, ymd: ymd)) {
-      if ((t.vehicleId ?? '').trim() == vehicle) return t;
+      if (transactionVehicleMatches(t, vehicle)) return t;
     }
     return null;
   }
@@ -3601,7 +3631,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final t in _moduleDayAllTransactions) {
         if (t.date.trim() != date.trim()) continue;
         if (!isMacroVehicleTransaction(t)) continue;
-        if ((t.vehicleId ?? '').trim() != vehicle) continue;
+        if (!transactionVehicleMatches(t, vehicle)) continue;
         final ea = existing?.createdAt;
         final ta = t.createdAt;
         if (existing == null ||
@@ -3800,7 +3830,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         liters > 0 ? formatFuelLiters(liters) : '';
     _fuelCarFillTimeController.text =
         _stripRecorderSuffix(t.workDetails ?? '').trim();
-    final vid = (t.vehicleId ?? '').trim();
+    final vid = transactionVehicleLabel(t);
     if (!isKnownFuelCarFillVehicleId(vid) && vid.isNotEmpty) {
       _fuelCarFillVehicle = FuelCarFillVehicle.other;
       _fuelCarFillOtherController.text = vid;
@@ -9907,7 +9937,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   _VehicleTripDraft _vehicleTripDraftFromAppTransaction(AppTransaction t) {
     final d = _VehicleTripDraft.empty();
     d.tripTxId = t.id;
-    d.vehicleId = (t.vehicleId ?? '').trim();
+    d.vehicleId = transactionVehicleLabel(t);
     d.driverId = (t.driverId ?? '').trim();
 
     final wt = (t.workType ?? '').trim();
@@ -9978,7 +10008,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _vehicleTripSavedDetailCard(AppTransaction t) {
-    final vehicle = _vehicleLabelFromId((t.vehicleId ?? '').trim());
+    final vehicle = _vehicleLabelFromId(transactionVehicleLabel(t));
     final driver = _driverLabelFromId((t.driverId ?? '').trim());
     final mode = (t.tripBillingMode ?? '').trim();
     final isLump = mode.toLowerCase() == 'lumpsum' || mode == 'เหมา';
@@ -9991,7 +10021,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     // คิวต่อเที่ยว: ใช้ค่าที่บันทึก ถ้าไม่มี (เช่น มาจากตัวนับ) ใช้ค่ามาตรฐาน 3 คิว
     var cpt = (t.cubicPerTrip ?? 0).toDouble();
     if (!isLump && cpt <= 0) {
-      cpt = defaultCubicPerTripForVehicleName((t.vehicleId ?? '').trim()) ?? 3;
+      cpt = defaultCubicPerTripForVehicleName(transactionVehicleLabel(t)) ?? 3;
     }
     var cubic = (t.perCarCubic ?? t.totalCubic ?? 0).toDouble();
     if (!isLump && cubic <= 0) {

@@ -402,7 +402,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                 t.workAssignments?['lapTimes'] ?? const [],
               );
               if (wantSub == 'vehicletrip') {
-                final vid = (t.vehicleId ?? '').trim();
+                final vid = transactionVehicleLabel(t);
                 return '$vid|${t.perCarTrips ?? t.tripCount ?? 0}|'
                     '${t.driverId ?? ''}|${laps.join(',')}';
               }
@@ -443,7 +443,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
           continue;
         }
-        final vid = (t.vehicleId ?? '').trim();
+        final vid = transactionVehicleLabel(t);
         if (vid.isEmpty || isMacroVehicleId(vid)) continue;
         _units.add(_unitFromTx(t, title: vid, vehicleId: vid));
       }
@@ -738,7 +738,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         continue;
       }
       if (txId.isNotEmpty && t.id == txId) return false;
-      if ((t.vehicleId ?? '').trim() == vid) return false;
+      if (transactionVehicleMatches(t, vid)) return false;
     }
     return true;
   }
@@ -787,7 +787,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
             continue;
           }
-          if ((t.vehicleId ?? '').trim() == vid) {
+          if (transactionVehicleMatches(t, vid)) {
             match = t;
             break;
           }
@@ -810,7 +810,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
           continue;
         }
-        final vid = (t.vehicleId ?? '').trim();
+        final vid = transactionVehicleLabel(t);
         if (vid.isEmpty || isMacroVehicleId(vid)) continue;
         if (knownVids.contains(vid)) continue;
         if (_hiddenDayTxIds.contains(t.id)) continue;

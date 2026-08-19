@@ -53,7 +53,7 @@ export interface Transaction {
     id: string; date: string; type: TransactionType; category: string; subCategory?: string; description: string; amount: number;
     /** เวลา record ถูกสร้างครั้งแรก (ISO string) ใช้เป็น source-of-truth ในการหา "รายการล่าสุด" */
     createdAt?: string;
-    employeeId?: string; employeeIds?: string[]; driverId?: string; driverWage?: number; vehicleWage?: number; vehicleId?: string;
+    employeeId?: string; employeeIds?: string[]; driverId?: string; driverName?: string; driverWage?: number; vehicleWage?: number; vehicleId?: string; vehicleName?: string;
     quantity?: number; unit?: string; unitPrice?: number; projectId?: string; mileage?: number; imageUrl?: string; location?: string;
     laborStatus?: 'Work' | 'Leave' | 'Sick' | 'Personal' | 'OT' | 'Advance';
     workType?: WorkType;

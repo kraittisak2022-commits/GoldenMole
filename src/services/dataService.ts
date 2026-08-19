@@ -79,7 +79,7 @@ export const deleteEmployee = async (id: string): Promise<boolean> => {
 /** คอลัมน์ที่มีใน public.transactions — กรองฟิลด์ UI-only ที่ไม่มีใน DB (เช่น labor_general_work_notes) */
 const TRANSACTION_TABLE_COLUMNS = new Set([
     'id', 'date', 'type', 'category', 'sub_category', 'description', 'amount',
-    'employee_id', 'employee_ids', 'driver_id', 'driver_wage', 'vehicle_wage', 'vehicle_id',
+    'employee_id', 'employee_ids', 'driver_id', 'driver_name', 'driver_wage', 'vehicle_wage', 'vehicle_id', 'vehicle_name',
     'quantity', 'unit', 'unit_price', 'project_id', 'mileage', 'image_url', 'location',
     'labor_status', 'work_type', 'work_type_by_employee', 'work_assignments', 'custom_work_categories',
     'ot_amount', 'advance_amount', 'special_amount', 'ot_hours', 'ot_description',
@@ -109,6 +109,11 @@ export const prepareTransactionForDb = (t: Transaction): Record<string, unknown>
     }
     // Preserve work_assignments JSON verbatim — mobile count app uses camelCase keys (lapTimes).
     if (t.workAssignments !== undefined) out.work_assignments = t.workAssignments;
+    const vehicleId = typeof out.vehicle_id === 'string' ? out.vehicle_id.trim() : '';
+    const vehicleName = typeof out.vehicle_name === 'string' ? out.vehicle_name.trim() : '';
+    if (vehicleId && !vehicleName && !vehicleId.startsWith('v_')) {
+        out.vehicle_name = vehicleId;
+    }
     return out;
 };
 

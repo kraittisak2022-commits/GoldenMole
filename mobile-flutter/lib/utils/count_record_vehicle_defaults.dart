@@ -34,7 +34,7 @@ String? inferDriverIdFromTripHistory({
   final counts = <String, int>{};
   for (final t in tripHistory) {
     if (!transactionMatchesVehicleTripModuleList(t)) continue;
-    final v = (t.vehicleId ?? '').trim();
+    final v = transactionVehicleLabel(t);
     if (v.isEmpty || !vehicleIdsLikelyMatch(v, vehicleId)) continue;
     final driverId = (t.driverId ?? '').trim();
     if (driverId.isEmpty) continue;
@@ -126,7 +126,7 @@ int countVehicleTripHistory(
   var count = 0;
   for (final t in tripHistory) {
     if (!transactionMatchesVehicleTripModuleList(t)) continue;
-    final v = (t.vehicleId ?? '').trim();
+    final v = transactionVehicleLabel(t);
     if (v.isEmpty || !vehicleIdsLikelyMatch(v, vehicleId)) continue;
     count++;
   }

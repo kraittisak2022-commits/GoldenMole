@@ -22,8 +22,26 @@ bool isMacroVehicleId(String? raw) {
       s.contains('backhoe');
 }
 
+/// ชื่อรถสำหรับแสดง/จับคู่ — ใช้ vehicle_name ก่อน แล้วค่อย vehicle_id (แถวเก่าเป็นชื่อใน id)
+String transactionVehicleLabel(AppTransaction t) {
+  final name = (t.vehicleName ?? '').trim();
+  if (name.isNotEmpty) return name;
+  return (t.vehicleId ?? '').trim();
+}
+
+bool transactionHasVehicle(AppTransaction t) =>
+    transactionVehicleLabel(t).isNotEmpty;
+
+/// จับคู่แถวกับชื่อรถในฟอร์ม (รองรับแถวใหม่ที่ vehicle_id เป็นรหัสแคตตาล็อก)
+bool transactionVehicleMatches(AppTransaction t, String vehicle) {
+  final v = vehicle.trim();
+  if (v.isEmpty) return false;
+  if (transactionVehicleLabel(t) == v) return true;
+  return (t.vehicleId ?? '').trim() == v;
+}
+
 bool isMacroVehicleTransaction(AppTransaction t) =>
-    t.category == 'Vehicle' && isMacroVehicleId(t.vehicleId);
+    t.category == 'Vehicle' && isMacroVehicleId(transactionVehicleLabel(t));
 
 /// รถสิบล้อ
 bool isTenWheelVehicleName(String? raw) {
@@ -420,7 +438,7 @@ bool isOtLaborRow(AppTransaction t) {
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
     if (!transactionMatchesVehicleTripModuleList(t)) continue;
-    final v = (t.vehicleId ?? '').trim();
+    final v = transactionVehicleLabel(t);
     if (v.isNotEmpty) vehicles.add(v);
     final split = vehicleTripPeriodSplit(t);
     morning += split.morning;
@@ -436,7 +454,7 @@ bool isOtLaborRow(AppTransaction t) {
 /// แถวแม็คโครที่ถือว่า «ใช้งานจริง» — ต้องมีรายละเอียดงาน (ไม่นับแถวที่มีแค่คนขับเริ่มต้น)
 bool isMacroVehicleRealUsageRow(AppTransaction t) {
   if (!isMacroVehicleTransaction(t)) return false;
-  if ((t.vehicleId ?? '').trim().isEmpty) return false;
+  if (transactionVehicleLabel(t).isEmpty) return false;
   final details = (t.workDetails ?? '')
       .replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '')
       .trim();
@@ -469,13 +487,13 @@ bool isFuelStockOutRow(AppTransaction t) {
   final mov = (t.fuelMovement ?? '').trim().toLowerCase();
   if (mov == 'stock_in') return false;
   if (mov == 'stock_out') return true;
-  return (t.vehicleId ?? '').trim().isNotEmpty;
+  return transactionHasVehicle(t);
 }
 
 /// แถวบันทึกการใช้น้ำมันรายคัน (เติมรถ / stock_out)
 bool isFuelVehicleUsageRow(AppTransaction t) {
   if (!isFuelStockOutRow(t)) return false;
-  final vehicle = (t.vehicleId ?? '').trim();
+  final vehicle = transactionVehicleLabel(t);
   if (vehicle.isEmpty) return false;
   return (t.quantity ?? 0) > 0;
 }
@@ -488,7 +506,7 @@ Set<String> macroVehicleIdsUsedForDay(
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
     if (!isMacroVehicleRealUsageRow(t)) continue;
-    final v = (t.vehicleId ?? '').trim();
+    final v = transactionVehicleLabel(t);
     if (v.isNotEmpty) ids.add(v);
   }
   return ids;
@@ -517,7 +535,7 @@ Set<String> fuelVehicleIdsReportedForDay(
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
     if (!isFuelVehicleUsageRow(t)) continue;
-    final v = (t.vehicleId ?? '').trim();
+    final v = transactionVehicleLabel(t);
     if (v.isNotEmpty) ids.add(v);
   }
   return ids;
@@ -972,7 +990,7 @@ bool countRecordRowHasSavedData(AppTransaction t) {
 
 bool _countRecordRowTouches(AppTransaction t) {
   if (_isCountRecordVehicleRow(t)) {
-    return (t.vehicleId ?? '').trim().isNotEmpty ||
+    return transactionHasVehicle(t) ||
         (t.driverId ?? '').trim().isNotEmpty;
   }
   if (_isCountRecordSandRow(t)) return true;
@@ -1081,7 +1099,7 @@ String? countRecordMenuStatusLabel(
     if (t.date.trim() != dayKey.trim()) continue;
     if (!countRecordRowHasSavedData(t)) continue;
     if (includeTrips && _isCountRecordVehicleRow(t)) {
-      final vid = (t.vehicleId ?? '').trim();
+      final vid = transactionVehicleLabel(t);
       if (vid.isNotEmpty) vehicles.add(vid);
       tripTotal += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
     } else if (includeSand && _isCountRecordSandRow(t)) {
@@ -1398,7 +1416,7 @@ bool transactionTouchesDailyModule(
     if (t.category != 'DailyLog') return false;
     if (subRaw.toLowerCase() == 'sand') return false;
     if (t.description.contains('ทรายที่ล้างที่บ้าน')) return false;
-    return (t.vehicleId ?? '').trim().isNotEmpty ||
+    return transactionHasVehicle(t) ||
         (t.driverId ?? '').trim().isNotEmpty ||
         (t.workDetails ?? '').trim().isNotEmpty ||
         ((t.perCarTrips ?? 0) > 0) ||
@@ -1419,7 +1437,7 @@ bool transactionTouchesDailyModule(
   bool macroVehicleTouches() {
     return t.category == 'Vehicle' &&
         isMacroVehicleTransaction(t) &&
-        ((t.vehicleId ?? '').trim().isNotEmpty ||
+        (transactionHasVehicle(t) ||
             (t.driverId ?? '').trim().isNotEmpty ||
             (t.workDetails ?? '').trim().isNotEmpty);
   }
@@ -1509,7 +1527,7 @@ bool transactionCountsAsVehicleTripMenu(AppTransaction t) {
 
   if (subRaw.toLowerCase() != 'vehicletrip') return false;
 
-  final hasVid = (t.vehicleId ?? '').trim().isNotEmpty ||
+  final hasVid = transactionHasVehicle(t) ||
       (t.driverId ?? '').trim().isNotEmpty;
   if (!hasVid) return false;
 
@@ -1532,7 +1550,7 @@ bool transactionMatchesVehicleTripModuleList(AppTransaction t) {
   if (t.category == 'Vehicle') return true;
   if (t.category == 'DailyLog' &&
       (t.subCategory ?? '').trim().toLowerCase() == 'vehicletrip') {
-    final hasVid = (t.vehicleId ?? '').trim().isNotEmpty ||
+    final hasVid = transactionHasVehicle(t) ||
         (t.driverId ?? '').trim().isNotEmpty;
     return hasVid;
   }
@@ -1574,7 +1592,7 @@ List<AppTransaction> latestVehicleTripsByVehicle(
   for (final t in rows) {
     if (!isVehicleTripHydrateSource(t)) continue;
     if (t.date.trim() != day) continue;
-    final vid = (t.vehicleId ?? '').trim();
+    final vid = transactionVehicleLabel(t);
     if (vid.isEmpty) continue;
     final existing = byVehicle[vid];
     if (existing == null || _vehicleTripIsNewerThan(t, existing)) {
@@ -1583,8 +1601,8 @@ List<AppTransaction> latestVehicleTripsByVehicle(
   }
   final list = byVehicle.values.toList();
   list.sort((a, b) {
-    final va = (a.vehicleId ?? '').trim();
-    final vb = (b.vehicleId ?? '').trim();
+    final va = transactionVehicleLabel(a);
+    final vb = transactionVehicleLabel(b);
     final byName = va.compareTo(vb);
     if (byName != 0) return byName;
     return a.id.compareTo(b.id);
@@ -1625,7 +1643,7 @@ bool transactionMatchesDailyModule(
   bool macroVehicleLike() {
     return t.category == 'Vehicle' &&
         isMacroVehicleTransaction(t) &&
-        (t.vehicleId ?? '').trim().isNotEmpty &&
+        transactionHasVehicle(t) &&
         (t.driverId ?? '').trim().isNotEmpty;
   }
 
