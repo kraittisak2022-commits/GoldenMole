@@ -3,6 +3,11 @@ import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, A
 import { coercePositionSources } from '../utils/advanceEmployeeFilter';
 import { resolveCarsForSave } from '../utils/appSettingsCarsGuard';
 import { visibleIncomeTypes } from '../utils/incomeTypes';
+import {
+    catalogFromCarsAndDrivers,
+    vehiclesToCarsAndDrivers,
+    type VehicleCatalogRow,
+} from '../utils/vehicleCatalog';
 
 // ============================================
 // Helper: camelCase <-> snake_case conversion
@@ -202,6 +207,103 @@ export const deleteAllProjects = async (): Promise<void> => {
 // ============================================
 // APP SETTINGS (Singleton)
 // ============================================
+const mapVehicleRow = (row: Record<string, unknown>): VehicleCatalogRow => ({
+    id: String(row.id ?? ''),
+    name: String(row.name ?? '').trim(),
+    defaultDriverId: String(row.default_driver_id ?? '').trim() || null,
+    sortOrder: Number(row.sort_order ?? 0) || 0,
+});
+
+export const fetchVehicles = async (): Promise<VehicleCatalogRow[]> => {
+    const { data, error } = await supabase
+        .from('vehicles')
+        .select('id, name, default_driver_id, sort_order')
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+    if (error) {
+        console.error('fetchVehicles error:', error);
+        return [];
+    }
+    return (data || []).map(mapVehicleRow).filter((row) => row.id && row.name);
+};
+
+const overlaySettingsFromVehicles = (s: AppSettings, rows: VehicleCatalogRow[]): AppSettings => {
+    if (rows.length === 0) return s;
+    const overlay = vehiclesToCarsAndDrivers(rows);
+    return {
+        ...s,
+        cars: overlay.cars,
+        appDefaults: {
+            ...(s.appDefaults || {}),
+            vehicleDefaultDrivers: overlay.vehicleDefaultDrivers,
+        },
+    };
+};
+
+const mirrorVehiclesToAppSettingsJson = async (rows: VehicleCatalogRow[]): Promise<boolean> => {
+    const overlay = vehiclesToCarsAndDrivers(rows);
+    const { data, error: readError } = await supabase
+        .from('app_settings')
+        .select('app_defaults')
+        .eq('id', 'default')
+        .maybeSingle();
+    if (readError) {
+        console.error('mirrorVehiclesToAppSettingsJson read error:', readError);
+        return false;
+    }
+    const defaults = (data?.app_defaults && typeof data.app_defaults === 'object')
+        ? { ...(data.app_defaults as Record<string, unknown>) }
+        : {};
+    defaults.vehicleDefaultDrivers = overlay.vehicleDefaultDrivers;
+    const { error } = await supabase
+        .from('app_settings')
+        .update({
+            cars: overlay.cars,
+            app_defaults: defaults,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', 'default');
+    if (error) {
+        console.error('mirrorVehiclesToAppSettingsJson write error:', error);
+        return false;
+    }
+    return true;
+};
+
+export const replaceVehicleCatalog = async (
+    cars: string[],
+    drivers: Record<string, string>,
+): Promise<boolean> => {
+    const existing = await fetchVehicles();
+    const next = catalogFromCarsAndDrivers(cars, drivers, existing);
+    const nextIds = new Set(next.map((row) => row.id));
+    for (const row of existing) {
+        if (nextIds.has(row.id)) continue;
+        const { error } = await supabase.from('vehicles').delete().eq('id', row.id);
+        if (error) {
+            console.error('replaceVehicleCatalog delete error:', error);
+            return false;
+        }
+    }
+    if (next.length > 0) {
+        const payload = next.map((row) => ({
+            id: row.id,
+            name: row.name,
+            default_driver_id: row.defaultDriverId,
+            sort_order: row.sortOrder,
+            updated_at: new Date().toISOString(),
+        }));
+        const { error } = await supabase.from('vehicles').upsert(payload, { onConflict: 'id' });
+        if (error) {
+            console.error('replaceVehicleCatalog upsert error:', error);
+            return false;
+        }
+    }
+    const saved = await fetchVehicles();
+    await mirrorVehiclesToAppSettingsJson(saved);
+    return true;
+};
+
 export const fetchSettings = async (): Promise<AppSettings | null> => {
     const { data, error } = await supabase.from('app_settings').select('*').eq('id', 'default').single();
     if (error) {
@@ -228,12 +330,23 @@ export const fetchSettings = async (): Promise<AppSettings | null> => {
         orgProfile: data.org_profile || undefined,
         appDefaults: data.app_defaults || undefined,
     };
-    return s;
+    const vehicles = await fetchVehicles();
+    return overlaySettingsFromVehicles(s, vehicles);
 };
 
 export const saveSettings = async (s: AppSettings): Promise<boolean> => {
     const existing = await fetchSettings();
-    const cars = resolveCarsForSave(s.cars, existing?.cars);
+    const vehicleRows = await fetchVehicles();
+    const fromTable = vehicleRows.length > 0 ? vehiclesToCarsAndDrivers(vehicleRows) : null;
+    const cars = fromTable
+        ? fromTable.cars
+        : resolveCarsForSave(s.cars, existing?.cars);
+    const appDefaults = {
+        ...(s.appDefaults ?? {}),
+        vehicleDefaultDrivers: fromTable
+            ? fromTable.vehicleDefaultDrivers
+            : (s.appDefaults?.vehicleDefaultDrivers ?? existing?.appDefaults?.vehicleDefaultDrivers ?? {}),
+    };
     const row = {
         id: 'default',
         app_name: s.appName,
@@ -251,7 +364,7 @@ export const saveSettings = async (s: AppSettings): Promise<boolean> => {
         version_notes: s.versionNotes ?? [],
         fuel_opening_stock: s.fuelOpeningStockLiters ?? { Diesel: 0, Benzine: 0 },
         org_profile: s.orgProfile ?? {},
-        app_defaults: s.appDefaults ?? {},
+        app_defaults: appDefaults,
         updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('app_settings').upsert(row, { onConflict: 'id' });

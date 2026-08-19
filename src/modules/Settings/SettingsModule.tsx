@@ -15,6 +15,7 @@ import {
 } from '../../utils/vehicleDefaultDriverUtils';
 import { supabase } from '../../lib/supabase';
 import { runBackup } from '../../services/backupService';
+import * as db from '../../services/dataService';
 import type { MobileErrorReportRow } from '../../types/mobileErrorReport';
 import {
     mobileErrorContextFromRow,
@@ -63,7 +64,7 @@ const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, '
 
 type StatusState = 'checking' | 'online' | 'offline' | 'degraded' | 'unknown';
 type TableDiagnostic = { table: string; read: StatusState; write: StatusState; note?: string };
-const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings', 'work_plans', 'admin_users', 'admin_logs'] as const;
+const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings', 'vehicles', 'work_plans', 'admin_users', 'admin_logs'] as const;
 
 const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const defaultDriveClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
@@ -483,7 +484,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         }
     };
 
-    const handleAddCar = () => {
+    const handleAddCar = async () => {
         const name = newCarName.trim();
         if (!name) return;
         if (settings.cars.some((c) => c.trim() === name)) {
@@ -495,9 +496,15 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             name,
             newCarDriverId || null,
         );
+        const nextCars = [...settings.cars, name];
+        const ok = await db.replaceVehicleCatalog(nextCars, driversMap);
+        if (!ok) {
+            alert('บันทึกรายชื่อรถลงฐานข้อมูลไม่สำเร็จ');
+            return;
+        }
         setSettings((prev) => ({
             ...prev,
-            cars: [...prev.cars, name],
+            cars: nextCars,
             appDefaults: {
                 ...prev.appDefaults,
                 vehicleDefaultDrivers: driversMap,
@@ -507,13 +514,19 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         setNewCarDriverId('');
     };
 
-    const handleDeleteCar = (index: number) => {
+    const handleDeleteCar = async (index: number) => {
         const car = settings.cars[index];
         if (!car || !confirm(`ลบรถ "${car}"?`)) return;
         const driversMap = removeVehicleDefaultDriver(getVehicleDefaultDriversMap(settings), car);
+        const nextCars = settings.cars.filter((_, i) => i !== index);
+        const ok = await db.replaceVehicleCatalog(nextCars, driversMap);
+        if (!ok) {
+            alert('ลบรถจากฐานข้อมูลไม่สำเร็จ');
+            return;
+        }
         setSettings((prev) => ({
             ...prev,
-            cars: prev.cars.filter((_, i) => i !== index),
+            cars: nextCars,
             appDefaults: {
                 ...prev.appDefaults,
                 vehicleDefaultDrivers: driversMap,
@@ -522,7 +535,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         if (editingCar?.index === index) setEditingCar(null);
     };
 
-    const saveCarEdit = () => {
+    const saveCarEdit = async () => {
         if (!editingCar) return;
         const name = editingCar.name.trim();
         if (!name) return;
@@ -538,18 +551,21 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             driversMap = renameVehicleDefaultDriver(driversMap, oldName, name);
         }
         driversMap = setVehicleDefaultDriver(driversMap, name, editingCar.driverId || null);
-        setSettings((prev) => {
-            const cars = [...prev.cars];
-            cars[editingCar.index] = name;
-            return {
-                ...prev,
-                cars,
-                appDefaults: {
-                    ...prev.appDefaults,
-                    vehicleDefaultDrivers: driversMap,
-                },
-            };
-        });
+        const nextCars = [...settings.cars];
+        nextCars[editingCar.index] = name;
+        const ok = await db.replaceVehicleCatalog(nextCars, driversMap);
+        if (!ok) {
+            alert('บันทึกการแก้ไขรถลงฐานข้อมูลไม่สำเร็จ');
+            return;
+        }
+        setSettings((prev) => ({
+            ...prev,
+            cars: nextCars,
+            appDefaults: {
+                ...prev.appDefaults,
+                vehicleDefaultDrivers: driversMap,
+            },
+        }));
         setEditingCar(null);
     };
 
@@ -1775,6 +1791,9 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                         {TAB_HELP.cars}
                                     </p>
                                 )}
+                                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                    เก็บในตารางฐานข้อมูล `vehicles` (ชื่อรถ + คนขับเริ่มต้น) เพื่อไม่ให้หายตอนบันทึกตั้งค่าอื่น
+                                </p>
                             </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-white/[0.03]">
