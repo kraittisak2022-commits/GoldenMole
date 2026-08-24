@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, UserCheck, Users, Truck, Fuel, Wrench, MapPin, Zap, Wallet, Banknote, List, Settings, ClipboardList, CalendarDays, Menu, X, Shield, LogOut, Sun, Moon, Loader2, Smartphone, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
 import { AppSettings, Employee, Transaction, LandProject, AdminUser, AdminLog, AdminUiTheme, AdminDataAccess } from './types';
 import Toast from './components/ui/Toast';
 import Card from './components/ui/Card';
@@ -20,6 +20,7 @@ import FirstLoginPasswordChange from './modules/Auth/FirstLoginPasswordChange';
 import PostLoginModeSelect from './modules/Auth/PostLoginModeSelect';
 import MobileFieldApp from './modules/Mobile/MobileFieldApp';
 import DataVerificationModule from './modules/DataQuality/DataVerificationModule';
+import ReportsModule from './modules/Reports/ReportsModule';
 import Button from './components/ui/Button';
 import AdminProfileModal from './components/AdminProfileModal';
 import { lazyWithRetry } from './utils/lazyWithRetry';
@@ -211,6 +212,7 @@ const MENU_ITEMS = [
     { id: 'Income', icon: Wallet, l: 'รายรับ' },
     { id: 'Payroll', icon: Banknote, l: 'เงินเดือน' },
     { id: 'DataList', icon: List, l: 'รายการบันทึก' },
+    { id: 'Reports', icon: BarChart3, l: 'รายงาน' },
     { id: 'AdminManagement', icon: Shield, l: 'จัดการแอดมิน' },
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];
@@ -1630,6 +1632,13 @@ function App() {
                         amountMode={isFinancialMaskEnabled ? 'percent' : 'currency'}
                     />
                 </Suspense>
+            );
+            case 'Reports': return (
+                    <ReportsModule
+                        transactions={visibleTransactions}
+                        settings={settings}
+                        maskAmounts={isFinancialMaskEnabled}
+                    />
             );
             case 'MonthDataAudit': return (
                 <DataVerificationModule

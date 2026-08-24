@@ -30,6 +30,7 @@ const MENU_PERMISSION_OPTIONS = [
     { id: 'Income', label: 'รายรับ' },
     { id: 'Payroll', label: 'เงินเดือน' },
     { id: 'DataList', label: 'รายการบันทึก' },
+    { id: 'Reports', label: 'รายงาน' },
     { id: 'Settings', label: 'ตั้งค่า' },
 ];
 
@@ -70,7 +71,7 @@ const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, { label: string; acces
     Viewer: {
         label: 'Viewer (ดูอย่างเดียว)',
         access: {
-            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList'],
+            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList', 'Reports'],
             visibleTransactionCategories: TX_CATEGORY_PERMISSION_OPTIONS.map(x => x.id),
             transactionPermissions: { view: true, create: false, edit: false, delete: false },
         },
@@ -78,7 +79,7 @@ const PERMISSION_TEMPLATES: Record<PermissionTemplateKey, { label: string; acces
     Auditor: {
         label: 'Auditor (ตรวจสอบ)',
         access: {
-            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList'],
+            visibleMenus: ['Dashboard', 'MonthDataAudit', 'DataList', 'Reports'],
             visibleTransactionCategories: TX_CATEGORY_PERMISSION_OPTIONS.map(x => x.id),
             maskFinancialAmountsAsPercent: true,
             transactionPermissions: { view: true, create: false, edit: false, delete: false },
