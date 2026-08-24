@@ -165,6 +165,33 @@ export const formatDateBE = (dateString?: string) => {
     return `${day}/${month}/${beYear}`;
 };
 
+/** ชื่อเดือนไทย (index 0 = มกราคม) */
+export const THAI_MONTHS = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+] as const;
+
+/** วันที่ไทยแบบชื่อเดือน เช่น 24 สิงหาคม 2569 */
+export const formatDateBELong = (dateString?: string) => {
+    if (!dateString) return '-';
+    const [year, month, day] = dateString.split('-');
+    if (!year || !month || !day) return dateString;
+    const m = parseInt(month, 10);
+    if (m < 1 || m > 12) return dateString;
+    const beYear = parseInt(year, 10) + 543;
+    return `${parseInt(day, 10)} ${THAI_MONTHS[m - 1]} ${beYear}`;
+};
+
+/** จำนวนวันในเดือน (month 1–12, year ค.ศ.) */
+export const daysInMonth = (year: number, month: number) => new Date(year, month, 0).getDate();
+
+/** รวมวัน/เดือน/ปี ค.ศ. เป็น YYYY-MM-DD (ตัดวันเกินตามเดือน) */
+export const ymdFromParts = (year: number, month: number, day: number) => {
+    const maxDay = daysInMonth(year, month);
+    const d = Math.min(Math.max(1, day), maxDay);
+    return `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
 export const FormatNumber = ({ value }: { value: number }) => {
     // Note: This was a component in the original code, but as a util efficiently it should return string, 
     // but for the UI consistency I will keep it as a component-like helper or just use string formatting here and Text Component in UI.

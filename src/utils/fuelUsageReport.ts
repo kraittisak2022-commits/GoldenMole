@@ -238,21 +238,22 @@ function csvCell(value: string | number): string {
 }
 
 export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilters): string {
-        const lines: Array<Array<string | number>> = [
+    const lines: Array<Array<string | number>> = [
         ['รายงานการใช้น้ำมัน', `${normalizeDate(filters.start)} - ${normalizeDate(filters.end)}`],
         [],
-        ['ประเภท', 'ลิตร', 'บาท', 'รายการ'],
-        ['รับเข้า', report.totals.stockInLiters, report.totals.stockInAmount, ''],
-        ['เติมรถ', report.totals.vehicleLiters, report.totals.vehicleAmount, ''],
-        ['เบิกจากถัง', report.totals.withdrawLiters, '', ''],
-        ['รวมใช้', report.totals.usageLiters, report.totals.usageAmount, report.totals.count],
+        ['ประเภท', 'ลิตร', 'รายการ'],
+        ['รับเข้า', report.totals.stockInLiters, ''],
+        ['เติมรถ', report.totals.vehicleLiters, ''],
+        ['เบิกจากถัง', report.totals.withdrawLiters, ''],
+        ['โอนถัง', report.totals.transferLiters, ''],
+        ['รวมใช้', report.totals.usageLiters, report.totals.count],
         [],
         ['สรุปตามรถ'],
-        ['รถ', 'ลิตร', 'บาท', 'รายการ'],
-        ...report.byVehicle.map(v => [v.vehicleId, v.liters, v.amount, v.count].map(String)),
+        ['รถ', 'ลิตร', 'รายการ'],
+        ...report.byVehicle.map(v => [v.vehicleId, v.liters, v.count].map(String)),
         [],
         ['รายละเอียด'],
-        ['วันที่', 'ประเภท', 'น้ำมัน', 'ถัง', 'รถ', 'ลิตร', 'บาท', 'รายละเอียด'],
+        ['วันที่', 'ประเภท', 'น้ำมัน', 'ถัง', 'รถ', 'ลิตร', 'รายละเอียด'],
         ...report.rows.map(r => [
             r.date,
             fuelKindLabel(r.kind),
@@ -260,7 +261,6 @@ export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilter
             tankLabel(r.tank),
             r.vehicleId,
             r.liters,
-            r.amount,
             r.description,
         ].map(String)),
     ];
@@ -278,47 +278,62 @@ function escHtml(value: string | number): string {
 
 export function fuelUsageToPrintHtml(opts: {
     appName: string;
+    orgSubtitle?: string;
     rangeLabel: string;
     report: FuelUsageReport;
-    maskAmounts?: boolean;
+    formatDate?: (ymd: string) => string;
 }): string {
-    const money = (n: number) => (opts.maskAmounts ? '•••' : n.toLocaleString('th-TH', { maximumFractionDigits: 2 }));
     const liters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    const fmt = opts.formatDate || ((ymd: string) => ymd);
     const t = opts.report.totals;
     const vehicleRows = opts.report.byVehicle.map(v =>
-        `<tr><td>${escHtml(v.vehicleId)}</td><td>${escHtml(liters(v.liters))}</td><td>${escHtml(money(v.amount))}</td><td>${escHtml(v.count)}</td></tr>`
-    ).join('') || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>';
+        `<tr><td>${escHtml(v.vehicleId)}</td><td>${escHtml(liters(v.liters))}</td><td>${escHtml(v.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="3">ไม่มีข้อมูล</td></tr>';
     const dayRows = opts.report.byDay.map(d =>
-        `<tr><td>${escHtml(d.date)}</td><td>${escHtml(liters(d.stockInLiters))}</td><td>${escHtml(liters(d.usageLiters))}</td><td>${escHtml(money(d.usageAmount))}</td><td>${escHtml(d.count)}</td></tr>`
-    ).join('') || '<tr><td colspan="5">ไม่มีข้อมูล</td></tr>';
+        `<tr><td>${escHtml(fmt(d.date))}</td><td>${escHtml(liters(d.stockInLiters))}</td><td>${escHtml(liters(d.usageLiters))}</td><td>${escHtml(d.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>';
     const detailRows = opts.report.rows.map(r =>
-        `<tr><td>${escHtml(r.date)}</td><td>${escHtml(fuelKindLabel(r.kind))}</td><td>${escHtml(fuelTypeLabel(r.fuelType))}</td><td>${escHtml(r.vehicleId || '-')}</td><td>${escHtml(liters(r.liters))}</td><td>${escHtml(money(r.amount))}</td><td>${escHtml(r.description)}</td></tr>`
-    ).join('') || '<tr><td colspan="7">ไม่มีข้อมูล</td></tr>';
+        `<tr><td>${escHtml(fmt(r.date))}</td><td>${escHtml(fuelKindLabel(r.kind))}</td><td>${escHtml(fuelTypeLabel(r.fuelType))}</td><td>${escHtml(r.vehicleId || '-')}</td><td>${escHtml(liters(r.liters))}</td><td>${escHtml(r.description)}</td></tr>`
+    ).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>';
 
     return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>รายงานการใช้น้ำมัน</title>
 <style>
-body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;padding:24px;color:#0f172a}
-h1{font-size:20px;margin:0 0 4px}
-p{margin:0 0 16px;color:#475569}
-table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:12px}
-th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left}
-th{background:#f1f5f9}
-td:nth-child(n+2){text-align:right}
-.summary td{font-weight:600}
+@page{margin:18mm}
+body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;padding:0;color:#0f172a;line-height:1.45}
+.header{border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:20px}
+.org{font-size:13px;color:#475569;margin:0 0 4px;letter-spacing:.02em}
+h1{font-size:22px;margin:0 0 6px;font-weight:700}
+.meta{margin:0;color:#64748b;font-size:13px}
+h2{font-size:14px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:.04em;color:#334155}
+table{width:100%;border-collapse:collapse;margin:0 0 8px;font-size:12px}
+th,td{border:1px solid #cbd5e1;padding:7px 8px;text-align:left}
+th{background:#f8fafc;font-weight:600;color:#334155}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.summary{width:auto;min-width:320px}
+.summary td:first-child{font-weight:600}
+.kpi{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 8px}
+.kpi div{border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:120px}
+.kpi span{display:block;font-size:11px;color:#64748b;margin-bottom:2px}
+.kpi strong{font-size:16px;font-variant-numeric:tabular-nums}
+.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}
 </style></head><body>
-<h1>รายงานการใช้น้ำมัน — ${escHtml(opts.appName)}</h1>
-<p>ช่วง ${escHtml(opts.rangeLabel)}</p>
-<table class="summary"><thead><tr><th>รายการ</th><th>ลิตร</th><th>บาท</th></tr></thead><tbody>
-<tr><td>รับเข้า</td><td>${escHtml(liters(t.stockInLiters))}</td><td>${escHtml(money(t.stockInAmount))}</td></tr>
-<tr><td>เติมรถ</td><td>${escHtml(liters(t.vehicleLiters))}</td><td>${escHtml(money(t.vehicleAmount))}</td></tr>
-<tr><td>เบิกจากถัง</td><td>${escHtml(liters(t.withdrawLiters))}</td><td>—</td></tr>
-<tr><td>รวมใช้</td><td>${escHtml(liters(t.usageLiters))}</td><td>${escHtml(money(t.usageAmount))}</td></tr>
-</tbody></table>
-<h2 style="font-size:16px">สรุปตามรถ</h2>
-<table><thead><tr><th>รถ</th><th>ลิตร</th><th>บาท</th><th>รายการ</th></tr></thead><tbody>${vehicleRows}</tbody></table>
-<h2 style="font-size:16px">สรุปรายวัน</h2>
-<table><thead><tr><th>วันที่</th><th>รับเข้า (ลิตร)</th><th>ใช้ (ลิตร)</th><th>ค่าใช้จ่าย</th><th>รายการ</th></tr></thead><tbody>${dayRows}</tbody></table>
-<h2 style="font-size:16px">รายละเอียด</h2>
-<table><thead><tr><th>วันที่</th><th>ประเภท</th><th>น้ำมัน</th><th>รถ</th><th>ลิตร</th><th>บาท</th><th>รายละเอียด</th></tr></thead><tbody>${detailRows}</tbody></table>
+<div class="header">
+${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
+<h1>รายงานการใช้น้ำมัน</h1>
+<p class="meta">${escHtml(opts.appName)} · ช่วง ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} รายการ</p>
+</div>
+<div class="kpi">
+<div><span>รับเข้า</span><strong>${escHtml(liters(t.stockInLiters))} ล.</strong></div>
+<div><span>เติมรถ</span><strong>${escHtml(liters(t.vehicleLiters))} ล.</strong></div>
+<div><span>เบิกจากถัง</span><strong>${escHtml(liters(t.withdrawLiters))} ล.</strong></div>
+<div><span>รวมใช้</span><strong>${escHtml(liters(t.usageLiters))} ล.</strong></div>
+</div>
+<h2>สรุปตามรถ</h2>
+<table><thead><tr><th>รถ</th><th class="num">ลิตร</th><th class="num">รายการ</th></tr></thead><tbody>${vehicleRows}</tbody></table>
+<h2>สรุปรายวัน</h2>
+<table><thead><tr><th>วันที่</th><th class="num">รับเข้า (ลิตร)</th><th class="num">ใช้ (ลิตร)</th><th class="num">รายการ</th></tr></thead><tbody>${dayRows}</tbody></table>
+<h2>รายละเอียด</h2>
+<table><thead><tr><th>วันที่</th><th>ประเภท</th><th>น้ำมัน</th><th>รถ</th><th class="num">ลิตร</th><th>รายละเอียด</th></tr></thead><tbody>${detailRows}</tbody></table>
+<p class="footer">เอกสารนี้สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · การโอนระหว่างถังไม่นับเป็นการใช้</p>
 </body></html>`;
 }

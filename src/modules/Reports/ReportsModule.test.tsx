@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ReportsModule from './ReportsModule';
 import type { AppSettings, Transaction } from '../../types';
-import { getToday } from '../../utils';
+import { getToday, THAI_MONTHS } from '../../utils';
 
 const settings = {
     appName: 'Goldenmole',
@@ -22,7 +22,7 @@ function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id'>): Transa
 }
 
 describe('ReportsModule', () => {
-    it('shows fuel usage summary for the current month', () => {
+    it('shows liters-only fuel usage summary with Thai month date controls', () => {
         render(
             <ReportsModule
                 settings={settings}
@@ -45,6 +45,14 @@ describe('ReportsModule', () => {
         expect(screen.getByText('เติมรถดรัม')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'พิมพ์/PDF' })).toBeInTheDocument();
+        expect(screen.queryByText('ค่าใช้จ่าย')).not.toBeInTheDocument();
+        expect(screen.queryByText(/฿/)).not.toBeInTheDocument();
+        expect(screen.getByLabelText('ตั้งแต่ เดือน')).toBeInTheDocument();
+        expect(screen.getByLabelText('ถึง เดือน')).toBeInTheDocument();
+        for (const month of ['มกราคม', 'สิงหาคม', 'ธันวาคม'] as const) {
+            expect(THAI_MONTHS).toContain(month);
+        }
+        expect(screen.getAllByRole('option', { name: 'สิงหาคม' }).length).toBeGreaterThan(0);
     });
 
     it('filters the table when a vehicle is selected', async () => {

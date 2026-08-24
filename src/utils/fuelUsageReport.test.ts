@@ -242,7 +242,7 @@ describe('buildFuelUsageReport', () => {
 });
 
 describe('fuelUsageToCsv', () => {
-    it('includes Thai headers and data rows', () => {
+    it('includes Thai headers and liters-only data rows without cost columns', () => {
         const report = buildFuelUsageReport([
             fuelTx({
                 id: 'v-1',
@@ -259,6 +259,9 @@ describe('fuelUsageToCsv', () => {
         expect(csv).toContain('วันที่');
         expect(csv).toContain('รถดรัมโอเว่น');
         expect(csv).toContain(fuelKindLabel('vehicle'));
+        expect(csv).toContain('ลิตร');
+        expect(csv).not.toContain('บาท');
+        expect(csv).not.toContain('ค่าใช้จ่าย');
         expect(csv.startsWith('\ufeff')).toBe(true);
     });
 });
