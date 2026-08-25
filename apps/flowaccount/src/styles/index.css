@@ -9,6 +9,7 @@
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
   --color-ring: #0f172a;
+  --color-gold: #c5a55a;
   --radius: 8px;
   --space-unit: 8px;
 }
@@ -39,6 +40,166 @@
   }
 }
 
+@layer utilities {
+  .login-icon-typing {
+    animation: login-icon-pop 0.28s ease-out;
+  }
+
+  .login-input-bar-pulse {
+    animation: login-bar-pulse 1.6s ease-in-out infinite;
+  }
+
+  .login-btn-shine {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-btn-shine::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    translate: -120% 0;
+    background: linear-gradient(
+      105deg,
+      transparent 35%,
+      rgba(255, 255, 255, 0.28) 50%,
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+
+  .login-btn-shine:hover:not(:disabled)::after {
+    animation: login-shine-sweep 0.85s ease-out;
+  }
+}
+
+@keyframes login-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes login-aurora {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.55;
+  }
+  33% {
+    transform: translate(12px, -18px) scale(1.06);
+    opacity: 0.7;
+  }
+  66% {
+    transform: translate(-10px, 10px) scale(0.96);
+    opacity: 0.5;
+  }
+}
+
+@keyframes login-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes login-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-6px);
+  }
+  30% {
+    transform: translateX(6px);
+  }
+  45% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes login-keystroke {
+  0% {
+    box-shadow: 0 0 0 0 rgba(3, 105, 161, 0.28);
+    opacity: 0.85;
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(3, 105, 161, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes login-scan {
+  0% {
+    top: -5%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    top: 105%;
+    opacity: 0;
+  }
+}
+
+@keyframes login-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes login-icon-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes login-bar-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes login-shine-sweep {
+  from {
+    translate: -120% 0;
+  }
+  to {
+    translate: 120% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -46,5 +207,9 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .login-btn-shine:hover:not(:disabled)::after {
+    animation: none !important;
   }
 }
