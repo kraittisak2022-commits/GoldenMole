@@ -1,8 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReportsModule from './ReportsModule';
 import type { AppSettings, Transaction } from '../../types';
-import { getToday, THAI_MONTHS } from '../../utils';
+import { THAI_MONTHS } from '../../utils';
+
+vi.mock('../../utils', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../utils')>();
+    return {
+        ...actual,
+        getToday: () => '2026-08-15',
+    };
+});
 
 const settings = {
     appName: 'Goldenmole',
@@ -10,9 +19,8 @@ const settings = {
     fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
 } as AppSettings;
 
-function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id'>): Transaction {
+function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id' | 'date'>): Transaction {
     return {
-        date: getToday(),
         type: 'Expense',
         category: 'Fuel',
         description: 'น้ำมัน',
@@ -22,6 +30,10 @@ function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id'>): Transa
 }
 
 describe('ReportsModule', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     it('shows liters-only fuel usage summary with Thai month date controls', () => {
         render(
             <ReportsModule
@@ -29,6 +41,7 @@ describe('ReportsModule', () => {
                 transactions={[
                     fuelTx({
                         id: 'v1',
+                        date: '2026-08-10',
                         fuelMovement: 'stock_out',
                         vehicleId: 'รถดรัมโอเว่น',
                         fuelType: 'Diesel',
@@ -63,6 +76,7 @@ describe('ReportsModule', () => {
                 transactions={[
                     fuelTx({
                         id: 'v1',
+                        date: '2026-08-10',
                         fuelMovement: 'stock_out',
                         vehicleId: 'รถดรัมโอเว่น',
                         quantity: 60,
@@ -71,6 +85,7 @@ describe('ReportsModule', () => {
                     }),
                     fuelTx({
                         id: 'v2',
+                        date: '2026-08-11',
                         fuelMovement: 'stock_out',
                         vehicleId: 'รถเก๋ง',
                         quantity: 10,
@@ -84,5 +99,70 @@ describe('ReportsModule', () => {
         await user.selectOptions(screen.getByLabelText('รถ'), 'รถเก๋ง');
         expect(screen.queryByText('เติมโอเว่น')).not.toBeInTheDocument();
         expect(screen.getByText('เติมเก๋ง')).toBeInTheDocument();
+    });
+
+    it('recalculates display when the selected month range changes', async () => {
+        const user = userEvent.setup();
+        render(
+            <ReportsModule
+                settings={settings}
+                transactions={[
+                    fuelTx({
+                        id: 'aug',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 60,
+                        description: 'เติมเดือนสิงหาคม',
+                    }),
+                    fuelTx({
+                        id: 'jul',
+                        date: '2026-07-15',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 25,
+                        description: 'เติมเดือนกรกฎาคม',
+                    }),
+                ]}
+            />
+        );
+
+        expect(screen.getByText('เติมเดือนสิงหาคม')).toBeInTheDocument();
+        expect(screen.queryByText('เติมเดือนกรกฎาคม')).not.toBeInTheDocument();
+        expect(screen.getByText(/1 รายการ/)).toBeInTheDocument();
+
+        await user.selectOptions(screen.getByLabelText('ตั้งแต่ เดือน'), '7');
+        await user.selectOptions(screen.getByLabelText('ถึง เดือน'), '7');
+
+        expect(screen.getByText('เติมเดือนกรกฎาคม')).toBeInTheDocument();
+        expect(screen.queryByText('เติมเดือนสิงหาคม')).not.toBeInTheDocument();
+        expect(screen.getByText(/1 กรกฎาคม 2569 – 31 กรกฎาคม 2569/)).toBeInTheDocument();
+        expect(screen.getByText(/1 รายการ/)).toBeInTheDocument();
+    });
+
+    it('still calculates when start and end dates are inverted', async () => {
+        const user = userEvent.setup();
+        render(
+            <ReportsModule
+                settings={settings}
+                transactions={[
+                    fuelTx({
+                        id: 'aug',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 60,
+                        description: 'เติมเดือนสิงหาคม',
+                    }),
+                ]}
+            />
+        );
+
+        // ตั้งแต่ = 31 ส.ค., ถึง = 1 ส.ค. → normalize เป็น 1–31 ส.ค.
+        await user.selectOptions(screen.getByLabelText('ตั้งแต่ วัน'), '31');
+        await user.selectOptions(screen.getByLabelText('ถึง วัน'), '1');
+
+        expect(screen.getByText('เติมเดือนสิงหาคม')).toBeInTheDocument();
+        expect(screen.getByText(/1 สิงหาคม 2569 – 31 สิงหาคม 2569/)).toBeInTheDocument();
     });
 });

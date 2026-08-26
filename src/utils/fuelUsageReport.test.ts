@@ -178,6 +178,24 @@ describe('buildFuelUsageReport', () => {
         expect(report.totals.withdrawLiters).toBe(25);
         expect(report.totals.usageLiters).toBeCloseTo(60 + 40 + 25 + 3.785411784, 6);
         expect(report.totals.count).toBe(5);
+        expect(report.rows.some(r => r.id === 'out-of-range')).toBe(false);
+    });
+
+    it('recalculates totals when the selected date range changes', () => {
+        const august = buildFuelUsageReport(rows, { start: '2026-08-01', end: '2026-08-31' });
+        const july = buildFuelUsageReport(rows, { start: '2026-07-01', end: '2026-07-31' });
+        const singleDay = buildFuelUsageReport(rows, { start: '2026-08-03', end: '2026-08-03' });
+
+        expect(july.rows.map(r => r.id)).toEqual(['out-of-range']);
+        expect(july.totals.vehicleLiters).toBe(999);
+        expect(july.totals.count).toBe(1);
+
+        expect(august.totals.count).toBe(5);
+        expect(august.totals.vehicleLiters).not.toBe(july.totals.vehicleLiters);
+
+        expect(singleDay.rows.map(r => r.id).sort()).toEqual(['v-1']);
+        expect(singleDay.totals.vehicleLiters).toBe(60);
+        expect(singleDay.totals.count).toBe(1);
     });
 
     it('aggregates by vehicle and can filter to one vehicle', () => {

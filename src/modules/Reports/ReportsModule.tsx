@@ -134,18 +134,31 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));
     }, [settings.cars, transactions]);
 
+    /** ช่วงที่ใช้คำนวณจริง — สลับถ้าตั้งแต่ > ถึง */
+    const range = useMemo(() => {
+        const a = normalizeDate(start);
+        const b = normalizeDate(end);
+        return a <= b ? { start: a, end: b } : { start: b, end: a };
+    }, [start, end]);
+
     const report = useMemo(
-        () => buildFuelUsageReport(transactions, { start, end, vehicleId, fuelType, kind }),
-        [transactions, start, end, vehicleId, fuelType, kind]
+        () => buildFuelUsageReport(transactions, {
+            start: range.start,
+            end: range.end,
+            vehicleId,
+            fuelType,
+            kind,
+        }),
+        [transactions, range.start, range.end, vehicleId, fuelType, kind]
     );
 
     const remainingStock = useMemo(() => {
-        const throughEnd = transactions.filter(t => normalizeDate(t.date) <= normalizeDate(end));
+        const throughEnd = transactions.filter(t => normalizeDate(t.date) <= range.end);
         return computeFuelStockBalances(throughEnd, settings.fuelOpeningStockLiters);
-    }, [transactions, end, settings.fuelOpeningStockLiters]);
+    }, [transactions, range.end, settings.fuelOpeningStockLiters]);
 
     const liters = (n: number) => `${formatDisplayNumber(n)} ล.`;
-    const rangeLabel = `${formatDateBELong(start)} – ${formatDateBELong(end)}`;
+    const rangeLabel = `${formatDateBELong(range.start)} – ${formatDateBELong(range.end)}`;
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
@@ -153,12 +166,18 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     };
 
     const exportCsv = () => {
-        const csv = fuelUsageToCsv(report, { start, end, vehicleId, fuelType, kind });
+        const csv = fuelUsageToCsv(report, {
+            start: range.start,
+            end: range.end,
+            vehicleId,
+            fuelType,
+            kind,
+        });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `fuel-usage-${normalizeDate(start)}-to-${normalizeDate(end)}.csv`;
+        a.download = `fuel-usage-${range.start}-to-${range.end}.csv`;
         a.click();
         URL.revokeObjectURL(url);
     };
