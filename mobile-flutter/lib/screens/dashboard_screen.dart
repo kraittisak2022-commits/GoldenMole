@@ -1076,13 +1076,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   CountRecordWorkMode? _dayWorkMode;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
-  /// คง State ของแผงนับตอนสลับแนวตั้ง/แนวนอน (Column ↔ Row)
-  final GlobalKey _tripCounterPanelKey = GlobalKey(
-    debugLabel: 'count_trip_panel',
-  );
-  final GlobalKey _sandCounterPanelKey = GlobalKey(
-    debugLabel: 'count_sand_panel',
-  );
   static const _kPanelShadowColor = Color(0x12000000);
   static const _kMoreMenusBarHeight = 40.0;
 
@@ -1326,9 +1319,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   required CounterMode counterMode,
                   required String modeKey,
                 }) {
-                  final panelKey = modeKey == 'trip'
-                      ? _tripCounterPanelKey
-                      : _sandCounterPanelKey;
                   return _CountRecordMenuCard(
                     title: title,
                     subtitle: '',
@@ -1338,8 +1328,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     borderColor: borderColor,
                     expanded: true,
                     onTap: () {},
+                    // ValueKey คง Element ใต้ Flex เดียวกันตอนหมุนจอ
+                    // (ห้ามใช้ GlobalKey ใน LayoutBuilder — จะย้าย RenderObject กลาง layout)
                     expandedChild: CountRecordCounterPanel(
-                      key: panelKey,
+                      key: ValueKey('count_panel_${modeKey}_$dayKeyStr'),
                       mode: counterMode,
                       service: widget.txService,
                       employeeService: widget.employeeService,
@@ -1407,34 +1399,25 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     borderColor: const Color(0xFFF48FB1),
                     counterMode: CounterMode.sand,
                   );
-                  // GlobalKey บนแผง + ValueKey บนช่อง — หมุนจอแล้วย้าย Element ไม่รีเซ็ต State
-                  return portrait
-                      ? Column(
-                          children: [
-                            Expanded(
-                              key: const ValueKey('count_trip_slot'),
-                              child: tripCell,
-                            ),
-                            const SizedBox(height: 10),
-                            Expanded(
-                              key: const ValueKey('count_sand_slot'),
-                              child: sandCell,
-                            ),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              key: const ValueKey('count_trip_slot'),
-                              child: tripCell,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              key: const ValueKey('count_sand_slot'),
-                              child: sandCell,
-                            ),
-                          ],
-                        );
+                  // Flex ทิศทางเดียว — หมุนจอแค่อัปเดต direction ไม่สลับ Column/Row
+                  // จึงไม่ dispose State ของแผงนับ
+                  return Flex(
+                    direction: portrait ? Axis.vertical : Axis.horizontal,
+                    children: [
+                      Expanded(
+                        key: const ValueKey('count_trip_slot'),
+                        child: tripCell,
+                      ),
+                      SizedBox(
+                        height: portrait ? 10 : 0,
+                        width: portrait ? 0 : 10,
+                      ),
+                      Expanded(
+                        key: const ValueKey('count_sand_slot'),
+                        child: sandCell,
+                      ),
+                    ],
+                  );
                 }
 
                 final backLabel =
