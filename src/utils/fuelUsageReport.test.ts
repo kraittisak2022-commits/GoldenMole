@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types';
 import {
     FUEL_SAND_SIEVE_SUB_CATEGORY,
+    FUEL_STOCK_IN_SUB_CATEGORY,
     FUEL_TRANSFER_SUB_CATEGORY,
+    FUEL_VEHICLE_USAGE_SUB_CATEGORY,
     FUEL_WITHDRAW_SUB_CATEGORY,
 } from './index';
 import {
@@ -37,43 +39,91 @@ describe('classifyFuelTx', () => {
         })).toBeNull();
     });
 
-    it('classifies stock-in, vehicle fill, withdraw, transfer, and sand sieve', () => {
+    it('counts only main-tank stock-in as รับเข้า and skips reserve transfer-in', () => {
         expect(classifyFuelTx(fuelTx({
             id: 'in',
             date: '2026-08-10',
             fuelMovement: 'stock_in',
-            quantity: 500,
+            subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+            fuelTank: 'main',
+            quantity: 12000,
         }))).toBe('stock_in');
 
         expect(classifyFuelTx(fuelTx({
-            id: 'v',
+            id: 'reserve-in',
             date: '2026-08-10',
-            fuelMovement: 'stock_out',
-            vehicleId: 'รถดรัมโอเว่น',
-            quantity: 40,
-        }))).toBe('vehicle');
+            fuelMovement: 'stock_in',
+            subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+            fuelTank: 'reserve',
+            workType: 'machine',
+            quantity: 600,
+        }))).toBeNull();
+    });
 
+    it('classifies main→reserve transfer as เบิก (not usage) and car/macro as usage', () => {
         expect(classifyFuelTx(fuelTx({
-            id: 'w',
-            date: '2026-08-10',
-            fuelMovement: 'stock_out',
-            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
-            quantity: 20,
-        }))).toBe('withdraw');
-
-        expect(classifyFuelTx(fuelTx({
-            id: 't',
+            id: 'tr-out',
             date: '2026-08-10',
             fuelMovement: 'stock_out',
             subCategory: FUEL_TRANSFER_SUB_CATEGORY,
-            quantity: 80,
-        }))).toBe('transfer');
+            fuelTank: 'main',
+            workType: 'machine',
+            quantity: 600,
+        }))).toBe('withdraw');
+
+        expect(classifyFuelTx(fuelTx({
+            id: 'machine-legacy',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'machine',
+            quantity: 100,
+        }))).toBe('withdraw');
+
+        expect(classifyFuelTx(fuelTx({
+            id: 'car',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'car',
+            vehicleId: 'ไมตี้',
+            quantity: 20,
+        }))).toBe('vehicle');
+
+        expect(classifyFuelTx(fuelTx({
+            id: 'gen',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'generator',
+            quantity: 5,
+        }))).toBe('other_out');
+
+        expect(classifyFuelTx(fuelTx({
+            id: 'other',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'other',
+            quantity: 16,
+        }))).toBe('other_out');
+
+        expect(classifyFuelTx(fuelTx({
+            id: 'macro',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+            fuelTank: 'reserve',
+            vehicleId: 'รถแม็คโคร',
+            quantity: 40,
+        }))).toBe('vehicle');
 
         expect(classifyFuelTx(fuelTx({
             id: 's',
             date: '2026-08-10',
             fuelMovement: 'stock_out',
             subCategory: FUEL_SAND_SIEVE_SUB_CATEGORY,
+            fuelTank: 'reserve',
             quantity: 10,
         }))).toBe('sand_sieve');
     });
@@ -106,45 +156,81 @@ describe('buildFuelUsageReport', () => {
     const rows: Transaction[] = [
         fuelTx({
             id: 'in-1',
+            date: '2026-08-05',
+            fuelMovement: 'stock_in',
+            subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+            fuelTank: 'main',
+            fuelType: 'Diesel',
+            quantity: 12000,
+            amount: 416280,
+            description: 'เพิ่มน้ำมันเข้าถัง',
+        }),
+        fuelTx({
+            id: 'reserve-in',
             date: '2026-08-02',
             fuelMovement: 'stock_in',
-            fuelType: 'Diesel',
-            quantity: 1000,
-            amount: 28000,
-            description: 'ซื้อดีเซล',
+            subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+            fuelTank: 'reserve',
+            workType: 'machine',
+            quantity: 600,
+            description: 'รับเข้าถังสำรองจากถังหลัก',
+        }),
+        fuelTx({
+            id: 'tr-out',
+            date: '2026-08-02',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+            fuelTank: 'main',
+            workType: 'machine',
+            quantity: 600,
+            description: 'เติมเครื่องจักร',
         }),
         fuelTx({
             id: 'v-1',
             date: '2026-08-03',
             fuelMovement: 'stock_out',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
             fuelType: 'Diesel',
             vehicleId: 'รถดรัมโอเว่น',
             quantity: 60,
             amount: 1800,
-            description: 'เติมรถดรัม',
+            description: 'น้ำมันรถแม็คโคร',
         }),
         fuelTx({
             id: 'v-2',
             date: '2026-08-04',
             fuelMovement: 'stock_out',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
             fuelType: 'Diesel',
             vehicleId: 'รถดรัมโอเว่น',
             quantity: 40,
             amount: 1200,
         }),
         fuelTx({
-            id: 'w-1',
+            id: 'car-1',
             date: '2026-08-05',
             fuelMovement: 'stock_out',
             subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
-            fuelType: 'Diesel',
-            quantity: 25,
-            amount: 0,
+            workType: 'car',
+            vehicleId: 'ไมตี้',
+            fuelTank: 'main',
+            quantity: 21,
+            description: 'เติมน้ำมันรถยนต์',
+        }),
+        fuelTx({
+            id: 'other-1',
+            date: '2026-08-06',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'other',
+            quantity: 16,
+            description: 'อื่นระบุ',
         }),
         fuelTx({
             id: 'gal',
             date: '2026-08-06',
             fuelMovement: 'stock_out',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
             fuelType: 'Benzine',
             vehicleId: 'รถเก๋ง',
             quantity: 1,
@@ -155,6 +241,7 @@ describe('buildFuelUsageReport', () => {
             id: 'out-of-range',
             date: '2026-07-31',
             fuelMovement: 'stock_out',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
             vehicleId: 'รถดรัมโอเว่น',
             quantity: 999,
             amount: 1,
@@ -169,15 +256,17 @@ describe('buildFuelUsageReport', () => {
         },
     ];
 
-    it('filters by inclusive date range and ignores non-fuel rows', () => {
+    it('filters by inclusive date range and counts stock-in / เบิก / ใช้ correctly', () => {
         const report = buildFuelUsageReport(rows, { start: '2026-08-01', end: '2026-08-31' });
-        expect(report.rows.map(r => r.id).sort()).toEqual(['gal', 'in-1', 'v-1', 'v-2', 'w-1']);
-        expect(report.totals.stockInLiters).toBe(1000);
-        expect(report.totals.stockInAmount).toBe(28000);
-        expect(report.totals.vehicleLiters).toBeCloseTo(60 + 40 + 3.785411784, 6);
-        expect(report.totals.withdrawLiters).toBe(25);
-        expect(report.totals.usageLiters).toBeCloseTo(60 + 40 + 25 + 3.785411784, 6);
-        expect(report.totals.count).toBe(5);
+        expect(report.rows.map(r => r.id).sort()).toEqual(['car-1', 'gal', 'in-1', 'other-1', 'tr-out', 'v-1', 'v-2']);
+        expect(report.totals.stockInLiters).toBe(12000);
+        expect(report.rows.some(r => r.id === 'reserve-in')).toBe(false);
+        expect(report.totals.withdrawLiters).toBe(600);
+        expect(report.totals.vehicleLiters).toBeCloseTo(60 + 40 + 21 + 3.785411784, 6);
+        expect(report.totals.otherOutLiters).toBe(16);
+        // ใช้แล้วไม่รวมเบิกไปถังสำรอง
+        expect(report.totals.usageLiters).toBeCloseTo(60 + 40 + 21 + 16 + 3.785411784, 6);
+        expect(report.totals.count).toBe(7);
         expect(report.rows.some(r => r.id === 'out-of-range')).toBe(false);
     });
 
@@ -190,7 +279,7 @@ describe('buildFuelUsageReport', () => {
         expect(july.totals.vehicleLiters).toBe(999);
         expect(july.totals.count).toBe(1);
 
-        expect(august.totals.count).toBe(5);
+        expect(august.totals.count).toBe(7);
         expect(august.totals.vehicleLiters).not.toBe(july.totals.vehicleLiters);
 
         expect(singleDay.rows.map(r => r.id).sort()).toEqual(['v-1']);
@@ -230,17 +319,20 @@ describe('buildFuelUsageReport', () => {
             kind: 'withdraw',
         });
         expect(withdrawOnly.rows).toHaveLength(1);
-        expect(withdrawOnly.totals.withdrawLiters).toBe(25);
+        expect(withdrawOnly.totals.withdrawLiters).toBe(600);
+        expect(withdrawOnly.totals.usageLiters).toBe(0);
         expect(withdrawOnly.totals.vehicleLiters).toBe(0);
     });
 
-    it('does not count tank transfers as usage', () => {
+    it('does not count main→reserve เบิก as usage', () => {
         const report = buildFuelUsageReport([
             fuelTx({
                 id: 'tr',
                 date: '2026-08-10',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelTank: 'main',
+                workType: 'machine',
                 quantity: 80,
                 amount: 0,
             }),
@@ -248,12 +340,13 @@ describe('buildFuelUsageReport', () => {
                 id: 'v',
                 date: '2026-08-10',
                 fuelMovement: 'stock_out',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 vehicleId: 'รถดรัมโอเว่น',
                 quantity: 10,
                 amount: 300,
             }),
         ], { start: '2026-08-01', end: '2026-08-31' });
-        expect(report.totals.transferLiters).toBe(80);
+        expect(report.totals.withdrawLiters).toBe(80);
         expect(report.totals.usageLiters).toBe(10);
         expect(report.totals.usageAmount).toBe(300);
     });
@@ -266,6 +359,7 @@ describe('fuelUsageToCsv', () => {
                 id: 'v-1',
                 date: '2026-08-03',
                 fuelMovement: 'stock_out',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 fuelType: 'Diesel',
                 vehicleId: 'รถดรัมโอเว่น',
                 quantity: 60,
@@ -277,6 +371,8 @@ describe('fuelUsageToCsv', () => {
         expect(csv).toContain('วันที่');
         expect(csv).toContain('รถดรัมโอเว่น');
         expect(csv).toContain(fuelKindLabel('vehicle'));
+        expect(csv).toContain('รับเข้า (ถังหลัก)');
+        expect(csv).toContain('เบิกไปถังสำรอง');
         expect(csv).toContain('ลิตร');
         expect(csv).not.toContain('บาท');
         expect(csv).not.toContain('ค่าใช้จ่าย');

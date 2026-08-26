@@ -1,7 +1,9 @@
 import type { Transaction } from '../types';
 import {
     FUEL_SAND_SIEVE_SUB_CATEGORY,
+    FUEL_STOCK_IN_SUB_CATEGORY,
     FUEL_TRANSFER_SUB_CATEGORY,
+    FUEL_VEHICLE_USAGE_SUB_CATEGORY,
     FUEL_WITHDRAW_SUB_CATEGORY,
     fuelTxToLiters,
     inferFuelMovement,
@@ -58,12 +60,12 @@ const UNNAMED_VEHICLE = 'ไม่ระบุรถ';
 
 export function fuelKindLabel(kind: FuelUsageKind): string {
     switch (kind) {
-        case 'stock_in': return 'รับเข้า';
-        case 'vehicle': return 'เติมรถ';
-        case 'withdraw': return 'เบิกจากถัง';
+        case 'stock_in': return 'รับเข้า (ถังหลัก)';
+        case 'vehicle': return 'ใช้แล้ว (รถ/แม็คโคร)';
+        case 'withdraw': return 'เบิกไปถังสำรอง';
         case 'transfer': return 'โอนถัง';
-        case 'sand_sieve': return 'ร่อนทราย';
-        default: return 'ใช้อื่น ๆ';
+        case 'sand_sieve': return 'ใช้แล้ว (ร่อนทราย)';
+        default: return 'ใช้แล้ว (อื่น ๆ)';
     }
 }
 
@@ -75,13 +77,65 @@ export function tankLabel(tank: 'main' | 'reserve'): string {
     return tank === 'reserve' ? 'ถังสำรอง' : 'ถังหลัก';
 }
 
+function withdrawPurpose(t: Transaction): string {
+    return String(t.workType ?? '').trim().toLowerCase();
+}
+
+/**
+ * จัดประเภทแถวน้ำมันสำหรับรายงาน
+ *
+ * - รับเข้า: เพิ่มเข้าถังหลักเท่านั้น (ไม่นับโอนเข้าถังสำรอง)
+ * - เบิกไปถังสำรอง: โอนหลัก→สำรอง / เติมเครื่องจักร — ยังไม่นับเป็นใช้
+ * - ใช้แล้ว: VehicleUsage, เติมรถ, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย, นายกเบิก ฯลฯ
+ * - แถวคู่ Transfer ฝั่งรับเข้าถังสำรองถูกข้าม (นับฝั่ง stock_out ครั้งเดียว)
+ */
 export function classifyFuelTx(t: Transaction): FuelUsageKind | null {
     if (t.category !== 'Fuel' || t.type !== 'Expense') return null;
-    if (inferFuelMovement(t) === 'stock_in') return 'stock_in';
-    if (t.subCategory === FUEL_WITHDRAW_SUB_CATEGORY) return 'withdraw';
-    if (t.subCategory === FUEL_TRANSFER_SUB_CATEGORY) return 'transfer';
-    if (t.subCategory === FUEL_SAND_SIEVE_SUB_CATEGORY) return 'sand_sieve';
-    if (t.vehicleId) return 'vehicle';
+
+    const sub = String(t.subCategory ?? '').trim();
+    const movement = inferFuelMovement(t);
+    const tank = normalizeFuelTank(t.fuelTank);
+    const purpose = withdrawPurpose(t);
+
+    // คู่โอนเข้าถังสำรอง — ไม่แสดงซ้ำ (ฝั่ง stock_out นับเป็นเบิก)
+    if (sub === FUEL_TRANSFER_SUB_CATEGORY && movement === 'stock_in') {
+        return null;
+    }
+
+    // รับเข้าถังหลักจริง (ซื้อ/เพิ่มสต็อก)
+    if (
+        sub === FUEL_STOCK_IN_SUB_CATEGORY
+        || (movement === 'stock_in' && tank === 'main' && sub !== FUEL_TRANSFER_SUB_CATEGORY)
+    ) {
+        return 'stock_in';
+    }
+
+    // โอนหลัก → สำรอง (เติมเครื่องจักร) = เบิก ยังไม่ใช้
+    if (sub === FUEL_TRANSFER_SUB_CATEGORY && movement === 'stock_out') {
+        return 'withdraw';
+    }
+    if (sub === FUEL_WITHDRAW_SUB_CATEGORY && purpose === 'machine') {
+        return 'withdraw';
+    }
+
+    // ใช้แล้วจากถังสำรอง (ร่อนทราย)
+    if (sub === FUEL_SAND_SIEVE_SUB_CATEGORY) {
+        return 'sand_sieve';
+    }
+
+    // เมนูเบิกน้ำมันที่ตัดออกจากถังหลักแล้ว = ใช้แล้ว
+    if (sub === FUEL_WITHDRAW_SUB_CATEGORY) {
+        if (purpose === 'car') return 'vehicle';
+        return 'other_out'; // generator | mayor | other | ไม่ระบุ
+    }
+
+    // การใช้น้ำมันรถ / แม็คโคร
+    if (sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY || t.vehicleId) {
+        return 'vehicle';
+    }
+
+    // legacy: ไม่มีรถ = รับเข้าถังหลัก
+    if (movement === 'stock_in') return 'stock_in';
     return 'other_out';
 }
 
@@ -89,8 +143,9 @@ function resolveFuelType(t: Transaction): FuelTypeFilter {
     return t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
 }
 
+/** น้ำมันที่ถูกใช้ไปแล้ว — ไม่รวมรับเข้า และไม่รวมเบิกไปถังสำรอง */
 function isUsageKind(kind: FuelUsageKind): boolean {
-    return kind === 'vehicle' || kind === 'withdraw' || kind === 'sand_sieve' || kind === 'other_out';
+    return kind === 'vehicle' || kind === 'sand_sieve' || kind === 'other_out';
 }
 
 export function monthBoundsFromYmd(ymd: string): { start: string; end: string } {
@@ -242,11 +297,12 @@ export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilter
         ['รายงานการใช้น้ำมัน', `${normalizeDate(filters.start)} - ${normalizeDate(filters.end)}`],
         [],
         ['ประเภท', 'ลิตร', 'รายการ'],
-        ['รับเข้า', report.totals.stockInLiters, ''],
-        ['เติมรถ', report.totals.vehicleLiters, ''],
-        ['เบิกจากถัง', report.totals.withdrawLiters, ''],
-        ['โอนถัง', report.totals.transferLiters, ''],
-        ['รวมใช้', report.totals.usageLiters, report.totals.count],
+        ['รับเข้า (ถังหลัก)', report.totals.stockInLiters, ''],
+        ['เบิกไปถังสำรอง', report.totals.withdrawLiters, ''],
+        ['ใช้แล้ว (รถ/แม็คโคร)', report.totals.vehicleLiters, ''],
+        ['ใช้แล้ว (ร่อนทราย)', report.totals.sandSieveLiters, ''],
+        ['ใช้แล้ว (อื่น ๆ)', report.totals.otherOutLiters, ''],
+        ['รวมใช้แล้ว', report.totals.usageLiters, report.totals.count],
         [],
         ['สรุปตามรถ'],
         ['รถ', 'ลิตร', 'รายการ'],
@@ -323,10 +379,10 @@ ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
 <p class="meta">${escHtml(opts.appName)} · ช่วง ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} รายการ</p>
 </div>
 <div class="kpi">
-<div><span>รับเข้า</span><strong>${escHtml(liters(t.stockInLiters))} ล.</strong></div>
-<div><span>เติมรถ</span><strong>${escHtml(liters(t.vehicleLiters))} ล.</strong></div>
-<div><span>เบิกจากถัง</span><strong>${escHtml(liters(t.withdrawLiters))} ล.</strong></div>
-<div><span>รวมใช้</span><strong>${escHtml(liters(t.usageLiters))} ล.</strong></div>
+<div><span>รับเข้า (ถังหลัก)</span><strong>${escHtml(liters(t.stockInLiters))} ล.</strong></div>
+<div><span>เบิกไปถังสำรอง</span><strong>${escHtml(liters(t.withdrawLiters))} ล.</strong></div>
+<div><span>ใช้แล้ว</span><strong>${escHtml(liters(t.usageLiters))} ล.</strong></div>
+<div><span>รถ/แม็คโคร</span><strong>${escHtml(liters(t.vehicleLiters))} ล.</strong></div>
 </div>
 <h2>สรุปตามรถ</h2>
 <table><thead><tr><th>รถ</th><th class="num">ลิตร</th><th class="num">รายการ</th></tr></thead><tbody>${vehicleRows}</tbody></table>

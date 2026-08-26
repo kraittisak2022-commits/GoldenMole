@@ -36,11 +36,11 @@ interface ReportsModuleProps {
 
 const KIND_OPTIONS: Array<{ id: '' | FuelUsageKind; label: string }> = [
     { id: '', label: 'ทุกรายการ' },
-    { id: 'stock_in', label: 'รับเข้า' },
-    { id: 'vehicle', label: 'เติมรถ' },
-    { id: 'withdraw', label: 'เบิกจากถัง' },
-    { id: 'transfer', label: 'โอนถัง' },
-    { id: 'sand_sieve', label: 'ร่อนทราย' },
+    { id: 'stock_in', label: 'รับเข้า (ถังหลัก)' },
+    { id: 'withdraw', label: 'เบิกไปถังสำรอง' },
+    { id: 'vehicle', label: 'ใช้แล้ว (รถ/แม็คโคร)' },
+    { id: 'sand_sieve', label: 'ใช้แล้ว (ร่อนทราย)' },
+    { id: 'other_out', label: 'ใช้แล้ว (อื่น ๆ)' },
 ];
 
 const selectClass = 'dark:bg-white/5 dark:text-slate-100 dark:border-white/20';
@@ -209,7 +209,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                         รายงานการใช้น้ำมัน
                     </h3>
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                        สรุปปริมาณรับเข้า เติมรถ และเบิกน้ำมันเป็นลิตรเท่านั้น · การโอนระหว่างถังไม่นับเป็นการใช้
+                        รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
@@ -264,11 +264,14 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                 </div>
             </Card>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <SummaryTile label="รับเข้า" value={liters(report.totals.stockInLiters)} />
-                <SummaryTile label="เติมรถ" value={liters(report.totals.vehicleLiters)} />
-                <SummaryTile label="เบิกจากถัง" value={liters(report.totals.withdrawLiters)} hint={report.totals.transferLiters > 0 ? `โอนถัง ${formatDisplayNumber(report.totals.transferLiters)} ล.` : undefined} />
-                <SummaryTile label="รวมใช้" value={liters(report.totals.usageLiters)} />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <SummaryTile label="รับเข้า (ถังหลัก)" value={liters(report.totals.stockInLiters)} />
+                <SummaryTile
+                    label="เบิกไปถังสำรอง"
+                    value={liters(report.totals.withdrawLiters)}
+                    hint="ยังไม่นับเป็นใช้"
+                />
+                <SummaryTile label="ใช้แล้ว" value={liters(report.totals.usageLiters)} />
                 <SummaryTile
                     label="คงเหลือ ณ วันสิ้นช่วง"
                     value={liters(remainingStock.Diesel)}
