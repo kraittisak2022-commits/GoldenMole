@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import type { FuelStockBalances } from './index';
 import {
     FUEL_SAND_SIEVE_SUB_CATEGORY,
     FUEL_STOCK_IN_SUB_CATEGORY,
@@ -6,10 +7,12 @@ import {
     FUEL_VEHICLE_USAGE_SUB_CATEGORY,
     FUEL_WITHDRAW_SUB_CATEGORY,
     fuelTxToLiters,
+    fuelUsageTankOf,
     inferFuelMovement,
     normalizeDate,
     normalizeFuelTank,
 } from './index';
+import { FUEL_SAND_SIEVE_LITERS_PER_HOUR } from './fuelSieveEstimate';
 
 export type FuelUsageKind = 'stock_in' | 'vehicle' | 'withdraw' | 'transfer' | 'sand_sieve' | 'other_out';
 export type FuelTypeFilter = 'Diesel' | 'Benzine';
@@ -20,6 +23,8 @@ export interface FuelUsageFilters {
     vehicleId?: string;
     fuelType?: FuelTypeFilter | '';
     kind?: FuelUsageKind | '';
+    /** ลิตรร่อนทรายประมาณรายวัน — สร้างแถว sand_sieve เสมือน */
+    estimatedSieveByDay?: Record<string, number>;
 }
 
 export interface FuelUsageRow {
@@ -32,6 +37,8 @@ export interface FuelUsageRow {
     liters: number;
     amount: number;
     description: string;
+    /** แถวประมาณจากชั่วโมงร่อนทราย (ไม่มีแถวจริงในฐานข้อมูล) */
+    estimated?: boolean;
 }
 
 export interface FuelUsageTotals {
@@ -205,12 +212,33 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
             date,
             kind,
             fuelType,
-            tank: normalizeFuelTank(t.fuelTank),
+            tank: fuelUsageTankOf(t),
             vehicleId,
             liters: fuelTxToLiters(t),
             amount: Number(t.amount) || 0,
             description: (t.description || t.workDetails || '').trim(),
         });
+    }
+
+    // แถวร่อนทรายประมาณ — ให้ยอด "ใช้แล้ว" กระทบกับคงเหลือ
+    const estimated = filters.estimatedSieveByDay || {};
+    if (!vehicleFilter && (!fuelTypeFilter || fuelTypeFilter === 'Diesel') && (!kindFilter || kindFilter === 'sand_sieve')) {
+        for (const [dayRaw, liters] of Object.entries(estimated)) {
+            const date = normalizeDate(dayRaw);
+            if (!liters || date < start || date > end) continue;
+            rows.push({
+                id: `${date}_fuel_sand_sieve_est`,
+                date,
+                kind: 'sand_sieve',
+                fuelType: 'Diesel',
+                tank: 'reserve',
+                vehicleId: '',
+                liters,
+                amount: 0,
+                description: `ประมาณจากชั่วโมงร่อนทราย ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ล./ชม.`,
+                estimated: true,
+            });
+        }
     }
 
     rows.sort((a, b) => {
@@ -292,7 +320,11 @@ function csvCell(value: string | number): string {
     return s;
 }
 
-export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilters): string {
+export function fuelUsageToCsv(
+    report: FuelUsageReport,
+    filters: FuelUsageFilters,
+    balances?: FuelStockBalances
+): string {
     const lines: Array<Array<string | number>> = [
         ['รายงานการใช้น้ำมัน', `${normalizeDate(filters.start)} - ${normalizeDate(filters.end)}`],
         [],
@@ -303,6 +335,20 @@ export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilter
         ['ใช้แล้ว (ร่อนทราย)', report.totals.sandSieveLiters, ''],
         ['ใช้แล้ว (อื่น ๆ)', report.totals.otherOutLiters, ''],
         ['รวมใช้แล้ว', report.totals.usageLiters, report.totals.count],
+        ['กระทบยอด (รับเข้า − ใช้แล้ว)', report.totals.stockInLiters - report.totals.usageLiters, ''],
+    ];
+    if (balances) {
+        lines.push(
+            [],
+            ['คงเหลือ ณ วันสิ้นช่วง'],
+            ['ถังหลัก (ดีเซล)', balances.Diesel, ''],
+            ['ถังสำรอง (ดีเซล)', balances.DieselReserve, ''],
+        );
+        if (balances.reserveShortfallLiters > 0) {
+            lines.push(['ขาดบันทึกโอนเข้าถังสำรอง', balances.reserveShortfallLiters, '']);
+        }
+    }
+    lines.push(
         [],
         ['สรุปตามรถ'],
         ['รถ', 'ลิตร', 'รายการ'],
@@ -312,14 +358,14 @@ export function fuelUsageToCsv(report: FuelUsageReport, filters: FuelUsageFilter
         ['วันที่', 'ประเภท', 'น้ำมัน', 'ถัง', 'รถ', 'ลิตร', 'รายละเอียด'],
         ...report.rows.map(r => [
             r.date,
-            fuelKindLabel(r.kind),
+            fuelKindLabel(r.kind) + (r.estimated ? ' (ประมาณ)' : ''),
             fuelTypeLabel(r.fuelType),
             tankLabel(r.tank),
             r.vehicleId,
             r.liters,
             r.description,
         ].map(String)),
-    ];
+    );
     const body = lines.map(cols => cols.map(csvCell).join(',')).join('\n');
     return `\ufeff${body}`;
 }
@@ -337,11 +383,13 @@ export function fuelUsageToPrintHtml(opts: {
     orgSubtitle?: string;
     rangeLabel: string;
     report: FuelUsageReport;
+    balances?: FuelStockBalances;
     formatDate?: (ymd: string) => string;
 }): string {
     const liters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
     const fmt = opts.formatDate || ((ymd: string) => ymd);
     const t = opts.report.totals;
+    const bal = opts.balances;
     const vehicleRows = opts.report.byVehicle.map(v =>
         `<tr><td>${escHtml(v.vehicleId)}</td><td>${escHtml(liters(v.liters))}</td><td>${escHtml(v.count)}</td></tr>`
     ).join('') || '<tr><td colspan="3">ไม่มีข้อมูล</td></tr>';
@@ -349,8 +397,16 @@ export function fuelUsageToPrintHtml(opts: {
         `<tr><td>${escHtml(fmt(d.date))}</td><td>${escHtml(liters(d.stockInLiters))}</td><td>${escHtml(liters(d.usageLiters))}</td><td>${escHtml(d.count)}</td></tr>`
     ).join('') || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>';
     const detailRows = opts.report.rows.map(r =>
-        `<tr><td>${escHtml(fmt(r.date))}</td><td>${escHtml(fuelKindLabel(r.kind))}</td><td>${escHtml(fuelTypeLabel(r.fuelType))}</td><td>${escHtml(r.vehicleId || '-')}</td><td>${escHtml(liters(r.liters))}</td><td>${escHtml(r.description)}</td></tr>`
+        `<tr><td>${escHtml(fmt(r.date))}</td><td>${escHtml(fuelKindLabel(r.kind) + (r.estimated ? ' (ประมาณ)' : ''))}</td><td>${escHtml(fuelTypeLabel(r.fuelType))}</td><td>${escHtml(r.vehicleId || '-')}</td><td>${escHtml(liters(r.liters))}</td><td>${escHtml(r.description)}</td></tr>`
     ).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>';
+
+    const balanceBlock = bal
+        ? `<div class="kpi">
+<div><span>คงเหลือถังหลัก</span><strong>${escHtml(liters(bal.Diesel))} ล.</strong></div>
+<div><span>คงเหลือถังสำรอง</span><strong>${escHtml(liters(bal.DieselReserve))} ล.</strong></div>
+${bal.reserveShortfallLiters > 0 ? `<div><span>ขาดบันทึกโอนเข้าสำรอง</span><strong>${escHtml(liters(bal.reserveShortfallLiters))} ล.</strong></div>` : ''}
+</div>`
+        : '';
 
     return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>รายงานการใช้น้ำมัน</title>
 <style>
@@ -382,14 +438,15 @@ ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
 <div><span>รับเข้า (ถังหลัก)</span><strong>${escHtml(liters(t.stockInLiters))} ล.</strong></div>
 <div><span>เบิกไปถังสำรอง</span><strong>${escHtml(liters(t.withdrawLiters))} ล.</strong></div>
 <div><span>ใช้แล้ว</span><strong>${escHtml(liters(t.usageLiters))} ล.</strong></div>
-<div><span>รถ/แม็คโคร</span><strong>${escHtml(liters(t.vehicleLiters))} ล.</strong></div>
+<div><span>กระทบยอด</span><strong>${escHtml(liters(t.stockInLiters - t.usageLiters))} ล.</strong></div>
 </div>
+${balanceBlock}
 <h2>สรุปตามรถ</h2>
 <table><thead><tr><th>รถ</th><th class="num">ลิตร</th><th class="num">รายการ</th></tr></thead><tbody>${vehicleRows}</tbody></table>
 <h2>สรุปรายวัน</h2>
 <table><thead><tr><th>วันที่</th><th class="num">รับเข้า (ลิตร)</th><th class="num">ใช้ (ลิตร)</th><th class="num">รายการ</th></tr></thead><tbody>${dayRows}</tbody></table>
 <h2>รายละเอียด</h2>
 <table><thead><tr><th>วันที่</th><th>ประเภท</th><th>น้ำมัน</th><th>รถ</th><th class="num">ลิตร</th><th>รายละเอียด</th></tr></thead><tbody>${detailRows}</tbody></table>
-<p class="footer">เอกสารนี้สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · การโอนระหว่างถังไม่นับเป็นการใช้</p>
+<p class="footer">เอกสารนี้สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · การโอนระหว่างถังไม่นับเป็นการใช้ · ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ล./ชม.</p>
 </body></html>`;
 }

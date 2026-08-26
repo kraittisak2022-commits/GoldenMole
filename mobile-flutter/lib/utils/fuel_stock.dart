@@ -462,6 +462,11 @@ class FuelStockBalance {
     }
     return reserve ? reserveDiesel : mainDiesel;
   }
+
+  /// ลิตรที่ถังสำรองติดลบ (0 ถ้าไม่ติดลบ) — ใช้เตือนว่าขาดบันทึกโอน
+  double get reserveShortfallLiters =>
+      (reserveDiesel < 0 ? -reserveDiesel : 0) +
+      (reserveBenzine < 0 ? -reserveBenzine : 0);
 }
 
 class _FuelDayBucket {
@@ -605,6 +610,8 @@ FuelStockBalance computeFuelStockBalance(
 
 /// ยอดกระทบกันของวันเดียว — เบิกเพื่อเครื่องจักร vs ที่ลงบันทึกใช้รถแล้ว
 /// [tank] null = รวมทุกถัง; ระบุแล้วคิดเฉพาะถังนั้น
+/// ยอดกระทบกันของวันเดียว — โอนเข้าถังสำรอง vs ที่ลงบันทึกใช้แม็คโครแล้ว
+/// [tank] null = รวมทุกถังสำหรับฝั่งใช้; ระบุแล้วคิดเฉพาะถังนั้น (แนะนำ `reserve`)
 ({double machineWithdraw, double vehicleUsage, double remaining})
 fuelMachineReconcileForDay(
   String dayKey,
@@ -618,9 +625,6 @@ fuelMachineReconcileForDay(
   for (final t in transactions) {
     if (t.date.trim() != day) continue;
     if (!_isFuelExpenseRow(t)) continue;
-    if (filterTank != null && normalizeFuelTank(t.fuelTank) != filterTank) {
-      continue;
-    }
     final liters = fuelTxLiters(t);
     if (liters <= 0) continue;
     if (isFuelWithdrawRow(t)) {
@@ -629,10 +633,14 @@ fuelMachineReconcileForDay(
     }
     if (isFuelTransferRow(t) &&
         (t.workType ?? '').trim().toLowerCase() == 'machine') {
-      machineWithdraw += liters;
+      // นับเฉพาะฝั่งออกจากถังหลัก — ไม่นับคู่รับเข้าสำรองซ้ำ
+      if (!isFuelStockInRow(t)) machineWithdraw += liters;
       continue;
     }
-    if (isFuelVehicleUsageRow(t)) vehicleUsage += liters;
+    if (isFuelVehicleUsageRow(t)) {
+      if (filterTank != null && fuelUsageTankOf(t) != filterTank) continue;
+      vehicleUsage += liters;
+    }
   }
   final remaining = machineWithdraw - vehicleUsage;
   return (
@@ -695,22 +703,15 @@ FuelStockBalance? applyFuelBalanceDelta(
     );
   }
   if (isFuelWithdrawRow(t)) {
-    var next = _fuelBalanceAdd(
+    // เบิกเครื่องจักรแบบเก่าต้องดูว่าวันนั้นมี Transfer หรือไม่
+    // — ใช้สแกนเต็มใน computeFuelStockBalance แทน
+    if (fuelWithdrawPurposeCode(t) == 'machine') return null;
+    return _fuelBalanceAdd(
       current,
       tank: tank,
       benzine: benzine,
       delta: -signed,
     );
-    // แอปเก่า: เบิกเติมเครื่องจักรเป็นแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
-    if (fuelWithdrawPurposeCode(t) == 'machine') {
-      next = _fuelBalanceAdd(
-        next,
-        tank: kFuelTankReserve,
-        benzine: benzine,
-        delta: signed,
-      );
-    }
-    return next;
   }
   if (isFuelSandSieveRow(t) ||
       isFuelTransferRow(t) ||

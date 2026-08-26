@@ -350,6 +350,18 @@ describe('buildFuelUsageReport', () => {
         expect(report.totals.usageLiters).toBe(10);
         expect(report.totals.usageAmount).toBe(300);
     });
+
+    it('includes estimated sand-sieve rows in usage totals', () => {
+        const report = buildFuelUsageReport([], {
+            start: '2026-08-01',
+            end: '2026-08-31',
+            estimatedSieveByDay: { '2026-08-01': 144, '2026-08-02': 50 },
+        });
+        expect(report.rows).toHaveLength(2);
+        expect(report.rows.every(r => r.kind === 'sand_sieve' && r.estimated)).toBe(true);
+        expect(report.totals.sandSieveLiters).toBe(194);
+        expect(report.totals.usageLiters).toBe(194);
+    });
 });
 
 describe('fuelUsageToCsv', () => {

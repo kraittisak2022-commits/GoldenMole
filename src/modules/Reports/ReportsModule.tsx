@@ -14,6 +14,7 @@ import {
     normalizeDate,
     ymdFromParts,
 } from '../../utils';
+import { estimateSieveUsageByDay } from '../../utils/fuelSieveEstimate';
 import {
     buildFuelUsageReport,
     fuelKindLabel,
@@ -141,6 +142,11 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         return a <= b ? { start: a, end: b } : { start: b, end: a };
     }, [start, end]);
 
+    const estimatedSieveByDay = useMemo(
+        () => estimateSieveUsageByDay(transactions),
+        [transactions]
+    );
+
     const report = useMemo(
         () => buildFuelUsageReport(transactions, {
             start: range.start,
@@ -148,14 +154,22 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             vehicleId,
             fuelType,
             kind,
+            estimatedSieveByDay,
         }),
-        [transactions, range.start, range.end, vehicleId, fuelType, kind]
+        [transactions, range.start, range.end, vehicleId, fuelType, kind, estimatedSieveByDay]
     );
 
     const remainingStock = useMemo(() => {
         const throughEnd = transactions.filter(t => normalizeDate(t.date) <= range.end);
-        return computeFuelStockBalances(throughEnd, settings.fuelOpeningStockLiters);
-    }, [transactions, range.end, settings.fuelOpeningStockLiters]);
+        const sieveThroughEnd: Record<string, number> = {};
+        for (const [day, liters] of Object.entries(estimatedSieveByDay)) {
+            if (normalizeDate(day) <= range.end) sieveThroughEnd[day] = liters;
+        }
+        return computeFuelStockBalances(throughEnd, {
+            ...settings.fuelOpeningStockLiters,
+            estimatedSieveByDay: sieveThroughEnd,
+        });
+    }, [transactions, range.end, settings.fuelOpeningStockLiters, estimatedSieveByDay]);
 
     const liters = (n: number) => `${formatDisplayNumber(n)} ล.`;
     const rangeLabel = `${formatDateBELong(range.start)} – ${formatDateBELong(range.end)}`;
@@ -166,13 +180,18 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     };
 
     const exportCsv = () => {
-        const csv = fuelUsageToCsv(report, {
-            start: range.start,
-            end: range.end,
-            vehicleId,
-            fuelType,
-            kind,
-        });
+        const csv = fuelUsageToCsv(
+            report,
+            {
+                start: range.start,
+                end: range.end,
+                vehicleId,
+                fuelType,
+                kind,
+                estimatedSieveByDay,
+            },
+            remainingStock
+        );
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -188,6 +207,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             orgSubtitle: orgLine || undefined,
             rangeLabel,
             report,
+            balances: remainingStock,
             formatDate: formatDateBELong,
         });
         const w = window.open('', '_blank');
@@ -271,13 +291,24 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                     value={liters(report.totals.withdrawLiters)}
                     hint="ยังไม่นับเป็นใช้"
                 />
-                <SummaryTile label="ใช้แล้ว" value={liters(report.totals.usageLiters)} />
                 <SummaryTile
-                    label="คงเหลือ ณ วันสิ้นช่วง"
+                    label="ใช้แล้ว"
+                    value={liters(report.totals.usageLiters)}
+                    hint={`กระทบยอด ${formatDisplayNumber(report.totals.stockInLiters - report.totals.usageLiters)} ล.`}
+                />
+                <SummaryTile
+                    label="คงเหลือถังหลัก"
                     value={liters(remainingStock.Diesel)}
                     hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ล.`}
                 />
             </div>
+            {(remainingStock.DieselReserve ?? 0) < 0 || remainingStock.reserveShortfallLiters > 0 ? (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
+                    ถังสำรองติดลบ {formatDisplayNumber(Math.abs(remainingStock.DieselReserve ?? 0))} ล.
+                    — ขาดบันทึกเบิกเติมเครื่องจักร (โอนเข้าถังสำรอง) ประมาณ{' '}
+                    {formatDisplayNumber(remainingStock.reserveShortfallLiters || Math.abs(remainingStock.DieselReserve ?? 0))} ล.
+                </div>
+            ) : null}
 
             <div className="grid gap-4 lg:grid-cols-2">
                 <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">

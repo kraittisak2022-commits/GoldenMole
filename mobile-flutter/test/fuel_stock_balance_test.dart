@@ -368,7 +368,7 @@ void main() {
       expect(next.reserveDiesel, 200);
     });
 
-    test('legacy Withdraw+machine credits reserve', () {
+    test('legacy Withdraw+machine returns null to force full recompute', () {
       final next = applyFuelBalanceDelta(
         start,
         _fuel(
@@ -379,9 +379,12 @@ void main() {
           workType: 'machine',
         ),
       );
-      expect(next, isNotNull);
-      expect(next!.mainDiesel, 920);
-      expect(next.reserveDiesel, 280);
+      expect(next, isNull);
+    });
+
+    test('reserveShortfallLiters reports absolute negative reserve', () {
+      const bal = FuelStockBalance(mainDiesel: 100, reserveDiesel: -45.5);
+      expect(bal.reserveShortfallLiters, 45.5);
     });
   });
 

@@ -37,12 +37,26 @@ export const FUEL_TANK_CAPACITY_RESERVE = 1000;
  */
 export const FUEL_STOCK_CUTOVER_YMD = '2026-08-01';
 
-type FuelDayBucket = { stockIn: number; withdraw: number; machineWithdraw: number; vehicleUsage: number };
+type FuelDayBucket = { stockIn: number; withdraw: number };
 
 export function normalizeFuelTank(raw?: string | null): 'main' | 'reserve' {
     const v = String(raw ?? '').trim().toLowerCase();
     if (v === FUEL_TANK_RESERVE || v === 'สำรอง') return 'reserve';
     return 'main';
+}
+
+/**
+ * ถังที่ใช้คิดยอด — ตรงกับมือถือ `fuelUsageTankOf`
+ * แถว VehicleUsage ที่ไม่ระบุถัง = ถังสำรอง; ประเภทอื่นว่าง = ถังหลัก
+ */
+export function fuelUsageTankOf(t: Transaction): 'main' | 'reserve' {
+    const raw = String(t.fuelTank ?? '').trim();
+    if (raw) return normalizeFuelTank(raw);
+    const sub = String(t.subCategory ?? '').trim();
+    if (t.category === 'Fuel' && sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY) {
+        return FUEL_TANK_RESERVE;
+    }
+    return FUEL_TANK_MAIN;
 }
 
 export type FuelStockBalances = {
@@ -52,31 +66,57 @@ export type FuelStockBalances = {
     Benzine: number;
     DieselReserve: number;
     BenzineReserve: number;
+    /** ลิตรที่ถังสำรองติดลบ (0 ถ้าไม่ติดลบ) — ใช้เตือนว่าขาดบันทึกโอน */
+    reserveShortfallLiters: number;
+};
+
+export type ComputeFuelStockBalancesOptions = {
+    Diesel?: number;
+    Benzine?: number;
+    DieselReserve?: number;
+    BenzineReserve?: number;
+    /** ลิตรร่อนทรายประมาณรายวัน (เฉพาะวันที่ยังไม่มีแถว SandSieve) — หักจากถังสำรอง */
+    estimatedSieveByDay?: Record<string, number>;
 };
 
 /**
- * คงเหลือแยกถังหลัก/สำรอง
+ * คงเหลือแยกถังหลัก/ถังสำรอง — สูตรเดียวกับมือถือ
  *
- * ต่อวันต่อถังต่อชนิดน้ำมัน:
- * `delta = stockIn − withdraw − max(0, vehicleUsage − machineWithdraw)`
+ * แต่ละแถวหัก/เติมถังของตัวเอง — ไม่หักล้างข้ามแถว
+ * `delta = stockIn − withdraw`
  *
- * รายการก่อน [FUEL_STOCK_CUTOVER_YMD] ไม่ถูกนับ — ยอดก่อนหน้า = 0
- * แถวไม่มี fuelTank → ถือเป็นถังหลัก
+ * - รับเข้า (StockIn) → ถังหลัก
+ * - โอนหลัก→สำรอง (Transfer / เบิกเครื่องจักรแบบเก่า) → หักหลัก บวกสำรอง (ยังไม่ใช้)
+ * - ใช้แล้ว (VehicleUsage, เบิกปั่นไฟ/อื่น/รถยนต์, SandSieve) → หักตามถังที่ติดป้าย
+ * - รายการก่อน [FUEL_STOCK_CUTOVER_YMD] ไม่ถูกนับ
  */
 export function computeFuelStockBalances(
     transactions: Transaction[],
-    opening?: { Diesel?: number; Benzine?: number; DieselReserve?: number; BenzineReserve?: number }
+    opening?: ComputeFuelStockBalancesOptions
 ): FuelStockBalances {
     const buckets = new Map<string, FuelDayBucket>();
     const bucketFor = (date: string, tank: 'main' | 'reserve', ft: 'Diesel' | 'Benzine') => {
         const key = `${date}|${tank}|${ft}`;
         let bucket = buckets.get(key);
         if (!bucket) {
-            bucket = { stockIn: 0, withdraw: 0, machineWithdraw: 0, vehicleUsage: 0 };
+            bucket = { stockIn: 0, withdraw: 0 };
             buckets.set(key, bucket);
         }
         return bucket;
     };
+
+    const transferMachineDays = new Set<string>();
+    for (const t of transactions) {
+        if (t.category !== 'Fuel' || t.type !== 'Expense') continue;
+        const day = normalizeDate(t.date);
+        if (day < FUEL_STOCK_CUTOVER_YMD) continue;
+        if (
+            t.subCategory === FUEL_TRANSFER_SUB_CATEGORY
+            && String(t.workType ?? '').trim().toLowerCase() === 'machine'
+        ) {
+            transferMachineDays.add(day);
+        }
+    }
 
     for (const t of transactions) {
         if (t.category !== 'Fuel' || t.type !== 'Expense') continue;
@@ -85,29 +125,40 @@ export function computeFuelStockBalances(
         const liters = fuelTxToLiters(t);
         if (!liters) continue;
         const ft = t.fuelType === 'Benzine' ? 'Benzine' : 'Diesel';
-        const tank = normalizeFuelTank(t.fuelTank);
+        const tank = fuelUsageTankOf(t);
         const bucket = bucketFor(day, tank, ft);
-        if (inferFuelMovement(t) === 'stock_in') {
+        const sub = String(t.subCategory ?? '').trim();
+        const purpose = String(t.workType ?? '').trim().toLowerCase();
+        const movement = inferFuelMovement(t);
+
+        if (movement === 'stock_in') {
             bucket.stockIn += liters;
             continue;
         }
-        if (t.subCategory === FUEL_WITHDRAW_SUB_CATEGORY) {
+        if (sub === FUEL_WITHDRAW_SUB_CATEGORY) {
             bucket.withdraw += liters;
-            if (String(t.workType ?? '').trim().toLowerCase() === 'machine') bucket.machineWithdraw += liters;
-            continue;
-        }
-        if (t.subCategory === FUEL_TRANSFER_SUB_CATEGORY || t.subCategory === FUEL_SAND_SIEVE_SUB_CATEGORY) {
-            bucket.withdraw += liters;
-            // เติมเครื่องจักรผ่านโอนหลัก→สำรอง: นับโควตา machine บนถังนั้น
-            if (
-                t.subCategory === FUEL_TRANSFER_SUB_CATEGORY &&
-                String(t.workType ?? '').trim().toLowerCase() === 'machine'
-            ) {
-                bucket.machineWithdraw += liters;
+            // แอปเก่า: เบิกเติมเครื่องจักรแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
+            if (purpose === 'machine' && !transferMachineDays.has(day)) {
+                bucketFor(day, FUEL_TANK_RESERVE, ft).stockIn += liters;
             }
             continue;
         }
-        if (t.vehicleId) bucket.vehicleUsage += liters;
+        if (
+            sub === FUEL_TRANSFER_SUB_CATEGORY
+            || sub === FUEL_SAND_SIEVE_SUB_CATEGORY
+            || sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY
+            || movement === 'stock_out'
+        ) {
+            bucket.withdraw += liters;
+        }
+    }
+
+    const estimated = opening?.estimatedSieveByDay;
+    if (estimated) {
+        for (const [day, liters] of Object.entries(estimated)) {
+            if (!liters || day < FUEL_STOCK_CUTOVER_YMD) continue;
+            bucketFor(normalizeDate(day), FUEL_TANK_RESERVE, 'Diesel').withdraw += liters;
+        }
     }
 
     let mainD = opening?.Diesel ?? 0;
@@ -115,8 +166,7 @@ export function computeFuelStockBalances(
     let reserveD = opening?.DieselReserve ?? 0;
     let reserveB = opening?.BenzineReserve ?? 0;
     for (const [key, bucket] of buckets) {
-        const excess = Math.max(0, bucket.vehicleUsage - bucket.machineWithdraw);
-        const delta = bucket.stockIn - bucket.withdraw - excess;
+        const delta = bucket.stockIn - bucket.withdraw;
         const isReserve = key.includes('|reserve|');
         const isBenzine = key.endsWith('|Benzine');
         if (isReserve) {
@@ -128,11 +178,14 @@ export function computeFuelStockBalances(
             mainD += delta;
         }
     }
+    const reserveShortfallLiters =
+        Math.max(0, -reserveD) + Math.max(0, -reserveB);
     return {
         Diesel: mainD,
         Benzine: mainB,
         DieselReserve: reserveD,
         BenzineReserve: reserveB,
+        reserveShortfallLiters,
     };
 }
 

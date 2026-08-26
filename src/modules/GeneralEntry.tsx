@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { getToday, formatDateBE, normalizeDate, computeFuelStockBalances, inferFuelMovement, fuelTxToLiters } from '../utils';
+import { estimateSieveUsageByDay } from '../utils/fuelSieveEstimate';
 import { Transaction, AppSettings } from '../types';
 
 interface GeneralEntryProps {
@@ -51,13 +52,16 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         [type, transactions, normDate]
     );
 
-    const fuelStock = useMemo(
-        () =>
-            type === 'Fuel'
-                ? computeFuelStockBalances(transactions, settings.fuelOpeningStockLiters)
-                : { Diesel: 0, Benzine: 0, DieselReserve: 0, BenzineReserve: 0 },
-        [type, transactions, settings.fuelOpeningStockLiters]
-    );
+    const fuelStock = useMemo(() => {
+        if (type !== 'Fuel') {
+            return { Diesel: 0, Benzine: 0, DieselReserve: 0, BenzineReserve: 0, reserveShortfallLiters: 0 };
+        }
+        const estimatedSieveByDay = estimateSieveUsageByDay(transactions);
+        return computeFuelStockBalances(transactions, {
+            ...settings.fuelOpeningStockLiters,
+            estimatedSieveByDay,
+        });
+    }, [type, transactions, settings.fuelOpeningStockLiters]);
 
     const dispenseHistory = useMemo(() => {
         if (type !== 'Fuel') return [];
@@ -349,7 +353,12 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังสำรอง · ดีเซล</p>
                                 <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round((fuelStock.DieselReserve ?? 0) * 10) / 10}</p>
                                 <p className="text-[11px] text-slate-400 mt-1">ความจุ 1,000 ลิตร</p>
-                                {(fuelStock.DieselReserve ?? 0) < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบการโอน/การใช้</p>}
+                                {(fuelStock.DieselReserve ?? 0) < 0 && (
+                                    <p className="text-[11px] text-red-600 mt-1">
+                                        ติดลบ — ขาดบันทึกโอนเข้าถังสำรองประมาณ{' '}
+                                        {Math.round((fuelStock.reserveShortfallLiters || Math.abs(fuelStock.DieselReserve ?? 0)) * 10) / 10} ลิตร
+                                    </p>
+                                )}
                             </div>
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">

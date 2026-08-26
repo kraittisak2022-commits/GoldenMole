@@ -11392,14 +11392,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ],
-          if (negMain || negReserve) ...[
+          if (negMain) ...[
             const SizedBox(height: 4),
             Text(
-              'เบิกมากกว่าน้ำมันที่มีในถัง',
+              'เบิกมากกว่าน้ำมันที่มีในถังหลัก',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
+                color: const Color(0xFFD14343),
+              ),
+            ),
+          ],
+          if (negReserve) ...[
+            const SizedBox(height: 4),
+            Text(
+              'ถังสำรองติดลบ ${formatFuelLiters(reservePreview.abs())} ลิตร — '
+              'ขาดบันทึกเบิกเติมเครื่องจักร '
+              '~${formatFuelLiters(_fuelStock.reserveShortfallLiters > 0 ? _fuelStock.reserveShortfallLiters : reservePreview.abs())} ลิตร',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                height: 1.35,
                 color: const Color(0xFFD14343),
               ),
             ),
@@ -11769,6 +11784,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final reconcile = fuelMachineReconcileForDay(
       dayKey,
       _moduleDayAllTransactions,
+      tank: kFuelTankReserve,
     );
     final editing =
         _fuelWithdrawTxId != null && _fuelWithdrawTxId!.isNotEmpty;
@@ -12014,11 +12030,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 border: Border.all(color: const Color(0xFFE2EAF4)),
               ),
               child: Text(
-                'เบิกเพื่อเครื่องจักรวันนี้ '
+                'โอนเข้าถังสำรองวันนี้ '
                 '${formatFuelLiters(reconcile.machineWithdraw)} ลิตร · '
                 'ลงบันทึกแม็คโครแล้ว '
                 '${formatFuelLiters(reconcile.vehicleUsage)} ลิตร · '
-                'คงค้าง ${formatFuelLiters(reconcile.remaining)} ลิตร',
+                'คงเหลือในสำรองหลังใช้ '
+                '${formatFuelLiters(reconcile.remaining)} ลิตร',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w700,
