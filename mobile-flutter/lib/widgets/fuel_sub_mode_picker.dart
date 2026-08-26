@@ -27,6 +27,7 @@ class FuelSubModePicker extends StatefulWidget {
     required this.mainDieselLiters,
     required this.reserveDieselLiters,
     required this.dateLabel,
+    this.daySummaries = const FuelSubModeDaySummaries(),
   });
 
   final ValueChanged<FuelSubMode> onSelect;
@@ -34,6 +35,8 @@ class FuelSubModePicker extends StatefulWidget {
   final double reserveDieselLiters;
   /// วันที่ที่จะบันทึก เช่น 16/08/2569
   final String dateLabel;
+  /// สรุปเมื่อมีข้อมูลของวันนี้แล้ว — ว่าง = ใช้ subtitle ปกติ
+  final FuelSubModeDaySummaries daySummaries;
 
   @override
   State<FuelSubModePicker> createState() => _FuelSubModePickerState();
@@ -192,7 +195,10 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
 
     final stockIn = _FuelModeOption(
       title: 'เพิ่มน้ำมัน',
-      subtitle: 'เติมดีเซลเข้าถังหลัก',
+      subtitle: widget.daySummaries.stockIn.isNotEmpty
+          ? widget.daySummaries.stockIn
+          : 'เติมดีเซลเข้าถังหลัก',
+      hasExisting: widget.daySummaries.stockIn.isNotEmpty,
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF2E7D32),
       iconTileColor: const Color(0xFFE8F5E9),
@@ -200,7 +206,10 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final withdraw = _FuelModeOption(
       title: 'เบิกน้ำมัน',
-      subtitle: 'เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก',
+      subtitle: widget.daySummaries.withdraw.isNotEmpty
+          ? widget.daySummaries.withdraw
+          : 'เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก',
+      hasExisting: widget.daySummaries.withdraw.isNotEmpty,
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
       iconTileColor: const Color(0xFFFFF3E0),
@@ -208,7 +217,10 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final carFill = _FuelModeOption(
       title: 'เติมน้ำมันรถยนต์',
-      subtitle: 'หักจากถังหลัก',
+      subtitle: widget.daySummaries.carFill.isNotEmpty
+          ? widget.daySummaries.carFill
+          : 'หักจากถังหลัก',
+      hasExisting: widget.daySummaries.carFill.isNotEmpty,
       icon: Icons.directions_car_filled_rounded,
       accent: const Color(0xFF6A1B9A),
       iconTileColor: const Color(0xFFF3E5F5),
@@ -216,7 +228,10 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     );
     final macro = _FuelModeOption(
       title: 'การใช้น้ำมันรถแม็คโคร',
-      subtitle: 'ค่าเริ่มต้นหักจากถังสำรอง',
+      subtitle: widget.daySummaries.macroUsage.isNotEmpty
+          ? widget.daySummaries.macroUsage
+          : 'ค่าเริ่มต้นหักจากถังสำรอง',
+      hasExisting: widget.daySummaries.macroUsage.isNotEmpty,
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),
       iconTileColor: const Color(0xFFE3F2FD),
@@ -306,6 +321,7 @@ class _FuelModeOption extends StatelessWidget {
     required this.accent,
     required this.iconTileColor,
     required this.onTap,
+    this.hasExisting = false,
   });
 
   final String title;
@@ -314,6 +330,7 @@ class _FuelModeOption extends StatelessWidget {
   final Color accent;
   final Color iconTileColor;
   final VoidCallback onTap;
+  final bool hasExisting;
 
   @override
   Widget build(BuildContext context) {
@@ -358,7 +375,7 @@ class _FuelModeOption extends StatelessWidget {
             fontSize: subtitleSize,
             fontWeight: FontWeight.w500,
             height: 1.25,
-            color: const Color(0xFF64748B),
+            color: hasExisting ? accent : const Color(0xFF64748B),
           ),
         ),
       ],
@@ -381,7 +398,12 @@ class _FuelModeOption extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE7ECF3)),
+          border: Border.all(
+            color: hasExisting
+                ? accent.withValues(alpha: 0.45)
+                : const Color(0xFFE7ECF3),
+            width: hasExisting ? 1.4 : 1,
+          ),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),

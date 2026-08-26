@@ -576,8 +576,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _fuelStockInTimeController = TextEditingController();
   /// id รายการ StockIn ที่กำลังแก้ — null = รายการใหม่
   String? _fuelStockInTxId;
-  /// ผู้ใช้กดล้างฟอร์มเพื่อเพิ่มแถวใหม่ — กัน auto-hydrate ทับจนกว่าจะเซฟ/เลือกรายการ
-  bool _fuelStockInComposingNew = false;
   final _fuelWithdrawLitersController = TextEditingController();
   final _fuelWithdrawTimeController = TextEditingController();
   final _fuelWithdrawOtherController = TextEditingController();
@@ -1524,6 +1522,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return null;
   }
 
+  /// เปิดกลุ่มรถแม็คโครเพิ่มเติมถ้ามีข้อมูลบันทึกแล้ว (กันซ่อนคันที่มีค่า)
+  void _expandFuelExtraIfNeeded() {
+    final fuelCars = _fuelMacroCars();
+    final extra = _fuelExtraMacroCars(fuelCars);
+    for (final car in extra) {
+      final row = _fuelDraftForVehicle(car);
+      if (row == null) continue;
+      final saved = row.txId != null && row.txId!.trim().isNotEmpty;
+      final liters = double.tryParse(row.liters.trim()) ?? 0;
+      if (saved || liters > 0 || row.time.trim().isNotEmpty) {
+        _fuelExtraVehiclesExpanded = true;
+        return;
+      }
+    }
+  }
+
   /// รถดรัม/เที่ยว — ดรัม + หกล้อ/สิบล้อ (จากรายการตั้งค่าแอพ)
   List<String> _vehicleTripCars({String includeVehicleId = ''}) {
     final seen = <String>{};
@@ -2031,6 +2045,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _hydrateFuelCarFillForSelectedVehicle();
       } else if (_fuelSubMode == FuelSubMode.withdraw) {
         _hydrateFuelWithdrawForSelectedPurpose();
+      }
+      if (_fuelSubMode == FuelSubMode.macroUsage) {
+        _expandFuelExtraIfNeeded();
       }
       return;
     }
@@ -3746,7 +3763,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final ymd = _quickYmd(_selectedDate);
     final source = dayRows ?? _moduleDayAllTransactions;
     final rows = source
-        .where((t) => t.date.trim() == ymd && isFuelStockInRow(t))
+        .where(
+          (t) =>
+              t.date.trim() == ymd &&
+              isFuelStockInRow(t) &&
+              !isFuelTransferRow(t),
+        )
         .toList();
     rows.sort((a, b) {
       final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -3756,9 +3778,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return rows;
   }
 
-  void _clearFuelStockInForm({bool composingNew = true}) {
+  void _clearFuelStockInForm() {
     _fuelStockInTxId = null;
-    _fuelStockInComposingNew = composingNew;
     _fuelStockInLitersController.clear();
     _fuelStockInPricePerLiterController.clear();
     _fuelStockInAmountController.clear();
@@ -3766,7 +3787,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   void _applyFuelStockInFromTx(AppTransaction t) {
-    _fuelStockInComposingNew = false;
     _fuelStockInTxId = t.id;
     _persistOmitCreatedForIds.add(t.id);
     final liters = fuelTxLiters(t);
@@ -3781,14 +3801,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _stripRecorderSuffix(t.workDetails ?? '').trim();
   }
 
-  void _hydrateFuelStockInFromDay({
-    List<AppTransaction>? dayRows,
-    bool force = false,
-  }) {
-    if (_fuelStockInComposingNew && !force) return;
+  void _hydrateFuelStockInFromDay({List<AppTransaction>? dayRows}) {
     final rows = _dayFuelStockInRows(dayRows);
     if (rows.isEmpty) {
-      if (force) _clearFuelStockInForm(composingNew: false);
+      _clearFuelStockInForm();
       return;
     }
     AppTransaction? target;
@@ -3840,9 +3856,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   void _hydrateFuelCarFillForSelectedVehicle() {
     final vehicle = _fuelCarFillVehicle;
     if (vehicle == null) {
-      _fuelCarFillTxId = null;
-      _fuelCarFillLitersController.clear();
-      _fuelCarFillTimeController.clear();
+      final latest = latestFuelCarFillForDay(
+        dayYmd: _quickYmd(_selectedDate),
+        transactions: _moduleDayAllTransactions,
+      );
+      if (latest == null) {
+        _fuelCarFillTxId = null;
+        _fuelCarFillLitersController.clear();
+        _fuelCarFillTimeController.clear();
+        return;
+      }
+      final vid = transactionVehicleLabel(latest);
+      final mapped = fuelCarFillVehicleFromId(vid);
+      _fuelCarFillVehicle = mapped;
+      if (mapped == FuelCarFillVehicle.other) {
+        _fuelCarFillOtherController.text = vid;
+      } else {
+        _fuelCarFillOtherController.clear();
+      }
+      _applyFuelCarFillFromTx(latest);
       return;
     }
     final hit = _dayFuelCarFillLatest();
@@ -3928,17 +3960,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   void _hydrateFuelWithdrawForSelectedPurpose() {
     final hit = _dayFuelWithdrawLatest(_fuelWithdrawPurpose);
-    if (hit == null) {
-      _fuelWithdrawTxId = null;
-      _fuelWithdrawTransferInTxId = null;
-      _fuelWithdrawLitersController.clear();
-      _fuelWithdrawTimeController.clear();
-      if (_fuelWithdrawPurpose != FuelWithdrawPurpose.other) {
-        _fuelWithdrawOtherController.clear();
-      }
+    if (hit != null) {
+      _applyFuelWithdrawFromTx(hit);
       return;
     }
-    _applyFuelWithdrawFromTx(hit);
+    // วัตถุประสงค์ปัจจุบันว่าง — สลับไปรายการล่าสุดของวันถ้ามี
+    final latest = latestFuelWithdrawForDay(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+    );
+    if (latest != null) {
+      final purpose = fuelWithdrawPurposeFromCode(latest.workType) ??
+          (isFuelTransferRow(latest)
+              ? FuelWithdrawPurpose.machine
+              : FuelWithdrawPurpose.other);
+      _fuelWithdrawPurpose = purpose == FuelWithdrawPurpose.car
+          ? FuelWithdrawPurpose.other
+          : purpose;
+      _applyFuelWithdrawFromTx(latest);
+      return;
+    }
+    _fuelWithdrawTxId = null;
+    _fuelWithdrawTransferInTxId = null;
+    _fuelWithdrawLitersController.clear();
+    _fuelWithdrawTimeController.clear();
+    if (_fuelWithdrawPurpose != FuelWithdrawPurpose.other) {
+      _fuelWithdrawOtherController.clear();
+    }
   }
 
   String _fuelWithdrawSummaryForPurpose(FuelWithdrawPurpose purpose) {
@@ -3966,8 +4014,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final amount =
         double.tryParse(_fuelStockInAmountController.text.trim()) ?? 0;
     final time = _fuelStockInTimeController.text.trim();
-    final existingId = _fuelStockInTxId?.trim();
-    final isUpdate = existingId != null && existingId.isNotEmpty;
+    var existingId = _fuelStockInTxId?.trim();
+    if (existingId == null || existingId.isEmpty) {
+      final latest = latestFuelStockInForDay(
+        dayYmd: _quickYmd(_selectedDate),
+        transactions: _moduleDayAllTransactions,
+      );
+      if (latest != null) {
+        existingId = latest.id;
+        _fuelStockInTxId = latest.id;
+        _persistOmitCreatedForIds.add(latest.id);
+      }
+    }
+    final updateId =
+        (existingId != null && existingId.isNotEmpty) ? existingId : null;
+    final isUpdate = updateId != null;
     // เพิ่มเข้าถัง = ดีเซลอย่างเดียว — ราคา/ยอดเงินกรอกทีหลังได้
     const fuelType = 'Diesel';
     await _runSaveWithPopups(
@@ -3980,7 +4041,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       stayOnPage: true,
       onStayOnPageCleared: () {
         // คงค่าในช่องเพื่อแก้ต่อ — ตั้ง txId จากรายการที่เพิ่งบันทึก
-        _fuelStockInComposingNew = false;
       },
       body: () async {
         if (liters <= 0) {
@@ -3993,9 +4053,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _failSave('กรุณาระบุเวลาที่เติม', field: 'เวลาที่เติม');
         }
         var priorLiters = 0.0;
-        if (isUpdate) {
+        if (updateId != null) {
           for (final r in _dayFuelStockInRows()) {
-            if (r.id == existingId) {
+            if (r.id == updateId) {
               priorLiters = fuelTxLiters(r);
               break;
             }
@@ -4004,9 +4064,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final y = _selectedDate.year.toString().padLeft(4, '0');
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
-        final txId = isUpdate
-            ? existingId
-            : '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
+        final txId = updateId ??
+            '${DateTime.now().millisecondsSinceEpoch}_fuel_in';
         final tx = AppTransaction(
           id: txId,
           date: '$y-$m-$d',
@@ -4028,8 +4087,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         );
         await _persist(tx);
         _fuelStockInTxId = tx.id;
-        _fuelStockInComposingNew = false;
-        if (isUpdate && priorLiters > 0) {
+        if (updateId != null && priorLiters > 0) {
           final oldTx = AppTransaction(
             id: txId,
             date: '$y-$m-$d',
@@ -4061,8 +4119,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final otherText = _fuelWithdrawOtherController.text.trim();
     const fuelType = 'Diesel';
     final isMachine = purpose == FuelWithdrawPurpose.machine;
-    final existingId = _fuelWithdrawTxId?.trim();
-    final isUpdate = existingId != null && existingId.isNotEmpty;
+    var existingId = _fuelWithdrawTxId?.trim();
+    if (existingId == null || existingId.isEmpty) {
+      final latest = latestFuelWithdrawForPurpose(
+        dayYmd: _quickYmd(_selectedDate),
+        transactions: _moduleDayAllTransactions,
+        purpose: purpose,
+      );
+      if (latest != null) {
+        existingId = latest.id;
+        _applyFuelWithdrawFromTx(latest);
+      }
+    }
+    final updateId =
+        (existingId != null && existingId.isNotEmpty) ? existingId : null;
+    final isUpdate = updateId != null;
     await _runSaveWithPopups(
       successMessage: isUpdate
           ? (isMachine ? 'อัปเดตเติมถังสำรองสำเร็จ' : 'อัปเดตเบิกน้ำมันสำเร็จ')
@@ -4091,7 +4162,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         String? priorXferNote;
         if (isUpdate) {
           for (final r in _moduleDayAllTransactions) {
-            if (r.id == existingId) {
+            if (r.id == updateId) {
               priorLiters = fuelTxLiters(r);
               final n = (r.note ?? '').trim();
               if (n.startsWith('xfer:')) priorXferNote = n;
@@ -4126,7 +4197,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final ts = DateTime.now().millisecondsSinceEpoch;
           final existingInId = _fuelWithdrawTransferInTxId?.trim();
           final outId =
-              isUpdate ? existingId : '${ts}_fuel_xfer_out';
+              updateId ?? '${ts}_fuel_xfer_out';
           final inId = isUpdate &&
                   existingInId != null &&
                   existingInId.isNotEmpty
@@ -4232,9 +4303,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               field: 'จำนวนลิตรที่เบิกออก',
             );
           }
-          final txId = isUpdate
-              ? existingId
-              : '${DateTime.now().millisecondsSinceEpoch}_fuel_wd';
+          final txId = updateId ??
+              '${DateTime.now().millisecondsSinceEpoch}_fuel_wd';
           final tx = AppTransaction(
             id: txId,
             date: date,
@@ -4289,8 +4359,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final vehicle = _fuelCarFillVehicle;
     final otherText = _fuelCarFillOtherController.text.trim();
     const fuelType = 'Diesel';
-    final existingId = _fuelCarFillTxId?.trim();
-    final isUpdate = existingId != null && existingId.isNotEmpty;
+    var existingId = _fuelCarFillTxId?.trim();
+    if ((existingId == null || existingId.isEmpty) && vehicle != null) {
+      final vehicleId = fuelCarFillVehicleIdOf(
+        vehicle,
+        otherText: otherText,
+      );
+      final latest = latestFuelCarFillForVehicle(
+        dayYmd: _quickYmd(_selectedDate),
+        transactions: _moduleDayAllTransactions,
+        vehicleId: vehicle == FuelCarFillVehicle.other
+            ? otherText.trim()
+            : vehicleId,
+      );
+      if (latest != null) {
+        existingId = latest.id;
+        _fuelCarFillTxId = latest.id;
+        _persistOmitCreatedForIds.add(latest.id);
+      }
+    }
+    final updateId =
+        (existingId != null && existingId.isNotEmpty) ? existingId : null;
+    final isUpdate = updateId != null;
     await _runSaveWithPopups(
       successMessage: isUpdate
           ? 'อัปเดตเติมน้ำมันรถยนต์สำเร็จ'
@@ -4322,7 +4412,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         var priorLiters = 0.0;
         if (isUpdate) {
           for (final r in _moduleDayAllTransactions) {
-            if (r.id == existingId) {
+            if (r.id == updateId) {
               priorLiters = fuelTxLiters(r);
               break;
             }
@@ -4348,9 +4438,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-        final txId = isUpdate
-            ? existingId
-            : '${DateTime.now().millisecondsSinceEpoch}_fuel_car';
+        final txId = updateId ??
+            '${DateTime.now().millisecondsSinceEpoch}_fuel_car';
         final tx = AppTransaction(
           id: txId,
           date: date,
@@ -11177,11 +11266,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// เนื้อหาเมนู «น้ำมัน» — เลือกเมนูย่อยก่อน แล้วค่อยแสดงฟอร์ม
   Widget _buildFuelModeBody() {
     final mode = _fuelSubMode;
+    final daySummaries = buildFuelSubModeDaySummaries(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+    );
     final child = mode == null
         ? FuelSubModePicker(
             mainDieselLiters: _fuelStock.mainDiesel,
             reserveDieselLiters: _fuelStock.reserveDiesel,
             dateLabel: _formatDate(_selectedDate),
+            daySummaries: daySummaries,
             onSelect: (selected) {
               setState(() {
                 _fuelSubMode = selected;
@@ -11191,6 +11285,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _hydrateFuelWithdrawForSelectedPurpose();
                 } else if (selected == FuelSubMode.carFill) {
                   _hydrateFuelCarFillForSelectedVehicle();
+                } else if (selected == FuelSubMode.macroUsage) {
+                  _expandFuelExtraIfNeeded();
                 }
               });
             },
@@ -11373,8 +11469,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           const SizedBox(height: 6),
           Text(
             editing
-                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
-                    '(หรือล้างฟอร์มเพื่อเพิ่มรายการใหม่)'
+                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต'
                 : 'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
                     '(ราคาใส่ทีหลังได้)',
             style: GoogleFonts.kanit(
@@ -11525,22 +11620,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ),
-          if (editing || dayRows.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: _saving
-                  ? null
-                  : () => setState(_clearFuelStockInForm),
-              child: Text(
-                'ล้างฟอร์ม (รายการใหม่)',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: const Color(0xFF546E7A),
-                ),
-              ),
-            ),
-          ],
           if (dayRows.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
@@ -11809,9 +11888,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'เติมเครื่องจักร = โอนเข้าถังสำรอง · '
-            'ปั่นไฟ/อื่นๆ = หักจากถังหลัก '
-            '(รถยนต์ใช้เมนูเติมน้ำมันรถยนต์)',
+            editing
+                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
+                    '(เปลี่ยนวัตถุประสงค์ได้ถ้าต้องการดูรายการอื่น)'
+                : 'เติมเครื่องจักร = โอนเข้าถังสำรอง · '
+                    'ปั่นไฟ/อื่นๆ = หักจากถังหลัก '
+                    '(รถยนต์ใช้เมนูเติมน้ำมันรถยนต์)',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -12096,7 +12178,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา',
+            'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา'
+            '${editing ? ' · โหลดของวันนี้แล้ว กดบันทึกเพื่ออัปเดต' : ''}',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -12230,6 +12313,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildFuelFormCard() {
     final fuelCars = _fuelMacroCars();
+    _expandFuelExtraIfNeeded();
     final pinnedCars = _fuelPinnedMacroCars(fuelCars);
     final extraCars = _fuelExtraMacroCars(fuelCars);
     final dayKey = _quickYmd(_selectedDate);
@@ -12307,6 +12391,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
+                  key: ValueKey('fuel_extra_$_fuelExtraVehiclesExpanded'),
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: EdgeInsets.zero,
                   initiallyExpanded: _fuelExtraVehiclesExpanded,

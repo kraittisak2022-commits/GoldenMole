@@ -536,4 +536,122 @@ void main() {
       expect(hit?.id, 'g2');
     });
   });
+
+  group('latestFuel*ForDay + summaries', () {
+    test('latestFuelStockInForDay skips transfer stock_in', () {
+      final truck = _fuel(
+        id: 'in1',
+        sub: kFuelStockInSubCategory,
+        movement: 'stock_in',
+        liters: 500,
+        tank: kFuelTankMain,
+        workDetails: '08:30 (ผู้กรอก: A)',
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final xferIn = _fuel(
+        id: 'xfer_in',
+        sub: kFuelTransferSubCategory,
+        movement: 'stock_in',
+        liters: 100,
+        tank: kFuelTankReserve,
+        workType: 'machine',
+        note: 'xfer:1',
+        createdAt: DateTime.utc(2026, 8, 10, 12),
+      );
+      final hit = latestFuelStockInForDay(
+        dayYmd: _day,
+        transactions: [truck, xferIn],
+      );
+      expect(hit?.id, 'in1');
+      expect(
+        fuelExistingEntrySummary(hit),
+        'มีข้อมูลแล้ว · 500 ลิตร · 08:30',
+      );
+    });
+
+    test('latestFuelCarFillForDay picks newest across vehicles', () {
+      final mighty = _fuel(
+        id: 'c1',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 40,
+        workType: 'car',
+        vehicleId: kFuelCarFillMighty,
+        workDetails: '07:00',
+        createdAt: DateTime.utc(2026, 8, 10, 7),
+      );
+      final taplien = _fuel(
+        id: 'c2',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 55,
+        workType: 'car',
+        vehicleId: kFuelCarFillTaplien,
+        workDetails: '15:00',
+        createdAt: DateTime.utc(2026, 8, 10, 15),
+      );
+      final hit = latestFuelCarFillForDay(
+        dayYmd: _day,
+        transactions: [mighty, taplien],
+      );
+      expect(hit?.id, 'c2');
+      expect(fuelCarFillVehicleFromId(hit!.vehicleId), FuelCarFillVehicle.taplien);
+    });
+
+    test('latestFuelWithdrawForDay picks newest purpose of the day', () {
+      final machine = _fuel(
+        id: 'xfer_out',
+        sub: kFuelTransferSubCategory,
+        movement: 'stock_out',
+        liters: 200,
+        tank: kFuelTankMain,
+        workType: 'machine',
+        note: 'xfer:1',
+        workDetails: '09:00',
+        createdAt: DateTime.utc(2026, 8, 10, 9),
+      );
+      final gen = _fuel(
+        id: 'gen',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 25,
+        workType: 'generator',
+        workDetails: '14:00',
+        createdAt: DateTime.utc(2026, 8, 10, 14),
+      );
+      final hit = latestFuelWithdrawForDay(
+        dayYmd: _day,
+        transactions: [machine, gen],
+      );
+      expect(hit?.id, 'gen');
+    });
+
+    test('buildFuelSubModeDaySummaries fills modes with data', () {
+      final truck = _fuel(
+        id: 'in1',
+        sub: kFuelStockInSubCategory,
+        movement: 'stock_in',
+        liters: 300,
+        workDetails: '10:00',
+        createdAt: DateTime.utc(2026, 8, 10, 10),
+      );
+      final usage = _fuel(
+        id: 'vu',
+        sub: 'VehicleUsage',
+        movement: 'stock_out',
+        liters: 80,
+        vehicleId: 'แม็คโคร 1',
+        createdAt: DateTime.utc(2026, 8, 10, 11),
+      );
+      final summaries = buildFuelSubModeDaySummaries(
+        dayYmd: _day,
+        transactions: [truck, usage],
+      );
+      expect(summaries.stockIn, contains('มีข้อมูลแล้ว'));
+      expect(summaries.stockIn, contains('300'));
+      expect(summaries.macroUsage, contains('1 คัน'));
+      expect(summaries.withdraw, '');
+      expect(summaries.carFill, '');
+    });
+  });
 }

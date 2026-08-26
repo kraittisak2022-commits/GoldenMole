@@ -216,6 +216,29 @@ bool isKnownFuelCarFillVehicleId(String? vehicleId) {
   return v.isNotEmpty && _kFuelCarFillKnownVehicleIds.contains(v);
 }
 
+/// แมป `vehicleId` ที่บันทึก → enum เมนูเติมรถยนต์ (ไม่รู้จัก = other)
+FuelCarFillVehicle fuelCarFillVehicleFromId(String? vehicleId) {
+  final v = (vehicleId ?? '').trim();
+  if (v == kFuelCarFillMighty) return FuelCarFillVehicle.mighty;
+  if (v == kFuelCarFillTaplien) return FuelCarFillVehicle.taplien;
+  if (v == kFuelCarFillAhming) return FuelCarFillVehicle.ahming;
+  return FuelCarFillVehicle.other;
+}
+
+String _stripFuelRecorderSuffix(String raw) =>
+    raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
+
+/// สรุปสั้นสำหรับไทล์เมนู / ฟอร์มเมื่อมีรายการของวันนี้แล้ว
+String fuelExistingEntrySummary(AppTransaction? t) {
+  if (t == null) return '';
+  final liters = fuelTxLiters(t);
+  final time = _stripFuelRecorderSuffix(t.workDetails ?? '');
+  final parts = <String>['มีข้อมูลแล้ว'];
+  if (liters > 0) parts.add('${formatFuelLiters(liters)} ลิตร');
+  if (time.isNotEmpty) parts.add(time);
+  return parts.join(' · ');
+}
+
 int _fuelRowRecencyMs(AppTransaction t) =>
     t.createdAt?.millisecondsSinceEpoch ?? 0;
 
@@ -284,6 +307,106 @@ AppTransaction? latestFuelWithdrawForPurpose({
     matches.add(t);
   }
   return _latestFuelRow(matches);
+}
+
+/// แถวรับเข้าถังหลักล่าสุดของวัน (ไม่รวมโอน Transfer เข้าสำรอง)
+AppTransaction? latestFuelStockInForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final day = dayYmd.trim();
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelStockInRow(t)) continue;
+    if (isFuelTransferRow(t)) continue;
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// แถวเติมน้ำมันรถยนต์ล่าสุดของวัน (ทุกคัน)
+AppTransaction? latestFuelCarFillForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final day = dayYmd.trim();
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelCarFillRow(t)) continue;
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// แถวเบิก/โอนล่าสุดของวัน (ทุกวัตถุประสงค์ ยกเว้น car)
+AppTransaction? latestFuelWithdrawForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  const purposes = [
+    FuelWithdrawPurpose.machine,
+    FuelWithdrawPurpose.generator,
+    FuelWithdrawPurpose.mayor,
+    FuelWithdrawPurpose.other,
+  ];
+  final matches = <AppTransaction>[];
+  for (final purpose in purposes) {
+    final hit = latestFuelWithdrawForPurpose(
+      dayYmd: dayYmd,
+      transactions: transactions,
+      purpose: purpose,
+    );
+    if (hit != null) matches.add(hit);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// สรุปต่อเมนูย่อยน้ำมันสำหรับหน้าเลือก — ว่าง = ยังไม่มีข้อมูลวันนี้
+class FuelSubModeDaySummaries {
+  const FuelSubModeDaySummaries({
+    this.stockIn = '',
+    this.withdraw = '',
+    this.carFill = '',
+    this.macroUsage = '',
+  });
+
+  final String stockIn;
+  final String withdraw;
+  final String carFill;
+  final String macroUsage;
+}
+
+FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final stock = latestFuelStockInForDay(
+    dayYmd: dayYmd,
+    transactions: transactions,
+  );
+  final withdraw = latestFuelWithdrawForDay(
+    dayYmd: dayYmd,
+    transactions: transactions,
+  );
+  final car = latestFuelCarFillForDay(
+    dayYmd: dayYmd,
+    transactions: transactions,
+  );
+  final coverage = fuelVehicleCoverageForDay(dayYmd, transactions);
+  var macro = '';
+  if (coverage.fueledCount > 0) {
+    macro =
+        'มีข้อมูลแล้ว · ${coverage.fueledCount} คัน · '
+        '${formatFuelLiters(coverage.liters)} ลิตร';
+  }
+  return FuelSubModeDaySummaries(
+    stockIn: fuelExistingEntrySummary(stock),
+    withdraw: fuelExistingEntrySummary(withdraw),
+    carFill: fuelExistingEntrySummary(car),
+    macroUsage: macro,
+  );
 }
 
 /// คู่โอนหลัก→สำรองที่จับคู่ด้วย note `xfer:...` ของแถว stock_out
