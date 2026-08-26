@@ -701,8 +701,11 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     for (final u in _units) {
       final empty = u.rounds <= 0 && u.lapTimes.isEmpty;
       if (empty) {
-        // ชัพพอต 0 เที่ยวต้องเก็บแถวไว้ใน merge/cache — ไม่ลบออก
-        if (countRecordShouldKeepEmptyTripRow(isSupport: u.isSupportWork) &&
+        // ชัพพอต / รถที่มีรหัส (เที่ยว 0) ต้องเก็บใน merge/cache — ไม่ลบออก
+        if (countRecordShouldKeepEmptyTripRow(
+              isSupport: u.isSupportWork,
+              vehicleId: u.vehicleId,
+            ) &&
             u.txId.isNotEmpty) {
           byId[u.txId] = _txFor(u);
         } else if (u.txId.isNotEmpty) {
@@ -725,9 +728,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
 
   bool _unitIsEmpty(_CounterUnit u) => u.rounds <= 0 && u.lapTimes.isEmpty;
 
-  /// ชัพพอตที่ยังไม่โผล่ใน dayTransactions ของพ่อ — กันเคลียร์แผงระหว่างรอรีเฟรช
-  bool _supportUnitMissingFromParentDay(_CounterUnit u) {
-    if (!u.isSupportWork) return false;
+  /// การ์ดรถที่ยังไม่โผล่ใน dayTransactions ของพ่อ — กันเคลียร์แผงระหว่างรอรีเฟรช
+  bool _tripUnitMissingFromParentDay(_CounterUnit u) {
     final vid = (u.vehicleId ?? '').trim();
     if (vid.isEmpty) return false;
     final txId = u.txId.trim();
@@ -750,8 +752,14 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         final vid = (u.vehicleId ?? '').trim();
         if (vid.isEmpty) return false;
         if (!u.persisted) return true;
-        if (_unitIsEmpty(u) && !u.isSupportWork) return true;
-        if (_supportUnitMissingFromParentDay(u)) return true;
+        if (_unitIsEmpty(u) &&
+            countRecordShouldKeepEmptyTripRow(
+              isSupport: u.isSupportWork,
+              vehicleId: u.vehicleId,
+            )) {
+          return true;
+        }
+        if (_tripUnitMissingFromParentDay(u)) return true;
         return false;
       },
     );
@@ -1057,8 +1065,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     _CounterUnit u, {
     bool notifyParent = true,
   }) async {
-    // ชัพพอต 0 เที่ยวต้องเก็บแถวไว้ — ไม่ถือว่าเป็นแถวว่างแล้วลบ
-    if (_unitIsEmpty(u) && !u.isSupportWork) {
+    // ชัพพอต / รถที่มีรหัส (เที่ยว 0) ต้องเก็บแถวไว้ — ลบเฉพาะแถวว่างจริงๆ
+    if (_unitIsEmpty(u) &&
+        !countRecordShouldKeepEmptyTripRow(
+          isSupport: u.isSupportWork,
+          vehicleId: u.vehicleId,
+        )) {
       await _deleteUnitRecord(u, notifyParent: notifyParent);
       return false;
     }
@@ -1449,14 +1461,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       );
       if (!mounted) continue;
       setState(() => _units.add(unit));
-      // ชัพพอต: บันทึกแถว 0 เที่ยวทันที เพื่อให้การ์ดอยู่หลังรีโหลด
-      if (unit.isSupportWork) {
-        try {
-          await _save(unit, notifyParent: true);
-        } catch (e) {
-          if (mounted) {
-            _toast('บันทึกชัพพอตไม่สำเร็จ: $e', error: true);
-          }
+      // บันทึกแถว 0 เที่ยวทันที (รวมออฟไลน์) เพื่อให้การ์ดอยู่หลังรีโหลด/หมุนจอ
+      try {
+        await _save(unit, notifyParent: true);
+      } catch (e) {
+        if (mounted) {
+          _toast(
+            unit.isSupportWork
+                ? 'บันทึกชัพพอตไม่สำเร็จ: $e'
+                : 'บันทึกรถไม่สำเร็จ: $e',
+            error: true,
+          );
         }
       }
     }

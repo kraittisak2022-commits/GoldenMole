@@ -1076,6 +1076,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   CountRecordWorkMode? _dayWorkMode;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
+  /// คง State ของแผงนับตอนสลับแนวตั้ง/แนวนอน (Column ↔ Row)
+  final GlobalKey _tripCounterPanelKey = GlobalKey(
+    debugLabel: 'count_trip_panel',
+  );
+  final GlobalKey _sandCounterPanelKey = GlobalKey(
+    debugLabel: 'count_sand_panel',
+  );
   static const _kPanelShadowColor = Color(0x12000000);
   static const _kMoreMenusBarHeight = 40.0;
 
@@ -1318,6 +1325,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   required CounterMode counterMode,
                   required String modeKey,
                 }) {
+                  final panelKey = modeKey == 'trip'
+                      ? _tripCounterPanelKey
+                      : _sandCounterPanelKey;
                   return _CountRecordMenuCard(
                     title: title,
                     subtitle: '',
@@ -1328,7 +1338,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     expanded: true,
                     onTap: () {},
                     expandedChild: CountRecordCounterPanel(
-                      key: ValueKey('counter_${modeKey}_$dayKeyStr'),
+                      key: panelKey,
                       mode: counterMode,
                       service: widget.txService,
                       employeeService: widget.employeeService,
@@ -1396,19 +1406,32 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     borderColor: const Color(0xFFF48FB1),
                     counterMode: CounterMode.sand,
                   );
+                  // GlobalKey บนแผง + ValueKey บนช่อง — หมุนจอแล้วย้าย Element ไม่รีเซ็ต State
                   return portrait
                       ? Column(
                           children: [
-                            Expanded(child: tripCell),
+                            Expanded(
+                              key: const ValueKey('count_trip_slot'),
+                              child: tripCell,
+                            ),
                             const SizedBox(height: 10),
-                            Expanded(child: sandCell),
+                            Expanded(
+                              key: const ValueKey('count_sand_slot'),
+                              child: sandCell,
+                            ),
                           ],
                         )
                       : Row(
                           children: [
-                            Expanded(child: tripCell),
+                            Expanded(
+                              key: const ValueKey('count_trip_slot'),
+                              child: tripCell,
+                            ),
                             const SizedBox(width: 10),
-                            Expanded(child: sandCell),
+                            Expanded(
+                              key: const ValueKey('count_sand_slot'),
+                              child: sandCell,
+                            ),
                           ],
                         );
                 }

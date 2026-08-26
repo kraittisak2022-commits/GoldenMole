@@ -182,8 +182,28 @@ void main() {
     expect(available, isEmpty);
   });
 
-  test('empty sand trip rows are dropped but support rows are kept', () {
-    expect(countRecordShouldKeepEmptyTripRow(isSupport: false), isFalse);
-    expect(countRecordShouldKeepEmptyTripRow(isSupport: true), isTrue);
+  test('empty trip rows with vehicleId are kept; blank rows are dropped', () {
+    expect(
+      countRecordShouldKeepEmptyTripRow(isSupport: false),
+      isFalse,
+    );
+    expect(
+      countRecordShouldKeepEmptyTripRow(
+        isSupport: false,
+        vehicleId: 'รถดรัมเอ',
+      ),
+      isTrue,
+    );
+    expect(
+      countRecordShouldKeepEmptyTripRow(isSupport: true),
+      isTrue,
+    );
+    expect(
+      countRecordShouldKeepEmptyTripRow(
+        isSupport: true,
+        vehicleId: '',
+      ),
+      isTrue,
+    );
   });
 }
