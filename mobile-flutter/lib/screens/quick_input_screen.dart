@@ -3976,6 +3976,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : 'บันทึกเพิ่มน้ำมันเข้าถังสำเร็จ',
       saveActionLabel: isUpdate ? 'อัปเดตน้ำมันเข้าถัง' : 'เพิ่มน้ำมันเข้าถัง',
       saveButtonLabel: isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเพิ่มน้ำมัน',
+      requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
         // คงค่าในช่องเพื่อแก้ต่อ — ตั้ง txId จากรายการที่เพิ่งบันทึก
@@ -4068,6 +4069,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           : (isMachine ? 'เติมถังสำรองสำเร็จ' : 'บันทึกเบิกน้ำมันสำเร็จ'),
       saveActionLabel: isMachine ? 'เติมถังสำรอง' : 'เบิกน้ำมันออกจากถังหลัก',
       saveButtonLabel: isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเบิกน้ำมัน',
+      requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
         // คงค่าในช่องเพื่อแก้ต่อ — txId ตั้งจากรายการที่เพิ่งบันทึก
@@ -4296,6 +4298,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveActionLabel: 'เติมน้ำมันรถยนต์',
       saveButtonLabel:
           isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกเติมน้ำมันรถยนต์',
+      requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
         // คงค่าในช่องเพื่อแก้ต่อ — txId ตั้งจากรายการที่เพิ่งบันทึก
