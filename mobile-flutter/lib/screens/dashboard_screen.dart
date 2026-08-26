@@ -1289,11 +1289,12 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               ?current,
             ],
           ),
+          // อย่าใส่ workMode ใน key — สลับโหมดนับอยู่ใน AnimatedSwitcher ชั้นใน
+          // ถ้าสลับทั้ง LayoutBuilder จะซ้อนแผงเก่า+ใหม่ที่ใช้ GlobalKey เดียวกัน
           child: LayoutBuilder(
             key: ValueKey(
               '${widget.formatBuddhistDateButton(widget.selectedDay)}_'
               'menu_${widget.countAndRecordMenuOpen}_'
-              'work_${_workMode?.name ?? 'pick'}_'
               'more_$_moreMenusExpanded',
             ),
             builder: (context, constraints) {
@@ -1599,13 +1600,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           transitionBuilder: MenuPanelTransition.build,
-                          layoutBuilder: (current, previous) => Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ...previous,
-                              ?current,
-                            ],
-                          ),
+                          // ห้ามซ้อน previous ใน Stack — แผง trip/sand ใช้ GlobalKey
+                          // คง State ตอนหมุนจอ ถ้าซ้อนแผงเก่า+ใหม่จะชนกัน
+                          layoutBuilder: (current, _) =>
+                              current ?? const SizedBox.shrink(),
                           child: KeyedSubtree(
                             key: ValueKey(_workMode?.name ?? 'pick'),
                             child: buildCounterBody(),
