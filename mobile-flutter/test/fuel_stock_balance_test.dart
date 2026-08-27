@@ -233,6 +233,54 @@ void main() {
       expect(b.reserveDiesel, -100);
     });
 
+    test('transfer + macro on reserve does not double-deduct main', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'out',
+          sub: kFuelTransferSubCategory,
+          movement: 'stock_out',
+          liters: 580,
+          tank: kFuelTankMain,
+          workType: 'machine',
+        ),
+        _fuel(
+          id: 'in',
+          sub: kFuelTransferSubCategory,
+          movement: 'stock_in',
+          liters: 580,
+          tank: kFuelTankReserve,
+          workType: 'machine',
+        ),
+        _fuel(
+          id: 'vu',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 142,
+          tank: kFuelTankReserve,
+          vehicleId: 'แม็คโคร',
+        ),
+      ]);
+      expect(b.mainDiesel, -580);
+      expect(b.reserveDiesel, 580 - 142);
+    });
+
+    test('stock_out with vehicle but not VehicleUsage does not deduct as macro', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'other',
+          sub: kFuelWithdrawSubCategory,
+          movement: 'stock_out',
+          liters: 50,
+          tank: kFuelTankMain,
+          workType: 'generator',
+          vehicleId: 'แม็คโคร',
+        ),
+      ]);
+      // เบิกเครื่องปั่นไฟหักหลักครั้งเดียว — ไม่ถูกนับซ้ำเป็นแม็คโคร
+      expect(b.mainDiesel, -50);
+      expect(b.reserveDiesel, 0);
+    });
+
     test('legacy VehicleUsage with empty tank deducts reserve', () {
       final b = computeFuelStockBalance([
         _fuel(

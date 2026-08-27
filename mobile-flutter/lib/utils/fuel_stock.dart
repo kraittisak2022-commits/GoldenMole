@@ -31,6 +31,9 @@ const String kFuelTransferSubCategory = 'Transfer';
 /// `subCategory` ของการใช้น้ำมันเครื่องร่อนทราย (อัตโนมัติ)
 const String kFuelSandSieveSubCategory = 'SandSieve';
 
+/// `subCategory` ของบันทึกการใช้น้ำมันรถแม็คโคร
+const String kFuelVehicleUsageSubCategory = 'VehicleUsage';
+
 /// อัตราใช้น้ำมันเครื่องร่อนทราย (ลิตร/ชั่วโมง)
 const double kFuelSandSieveLitersPerHour = 18;
 
@@ -131,6 +134,15 @@ String normalizeFuelTank(String? raw) {
   return kFuelTankMain;
 }
 
+/// แถวบันทึกการใช้น้ำมันรถแม็คโคร (`subCategory == VehicleUsage` เท่านั้น)
+///
+/// ไม่ใช้ตัวจำแนกกว้าง `isFuelVehicleUsageRow` (นับทุก stock_out ที่มีรถ)
+/// เพื่อไม่ให้แถวอื่นที่มีชื่อรถไปหักถังหลักซ้ำ
+bool isFuelMacroVehicleUsageRow(AppTransaction t) {
+  if (!_isFuelExpenseRow(t)) return false;
+  return (t.subCategory ?? '').trim() == kFuelVehicleUsageSubCategory;
+}
+
 /// ถังที่ใช้คิดยอดการใช้น้ำมัน
 ///
 /// แถว `VehicleUsage` ที่ไม่ระบุถัง (แอปเก่า) = ถังสำรอง
@@ -138,8 +150,7 @@ String normalizeFuelTank(String? raw) {
 String fuelUsageTankOf(AppTransaction t) {
   final raw = (t.fuelTank ?? '').trim();
   if (raw.isNotEmpty) return normalizeFuelTank(raw);
-  final sub = (t.subCategory ?? '').trim();
-  if (t.category == 'Fuel' && sub == 'VehicleUsage') {
+  if (isFuelMacroVehicleUsageRow(t)) {
     return kFuelTankReserve;
   }
   return kFuelTankMain;
@@ -555,14 +566,13 @@ FuelStockBalance computeFuelStockBalance(
       bucket.withdraw += liters;
       continue;
     }
-    if (isFuelVehicleUsageRow(t)) {
+    if (isFuelMacroVehicleUsageRow(t)) {
+      // หักเฉพาะถังที่ติดป้าย (สำรอง/หลัก) — ไม่หักข้ามถัง
       bucket.withdraw += liters;
       continue;
     }
-    final mov = (t.fuelMovement ?? '').trim().toLowerCase();
-    if (mov == 'stock_out') {
-      bucket.withdraw += liters;
-    }
+    // ไม่นับ stock_out ทั่วไปที่มีชื่อรถเป็นแม็คโคร
+    // (กันแถวอื่นไปหักถังหลักซ้ำ)
   }
 
   for (final entry in sandByDay.entries) {
@@ -637,7 +647,7 @@ fuelMachineReconcileForDay(
       if (!isFuelStockInRow(t)) machineWithdraw += liters;
       continue;
     }
-    if (isFuelVehicleUsageRow(t)) {
+    if (isFuelMacroVehicleUsageRow(t)) {
       if (filterTank != null && fuelUsageTankOf(t) != filterTank) continue;
       vehicleUsage += liters;
     }
@@ -715,17 +725,9 @@ FuelStockBalance? applyFuelBalanceDelta(
   }
   if (isFuelSandSieveRow(t) ||
       isFuelTransferRow(t) ||
-      isFuelVehicleUsageRow(t)) {
+      isFuelMacroVehicleUsageRow(t)) {
     // Transfer stock_in ถูกจับที่ isFuelStockInRow แล้ว
-    return _fuelBalanceAdd(
-      current,
-      tank: tank,
-      benzine: benzine,
-      delta: -signed,
-    );
-  }
-  final mov = (t.fuelMovement ?? '').trim().toLowerCase();
-  if (mov == 'stock_out') {
+    // VehicleUsage หักเฉพาะถังที่ติดป้าย
     return _fuelBalanceAdd(
       current,
       tank: tank,

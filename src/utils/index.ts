@@ -147,8 +147,8 @@ export function computeFuelStockBalances(
             sub === FUEL_TRANSFER_SUB_CATEGORY
             || sub === FUEL_SAND_SIEVE_SUB_CATEGORY
             || sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY
-            || movement === 'stock_out'
         ) {
+            // VehicleUsage หักเฉพาะถังที่ติดป้าย — ไม่นับ stock_out ทั่วไปที่มีรถ
             bucket.withdraw += liters;
         }
     }

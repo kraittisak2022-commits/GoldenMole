@@ -4512,6 +4512,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final date = '$y-$m-$d';
 
         final saved = <AppTransaction>[];
+        final reverseFirst = <AppTransaction>[];
         for (var i = 0; i < activeRows.length; i++) {
           final row = activeRows[i];
           final vehicle = row.vehicleId.trim();
@@ -4534,18 +4535,43 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           row.fuelType = 'Diesel';
           final tank = normalizeFuelTank(row.fuelTank);
           final tankLabel = fuelTankIsReserve(tank)
-              ? 'ปั่นไฟ/สำรอง'
+              ? 'ถังสำรอง'
               : 'พล่าม/หลัก';
+          AppTransaction? priorTx;
+          if (row.txId != null) {
+            for (final t in _moduleDayAllTransactions) {
+              if (t.id == row.txId) {
+                priorTx = t;
+                break;
+              }
+            }
+          }
+          final priorLitersSameTank = priorTx != null &&
+                  fuelUsageTankOf(priorTx) == tank
+              ? fuelTxLiters(priorTx)
+              : 0.0;
+          final available = (fuelTankIsReserve(tank)
+                  ? _fuelStock.reserveDiesel
+                  : _fuelStock.mainDiesel) +
+              priorLitersSameTank;
+          if (liters > available + 1e-9) {
+            _failSave(
+              '${fuelTankIsReserve(tank) ? 'ถังสำรอง' : 'ถังหลัก'}มีไม่พอ '
+              '(คงเหลือ ${formatFuelLiters(available)} ลิตร) — $vehicle',
+              field: 'ใช้น้ำมัน (ลิตร)',
+            );
+          }
           final txId =
               row.txId ??
               '${DateTime.now().millisecondsSinceEpoch}_fuel_out_$i';
           row.txId = txId;
+          if (priorTx != null) reverseFirst.add(priorTx);
           final tx = AppTransaction(
             id: txId,
             date: date,
             type: 'Expense',
             category: 'Fuel',
-            subCategory: 'VehicleUsage',
+            subCategory: kFuelVehicleUsageSubCategory,
             description: _appendRecorder(
               'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร '
               '(ดีเซล · $tankLabel)',
@@ -4563,7 +4589,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await _persist(tx);
           saved.add(tx);
         }
-        await _applyLocalFuelStockAfterSave(saved);
+        await _applyLocalFuelStockAfterSave(
+          saved,
+          reverseFirst: reverseFirst,
+        );
       },
     );
   }
@@ -11772,7 +11801,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       children: [
         chip(kFuelTankMain, 'ถังหลัก', 'เติมที่พล่าม'),
         const SizedBox(width: 8),
-        chip(kFuelTankReserve, 'ถังสำรอง', 'เครื่องปั่นไฟ'),
+        chip(kFuelTankReserve, 'ถังสำรอง', 'เครื่องจักร'),
       ],
     );
   }
@@ -12338,6 +12367,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final litersLabel = coverage.liters % 1 == 0
         ? coverage.liters.toStringAsFixed(0)
         : coverage.liters.toStringAsFixed(2);
+    // เดลต้าจากฟอร์ม — หักตามถังที่เลือก; แถวที่บันทึกแล้วและไม่เปลี่ยน = 0
+    var pendingMain = 0.0;
+    var pendingReserve = 0.0;
+    for (final row in _fuelVehicleDrafts) {
+      final liters = double.tryParse(row.liters.trim()) ?? 0;
+      final tank = normalizeFuelTank(row.fuelTank);
+      var priorLiters = 0.0;
+      String? priorTank;
+      final txId = row.txId?.trim();
+      if (txId != null && txId.isNotEmpty) {
+        for (final t in _moduleDayAllTransactions) {
+          if (t.id == txId) {
+            priorLiters = fuelTxLiters(t);
+            priorTank = fuelUsageTankOf(t);
+            break;
+          }
+        }
+      }
+      if (priorLiters > 0 && priorTank != null) {
+        if (fuelTankIsReserve(priorTank)) {
+          pendingReserve += priorLiters;
+        } else {
+          pendingMain += priorLiters;
+        }
+      }
+      if (liters > 0) {
+        if (fuelTankIsReserve(tank)) {
+          pendingReserve -= liters;
+        } else {
+          pendingMain -= liters;
+        }
+      }
+    }
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -12367,13 +12429,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'กรอกเฉพาะคันที่เติมน้ำมันวันนี้ — แต่ละแถวคือรถ 1 คันจากตั้งค่าแอพ',
+            'กรอกเฉพาะคันที่เติมน้ำมันวันนี้ — แต่ละแถวคือรถ 1 คันจากตั้งค่าแอพ · '
+            'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.black54,
               height: 1.35,
             ),
+          ),
+          const SizedBox(height: 12),
+          _buildFuelStockBanner(
+            pendingMainDelta: pendingMain == 0 ? null : pendingMain,
+            pendingReserveDelta: pendingReserve == 0 ? null : pendingReserve,
           ),
           if (fuelCars.isEmpty) ...[
             const SizedBox(height: 14),

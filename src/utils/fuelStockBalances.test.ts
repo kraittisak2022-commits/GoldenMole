@@ -251,6 +251,57 @@ describe('computeFuelStockBalances', () => {
         expect(bal.DieselReserve).toBe(400);
     });
 
+    it('transfer + macro on reserve does not double-deduct main', () => {
+        const bal = computeFuelStockBalances([
+            fuelTx({
+                id: 'tr-out',
+                date: '2026-08-10',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelTank: 'main',
+                workType: 'machine',
+                quantity: 580,
+            }),
+            fuelTx({
+                id: 'tr-in',
+                date: '2026-08-10',
+                fuelMovement: 'stock_in',
+                subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelTank: 'reserve',
+                workType: 'machine',
+                quantity: 580,
+            }),
+            fuelTx({
+                id: 'vu',
+                date: '2026-08-10',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                fuelTank: 'reserve',
+                vehicleId: 'แม็คโคร',
+                quantity: 142,
+            }),
+        ]);
+        expect(bal.Diesel).toBe(-580);
+        expect(bal.DieselReserve).toBe(580 - 142);
+    });
+
+    it('stock_out with vehicle but not VehicleUsage is not counted as macro', () => {
+        const bal = computeFuelStockBalances([
+            fuelTx({
+                id: 'gen',
+                date: '2026-08-10',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                workType: 'generator',
+                fuelTank: 'main',
+                vehicleId: 'แม็คโคร',
+                quantity: 50,
+            }),
+        ]);
+        expect(bal.Diesel).toBe(-50);
+        expect(bal.DieselReserve).toBe(0);
+    });
+
     it('allows negative reserve and reports shortfall; applies estimated sieve', () => {
         const bal = computeFuelStockBalances(
             [
