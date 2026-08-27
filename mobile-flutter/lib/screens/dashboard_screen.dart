@@ -40,6 +40,7 @@ import '../widgets/app_page_route.dart';
 import '../widgets/menu_panel_transition.dart';
 import '../widgets/record_module_card.dart';
 import '../widgets/soft_press_button.dart';
+import '../widgets/weekly_off_prompt.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
 import 'employees_screen.dart';
@@ -348,6 +349,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     _configureTransactionRealtime();
     _startPollFallback();
     _scheduleMidnightRollover();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        WeeklyOffPrompt.showIfNeeded(
+          context,
+          client: Supabase.instance.client,
+        ),
+      );
+    });
   }
 
   /// ตั้ง Timer ให้ปลุกหลังเที่ยงคืน (+1 วิ) เพื่อสลับวันอัตโนมัติ
@@ -384,6 +394,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     }
     _scheduleMidnightRollover();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        WeeklyOffPrompt.showIfNeeded(
+          context,
+          client: Supabase.instance.client,
+        ),
+      );
+    });
   }
 
   /// โหลดแคชในเครื่องทันที — แสดงแดชบอร์ดได้เร็วโดยไม่รอเน็ต

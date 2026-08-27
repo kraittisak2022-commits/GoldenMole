@@ -5616,6 +5616,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveButtonLabel: _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty
           ? 'อัปเดตเหตุการณ์'
           : 'บันทึกเหตุการณ์',
+      requireSignature: false,
       stayOnPage: true,
       // คงฟอร์มไว้ให้ตรวจ/แก้ต่อ — hydrate ตอนโหลดวันจะเติมเมื่อ !_saving
       onStayOnPageCleared: null,
