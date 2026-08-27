@@ -1,16 +1,5 @@
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
-import 'count_record_work_mode.dart';
-
-bool _countRecordModeIncludesTrips(CountRecordWorkMode? mode) =>
-    mode == null ||
-    mode == CountRecordWorkMode.trip ||
-    mode == CountRecordWorkMode.both;
-
-bool _countRecordModeIncludesSand(CountRecordWorkMode? mode) =>
-    mode == null ||
-    mode == CountRecordWorkMode.sand ||
-    mode == CountRecordWorkMode.both;
 
 /// รถแม็คโคร (เมนูแยกจากรถดรัม/เที่ยว) — สอดคล้องกับชื่อรถในการตั้งค่า
 bool isMacroVehicleId(String? raw) {
@@ -998,21 +987,17 @@ bool _countRecordRowTouches(AppTransaction t) {
 }
 
 /// สถานะการ์ดเมนู «บันทึกและนับจำนวน» บนหน้าเมนูหลักบันทึกประจำวัน
+/// (สรุปครบทั้งเที่ยวรถและร่อนทราย — ไม่กรองตามโหมดงานที่เลือก)
 DailyModuleFillStatus resolveCountRecordMenuFillStatus(
   String dayKey,
-  Iterable<AppTransaction> transactions, {
-  CountRecordWorkMode? workMode,
-}) {
-  final includeTrips = _countRecordModeIncludesTrips(workMode);
-  final includeSand = _countRecordModeIncludesSand(workMode);
+  Iterable<AppTransaction> transactions,
+) {
   var complete = false;
   var touch = false;
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
     final isTrip = _isCountRecordVehicleRow(t);
     final isSand = _isCountRecordSandRow(t);
-    if (isTrip && !includeTrips) continue;
-    if (isSand && !includeSand) continue;
     if (!isTrip && !isSand) continue;
     if (countRecordRowHasSavedData(t)) {
       complete = true;
@@ -1082,13 +1067,11 @@ int? _countRecordLapHour(String lap) {
 }
 
 /// ข้อความสถานะการ์ดเมนู «บันทึกและนับจำนวน»
+/// (สรุปครบทั้งเที่ยวรถและร่อนทราย — ไม่กรองตามโหมดงานที่เลือก)
 String? countRecordMenuStatusLabel(
   String dayKey,
-  Iterable<AppTransaction> transactions, {
-  CountRecordWorkMode? workMode,
-}) {
-  final includeTrips = _countRecordModeIncludesTrips(workMode);
-  final includeSand = _countRecordModeIncludesSand(workMode);
+  Iterable<AppTransaction> transactions,
+) {
   final vehicles = <String>{};
   var tripTotal = 0.0;
   var sandRounds = 0.0;
@@ -1098,11 +1081,11 @@ String? countRecordMenuStatusLabel(
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
     if (!countRecordRowHasSavedData(t)) continue;
-    if (includeTrips && _isCountRecordVehicleRow(t)) {
+    if (_isCountRecordVehicleRow(t)) {
       final vid = transactionVehicleLabel(t);
       if (vid.isNotEmpty) vehicles.add(vid);
       tripTotal += (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
-    } else if (includeSand && _isCountRecordSandRow(t)) {
+    } else if (_isCountRecordSandRow(t)) {
       sandRounds += (t.drumsObtained ?? 0).toDouble();
       final periods = _countRecordLapPeriods(t);
       sandMorning += periods.morning;
@@ -1111,12 +1094,12 @@ String? countRecordMenuStatusLabel(
   }
 
   final parts = <String>[];
-  if (includeTrips && (tripTotal > 0 || vehicles.isNotEmpty)) {
+  if (tripTotal > 0 || vehicles.isNotEmpty) {
     parts.add(
       '${vehicles.length} คัน · ${formatDashboardMetric(tripTotal)} เที่ยว',
     );
   }
-  if (includeSand && sandRounds > 0) {
+  if (sandRounds > 0) {
     final buf = StringBuffer('ร่อน ${formatDashboardMetric(sandRounds)} รอบ');
     if (sandMorning > 0 || sandAfternoon > 0) {
       buf.write(' (เช้า $sandMorning · บ่าย $sandAfternoon)');
