@@ -348,14 +348,16 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       widget.dateYmd,
     )) {
       _pruneHiddenDayTxIds();
-      if (_hasLocalOnlyTripUnits() || _hasLocalSandProgress()) {
+      // คง local เฉพาะเมื่อมีงานที่ยังไม่ sync / นำหน้า parent
+      // (ห้ามบล็อกแค่เพราะมีรอบแล้ว — จะทำให้จอค้างค่าเก่าไม่ตรง DB)
+      if (_shouldPreserveLocalPanelState()) {
         unawaited(_refreshPendingCount());
         return;
       }
-      // มีการ์ดอยู่แล้ว — อัปเดตในที่เดิม ไม่ clear + skeleton (กันชัพพอตหาย)
+      // มีการ์ดอยู่แล้ว — อัปเดตจาก parent+คิว ไม่ทับด้วยยอดในแผงเดิม
       if (_units.isNotEmpty) {
         unawaited(() async {
-          final merged = await _mergedPanelDayRows();
+          final merged = await _mergedParentDayRows();
           if (!mounted) return;
           _applyMergedInPlace(merged);
           await _refreshPendingCount();
@@ -388,11 +390,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     // และในทางกลับกัน (กันการ์ดอีกใบกระพริบ/รีเฟรชโดยไม่จำเป็น)
     final wantSub =
         widget.mode == CounterMode.trip ? 'vehicletrip' : 'sand';
+    final day = ymd.trim();
     String fp(List<AppTransaction> txs) {
       final rows = txs
           .where(
             (t) =>
-                t.date == ymd &&
+                _txDateMatchesDay(t, day) &&
                 t.category == 'DailyLog' &&
                 (t.subCategory ?? '').trim().toLowerCase() == wantSub,
           )
@@ -486,7 +489,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     // (ไม่ให้ผู้ใช้เห็นหน้าว่าง/แถบโหลดระหว่างรอ probe หรืออัปโหลดคิว)
     await _refreshDropdownLists(tryNetwork: false);
     if (!mounted) return;
-    final merged = await _mergedPanelDayRows();
+    // ใช้ parent+คิว ไม่ทับด้วยยอดแผงเดิม (กัน bootstrap ค้างค่าเก่า)
+    final merged = await _mergedParentDayRows();
     if (!mounted) return;
     setState(() {
       _panelBootstrapping = false;
@@ -530,11 +534,26 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     return (t.drumsObtained ?? 0).round();
   }
 
-  Future<List<AppTransaction>> _mergedPanelDayRows() {
+  /// แถวของวันที่เลือกจาก parent เท่านั้น — ไม่ทับด้วยยอดในแผง (ใช้ตอนรีเฟรชจาก DB/แคช)
+  List<AppTransaction> _parentDayRowsBase() {
+    final ymd = widget.dateYmd.trim();
+    return [
+      for (final t in widget.dayTransactions)
+        if (_txDateMatchesDay(t, ymd) && !_hiddenDayTxIds.contains(t.id)) t,
+    ];
+  }
+
+  Future<List<AppTransaction>> _mergedParentDayRows() {
     return CountRecordOfflineSync.instance.mergeForDayAsync(
       widget.dateYmd,
-      _effectiveDayRows(),
+      _parentDayRowsBase(),
     );
+  }
+
+  bool _txDateMatchesDay(AppTransaction t, String ymd) {
+    final d = t.date.trim();
+    if (d == ymd) return true;
+    return d.length >= 10 && d.substring(0, 10) == ymd;
   }
 
   Future<void> _handleParentOnlineTransition() async {
@@ -674,7 +693,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         return;
       }
       widget.onDataChanged?.call();
-      final merged = await _mergedPanelDayRows();
+      final merged = await _mergedParentDayRows();
       if (!mounted) return;
       _applyMergedInPlace(merged);
     }
@@ -691,8 +710,9 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   List<AppTransaction> _effectiveDayRows() {
+    final ymd = widget.dateYmd.trim();
     final base = widget.dayTransactions
-        .where((t) => t.date == widget.dateYmd)
+        .where((t) => _txDateMatchesDay(t, ymd))
         .toList();
     final byId = {for (final t in base) t.id: t};
     for (final id in _hiddenDayTxIds) {
@@ -719,61 +739,95 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   void _pruneHiddenDayTxIds() {
+    final ymd = widget.dateYmd.trim();
     _hiddenDayTxIds.removeWhere(
       (id) => !widget.dayTransactions.any(
-        (t) => t.id == id && t.date == widget.dateYmd,
+        (t) => t.id == id && _txDateMatchesDay(t, ymd),
       ),
     );
   }
 
   bool _unitIsEmpty(_CounterUnit u) => u.rounds <= 0 && u.lapTimes.isEmpty;
 
-  /// การ์ดรถที่ยังไม่โผล่ใน dayTransactions ของพ่อ — กันเคลียร์แผงระหว่างรอรีเฟรช
-  bool _tripUnitMissingFromParentDay(_CounterUnit u) {
+  /// true เมื่อยอดในแผงสูงกว่า parent (ยังไม่ sync / ค้างคิว)
+  bool _tripUnitAheadOfParent(_CounterUnit u) {
     final vid = (u.vehicleId ?? '').trim();
     if (vid.isEmpty) return false;
+    if (_unitIsEmpty(u)) return false;
+    final ymd = widget.dateYmd.trim();
     final txId = u.txId.trim();
+    AppTransaction? parent;
     for (final t in widget.dayTransactions) {
-      if (t.date != widget.dateYmd) continue;
+      if (!_txDateMatchesDay(t, ymd)) continue;
       if (t.category != 'DailyLog') continue;
       if ((t.subCategory ?? '').trim().toLowerCase() != 'vehicletrip') {
         continue;
       }
-      if (txId.isNotEmpty && t.id == txId) return false;
-      if (transactionVehicleMatches(t, vid)) return false;
+      if (txId.isNotEmpty && t.id == txId) {
+        parent = t;
+        break;
+      }
+      if (transactionVehicleMatches(t, vid)) {
+        parent = t;
+        break;
+      }
     }
-    return true;
-  }
-
-  bool _hasLocalOnlyTripUnits() {
-    if (widget.mode != CounterMode.trip) return false;
-    return _units.any(
-      (u) {
-        final vid = (u.vehicleId ?? '').trim();
-        if (vid.isEmpty) return false;
-        if (!u.persisted) return true;
-        if (_unitIsEmpty(u) &&
-            countRecordShouldKeepEmptyTripRow(
-              isSupport: u.isSupportWork,
-              vehicleId: u.vehicleId,
-            )) {
-          return true;
-        }
-        if (_tripUnitMissingFromParentDay(u)) return true;
-        return false;
-      },
+    if (parent == null) return true;
+    final parentLaps = List<String>.from(
+      parent.workAssignments?['lapTimes'] ?? const [],
     );
+    var parentRounds = (parent.perCarTrips ?? parent.tripCount ?? 0).round();
+    if (parentLaps.length > parentRounds) parentRounds = parentLaps.length;
+    return u.rounds > parentRounds || u.lapTimes.length > parentLaps.length;
   }
 
-  bool _hasLocalSandProgress() {
+  /// คง local เฉพาะตอน busy / ยังไม่ sync / นำหน้า parent
+  /// (ห้ามบล็อกเพราะมีรถว่างหรือชัพพอต — จะทำให้จอค้างค่าเก่าไม่ตรง DB)
+  bool _shouldPreserveLocalPanelState() {
+    if (_units.any((u) => u.busy)) return true;
+    if (widget.mode == CounterMode.sand) {
+      return _hasUnsyncedSandAheadOfParent();
+    }
+    if (widget.mode != CounterMode.trip) return false;
+    return _units.any((u) {
+      final vid = (u.vehicleId ?? '').trim();
+      if (vid.isEmpty) return false;
+      if (!u.persisted && !_unitIsEmpty(u)) return true;
+      return _tripUnitAheadOfParent(u);
+    });
+  }
+
+  /// true เมื่อแผงร่อนทรายมีรอบที่ยังไม่โผล่ใน parent (หรือ busy) — ไม่บล็อกแค่เพราะมีรอบแล้ว
+  bool _hasUnsyncedSandAheadOfParent() {
     if (widget.mode != CounterMode.sand) return false;
     final u = _sandUnit;
     if (u == null) return false;
-    return u.rounds > 0 || u.lapTimes.isNotEmpty;
-  }
+    if (u.busy) return true;
+    if (!u.persisted && (u.rounds > 0 || u.lapTimes.isNotEmpty)) return true;
 
-  bool _shouldPreserveLocalPanelState() =>
-      _hasLocalOnlyTripUnits() || _hasLocalSandProgress();
+    final ymd = widget.dateYmd.trim();
+    AppTransaction? parent;
+    for (final t in widget.dayTransactions) {
+      if (!_txDateMatchesDay(t, ymd)) continue;
+      if (t.category != 'DailyLog') continue;
+      if ((t.subCategory ?? '').trim() != 'Sand') continue;
+      if (t.description.contains('ทรายที่ล้างที่บ้าน')) continue;
+      if (_sandRowIsEmpty(t)) continue;
+      if (parent == null || _sandRowScore(t) > _sandRowScore(parent)) {
+        parent = t;
+      }
+    }
+    if (parent == null) {
+      return u.rounds > 0 || u.lapTimes.isNotEmpty;
+    }
+    final parentLaps = List<String>.from(
+      parent.workAssignments?['lapTimes'] ?? const [],
+    );
+    final parentRounds = parentLaps.isNotEmpty
+        ? parentLaps.length
+        : (parent.drumsObtained ?? 0).round();
+    return u.rounds > parentRounds || u.lapTimes.length > parentLaps.length;
+  }
 
   void _applyMergedInPlace(List<AppTransaction> merged) {
     if (_units.isEmpty) {
