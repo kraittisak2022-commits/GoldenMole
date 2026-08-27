@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, SynchronousFuture;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -2638,7 +2639,8 @@ class _MetricTile extends StatelessWidget {
 
 /// แถบนำทางล่างที่พับซ่อนเป็นค่าเริ่มต้น
 ///
-/// เหลือขีดจับ — แตะหรือปัดขึ้นเพื่อแสดง / กดเมนูหรือปัดลงเพื่อหุบกลับ
+/// ขีดจับอยู่ตลอด — ลากตามนิ้วปัดขึ้นกาง / ปัดลงหุบ (ทั้งขีดจับและตัวแถบ)
+/// กดปุ่มเมนูแล้วหุบกลับทันที
 class _AutoHideBottomNav extends StatefulWidget {
   const _AutoHideBottomNav({
     required this.builder,
@@ -2653,6 +2655,12 @@ class _AutoHideBottomNav extends StatefulWidget {
 class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
     with SingleTickerProviderStateMixin {
   static const _handleHeight = 22.0;
+  static const _flingVelocity = 120.0;
+  static final _spring = SpringDescription(
+    mass: 1,
+    stiffness: 340,
+    damping: 28,
+  );
 
   late final AnimationController _controller;
 
@@ -2661,8 +2669,8 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
-      reverseDuration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 320),
+      reverseDuration: const Duration(milliseconds: 260),
       value: 0.0,
     );
   }
@@ -2673,21 +2681,73 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
     super.dispose();
   }
 
-  void _collapse() {
-    _controller.animateTo(0.0, curve: Curves.easeInCubic);
+  double _navExtent(BuildContext context) {
+    final nav = TouchProfile.of(context).navBarHeight;
+    final inset = MediaQuery.paddingOf(context).bottom;
+    return (nav + inset).clamp(1.0, double.infinity);
   }
 
-  void _reveal() {
-    _controller.animateTo(1.0, curve: Curves.easeOutBack);
+  bool get _preferLiteMotion {
+    final mq = MediaQuery.maybeOf(context);
+    return (mq?.disableAnimations ?? false) ||
+        DevicePerf.isConstrainedDevice;
   }
 
-  void _onHandleDragEnd(DragEndDetails details) {
-    final v = details.primaryVelocity ?? 0;
-    if (v < -80) {
+  void _settleTo(double target, {double velocity = 0}) {
+    final clamped = target.clamp(0.0, 1.0);
+    if (_preferLiteMotion) {
+      _controller.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    final sim = SpringSimulation(
+      _spring,
+      _controller.value,
+      clamped,
+      velocity,
+    );
+    _controller.animateWith(sim);
+  }
+
+  void _collapse() => _settleTo(0.0);
+
+  void _reveal() => _settleTo(1.0);
+
+  void _toggle() {
+    if (_controller.value < 0.5) {
       _reveal();
-    } else if (v > 80 && _controller.value > 0.5) {
+    } else {
       _collapse();
     }
+  }
+
+  void _onDragStart(DragStartDetails _) {
+    _controller.stop();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    final extent = _navExtent(context);
+    final dy = details.primaryDelta ?? 0;
+    // ปัดขึ้น (dy < 0) → กาง (value ↑); ปัดลง → หุบ
+    _controller.value = (_controller.value - dy / extent).clamp(0.0, 1.0);
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final extent = _navExtent(context);
+    final pxVel = details.primaryVelocity ?? 0;
+    // แปลง px/s → หน่วย 0–1 ต่อวินาที (เครื่องหมาย: ลบ = ปัดขึ้น = กาง)
+    final unitVel = -pxVel / extent;
+
+    late final double target;
+    if (pxVel.abs() >= _flingVelocity) {
+      target = pxVel < 0 ? 1.0 : 0.0;
+    } else {
+      target = _controller.value > 0.5 ? 1.0 : 0.0;
+    }
+    _settleTo(target, velocity: unitVel);
   }
 
   @override
@@ -2698,51 +2758,60 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
       animation: _controller,
       builder: (context, _) {
         final t = _controller.value.clamp(0.0, 1.0);
-        final collapsed = t < 0.02;
-        final showHandle = t < 0.98;
+        final handleH = _handleHeight + bottomInset * (1.0 - t);
+
+        Widget nav = widget.builder(_collapse);
+        if (t < 1.0) {
+          nav = Opacity(opacity: t, child: nav);
+        }
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showHandle)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _reveal,
-                onVerticalDragEnd: _onHandleDragEnd,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      top: BorderSide(color: Color(0xFFA9DCE4)),
-                    ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggle,
+              onVerticalDragStart: _onDragStart,
+              onVerticalDragUpdate: _onDragUpdate,
+              onVerticalDragEnd: _onDragEnd,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFA9DCE4)),
                   ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: collapsed
-                        ? _handleHeight + bottomInset
-                        : _handleHeight,
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Container(
-                          width: 44,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFA9DCE4),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: handleH,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFA9DCE4),
+                          borderRadius: BorderRadius.circular(999),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
+            ),
             ClipRect(
               child: Align(
                 alignment: Alignment.topCenter,
                 heightFactor: t,
-                child: widget.builder(_collapse),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.deferToChild,
+                  onVerticalDragStart: _onDragStart,
+                  onVerticalDragUpdate: _onDragUpdate,
+                  onVerticalDragEnd: _onDragEnd,
+                  child: nav,
+                ),
               ),
             ),
           ],
