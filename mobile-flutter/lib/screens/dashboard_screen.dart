@@ -967,17 +967,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _refreshHomeSilently(tryNetwork: true);
   }
 
-  /// แถบนำทางล่างแบบ Material 3 + soft press
-  /// ตอนเปิดแผง «บันทึกและนับจำนวน» จะพับซ่อน — ปัดขึ้นเพื่อแสดง / idle 30 วิ พับอีกครั้ง
+  /// แถบนำทางล่าง — ซ่อนเป็นค่าเริ่มต้น เหลือขีดจับ; ปัดขึ้น/แตะเพื่อแสดง
+  /// กดเมนูแล้วหุบกลับทันที
   Widget _buildBottomNav(SupabaseClient client) {
     final l10n = AppLocalizations.of(context);
     return _AutoHideBottomNav(
-      collapsible: _countAndRecordMenuOpen,
-      child: _ProBottomNav(
+      builder: (collapse) => _ProBottomNav(
         l10n: l10n,
         selectedIndex: _bodyPage == 0 ? 0 : -1,
-        onHome: () => setState(() => _bodyPage = 0),
-        onCalendar: () => _openCalendarScreen(client),
+        onHome: () {
+          collapse();
+          setState(() => _bodyPage = 0);
+        },
+        onCalendar: () {
+          collapse();
+          _openCalendarScreen(client);
+        },
       ),
     );
   }
@@ -2643,18 +2648,15 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-/// แถบนำทางล่างที่พับซ่อนได้เมื่ออยู่ในแผงบันทึกและนับจำนวน
+/// แถบนำทางล่างที่พับซ่อนเป็นค่าเริ่มต้น
 ///
-/// - [collapsible] = true → พับเหลือแถวจับ ปัดขึ้นเพื่อเด้งกลับมา + idle 30 วิ พับอีก
-/// - [collapsible] = false → แสดงเต็มตลอด
+/// เหลือขีดจับ — แตะหรือปัดขึ้นเพื่อแสดง / กดเมนูหรือปัดลงเพื่อหุบกลับ
 class _AutoHideBottomNav extends StatefulWidget {
   const _AutoHideBottomNav({
-    required this.collapsible,
-    required this.child,
+    required this.builder,
   });
 
-  final bool collapsible;
-  final Widget child;
+  final Widget Function(VoidCallback collapse) builder;
 
   @override
   State<_AutoHideBottomNav> createState() => _AutoHideBottomNavState();
@@ -2662,11 +2664,9 @@ class _AutoHideBottomNav extends StatefulWidget {
 
 class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
     with SingleTickerProviderStateMixin {
-  static const _idleHide = Duration(seconds: 30);
   static const _handleHeight = 22.0;
 
   late final AnimationController _controller;
-  Timer? _hideTimer;
 
   @override
   void initState() {
@@ -2675,58 +2675,22 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
       vsync: this,
       duration: const Duration(milliseconds: 420),
       reverseDuration: const Duration(milliseconds: 280),
-      value: widget.collapsible ? 0.0 : 1.0,
+      value: 0.0,
     );
   }
 
   @override
-  void didUpdateWidget(covariant _AutoHideBottomNav oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.collapsible == widget.collapsible) return;
-    if (widget.collapsible) {
-      _collapse();
-    } else {
-      _reveal(permanent: true);
-    }
-  }
-
-  @override
   void dispose() {
-    _hideTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   void _collapse() {
-    _hideTimer?.cancel();
-    _hideTimer = null;
     _controller.animateTo(0.0, curve: Curves.easeInCubic);
   }
 
-  void _reveal({bool permanent = false}) {
-    _hideTimer?.cancel();
-    _hideTimer = null;
+  void _reveal() {
     _controller.animateTo(1.0, curve: Curves.easeOutBack);
-    if (!permanent && widget.collapsible) {
-      _armIdleTimer();
-    }
-  }
-
-  void _armIdleTimer() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(_idleHide, () {
-      if (!mounted || !widget.collapsible) return;
-      _collapse();
-    });
-  }
-
-  void _onUserActivity() {
-    if (!widget.collapsible) return;
-    if (_controller.value < 0.98) {
-      _reveal();
-    } else {
-      _armIdleTimer();
-    }
   }
 
   void _onHandleDragEnd(DragEndDetails details) {
@@ -2746,8 +2710,8 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
       animation: _controller,
       builder: (context, _) {
         final t = _controller.value.clamp(0.0, 1.0);
-        final collapsed = widget.collapsible && t < 0.02;
-        final showHandle = widget.collapsible && t < 0.98;
+        final collapsed = t < 0.02;
+        final showHandle = t < 0.98;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -2790,10 +2754,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
               child: Align(
                 alignment: Alignment.topCenter,
                 heightFactor: t,
-                child: Listener(
-                  onPointerDown: (_) => _onUserActivity(),
-                  child: widget.child,
-                ),
+                child: widget.builder(_collapse),
               ),
             ),
           ],
