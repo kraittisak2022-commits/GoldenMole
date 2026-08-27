@@ -590,7 +590,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   FuelCarFillVehicle? _fuelCarFillVehicle;
   /// id แถวเติมรถยนต์ที่กำลังแก้ — null = รายการใหม่
   String? _fuelCarFillTxId;
-  bool _macroExtraVehiclesExpanded = false;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
@@ -2935,6 +2934,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool stayOnPage = false,
     /// ล้างฟอร์มหลังบันทึกสำเร็จ — ต้องเรียกผ่าน [setState] หลัง [body] เท่านั้น (ห้าม dispose ใน [body])
     VoidCallback? onStayOnPageCleared,
+    /// ถ้ามี — เรียกหลัง [body] สำเร็จ เพื่อข้อความสำเร็จแบบไดนามิก
+    String Function()? successMessageBuilder,
   }) async {
     if (!mounted) return;
     final saveCtx = SaveErrorContext(
@@ -2960,6 +2961,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       savingDialogOpen = true;
       await body();
       if (!mounted) return;
+      final doneMessage = successMessageBuilder?.call() ?? successMessage;
       if (stayOnPage) {
         _dismissSavingPopup();
         savingDialogOpen = false;
@@ -2975,7 +2977,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (!mounted) return;
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
-            content: Text(successMessage, style: GoogleFonts.kanit()),
+            content: Text(doneMessage, style: GoogleFonts.kanit()),
           ),
         );
         await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
@@ -2983,7 +2985,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         // dialog เดิม morph เป็น success ต่อเนื่อง — ไม่ปิดแล้วเปิดใหม่
         savingDialogOpen = false;
         _releaseKeyboardFocus();
-        await _showSuccessPopupAndPopToHome(successMessage);
+        await _showSuccessPopupAndPopToHome(doneMessage);
       }
     } catch (error) {
       if (savingDialogOpen && mounted) {
@@ -3612,6 +3614,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _scheduleUiRefresh();
   }
 
+  bool _macroRowHasWorkDetails(_MacroVehicleDraft row) {
+    if (row.isDisposed) return false;
+    return row.workDetailsController.text.trim().isNotEmpty;
+  }
+
+  /// ข้อมูลครบ = มีคนขับ + มีงานวันนี้ — ไม่ครบถือว่าวันนั้นไม่ได้ทำงาน
+  bool _macroRowIsComplete(_MacroVehicleDraft row) {
+    return row.driverId.trim().isNotEmpty && _macroRowHasWorkDetails(row);
+  }
+
   /// เขียนแถวแม็คโคร 1 คัน — ใช้ร่วมกันทั้งบันทึกรวมและปุ่ม «อัปเดตคันนี้»
   Future<void> _persistMacroRow(
     _MacroVehicleDraft row, {
@@ -3630,6 +3642,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (!macroCars.contains(vehicle)) {
       _failSave('เลือกรถได้เฉพาะรถแม็คโคร');
+    }
+    if (!_macroRowIsComplete(row)) {
+      _failSave(
+        'ข้อมูล $vehicle ไม่ครบ — ถือว่าวันนั้นไม่ได้ทำงาน (ไม่บันทึก)',
+      );
     }
     if (driver.isEmpty) {
       _failSave('กรุณาเลือกคนขับสำหรับ $vehicle');
@@ -3691,8 +3708,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveMacroVehicleUsageEntries() async {
+    var doneMessage = 'บันทึกการใช้รถแม็คโครสำเร็จ';
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้รถแม็คโครสำเร็จ',
+      successMessageBuilder: () => doneMessage,
       saveActionLabel: 'บันทึกการใช้รถแม็คโคร',
       saveButtonLabel: 'บันทึก',
       requireSignature: false,
@@ -3704,33 +3723,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         // เติมคนขับเริ่มต้นอีกครั้งก่อนบันทึก (กันกรณีโหลดพนักงาน/ตั้งค่าช้า)
         _syncMacroVehicleDraftsFromMacroCars();
-        final activeRows = _macroVehicleDrafts.where((row) {
-          final hasDetails = !row.isDisposed &&
-              row.workDetailsController.text.trim().isNotEmpty;
-          if (hasDetails) return true;
-          final driver = row.driverId.trim();
-          if (driver.isEmpty) return false;
-          // คันที่มีแค่คนขับเริ่มต้นจากเว็บ — ยังไม่ถือว่าใช้งาน (รวมคันปักหมุด)
-          final defId = _defaultDriverIdForVehicle(row.vehicleId);
-          if (defId != null && defId == driver) return false;
-          // ผู้ใช้เลือกคนขับเอง (ไม่ใช่ค่าเริ่มต้น) — บันทึกได้แม้ยังไม่กรอกรายละเอียด
-          return true;
-        }).toList();
-        if (activeRows.isEmpty) {
-          _failSave(
-            'กรุณาระบุคนขับอย่างน้อย 1 คัน '
-            '(หรือตั้งคนขับเริ่มต้นที่เว็บ: ตั้งค่า > รถ/เครื่องจักร)',
-          );
+        final completeRows = <_MacroVehicleDraft>[];
+        final idleSavedRows = <_MacroVehicleDraft>[];
+        for (final row in _macroVehicleDrafts) {
+          if (_macroRowIsComplete(row)) {
+            completeRows.add(row);
+          } else {
+            final id = row.txId?.trim() ?? '';
+            if (id.isNotEmpty) idleSavedRows.add(row);
+          }
+        }
+        // คันข้อมูลไม่ครบ = ไม่ได้ทำงาน — ลบรายการเก่าถ้าเคยบันทึกไว้
+        for (final row in idleSavedRows) {
+          final id = row.txId?.trim() ?? '';
+          if (id.isEmpty) continue;
+          await _deleteTransactionOfflineAware(id);
+          row.txId = null;
+        }
+        if (completeRows.isEmpty) {
+          doneMessage = idleSavedRows.isEmpty
+              ? 'ไม่มีคันที่ข้อมูลครบ — ถือว่าวันนั้นไม่ได้ทำงานทั้งหมด'
+              : 'ลบรายการคันที่ไม่ได้ทำงานแล้ว — ไม่มีคันที่บันทึกใหม่';
+          return;
         }
         final date = _selectedDateYmd();
-
-        for (var i = 0; i < activeRows.length; i++) {
+        for (var i = 0; i < completeRows.length; i++) {
           await _persistMacroRow(
-            activeRows[i],
+            completeRows[i],
             macroCars: macroCars,
             date: date,
             index: i,
           );
+        }
+        final idleCount = _macroVehicleDrafts.length - completeRows.length;
+        if (idleCount > 0) {
+          doneMessage =
+              'บันทึก ${completeRows.length} คัน · '
+              '$idleCount คันไม่ได้ทำงาน (ไม่บันทึก)';
+        } else {
+          doneMessage = 'บันทึกการใช้รถแม็คโครสำเร็จ';
         }
       },
     );
@@ -10460,7 +10491,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final hasDriver = row.driverId.trim().isNotEmpty;
     final tags = _macroWorkTags(row);
     final hasDetails = tags.isNotEmpty;
-    final isFilled = hasDriver && (isSaved || hasDetails);
+    final isComplete = _macroRowIsComplete(row);
+    final isIdle = !isComplete;
     final defaultDriverId = _defaultDriverIdForVehicle(vehicleName);
     final drivers = [..._macroSelectableDriversFor(vehicleName)]
       ..sort((a, b) {
@@ -10476,18 +10508,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isFilled || isSaved
+        color: isComplete || isSaved
             ? _macroAccent.withValues(alpha: 0.05)
-            : const Color(0xFFFAFCFE),
+            : const Color(0xFFF7F8FA),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isFilled || isSaved
+          color: isComplete || isSaved
               ? _macroAccent
-              : _macroAccent.withValues(alpha: 0.35),
-          width: isFilled || isSaved ? 1.8 : 1,
+              : const Color(0xFFCFD8DC),
+          width: isComplete || isSaved ? 1.8 : 1,
         ),
         boxShadow: [
-          if (isFilled || isSaved)
+          if (isComplete || isSaved)
             BoxShadow(
               color: _macroAccent.withValues(alpha: 0.18),
               blurRadius: 14,
@@ -10505,13 +10537,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: _macroAccentTint,
+                  color: isIdle ? const Color(0xFFECEFF1) : _macroAccentTint,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(
-                  Icons.construction_rounded,
+                child: Icon(
+                  isIdle
+                      ? Icons.do_not_disturb_on_outlined
+                      : Icons.construction_rounded,
                   size: 30,
-                  color: _macroAccent,
+                  color: isIdle ? const Color(0xFF78909C) : _macroAccent,
                 ),
               ),
               const SizedBox(width: 12),
@@ -10535,14 +10569,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: 23,
                         fontWeight: FontWeight.w800,
-                        color: _macroAccentInk,
+                        color: isIdle
+                            ? const Color(0xFF546E7A)
+                            : _macroAccentInk,
                         height: 1.2,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (isSaved)
+              if (isIdle)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFFFE082)),
+                  ),
+                  child: Text(
+                    'วันนั้นไม่ได้ทำงาน',
+                    style: GoogleFonts.kanit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFFF57F17),
+                    ),
+                  ),
+                )
+              else if (isSaved)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -10572,6 +10628,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
             ],
           ),
+          if (isIdle) ...[
+            const SizedBox(height: 10),
+            Text(
+              'ยังไม่ครบคนขับหรืองานวันนี้ — จะไม่บันทึกคันนี้',
+              style: GoogleFonts.kanit(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF78909C),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _macroSectionLabel('คนขับ — แตะเลือก'),
           if (drivers.isEmpty)
@@ -10681,7 +10748,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ],
-          if (isSaved) ...[
+          if (isSaved && isComplete) ...[
             const SizedBox(height: 12),
             _SmoothPressable(
               enabled: !_saving,
@@ -10714,29 +10781,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildMacroVehicleFormCard() {
     final macroCars = _fuelMacroCars();
-    final pinnedCars = _fuelPinnedMacroCars(macroCars);
-    final extraCars = _fuelExtraMacroCars(macroCars);
-    bool rowHasData(String car) {
-      final r = _macroDraftForVehicle(car);
-      if (r == null) return false;
-      final saved = r.txId != null && r.txId!.trim().isNotEmpty;
-      return saved || r.driverId.trim().isNotEmpty;
-    }
-
-    // นับเฉพาะรถที่แสดง (3 คันหลัก + คันเพิ่มเติมที่มีข้อมูล)
-    final relevantCars = <String>[
-      ...pinnedCars,
-      ...extraCars.where(rowHasData),
-    ];
     var savedCount = 0;
-    var filledCount = 0;
-    for (final car in relevantCars) {
+    var workedCount = 0;
+    var idleCount = 0;
+    for (final car in macroCars) {
       final row = _macroDraftForVehicle(car);
-      if (row == null) continue;
-      if (row.txId != null && row.txId!.trim().isNotEmpty) savedCount++;
-      if (row.driverId.trim().isNotEmpty) filledCount++;
+      if (row == null) {
+        idleCount++;
+        continue;
+      }
+      if (_macroRowIsComplete(row)) {
+        workedCount++;
+        if (row.txId != null && row.txId!.trim().isNotEmpty) savedCount++;
+      } else {
+        idleCount++;
+      }
     }
-    final totalShown = relevantCars.length;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -10795,8 +10855,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                   ),
                 const SizedBox(height: 12),
-                ...List.generate(pinnedCars.length, (index) {
-                  final car = pinnedCars[index];
+                ...List.generate(macroCars.length, (index) {
+                  final car = macroCars[index];
                   final row = _macroDraftForVehicle(car);
                   if (row == null) return const SizedBox.shrink();
                   return _buildMacroVehicleRow(
@@ -10805,42 +10865,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     displayIndex: index + 1,
                   );
                 }),
-                if (extraCars.isNotEmpty)
-                  Theme(
-                    data: Theme.of(context)
-                        .copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: EdgeInsets.zero,
-                      initiallyExpanded: _macroExtraVehiclesExpanded,
-                      onExpansionChanged: (expanded) {
-                        setState(() => _macroExtraVehiclesExpanded = expanded);
-                      },
-                      title: Text(
-                        'เพิ่มเติม (${extraCars.length} คัน)',
-                        style: GoogleFonts.kanit(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: _macroAccent,
-                        ),
-                      ),
-                      children: [
-                        for (var i = 0; i < extraCars.length; i++)
-                          Builder(
-                            builder: (context) {
-                              final car = extraCars[i];
-                              final row = _macroDraftForVehicle(car);
-                              if (row == null) return const SizedBox.shrink();
-                              return _buildMacroVehicleRow(
-                                row: row,
-                                vehicleName: car,
-                                displayIndex: pinnedCars.length + i + 1,
-                              );
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
                 const SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -10848,17 +10872,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     color: _macroAccentTint,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: savedCount > 0 || filledCount > 0
+                      color: workedCount > 0
                           ? _macroAccent.withValues(alpha: 0.45)
                           : _macroAccent.withValues(alpha: 0.25),
                     ),
                   ),
                   child: Text(
-                    'บันทึกแล้ว $savedCount/$totalShown คัน · กรอกแล้ว $filledCount คัน',
+                    'ทำงาน $workedCount/${macroCars.length} คัน'
+                    '${idleCount > 0 ? ' · ไม่ได้ทำงาน $idleCount คัน' : ''}'
+                    '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount คัน' : ''}',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
-                      fontSize: 17.5,
+                      fontSize: 16.5,
                     ),
                   ),
                 ),
