@@ -20,11 +20,17 @@ export interface MacroUsageSummary {
     totalLiters: number;
 }
 
+export interface AttendancePerson {
+    id: string;
+    name: string;
+    ot: boolean;
+}
+
 export interface AttendanceSummary {
     present: number;
     leave: number;
     absent: number;
-    presentNames: string[];
+    presentPeople: AttendancePerson[];
 }
 
 const stripRecorderSuffix = (details: string): string =>
@@ -113,6 +119,7 @@ export function buildAttendanceSummary(
 ): AttendanceSummary {
     const day = normalizeDate(dayKey);
     const presentIds = new Set<string>();
+    const otIds = new Set<string>();
 
     for (const t of transactions) {
         if (normalizeDate(t.date) !== day) continue;
@@ -120,7 +127,9 @@ export function buildAttendanceSummary(
         if (t.laborStatus !== 'Work' && t.laborStatus !== 'OT') continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (eid) presentIds.add(eid);
+            if (!eid) continue;
+            presentIds.add(eid);
+            if (t.laborStatus === 'OT') otIds.add(eid);
         }
     }
 
@@ -134,13 +143,17 @@ export function buildAttendanceSummary(
     }
 
     const activeEmployees = employees.filter((e) => !e.inactive);
-    const presentNames = [...presentIds]
-        .map((id) => employeeDisplayName(id, employees))
-        .sort((a, b) => a.localeCompare(b, 'th'));
+    const presentPeople: AttendancePerson[] = [...presentIds]
+        .map((id) => ({
+            id,
+            name: employeeDisplayName(id, employees),
+            ot: otIds.has(id),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
     const present = presentIds.size;
     const leave = leaveIds.size;
     const absent = Math.max(0, activeEmployees.length - present - leave);
 
-    return { present, leave, absent, presentNames };
+    return { present, leave, absent, presentPeople };
 }

@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { Tractor, Users } from 'lucide-react';
+import { Fuel, Tractor, UserRound, Users } from 'lucide-react';
 import type { Employee, Transaction } from '../../types';
 import type { VehicleCatalogRow } from '../../utils/vehicleCatalog';
 import { useShareLocale } from '../Share/shareI18n';
-import { formatDashboardMetric } from './countRecordUtils';
+import { formatDashboardMetric, VEHICLE_BUTTON_COLORS } from './countRecordUtils';
 import { buildAttendanceSummary, buildMacroUsageSummary } from './dailyOpsCardUtils';
 
 interface DailyOpsCardsProps {
@@ -79,35 +79,54 @@ const DailyOpsCards = ({
                                 </div>
                             </div>
 
-                            <ul className="max-h-40 space-y-2 overflow-y-auto">
-                                {macroSummary.rows.map((row) => (
-                                    <li
-                                        key={row.vehicleId}
-                                        className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-slate-700/60 dark:bg-slate-800/50"
-                                    >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
-                                                    {row.vehicleId}
-                                                </p>
-                                                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                                                    {row.driverLabel} · {row.workType === 'HalfDay' ? t('halfDay') : t('fullDay')}
-                                                </p>
-                                                {row.workDetails ? (
-                                                    <p className="mt-0.5 truncate text-[10px] text-slate-400 dark:text-slate-500">
-                                                        {row.workDetails}
+                            <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto">
+                                {macroSummary.rows.map((row, index) => {
+                                    const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
+                                    return (
+                                        <article
+                                            key={row.vehicleId}
+                                            className="relative overflow-hidden rounded-xl border border-white/10 bg-slate-900 text-white shadow-md shadow-slate-900/15"
+                                        >
+                                            <div
+                                                className="absolute inset-0 opacity-90"
+                                                style={{
+                                                    background: `linear-gradient(145deg, ${accent} 0%, ${accent}cc 42%, #0f172a 100%)`,
+                                                }}
+                                            />
+                                            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
+                                            <div className="relative flex flex-col gap-1.5 p-2.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
+                                                        <Tractor size={16} />
+                                                    </span>
+                                                    <p className="min-w-0 truncate text-xs font-bold leading-tight">
+                                                        {row.vehicleId}
                                                     </p>
-                                                ) : null}
+                                                </div>
+                                                <p className="flex items-center gap-1 truncate text-[10px] font-medium text-white/80">
+                                                    <UserRound size={10} className="shrink-0" />
+                                                    {row.driverLabel}
+                                                </p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <span className="rounded-md bg-black/25 px-1.5 py-0.5 text-[9px] font-bold text-white/90">
+                                                        {row.workType === 'HalfDay' ? t('halfDay') : t('fullDay')}
+                                                    </span>
+                                                    {row.liters > 0 ? (
+                                                        <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-300/90 px-1.5 py-0.5 text-[9px] font-bold text-amber-950">
+                                                            <Fuel size={9} />
+                                                            {formatDashboardMetric(Math.round(row.liters * 10) / 10)}{' '}
+                                                            {t('litersUnit')}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                <p className="line-clamp-2 text-[9px] leading-snug text-white/65">
+                                                    {row.workDetails || t('macroNoWorkDetail')}
+                                                </p>
                                             </div>
-                                            {row.liters > 0 ? (
-                                                <span className="shrink-0 rounded-lg bg-amber-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
-                                                    {formatDashboardMetric(Math.round(row.liters * 10) / 10)} {t('litersUnit')}
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
+                                        </article>
+                                    );
+                                })}
+                            </div>
                         </>
                     )}
                 </div>
@@ -147,10 +166,29 @@ const DailyOpsCards = ({
                         </span>
                     </div>
 
-                    {attendance.presentNames.length > 0 ? (
-                        <p className="line-clamp-3 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                            {attendance.presentNames.join(' · ')}
-                        </p>
+                    {attendance.presentPeople.length > 0 ? (
+                        <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto">
+                            {attendance.presentPeople.map((person) => (
+                                <article
+                                    key={person.id}
+                                    className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+                                >
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                                        {(person.name || '?').charAt(0)}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
+                                            {person.name}
+                                        </p>
+                                        {person.ot ? (
+                                            <span className="mt-0.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+                                                OT
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
                     ) : (
                         <p className="text-sm text-slate-500 dark:text-slate-400">{t('attendanceEmpty')}</p>
                     )}

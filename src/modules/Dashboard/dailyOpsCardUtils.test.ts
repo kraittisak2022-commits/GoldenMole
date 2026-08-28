@@ -135,10 +135,12 @@ describe('buildAttendanceSummary', () => {
         expect(summary.present).toBe(3);
         expect(summary.leave).toBe(1);
         expect(summary.absent).toBe(0);
-        expect(summary.presentNames).toHaveLength(3);
-        expect(summary.presentNames).toContain('ชาย');
-        expect(summary.presentNames).toContain('หญิง');
-        expect(summary.presentNames).toContain('ศักดิ์');
+        expect(summary.presentPeople).toHaveLength(3);
+        const names = summary.presentPeople.map((p) => p.name);
+        expect(names).toContain('ชาย');
+        expect(names).toContain('หญิง');
+        expect(names).toContain('ศักดิ์');
+        expect(summary.presentPeople.every((p) => !p.ot)).toBe(true);
     });
 
     it('includes OT rows in present count', () => {
@@ -157,6 +159,6 @@ describe('buildAttendanceSummary', () => {
 
         const summary = buildAttendanceSummary(dayKey, transactions, employees);
         expect(summary.present).toBe(1);
-        expect(summary.presentNames).toEqual(['ศักดิ์']);
+        expect(summary.presentPeople).toEqual([{ id: 'e3', name: 'ศักดิ์', ot: true }]);
     });
 });
