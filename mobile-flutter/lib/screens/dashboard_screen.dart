@@ -27,6 +27,7 @@ import '../utils/device_perf.dart';
 import '../utils/touch_profile.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
+import '../theme/daily_palette.dart';
 import '../utils/record_success_speaker.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/count_record_counters.dart';
@@ -71,77 +72,77 @@ const List<_DailyModuleDef> _kDailyModules = [
     icon: Icons.how_to_reg_outlined,
     category: 'เช็คชื่อ',
     quickInputTitle: 'เช็คชื่อประจำวัน',
-    color: Color(0xFF2FB6A6),
+    color: DailyPalette.moduleAttendance,
   ),
   _DailyModuleDef(
     title: 'บันทึกการร่อนทราย',
     icon: Icons.water_drop_outlined,
     category: 'บันทึกการร่อนทราย',
     quickInputTitle: 'บันทึกการร่อนทราย',
-    color: Color(0xFFFF2D97),
+    color: DailyPalette.moduleSandSieve,
   ),
   _DailyModuleDef(
     title: 'บันทึกรถดรัมและจำนวนเที่ยว',
     icon: Icons.fire_truck_outlined,
     category: 'จำนวนเที่ยวรถ',
     quickInputTitle: 'บันทึกรถดรัมและจำนวนเที่ยว',
-    color: Color(0xFF00D4F5),
+    color: DailyPalette.moduleTrip,
   ),
   _DailyModuleDef(
     title: 'การใช้รถแม็คโคร',
     icon: Icons.front_loader,
     category: 'การใช้รถแม็คโคร',
     quickInputTitle: 'บันทึกการใช้รถแม็คโคร',
-    color: Color(0xFFFFA020),
+    color: DailyPalette.moduleMacro,
   ),
   _DailyModuleDef(
     title: 'น้ำมัน',
     icon: Icons.oil_barrel_outlined,
     category: 'น้ำมัน',
     quickInputTitle: 'บันทึกน้ำมัน',
-    color: Color(0xFFFFAB00),
+    color: DailyPalette.moduleFuel,
   ),
   _DailyModuleDef(
     title: 'เหตุการณ์',
     icon: Icons.warning_amber_rounded,
     category: 'เหตุการณ์',
     quickInputTitle: 'เหตุการณ์สำคัญประจำวัน',
-    color: Color(0xFFFF7A1A),
+    color: DailyPalette.moduleEvent,
   ),
   _DailyModuleDef(
     title: 'บันทึกการทำงาน',
     icon: Icons.payments_outlined,
     category: 'ค่าแรง',
     quickInputTitle: 'บันทึกการทำงาน',
-    color: Color(0xFF9145FF),
+    color: DailyPalette.moduleLabor,
   ),
   _DailyModuleDef(
     title: 'การทำงานล่วงเวลา (OT)',
     icon: Icons.groups_2_outlined,
     category: 'OT',
     quickInputTitle: 'บันทึกการทำงานล่วงเวลา',
-    color: Color(0xFFFF3D6B),
+    color: DailyPalette.moduleOt,
   ),
   _DailyModuleDef(
     title: 'ลางาน',
     icon: Icons.event_busy_outlined,
     category: 'ลางาน',
     quickInputTitle: 'บันทึกลางาน',
-    color: Color(0xFF00A896),
+    color: DailyPalette.moduleLeave,
   ),
   _DailyModuleDef(
     title: 'เบิกเงิน',
     icon: Icons.savings_outlined,
     category: 'เบิกเงิน',
     quickInputTitle: 'ส่งคำขอเบิกเงิน',
-    color: Color(0xFFFF8500),
+    color: DailyPalette.moduleAdvance,
   ),
   _DailyModuleDef(
     title: 'รายรับ-รายจ่าย',
     icon: Icons.account_balance_wallet_outlined,
     category: 'รายจ่ายรายรับ',
     quickInputTitle: 'รายรับ-รายจ่าย',
-    color: Color(0xFF6370E8),
+    color: DailyPalette.moduleIncomeExpense,
   ),
 ];
 
@@ -866,8 +867,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     final client = Supabase.instance.client;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3FBFC),
-      body: LayoutBuilder(
+      backgroundColor: DailyPalette.surfaceTop,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: DailyPalette.surfaceGradient),
+        child: LayoutBuilder(
         builder: (context, bodyConstraints) {
           final rawBody = bodyConstraints.maxWidth.isFinite &&
                   bodyConstraints.maxWidth > 0
@@ -977,6 +980,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           );
         },
+      ),
       ),
       bottomNavigationBar: _buildBottomNav(client),
     );
@@ -1099,7 +1103,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   CountRecordWorkMode? _workMode;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
-  static const _kPanelShadowColor = Color(0x12000000);
+  static const _kPanelShadowColor = DailyPalette.shadowSoft;
   static const _kMoreMenusBarHeight = 40.0;
 
   void _onEntranceStatus(AnimationStatus status) {
@@ -1238,12 +1242,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       dayKey,
       widget.data.dayTransactions,
     );
-    Widget buildCountRecordEntryCard({bool showLightStyle = false}) {
+    Widget buildCountRecordEntryCard() {
       return RecordModuleCard(
         title: 'บันทึกและนับจำนวน',
         icon: Icons.timer_outlined,
-        tileColor: const Color(0xFF1565C0),
-        showLightStyle: showLightStyle,
+        tileColor: DailyPalette.moduleCountRecord,
         fillStatus: countRecordFill,
         completeStatusLabelOverride: translateDailyCardStatus(
           countRecordStatusLabel,
@@ -1272,12 +1275,17 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFE7ECF3)),
-        boxShadow: [
+        border: Border.all(color: DailyPalette.hairline),
+        boxShadow: const [
           BoxShadow(
-            color: _kPanelShadowColor,
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: DailyPalette.shadowSoft,
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+          BoxShadow(
+            color: DailyPalette.shadowTight,
+            blurRadius: 4,
+            offset: Offset(0, 1),
           ),
         ],
       ),
@@ -1376,9 +1384,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       modeKey: 'trip',
                       title: 'จำนวนเที่ยวรถ',
                       icon: Icons.fire_truck_outlined,
-                      iconColor: const Color(0xFF1565C0),
-                      backgroundColor: const Color(0xFFE3F2FD),
-                      borderColor: const Color(0xFF90CAF9),
+                      iconColor: DailyPalette.countTripIcon,
+                      backgroundColor: DailyPalette.countTripBg,
+                      borderColor: DailyPalette.countTripBorder,
                       counterMode: CounterMode.trip,
                     );
                   }
@@ -1387,9 +1395,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       modeKey: 'sand',
                       title: 'การร่อนทราย',
                       icon: Icons.water_drop_outlined,
-                      iconColor: const Color(0xFFAD1457),
-                      backgroundColor: const Color(0xFFFCE4EC),
-                      borderColor: const Color(0xFFF48FB1),
+                      iconColor: DailyPalette.countSandIcon,
+                      backgroundColor: DailyPalette.countSandBg,
+                      borderColor: DailyPalette.countSandBorder,
                       counterMode: CounterMode.sand,
                     );
                   }
@@ -1398,18 +1406,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     modeKey: 'trip',
                     title: 'จำนวนเที่ยวรถ',
                     icon: Icons.fire_truck_outlined,
-                    iconColor: const Color(0xFF1565C0),
-                    backgroundColor: const Color(0xFFE3F2FD),
-                    borderColor: const Color(0xFF90CAF9),
+                    iconColor: DailyPalette.countTripIcon,
+                    backgroundColor: DailyPalette.countTripBg,
+                    borderColor: DailyPalette.countTripBorder,
                     counterMode: CounterMode.trip,
                   );
                   final sandCell = counterCell(
                     modeKey: 'sand',
                     title: 'การร่อนทราย',
                     icon: Icons.water_drop_outlined,
-                    iconColor: const Color(0xFFAD1457),
-                    backgroundColor: const Color(0xFFFCE4EC),
-                    borderColor: const Color(0xFFF48FB1),
+                    iconColor: DailyPalette.countSandIcon,
+                    backgroundColor: DailyPalette.countSandBg,
+                    borderColor: DailyPalette.countSandBorder,
                     counterMode: CounterMode.sand,
                   );
                   // Flex ทิศทางเดียว — หมุนจอแค่อัปเดต direction ไม่สลับ Column/Row
@@ -1474,7 +1482,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               padding: EdgeInsets.all(8),
                               child: Icon(
                                 Icons.school_outlined,
-                                color: Color(0xFF1565C0),
+                                color: DailyPalette.moduleCountRecord,
                                 size: 22,
                               ),
                             ),
@@ -1555,16 +1563,16 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE6F7F9),
+                            color: DailyPalette.brandChipTop,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFA9DCE4)),
+                            border: Border.all(color: DailyPalette.brandBorder),
                           ),
                           child: Row(
                             children: [
                               const Icon(
                                 Icons.calendar_today_rounded,
                                 size: 18,
-                                color: Color(0xFF0D98A5),
+                                color: DailyPalette.brand,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -1575,7 +1583,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   style: GoogleFonts.kanit(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF0A6270),
+                                    color: DailyPalette.brandDateInk,
                                   ),
                                 ),
                               ),
@@ -1722,9 +1730,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         ),
                         itemBuilder: (context, index) {
                           if (index == 0) {
-                            final card = buildCountRecordEntryCard(
-                              showLightStyle: index.isOdd,
-                            );
+                            final card = buildCountRecordEntryCard();
                             if (_gridEntranceCompleted) {
                               return RepaintBoundary(
                                 key: const ValueKey(
@@ -1758,7 +1764,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             title: l10n.moduleTitle(m.category),
                             icon: m.icon,
                             tileColor: m.color,
-                            showLightStyle: index.isOdd,
                             fillStatus: fill,
                             completeStatusLabelOverride:
                                 translateDailyCardStatus(
@@ -2137,15 +2142,15 @@ class _TopSettingsButton extends StatelessWidget {
           liftWhenIdle: true,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F8FA),
+              color: DailyPalette.brandSurface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFDCE6EE)),
+              border: Border.all(color: DailyPalette.hairline),
             ),
             child: const Padding(
               padding: EdgeInsets.all(10),
               child: Icon(
                 Icons.settings_outlined,
-                color: Color(0xFF0D98A5),
+                color: DailyPalette.brand,
                 size: 22,
               ),
             ),
@@ -2173,12 +2178,6 @@ class _HomeHeaderCompact extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenSettings;
 
-  static const _teal = Color(0xFF0D98A5);
-  static const _tealMid = Color(0xFF0A7A88);
-  static const _tealDark = Color(0xFF0A6270);
-  static const _ink = Color(0xFF142033);
-  static const _muted = Color(0xFF64748B);
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -2189,7 +2188,7 @@ class _HomeHeaderCompact extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: _teal.withValues(alpha: 0.10),
+            color: DailyPalette.brand.withValues(alpha: 0.10),
             blurRadius: 22,
             offset: const Offset(0, 8),
           ),
@@ -2203,15 +2202,9 @@ class _HomeHeaderCompact extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFFFFFF), Color(0xFFF3FAFB)],
-            ),
-            border: Border.fromBorderSide(
-              BorderSide(color: Color(0xFFD7E8ED)),
-            ),
+          decoration: BoxDecoration(
+            gradient: DailyPalette.headerGradient,
+            border: Border.all(color: DailyPalette.brandBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2219,11 +2212,7 @@ class _HomeHeaderCompact extends StatelessWidget {
               Container(
                 height: 5,
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [Color(0xFF00C4D4), _teal, _tealMid],
-                  ),
+                  gradient: DailyPalette.brandAccentBar,
                 ),
               ),
               Padding(
@@ -2239,11 +2228,11 @@ class _HomeHeaderCompact extends StatelessWidget {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: _teal.withValues(alpha: 0.22),
+                              color: DailyPalette.brand.withValues(alpha: 0.22),
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: _teal.withValues(alpha: 0.14),
+                                color: DailyPalette.brand.withValues(alpha: 0.14),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -2266,7 +2255,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 24,
-                                  color: _ink,
+                                  color: DailyPalette.ink,
                                   letterSpacing: -0.4,
                                   height: 1.1,
                                 ),
@@ -2277,7 +2266,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: _muted,
+                                  color: DailyPalette.inkMuted,
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w600,
                                   height: 1.2,
@@ -2293,17 +2282,17 @@ class _HomeHeaderCompact extends StatelessWidget {
                           liftWhenIdle: true,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF4F8FA),
+                              color: DailyPalette.brandSurface,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: const Color(0xFFDCE6EE),
+                                color: DailyPalette.hairline,
                               ),
                             ),
                             child: const Padding(
                               padding: EdgeInsets.all(10),
                               child: Icon(
                                 Icons.refresh_rounded,
-                                color: Color(0xFF546E7A),
+                                color: DailyPalette.inkSubtle,
                                 size: 22,
                               ),
                             ),
@@ -2322,18 +2311,14 @@ class _HomeHeaderCompact extends StatelessWidget {
                       liftWhenIdle: true,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFE6F7F9), Color(0xFFF7FCFD)],
-                          ),
+                          gradient: DailyPalette.dateChipGradient,
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: const Color(0xFFA9DCE4),
+                            color: DailyPalette.brandBorder,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: _teal.withValues(alpha: 0.08),
+                              color: DailyPalette.brand.withValues(alpha: 0.08),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
@@ -2345,15 +2330,11 @@ class _HomeHeaderCompact extends StatelessWidget {
                             children: [
                               DecoratedBox(
                                 decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [_teal, _tealMid],
-                                  ),
+                                  gradient: DailyPalette.brandIconGradient,
                                   borderRadius: BorderRadius.circular(14),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: _teal.withValues(alpha: 0.28),
+                                      color: DailyPalette.brand.withValues(alpha: 0.28),
                                       blurRadius: 8,
                                       offset: const Offset(0, 3),
                                     ),
@@ -2380,7 +2361,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 18,
-                                        color: _tealDark,
+                                        color: DailyPalette.brandDateInk,
                                         height: 1.2,
                                         letterSpacing: -0.2,
                                       ),
@@ -2393,7 +2374,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 12.5,
-                                        color: _muted.withValues(alpha: 0.95),
+                                        color: DailyPalette.inkMuted.withValues(alpha: 0.95),
                                       ),
                                     ),
                                   ],
@@ -2401,7 +2382,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                               ),
                               const Icon(
                                 Icons.keyboard_arrow_down_rounded,
-                                color: _teal,
+                                color: DailyPalette.brand,
                                 size: 28,
                               ),
                             ],
@@ -2797,7 +2778,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   border: Border(
-                    top: BorderSide(color: Color(0xFFA9DCE4)),
+                    top: BorderSide(color: DailyPalette.hairline),
                   ),
                 ),
                 child: SizedBox(
@@ -2811,7 +2792,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
                         width: 44,
                         height: 5,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFA9DCE4),
+                          color: DailyPalette.grabber,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -2854,8 +2835,7 @@ class _ProBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
 
-  static const _teal = Color(0xFF0D98A5);
-  static const _idle = Color(0xFF64748B);
+  static const _idle = DailyPalette.inkMuted;
 
   @override
   Widget build(BuildContext context) {
@@ -2867,7 +2847,7 @@ class _ProBottomNav extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: _teal.withValues(alpha: 0.08),
+            color: DailyPalette.brand.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -2891,7 +2871,7 @@ class _ProBottomNav extends StatelessWidget {
                 thickness: 1,
                 indent: 12,
                 endIndent: 12,
-                color: Color(0xFFE3EEF3),
+                color: DailyPalette.hairline,
               ),
               _navItem(
                 index: 1,
@@ -2915,7 +2895,7 @@ class _ProBottomNav extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final selected = selectedIndex == index;
-    final color = selected ? _teal : _idle;
+    final color = selected ? DailyPalette.brand : _idle;
 
     return Expanded(
       child: SoftPressButton(

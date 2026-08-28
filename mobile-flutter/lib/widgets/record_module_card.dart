@@ -2,16 +2,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../theme/daily_palette.dart';
 import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 import 'soft_press_button.dart';
 
 Color _iconTint(Color accent) {
-  return Color.lerp(accent, const Color(0xFF334155), 0.28)!;
+  return Color.lerp(accent, DailyPalette.ink, 0.28)!;
 }
 
 const _cardDepthShadow = SoftPressDepthShadow(
-  color: Color(0x180F172A),
+  color: DailyPalette.shadowSoft,
   blurRadius: 17,
   offsetY: 6,
   pressedBlurRadius: 4,
@@ -27,7 +28,6 @@ class RecordModuleCard extends StatelessWidget {
     required this.fillStatus,
     required this.onTap,
     this.tileColor = const Color(0xFF4FC3F7),
-    this.showLightStyle = false,
     this.completeStatusLabelOverride,
     this.statusMaxLines = 2,
   });
@@ -37,7 +37,6 @@ class RecordModuleCard extends StatelessWidget {
   final DailyModuleFillStatus fillStatus;
   final VoidCallback onTap;
   final Color tileColor;
-  final bool showLightStyle;
   final String? completeStatusLabelOverride;
   final int statusMaxLines;
 
@@ -61,18 +60,18 @@ class RecordModuleCard extends StatelessWidget {
         : l10n.statusTapToRecord;
 
     final statusColor = recorded
-        ? const Color(0xFF15803D)
+        ? DailyPalette.statusComplete
         : partial
-        ? const Color(0xFFB45309)
-        : const Color(0xFF94A3B8);
+        ? DailyPalette.statusIncomplete
+        : DailyPalette.statusPending;
 
     final accent = tileColor;
     final iconColor = _iconTint(accent);
     final borderColor = recorded
-        ? const Color(0xFFBBF7D0)
+        ? DailyPalette.statusCompleteBorder
         : partial
-        ? const Color(0xFFFDE68A)
-        : Color.lerp(const Color(0xFFE8EDF3), accent, 0.2)!;
+        ? DailyPalette.statusIncompleteBorder
+        : DailyPalette.moduleBorder(accent);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -93,18 +92,20 @@ class RecordModuleCard extends StatelessWidget {
         final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
         final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
         final statusSize = (scaleRef * 0.09).clamp(10.0, 12.0);
-        final radius = isLandscapeCell ? 12.0 : 14.0;
+        final radius = isLandscapeCell ? 14.0 : 16.0;
         final textMaxWidth = isLandscapeCell
             ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)
             : cardW - (pad * 2);
+        final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
+            DevicePerf.isConstrainedDevice;
 
         Widget statusBlock() {
           if (recorded) {
             return DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
+                color: DailyPalette.statusCompleteBg,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
+                border: Border.all(color: DailyPalette.statusCompleteBorder),
               ),
               child: Padding(
                 padding: EdgeInsets.symmetric(
@@ -117,7 +118,7 @@ class RecordModuleCard extends StatelessWidget {
                     Icon(
                       Icons.check_circle_rounded,
                       size: (statusSize + 2).clamp(11.0, 14.0),
-                      color: const Color(0xFF15803D),
+                      color: DailyPalette.statusComplete,
                     ),
                     const SizedBox(width: 4),
                     Flexible(
@@ -129,7 +130,7 @@ class RecordModuleCard extends StatelessWidget {
                         style: theme.textTheme.labelSmall?.copyWith(
                           fontSize: statusSize,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF15803D),
+                          color: DailyPalette.statusComplete,
                           height: 1.15,
                         ),
                       ),
@@ -168,7 +169,7 @@ class RecordModuleCard extends StatelessWidget {
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontSize: titleSize,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1E293B),
+                    color: DailyPalette.ink,
                     height: 1.2,
                   ),
                 ),
@@ -182,6 +183,25 @@ class RecordModuleCard extends StatelessWidget {
           );
         }
 
+        Widget iconWithHalo() {
+          final haloPad = (iconSize * 0.22).clamp(8.0, 14.0);
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: DailyPalette.iconHaloFill(accent),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: DailyPalette.iconHaloBorder(accent)),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(haloPad),
+              child: Icon(
+                icon,
+                size: iconSize,
+                color: iconColor,
+              ),
+            ),
+          );
+        }
+
         Widget centeredContent() {
           if (isLandscapeCell) {
             return Padding(
@@ -190,11 +210,7 @@ class RecordModuleCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(
-                    icon,
-                    size: iconSize,
-                    color: iconColor,
-                  ),
+                  iconWithHalo(),
                   SizedBox(width: pad * 0.65),
                   Flexible(child: titleBlock()),
                 ],
@@ -206,41 +222,37 @@ class RecordModuleCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: iconSize,
-                color: iconColor,
-              ),
+              iconWithHalo(),
               SizedBox(height: pad * 0.5),
               titleBlock(),
             ],
           );
         }
 
-        final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
-            DevicePerf.isConstrainedDevice;
-
         // เครื่องช้า: SoftPress ไม่ใส่ depthShadow — ใส่เงาที่การ์ดแทนให้ยังดูนูน
         final surfaceShadow = useLiteChrome
             ? const [
                 BoxShadow(
-                  color: Color(0x180F172A),
+                  color: DailyPalette.shadowSoft,
                   blurRadius: 14,
                   offset: Offset(0, 5),
                 ),
               ]
             : null;
 
+        final cardDecoration = BoxDecoration(
+          color: useLiteChrome ? DailyPalette.cardTop : null,
+          gradient: useLiteChrome ? null : DailyPalette.cardGradient,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: borderColor, width: 1),
+          boxShadow: surfaceShadow,
+        );
+
         final shapedCard = SizedBox(
           width: cardW,
           height: cardH,
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: borderColor, width: 1),
-              boxShadow: surfaceShadow,
-            ),
+            decoration: cardDecoration,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -291,22 +303,22 @@ class _StatusDot extends StatelessWidget {
         width: 18,
         height: 18,
         decoration: const BoxDecoration(
-          color: Color(0xFFECFDF5),
+          color: DailyPalette.statusCompleteBg,
           shape: BoxShape.circle,
           border: Border.fromBorderSide(
-            BorderSide(color: Color(0xFFBBF7D0)),
+            BorderSide(color: DailyPalette.statusCompleteBorder),
           ),
         ),
         child: const Icon(
           Icons.check_rounded,
           size: 12,
-          color: Color(0xFF15803D),
+          color: DailyPalette.statusComplete,
         ),
       );
     }
     final color = partial
-        ? const Color(0xFFF59E0B)
-        : const Color(0xFFCBD5E1);
+        ? DailyPalette.statusIncompleteDot
+        : DailyPalette.statusPendingDot;
     return Container(
       width: 8,
       height: 8,

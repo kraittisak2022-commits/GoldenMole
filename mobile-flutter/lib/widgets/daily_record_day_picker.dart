@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/daily_palette.dart';
 import '../models/app_transaction.dart';
 import '../utils/daily_module_transactions.dart';
 
@@ -46,11 +47,11 @@ class _DailyRecordDayPickerDialog extends StatefulWidget {
 
 class _DailyRecordDayPickerDialogState
     extends State<_DailyRecordDayPickerDialog> {
-  static const _attendanceDot = Color(0xFF2FB6A6);
-  static const _tripDot = Color(0xFF1565C0);
-  static const _fuelDot = Color(0xFFFFAB00);
-  static const _eventDot = Color(0xFFFF7A1A);
-  static const _teal = Color(0xFF0D98A5);
+  static const _attendanceDot = DailyPalette.moduleAttendance;
+  static const _tripDot = DailyPalette.moduleTrip;
+  static const _fuelDot = DailyPalette.moduleFuel;
+  static const _eventDot = DailyPalette.moduleEvent;
+  static const _teal = DailyPalette.brand;
 
   late DateTime _month;
   late DateTime _selected;

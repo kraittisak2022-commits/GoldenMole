@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/count_record_work_mode.dart';
 import '../utils/device_perf.dart';
 import 'soft_press_button.dart';
@@ -23,7 +24,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
   late final List<Animation<double>> _staggerAnims;
   late final bool _lite;
 
-  static const _brandTeal = Color(0xFF0D98A5);
+  static const _brandTeal = DailyPalette.brand;
 
   @override
   void initState() {
@@ -84,8 +85,8 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       title: 'ขนอย่างเดียว',
       subtitle: 'บันทึกจำนวนเที่ยวรถ',
       icon: Icons.fire_truck_rounded,
-      accent: const Color(0xFF1565C0),
-      iconTileColor: const Color(0xFFE3F2FD),
+      accent: DailyPalette.countTripIcon,
+      iconTileColor: DailyPalette.countTripBg,
       vertical: useColumns,
       onTap: () => widget.onSelect(CountRecordWorkMode.trip),
     );
@@ -93,8 +94,8 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       title: 'ร่อนทรายอย่างเดียว',
       subtitle: 'บันทึกการร่อนทราย',
       icon: Icons.water_drop_rounded,
-      accent: const Color(0xFFAD1457),
-      iconTileColor: const Color(0xFFFCE4EC),
+      accent: DailyPalette.countSandIcon,
+      iconTileColor: DailyPalette.countSandBg,
       vertical: useColumns,
       onTap: () => widget.onSelect(CountRecordWorkMode.sand),
     );
@@ -103,7 +104,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       subtitle: 'ทั้ง 2 อย่าง — แสดงสองการ์ด',
       icon: Icons.layers_rounded,
       accent: _brandTeal,
-      iconTileColor: const Color(0xFFE0F7FA),
+      iconTileColor: DailyPalette.countBothIconTile,
       vertical: useColumns,
       dualIcons: true,
       onTap: () => widget.onSelect(CountRecordWorkMode.both),
@@ -234,13 +235,13 @@ class _WorkModeOption extends StatelessWidget {
             children: [
               Icon(
                 Icons.fire_truck_rounded,
-                color: const Color(0xFF1565C0),
+                color: DailyPalette.countTripIcon,
                 size: iconSize * 0.9,
               ),
               SizedBox(width: isTablet ? 6 : 4),
               Icon(
                 Icons.water_drop_rounded,
-                color: const Color(0xFFAD1457),
+                color: DailyPalette.countSandIcon,
                 size: iconSize * 0.9,
               ),
             ],
