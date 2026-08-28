@@ -17,7 +17,7 @@ import { FUEL_SAND_SIEVE_LITERS_PER_HOUR } from './fuelSieveEstimate';
 import { isMacroVehicleId } from '../modules/Dashboard/dailyStepRecorderUtils';
 
 export type FuelUsageKind = 'stock_in' | 'vehicle' | 'withdraw' | 'transfer' | 'sand_sieve' | 'other_out';
-export type FuelPrintGroup = 'macro' | 'sieve_generator' | 'other_fill';
+export type FuelPrintGroup = 'macro' | 'sieve_generator' | 'other_fill' | 'stock_in' | 'overview';
 export type FuelTypeFilter = 'Diesel' | 'Benzine';
 
 export interface FuelUsageFilters {
@@ -108,8 +108,35 @@ export function fuelPrintGroupTitle(group: FuelPrintGroup): string {
     switch (group) {
         case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
         case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
+        case 'stock_in': return 'รายงานรับน้ำมันเข้า';
+        case 'overview': return 'สรุปภาพรวมรายงานการใช้น้ำมัน';
         default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
     }
+}
+
+export interface FuelPrintOverviewItem {
+    group: Exclude<FuelPrintGroup, 'overview'>;
+    title: string;
+    liters: number;
+    count: number;
+}
+
+const DATA_PRINT_GROUPS: Array<Exclude<FuelPrintGroup, 'overview'>> = [
+    'stock_in', 'macro', 'sieve_generator', 'other_fill',
+];
+
+/** สรุปยอดลิตรและจำนวนรายการของแต่ละรายงานพิมพ์ */
+export function fuelPrintOverviewItems(report: FuelUsageReport): FuelPrintOverviewItem[] {
+    return DATA_PRINT_GROUPS.map(group => {
+        const grouped = filterFuelUsageReport(report, group);
+        const liters = grouped.rows.reduce((sum, r) => sum + r.liters, 0);
+        return {
+            group,
+            title: fuelPrintGroupTitle(group),
+            liters,
+            count: grouped.totals.count,
+        };
+    });
 }
 
 /** เติมเครื่องจักร: โอนถังหลัก → สำรอง — ไม่รวมในรายงานเติมน้ำมันอื่นๆ */
@@ -129,6 +156,8 @@ export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup | null {
     if (row.kind === 'vehicle' && workType !== 'car' && isMacroVehicleId(row.vehicleId)) return 'macro';
 
     if (isMachineReserveTransferRow(row)) return null;
+
+    if (row.kind === 'stock_in') return 'stock_in';
 
     return 'other_fill';
 }
@@ -447,14 +476,65 @@ export function fuelUsageToPrintHtml(opts: {
     report: FuelUsageReport;
     group: FuelPrintGroup;
     formatDate?: (ymd: string) => string;
+    /** ใช้กับ group=overview — สรุปทุกรายงานจาก report เต็ม */
+    fullReport?: FuelUsageReport;
 }): string {
     const fmtLiters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
     const fmt = opts.formatDate || ((ymd: string) => ymd);
-    const t = opts.report.totals;
     const title = fuelPrintGroupTitle(opts.group);
+
+    if (opts.group === 'overview') {
+        const source = opts.fullReport || opts.report;
+        const items = fuelPrintOverviewItems(source);
+        const grandLiters = items.reduce((sum, i) => sum + i.liters, 0);
+        const grandCount = items.reduce((sum, i) => sum + i.count, 0);
+        const overviewRows = items.map(item =>
+            `<tr>
+<td>${escHtml(item.title)}</td>
+<td class="num">${escHtml(fmtLiters(item.liters))}</td>
+<td class="num">${escHtml(item.count)}</td>
+</tr>`
+        ).join('') || '<tr><td colspan="3" class="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+
+        return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+${printHtmlStyles()}
+</head><body>
+<div class="header">
+${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
+<h1>${escHtml(title)}</h1>
+<p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)}</p>
+</div>
+<p class="summary">รวมทุกรายงาน <strong>${escHtml(fmtLiters(grandLiters))} ลิตร</strong> · ${escHtml(grandCount)} รายการ</p>
+<table>
+<thead><tr>
+<th>รายงาน</th>
+<th class="num">ปริมาณ (ลิตร)</th>
+<th class="num">รายการ</th>
+</tr></thead>
+<tbody>${overviewRows}</tbody>
+<tfoot><tr>
+<td>รวม</td>
+<td class="num">${escHtml(fmtLiters(grandLiters))}</td>
+<td class="num">${escHtml(grandCount)}</td>
+</tr></tfoot>
+</table>
+<p class="footer">สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น · ไม่รวมโอนถังหลัก→สำรอง (เติมเครื่องจักร)</p>
+</body></html>`;
+    }
+
+    const t = opts.report.totals;
     const totalLiters = opts.report.rows.reduce((sum, r) => sum + r.liters, 0);
 
     const detailRows = opts.report.rows.map(r => {
+        if (opts.group === 'stock_in') {
+            const desc = r.description || '—';
+            return `<tr>
+<td>${escHtml(fmt(r.date))}</td>
+<td>${escHtml(tankLabel(r.tank))}</td>
+<td class="num">${escHtml(fmtLiters(r.liters))}</td>
+<td>${escHtml(desc)}</td>
+</tr>`;
+        }
         const vehicle = r.vehicleId || '—';
         const desc = r.description + (r.estimated ? ' (ประมาณ)' : '');
         return `<tr>
@@ -466,12 +546,24 @@ export function fuelUsageToPrintHtml(opts: {
     }).join('') || '<tr><td colspan="4" class="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>';
 
     let summaryBlock: string;
-    if (opts.group === 'other_fill') {
-        const fillTotal = t.stockInLiters + t.vehicleLiters + t.otherOutLiters;
+    if (opts.group === 'stock_in') {
         summaryBlock = `<p class="summary">
-<span>รับเข้า (ถังหลัก) <strong>${escHtml(fmtLiters(t.stockInLiters))} ลิตร</strong></span>
-<span>เติม/ใช้อื่นๆ <strong>${escHtml(fmtLiters(t.vehicleLiters + t.otherOutLiters))} ลิตร</strong></span>
-<span>รวมทั้งหมด <strong>${escHtml(fmtLiters(fillTotal))} ลิตร</strong></span>
+<span>รับเข้ารวม <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong></span>
+<span>${escHtml(t.count)} รายการ</span>
+</p>`;
+    } else if (opts.group === 'other_fill') {
+        const fillTotal = t.vehicleLiters + t.otherOutLiters;
+        summaryBlock = `<p class="summary">
+<span>เติม/ใช้อื่นๆ <strong>${escHtml(fmtLiters(fillTotal))} ลิตร</strong></span>
+<span>${escHtml(t.count)} รายการ</span>
+</p>`;
+    } else if (opts.group === 'macro' && opts.report.byVehicle.length > 0) {
+        const top = opts.report.byVehicle.slice(0, 3)
+            .map(v => `${v.vehicleId} ${fmtLiters(v.liters)} ลิตร`)
+            .join(' · ');
+        summaryBlock = `<p class="summary">
+<span>รวมใช้ <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong> · ${escHtml(t.count)} รายการ</span>
+<span>${escHtml(top)}</span>
 </p>`;
     } else {
         summaryBlock = `<p class="summary">รวมใช้ <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong> · ${escHtml(t.count)} รายการ</p>`;
@@ -479,30 +571,19 @@ export function fuelUsageToPrintHtml(opts: {
 
     const footerNote = opts.group === 'sieve_generator'
         ? `ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ลิตร/ชม. · สรุปปริมาณเป็นลิตรเท่านั้น`
-        : 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย';
+        : opts.group === 'stock_in'
+            ? 'รับเข้า = เพิ่มน้ำมันเข้าถังหลักเท่านั้น · สรุปปริมาณเป็นลิตรเท่านั้น'
+            : 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย';
+
+    const col2Header = opts.group === 'stock_in'
+        ? 'ถัง'
+        : opts.group === 'sieve_generator'
+            ? 'เครื่องจักร'
+            : 'รถ';
 
     return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
-<style>
-@page{margin:16mm 18mm}
-*{box-sizing:border-box}
-body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;margin:0;padding:0;color:#111827;font-size:13px;line-height:1.5}
-.header{padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid #111827}
-.org{margin:0 0 2px;font-size:12px;color:#6b7280;letter-spacing:.01em}
-h1{margin:0 0 4px;font-size:18px;font-weight:700;letter-spacing:-.01em}
-.meta{margin:0;font-size:12px;color:#6b7280}
-.summary{margin:0 0 20px;font-size:13px;color:#374151;display:flex;flex-wrap:wrap;gap:16px 24px}
-.summary strong{font-variant-numeric:tabular-nums;color:#111827}
-table{width:100%;border-collapse:collapse;font-size:12px}
-thead th{padding:8px 10px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-tbody td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
-tbody tr:last-child td{border-bottom:1px solid #d1d5db}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-td.empty{text-align:center;color:#9ca3af;padding:24px}
-tfoot td{padding:10px;font-weight:600;border-top:2px solid #111827}
-tfoot td.num{text-align:right;font-variant-numeric:tabular-nums}
-.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
+${printHtmlStyles()}
+</head><body>
 <div class="header">
 ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
 <h1>${escHtml(title)}</h1>
@@ -512,7 +593,7 @@ ${summaryBlock}
 <table>
 <thead><tr>
 <th>วันที่</th>
-<th>${opts.group === 'sieve_generator' ? 'เครื่องจักร' : 'รถ'}</th>
+<th>${col2Header}</th>
 <th class="num">ปริมาณ (ลิตร)</th>
 <th>รายละเอียด</th>
 </tr></thead>
@@ -525,4 +606,28 @@ ${summaryBlock}
 </table>
 <p class="footer">${escHtml(footerNote)}</p>
 </body></html>`;
+}
+
+function printHtmlStyles(): string {
+    return `<style>
+@page{margin:16mm 18mm}
+*{box-sizing:border-box}
+body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;margin:0;padding:0;color:#111827;font-size:13px;line-height:1.5}
+.header{padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid #111827}
+.org{margin:0 0 2px;font-size:12px;color:#6b7280;letter-spacing:.01em}
+h1{margin:0 0 4px;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.meta{margin:0;font-size:12px;color:#6b7280}
+.summary{margin:0 0 20px;font-size:13px;color:#374151;display:flex;flex-wrap:wrap;gap:8px 24px}
+.summary strong{font-variant-numeric:tabular-nums;color:#111827}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{padding:8px 10px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+tbody td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+tbody tr:last-child td{border-bottom:1px solid #d1d5db}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.empty{text-align:center;color:#9ca3af;padding:24px}
+tfoot td{padding:10px;font-weight:600;border-top:2px solid #111827}
+tfoot td.num{text-align:right;font-variant-numeric:tabular-nums}
+.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>`;
 }

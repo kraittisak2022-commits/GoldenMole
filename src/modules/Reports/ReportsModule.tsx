@@ -19,6 +19,7 @@ import {
     buildFuelUsageReport,
     filterFuelUsageReport,
     fuelPrintGroupTitle,
+    fuelPrintOverviewItems,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
@@ -29,7 +30,7 @@ import {
     type FuelUsageKind,
 } from '../../utils/fuelUsageReport';
 
-const PRINT_GROUPS: FuelPrintGroup[] = ['macro', 'sieve_generator', 'other_fill'];
+const PRINT_GROUPS: FuelPrintGroup[] = ['overview', 'stock_in', 'macro', 'sieve_generator', 'other_fill'];
 
 interface ReportsModuleProps {
     transactions: Transaction[];
@@ -177,6 +178,8 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
     const rangeLabel = `${formatDateBELong(range.start)} – ${formatDateBELong(range.end)}`;
 
+    const overviewItems = useMemo(() => fuelPrintOverviewItems(report), [report]);
+
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
         setEnd(bounds.end);
@@ -205,13 +208,16 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     };
 
     const printGroupReport = (group: FuelPrintGroup) => {
-        const grouped = filterFuelUsageReport(report, group);
+        const grouped = group === 'overview'
+            ? report
+            : filterFuelUsageReport(report, group);
         const html = fuelUsageToPrintHtml({
             appName: orgTitle,
             orgSubtitle: orgLine || undefined,
             rangeLabel,
             report: grouped,
             group,
+            fullReport: report,
             formatDate: formatDateBELong,
         });
         const w = window.open('', '_blank');
@@ -295,6 +301,66 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                         <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
                         <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
                     </div>
+                </div>
+            </Card>
+
+            <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 print:hidden">
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                    <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
+                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
+                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-24">พิมพ์</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {overviewItems.map((item, i) => (
+                                <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
+                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(item.liters)}</td>
+                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
+                                    <td className="px-4 py-2.5 text-right">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="px-2 py-1.5 text-xs inline-flex"
+                                            aria-label={`พิมพ์${item.title}`}
+                                            onClick={() => printGroupReport(item.group)}
+                                        >
+                                            <Printer className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
+                                <td className="px-4 py-2.5">รวมทุกรายงาน</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums">
+                                    {formatDisplayNumber(overviewItems.reduce((s, i) => s + i.liters, 0))}
+                                </td>
+                                <td className="px-4 py-2.5 text-right tabular-nums">
+                                    {overviewItems.reduce((s, i) => s + i.count, 0)}
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="px-2 py-1.5 text-xs inline-flex"
+                                        aria-label={fuelPrintGroupTitle('overview')}
+                                        onClick={() => printGroupReport('overview')}
+                                    >
+                                        <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </Card>
 
