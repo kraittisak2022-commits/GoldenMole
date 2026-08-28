@@ -1877,6 +1877,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               ),
                             ),
                           ),
+                          // เว้นช่องว่างให้เงาหัว + กันแผงเมนูทับขอบล่างส่วนหัว
+                          const SizedBox(height: 14),
                         ],
                       ),
               ),
@@ -2188,7 +2190,7 @@ class _HomeHeaderCompact extends StatelessWidget {
         child: ColoredBox(
           color: DailyPalette.card,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 14, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
