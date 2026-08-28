@@ -48,6 +48,21 @@ const String kFuelCarFillTaplien = 'รถตาเปลื่ยน (ISUZU KB)
 
 /// ค่าเดิมที่เคยบันทึกไว้ก่อนเปลี่ยนชื่อ — ยังต้องอ่าน/แก้ได้
 const String kFuelCarFillTaplienLegacy = 'รถตาเปลื่ยน';
+
+/// ชื่ออื่นที่เคยบันทึกของรถตาเปลื่ยนคันเดียวกัน
+const Set<String> kFuelCarFillTaplienLegacyIds = {
+  kFuelCarFillTaplienLegacy,
+  'ISUZU KB',
+  'รถISUZUKB',
+  'ISUZUตา',
+  'IsuzuKB',
+};
+
+bool _isTaplienVehicleId(String vehicleId) {
+  final v = vehicleId.trim();
+  return v == kFuelCarFillTaplien || kFuelCarFillTaplienLegacyIds.contains(v);
+}
+
 const String kFuelCarFillAhming = 'อาหมิง';
 
 String fuelCarFillVehicleLabelOf(FuelCarFillVehicle vehicle) {
@@ -222,7 +237,7 @@ bool isFuelCarFillRow(AppTransaction t) {
 const Set<String> _kFuelCarFillKnownVehicleIds = {
   kFuelCarFillMighty,
   kFuelCarFillTaplien,
-  kFuelCarFillTaplienLegacy,
+  ...kFuelCarFillTaplienLegacyIds,
   kFuelCarFillAhming,
 };
 
@@ -235,9 +250,7 @@ bool isKnownFuelCarFillVehicleId(String? vehicleId) {
 FuelCarFillVehicle fuelCarFillVehicleFromId(String? vehicleId) {
   final v = (vehicleId ?? '').trim();
   if (v == kFuelCarFillMighty) return FuelCarFillVehicle.mighty;
-  if (v == kFuelCarFillTaplien || v == kFuelCarFillTaplienLegacy) {
-    return FuelCarFillVehicle.taplien;
-  }
+  if (_isTaplienVehicleId(v)) return FuelCarFillVehicle.taplien;
   if (v == kFuelCarFillAhming) return FuelCarFillVehicle.ahming;
   return FuelCarFillVehicle.other;
 }

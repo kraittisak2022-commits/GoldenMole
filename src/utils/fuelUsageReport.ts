@@ -66,9 +66,17 @@ export interface FuelUsageReport {
 const UNNAMED_VEHICLE = 'ไม่ระบุรถ';
 
 /** ชื่อรถเก่า → ชื่อมาตรฐานปัจจุบัน */
+const TAPLIEN_LEGACY_VEHICLE_IDS = new Set([
+    'รถตาเปลื่ยน',
+    'ISUZU KB',
+    'รถISUZUKB',
+    'ISUZUตา',
+    'IsuzuKB',
+]);
+
 function normalizeFuelReportVehicleId(raw: string): string {
     const v = raw.trim();
-    if (v === 'รถตาเปลื่ยน') return 'รถตาเปลื่ยน (ISUZU KB)';
+    if (TAPLIEN_LEGACY_VEHICLE_IDS.has(v)) return 'รถตาเปลื่ยน (ISUZU KB)';
     return v;
 }
 

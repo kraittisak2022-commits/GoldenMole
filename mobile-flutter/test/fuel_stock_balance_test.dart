@@ -684,6 +684,15 @@ void main() {
       expect(taplienDay?.id, 'c_legacy');
     });
 
+    test('other taplien legacy ids map to taplien enum', () {
+      for (final legacy in ['ISUZU KB', 'IsuzuKB', 'รถISUZUKB', 'ISUZUตา']) {
+        expect(
+          fuelCarFillVehicleFromId(legacy),
+          FuelCarFillVehicle.taplien,
+        );
+      }
+    });
+
     test('latestFuelWithdrawForDay picks newest purpose of the day', () {
       final machine = _fuel(
         id: 'xfer_out',
