@@ -1294,6 +1294,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (_isLaborMode) {
         _syncMacroDriverCanvasFromVehicleUsage();
       }
+      if (_isAttendanceMode &&
+          _attendanceSection == AttendanceSection.driver) {
+        _syncAttendanceMacroDriversFromVehicleUsage();
+      }
       _captureModuleFormBaseline();
       if (mounted && isCurrentLoad()) setState(() {});
     }
@@ -1511,6 +1515,61 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (bucket == null || bucket.isNotEmpty) return;
     bucket.addAll(driverIds);
     _laborBucketExpanded['macro_driver'] = true;
+  }
+
+  /// เติมช่อง «ขับรถแม็คโคร» ในเช็คชื่อคนขับจากบันทึกการใช้รถแม็คโคร
+  /// [merge] true = เพิ่มเฉพาะที่ยังไม่มี (ปุ่มอัปเดต), false = เติมเมื่อช่องว่างเท่านั้น
+  bool _syncAttendanceMacroDriversFromVehicleUsage({bool merge = false}) {
+    if (!_isAttendanceMode) return false;
+    final driverIds = _macroDriverIdsFromVehicleUsageToday();
+    if (driverIds.isEmpty) return false;
+    final bucket = _attendanceAssignments['att_drv_macro'];
+    if (bucket == null) return false;
+    if (!merge && bucket.isNotEmpty) return false;
+
+    var changed = false;
+    final onLeave = _attendanceAssignments['att_drv_leave'] ?? const <String>[];
+    for (final id in driverIds) {
+      if (bucket.contains(id) || onLeave.contains(id)) continue;
+      bucket.add(id);
+      _attendanceBucketExpanded['att_drv_macro'] = true;
+      changed = true;
+    }
+    return changed;
+  }
+
+  int _attendanceMacroDriversMissingFromVehicleUsage() {
+    final driverIds = _macroDriverIdsFromVehicleUsageToday();
+    if (driverIds.isEmpty) return 0;
+    final bucket = _attendanceAssignments['att_drv_macro'] ?? const <String>[];
+    final onLeave = _attendanceAssignments['att_drv_leave'] ?? const <String>[];
+    return driverIds
+        .where((id) => !bucket.contains(id) && !onLeave.contains(id))
+        .length;
+  }
+
+  void _attendanceSyncMacroDriversFromVehicleUsage({required bool merge}) {
+    final added = _syncAttendanceMacroDriversFromVehicleUsage(merge: merge);
+    if (!mounted) return;
+    if (!added) {
+      final macroCount = _macroDriverIdsFromVehicleUsageToday().length;
+      final message = macroCount == 0
+          ? 'ยังไม่มีบันทึกการใช้รถแม็คโคร (คนขับ) สำหรับวันนี้'
+          : 'รายชื่อคนขับแม็คโครตรงกับบันทึกการใช้รถแล้ว';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message, style: GoogleFonts.kanit())),
+      );
+      return;
+    }
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'อัปเดตรายชื่อคนขับแม็คโครจากบันทึกการใช้รถแล้ว',
+          style: GoogleFonts.kanit(),
+        ),
+      ),
+    );
   }
 
   _FuelVehicleDraft? _fuelDraftForVehicle(String vehicle) {
@@ -2059,6 +2118,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (_isAttendanceMode) {
       _hydrateAttendanceFromTransactions(txs);
+      if (_attendanceSection == AttendanceSection.driver) {
+        _syncAttendanceMacroDriversFromVehicleUsage();
+      }
       return;
     }
     if (_isDailyEventMode) {
@@ -14997,7 +15059,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             driverSummary: driverSummary,
             onSelect: (section) {
               AppHaptics.confirm();
-              setState(() => _attendanceSection = section);
+              setState(() {
+                _attendanceSection = section;
+                if (section == AttendanceSection.driver) {
+                  _syncAttendanceMacroDriversFromVehicleUsage();
+                }
+              });
             },
           ),
         ],
@@ -15209,6 +15276,73 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildAttendanceDriverBoard() {
+    final missingFromMacro = _attendanceMacroDriversMissingFromVehicleUsage();
+    final macroSyncBanner = missingFromMacro > 0
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFCC80)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.front_loader,
+                      color: Color(0xFFEF6C00),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'มีคนขับจากบันทึกแม็คโคร $missingFromMacro คนที่ยังไม่อยู่ในกล่อง',
+                        style: GoogleFonts.kanit(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF5D4037),
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _attendanceSyncMacroDriversFromVehicleUsage(
+                        merge: true,
+                      ),
+                      child: Text(
+                        'อัปเดต',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFEF6C00),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : _macroDriverIdsFromVehicleUsageToday().isNotEmpty
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _attendanceSyncMacroDriversFromVehicleUsage(
+                      merge: true,
+                    ),
+                    icon: const Icon(Icons.sync_rounded, size: 18),
+                    label: Text(
+                      'อัปเดตจากบันทึกแม็คโคร',
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              )
+            : const SizedBox.shrink();
+
     final assignedDriver = <String>{
       for (final id in _attDriverIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
@@ -15266,12 +15400,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       scrollController: _attendanceDriverPoolScroll,
     );
 
-    return _attendanceFullscreenBoardLayout(
-      pool: pool,
-      cards: [
-        _AttBoardCard(child: macroCard, height: 240),
-        _AttBoardCard(child: drumCard, height: 240),
-        _AttBoardCard(child: leaveCard, height: 220),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        macroSyncBanner,
+        Expanded(
+          child: _attendanceFullscreenBoardLayout(
+            pool: pool,
+            cards: [
+              _AttBoardCard(child: macroCard, height: 240),
+              _AttBoardCard(child: drumCard, height: 240),
+              _AttBoardCard(child: leaveCard, height: 220),
+            ],
+          ),
+        ),
       ],
     );
   }
