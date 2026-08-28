@@ -57,7 +57,13 @@ describe('ReportsModule', () => {
         expect(screen.getAllByText('รถดรัมโอเว่น').length).toBeGreaterThan(0);
         expect(screen.getByText('เติมรถดรัม')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'พิมพ์/PDF' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'รายงานใช้น้ำมันรถแม็คโคร' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'รายงานเติมน้ำมันอื่นๆทั้งหมด' })).toBeInTheDocument();
+        expect(screen.getAllByText(/60 ลิตร/).length).toBeGreaterThan(0);
+        expect(screen.queryByText(/60 ล\./)).not.toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'ประเภท' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'น้ำมัน' })).not.toBeInTheDocument();
         expect(screen.queryByText('ค่าใช้จ่าย')).not.toBeInTheDocument();
         expect(screen.queryByText(/฿/)).not.toBeInTheDocument();
         expect(screen.getByLabelText('ตั้งแต่ เดือน')).toBeInTheDocument();

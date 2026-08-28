@@ -10,11 +10,15 @@ import {
 import {
     buildFuelUsageReport,
     classifyFuelTx,
-    fuelKindLabel,
+    filterFuelUsageReport,
+    fuelPrintGroupOf,
+    fuelPrintGroupTitle,
     fuelUsageToCsv,
+    fuelUsageToPrintHtml,
     monthBoundsFromYmd,
     shiftMonthBounds,
     yearBoundsFromYmd,
+    type FuelUsageRow,
 } from './fuelUsageReport';
 
 function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id' | 'date'>): Transaction {
@@ -382,12 +386,118 @@ describe('fuelUsageToCsv', () => {
         const csv = fuelUsageToCsv(report, { start: '2026-08-01', end: '2026-08-31' });
         expect(csv).toContain('วันที่');
         expect(csv).toContain('รถดรัมโอเว่น');
-        expect(csv).toContain(fuelKindLabel('vehicle'));
         expect(csv).toContain('รับเข้า (ถังหลัก)');
         expect(csv).toContain('เบิกไปถังสำรอง');
         expect(csv).toContain('ลิตร');
+        expect(csv).not.toContain('ประเภท,น้ำมัน');
         expect(csv).not.toContain('บาท');
         expect(csv).not.toContain('ค่าใช้จ่าย');
         expect(csv.startsWith('\ufeff')).toBe(true);
+    });
+});
+
+describe('fuelPrintGroupOf', () => {
+    const row = (partial: Partial<FuelUsageRow>): FuelUsageRow => ({
+        id: 'x',
+        date: '2026-08-10',
+        kind: 'other_out',
+        fuelType: 'Diesel',
+        tank: 'main',
+        vehicleId: '',
+        liters: 10,
+        amount: 0,
+        description: '',
+        ...partial,
+    });
+
+    it('classifies macro, sieve+generator, and other fill groups', () => {
+        expect(fuelPrintGroupOf(row({
+            kind: 'vehicle',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+            vehicleId: 'รถแม็คโคร SK200',
+        }))).toBe('macro');
+
+        expect(fuelPrintGroupOf(row({
+            kind: 'sand_sieve',
+            subCategory: FUEL_SAND_SIEVE_SUB_CATEGORY,
+            vehicleId: 'เครื่องจักรร่อนทราย เครื่องปั่นไฟ',
+        }))).toBe('sieve_generator');
+
+        expect(fuelPrintGroupOf(row({
+            kind: 'other_out',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'generator',
+        }))).toBe('sieve_generator');
+
+        expect(fuelPrintGroupOf(row({
+            kind: 'vehicle',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            workType: 'car',
+            vehicleId: 'ไมตี้',
+        }))).toBe('other_fill');
+
+        expect(fuelPrintGroupOf(row({
+            kind: 'stock_in',
+            subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+        }))).toBe('other_fill');
+    });
+
+    it('filters grouped reports for print', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'macro',
+                date: '2026-08-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 40,
+            }),
+            fuelTx({
+                id: 'gen',
+                date: '2026-08-10',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                workType: 'generator',
+                quantity: 5,
+            }),
+            fuelTx({
+                id: 'in',
+                date: '2026-08-10',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelMovement: 'stock_in',
+                quantity: 1000,
+            }),
+        ], { start: '2026-08-01', end: '2026-08-31' });
+
+        expect(filterFuelUsageReport(report, 'macro').rows.map(r => r.id)).toEqual(['macro']);
+        expect(filterFuelUsageReport(report, 'sieve_generator').rows.map(r => r.id)).toEqual(['gen']);
+        expect(filterFuelUsageReport(report, 'other_fill').rows.map(r => r.id)).toEqual(['in']);
+    });
+});
+
+describe('fuelUsageToPrintHtml', () => {
+    it('renders minimal grouped print documents in liters without type columns', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'macro',
+                date: '2026-08-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 40,
+                description: 'ใช้แม็คโคร',
+            }),
+        ], { start: '2026-08-01', end: '2026-08-31' });
+        const grouped = filterFuelUsageReport(report, 'macro');
+        const html = fuelUsageToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '1 ส.ค. – 31 ส.ค. 2569',
+            report: grouped,
+            group: 'macro',
+        });
+
+        expect(html).toContain(fuelPrintGroupTitle('macro'));
+        expect(html).toContain('ปริมาณ (ลิตร)');
+        expect(html).toContain('ใช้แม็คโคร');
+        expect(html).not.toContain('>ประเภท<');
+        expect(html).not.toContain('>น้ำมัน<');
+        expect(html).not.toContain(' ล.');
     });
 });

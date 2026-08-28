@@ -14,8 +14,10 @@ import {
     normalizeFuelTank,
 } from './index';
 import { FUEL_SAND_SIEVE_LITERS_PER_HOUR } from './fuelSieveEstimate';
+import { isMacroVehicleId } from '../modules/Dashboard/dailyStepRecorderUtils';
 
 export type FuelUsageKind = 'stock_in' | 'vehicle' | 'withdraw' | 'transfer' | 'sand_sieve' | 'other_out';
+export type FuelPrintGroup = 'macro' | 'sieve_generator' | 'other_fill';
 export type FuelTypeFilter = 'Diesel' | 'Benzine';
 
 export interface FuelUsageFilters {
@@ -38,6 +40,8 @@ export interface FuelUsageRow {
     liters: number;
     amount: number;
     description: string;
+    subCategory?: string;
+    workType?: string;
     /** แถวประมาณจากชั่วโมงร่อนทราย (ไม่มีแถวจริงในฐานข้อมูล) */
     estimated?: boolean;
 }
@@ -98,6 +102,28 @@ export function fuelTypeLabel(fuelType: FuelTypeFilter): string {
 
 export function tankLabel(tank: 'main' | 'reserve'): string {
     return tank === 'reserve' ? 'ถังสำรอง' : 'ถังหลัก';
+}
+
+export function fuelPrintGroupTitle(group: FuelPrintGroup): string {
+    switch (group) {
+        case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
+        case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
+        default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
+    }
+}
+
+/** จัดกลุ่มแถวสำหรับพิมพ์แยก 3 ฉบับ */
+export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup {
+    const workType = (row.workType ?? '').trim().toLowerCase();
+    const sub = (row.subCategory ?? '').trim();
+
+    if (row.kind === 'sand_sieve') return 'sieve_generator';
+    if (workType === 'generator') return 'sieve_generator';
+
+    if (sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY) return 'macro';
+    if (row.kind === 'vehicle' && workType !== 'car' && isMacroVehicleId(row.vehicleId)) return 'macro';
+
+    return 'other_fill';
 }
 
 function withdrawPurpose(t: Transaction): string {
@@ -205,69 +231,7 @@ const emptyTotals = (): FuelUsageTotals => ({
     count: 0,
 });
 
-export function buildFuelUsageReport(transactions: Transaction[], filters: FuelUsageFilters): FuelUsageReport {
-    const start = normalizeDate(filters.start);
-    const end = normalizeDate(filters.end);
-    const vehicleFilter = (filters.vehicleId || '').trim();
-    const fuelTypeFilter = filters.fuelType || '';
-    const kindFilter = filters.kind || '';
-
-    const rows: FuelUsageRow[] = [];
-    for (const t of transactions) {
-        const kind = classifyFuelTx(t);
-        if (!kind) continue;
-        const date = normalizeDate(t.date);
-        if (date < start || date > end) continue;
-        const rawVehicleId = (t.vehicleId || '').trim();
-        const vehicleId = normalizeFuelReportVehicleId(
-            rawVehicleId
-                || (kind === 'sand_sieve' ? FUEL_SAND_SIEVE_VEHICLE_ID : '')
-                || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
-        );
-        if (vehicleFilter && vehicleId !== vehicleFilter) continue;
-        const fuelType = resolveFuelType(t);
-        if (fuelTypeFilter && fuelType !== fuelTypeFilter) continue;
-        if (kindFilter && kind !== kindFilter) continue;
-        rows.push({
-            id: t.id,
-            date,
-            kind,
-            fuelType,
-            tank: fuelUsageTankOf(t),
-            vehicleId,
-            liters: fuelTxToLiters(t),
-            amount: Number(t.amount) || 0,
-            description: (t.description || t.workDetails || '').trim(),
-        });
-    }
-
-    // แถวร่อนทรายประมาณ — ให้ยอด "ใช้แล้ว" กระทบกับคงเหลือ
-    const estimated = filters.estimatedSieveByDay || {};
-    if (!vehicleFilter && (!fuelTypeFilter || fuelTypeFilter === 'Diesel') && (!kindFilter || kindFilter === 'sand_sieve')) {
-        for (const [dayRaw, liters] of Object.entries(estimated)) {
-            const date = normalizeDate(dayRaw);
-            if (!liters || date < start || date > end) continue;
-            rows.push({
-                id: `${date}_fuel_sand_sieve_est`,
-                date,
-                kind: 'sand_sieve',
-                fuelType: 'Diesel',
-                tank: 'reserve',
-                vehicleId: FUEL_SAND_SIEVE_VEHICLE_ID,
-                liters,
-                amount: 0,
-                description: `ประมาณจากชั่วโมงร่อนทราย ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ล./ชม.`,
-                estimated: true,
-            });
-        }
-    }
-
-    rows.sort((a, b) => {
-        const d = a.date.localeCompare(b.date);
-        if (d !== 0) return d;
-        return a.id.localeCompare(b.id);
-    });
-
+function aggregateFuelUsageRows(rows: FuelUsageRow[]): Omit<FuelUsageReport, 'rows'> {
     const totals = emptyTotals();
     totals.count = rows.length;
     const vehicleMap = new Map<string, { liters: number; amount: number; count: number }>();
@@ -320,19 +284,92 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
         typeMap.set(row.fuelType, ft);
     }
 
-    const byVehicle = Array.from(vehicleMap.entries())
-        .map(([vehicleId, v]) => ({ vehicleId, ...v }))
-        .sort((a, b) => b.liters - a.liters || a.vehicleId.localeCompare(b.vehicleId, 'th'));
+    return {
+        totals,
+        byVehicle: Array.from(vehicleMap.entries())
+            .map(([vehicleId, v]) => ({ vehicleId, ...v }))
+            .sort((a, b) => b.liters - a.liters || a.vehicleId.localeCompare(b.vehicleId, 'th')),
+        byDay: Array.from(dayMap.entries())
+            .map(([date, v]) => ({ date, ...v }))
+            .sort((a, b) => a.date.localeCompare(b.date)),
+        byFuelType: Array.from(typeMap.entries())
+            .map(([fuelType, v]) => ({ fuelType, ...v }))
+            .sort((a, b) => b.liters - a.liters),
+    };
+}
 
-    const byDay = Array.from(dayMap.entries())
-        .map(([date, v]) => ({ date, ...v }))
-        .sort((a, b) => a.date.localeCompare(b.date));
+export function filterFuelUsageReport(report: FuelUsageReport, group: FuelPrintGroup): FuelUsageReport {
+    const rows = report.rows.filter(r => fuelPrintGroupOf(r) === group);
+    return { rows, ...aggregateFuelUsageRows(rows) };
+}
 
-    const byFuelType = Array.from(typeMap.entries())
-        .map(([fuelType, v]) => ({ fuelType, ...v }))
-        .sort((a, b) => b.liters - a.liters);
+export function buildFuelUsageReport(transactions: Transaction[], filters: FuelUsageFilters): FuelUsageReport {
+    const start = normalizeDate(filters.start);
+    const end = normalizeDate(filters.end);
+    const vehicleFilter = (filters.vehicleId || '').trim();
+    const fuelTypeFilter = filters.fuelType || '';
+    const kindFilter = filters.kind || '';
 
-    return { rows, totals, byVehicle, byDay, byFuelType };
+    const rows: FuelUsageRow[] = [];
+    for (const t of transactions) {
+        const kind = classifyFuelTx(t);
+        if (!kind) continue;
+        const date = normalizeDate(t.date);
+        if (date < start || date > end) continue;
+        const rawVehicleId = (t.vehicleId || '').trim();
+        const vehicleId = normalizeFuelReportVehicleId(
+            rawVehicleId
+                || (kind === 'sand_sieve' ? FUEL_SAND_SIEVE_VEHICLE_ID : '')
+                || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
+        );
+        if (vehicleFilter && vehicleId !== vehicleFilter) continue;
+        const fuelType = resolveFuelType(t);
+        if (fuelTypeFilter && fuelType !== fuelTypeFilter) continue;
+        if (kindFilter && kind !== kindFilter) continue;
+        rows.push({
+            id: t.id,
+            date,
+            kind,
+            fuelType,
+            tank: fuelUsageTankOf(t),
+            vehicleId,
+            liters: fuelTxToLiters(t),
+            amount: Number(t.amount) || 0,
+            description: (t.description || t.workDetails || '').trim(),
+            subCategory: String(t.subCategory ?? '').trim() || undefined,
+            workType: String(t.workType ?? '').trim() || undefined,
+        });
+    }
+
+    // แถวร่อนทรายประมาณ — ให้ยอด "ใช้แล้ว" กระทบกับคงเหลือ
+    const estimated = filters.estimatedSieveByDay || {};
+    if (!vehicleFilter && (!fuelTypeFilter || fuelTypeFilter === 'Diesel') && (!kindFilter || kindFilter === 'sand_sieve')) {
+        for (const [dayRaw, liters] of Object.entries(estimated)) {
+            const date = normalizeDate(dayRaw);
+            if (!liters || date < start || date > end) continue;
+            rows.push({
+                id: `${date}_fuel_sand_sieve_est`,
+                date,
+                kind: 'sand_sieve',
+                fuelType: 'Diesel',
+                tank: 'reserve',
+                vehicleId: FUEL_SAND_SIEVE_VEHICLE_ID,
+                liters,
+                amount: 0,
+                description: `ประมาณจากชั่วโมงร่อนทราย ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ลิตร/ชม.`,
+                estimated: true,
+                subCategory: FUEL_SAND_SIEVE_SUB_CATEGORY,
+            });
+        }
+    }
+
+    rows.sort((a, b) => {
+        const d = a.date.localeCompare(b.date);
+        if (d !== 0) return d;
+        return a.id.localeCompare(b.id);
+    });
+
+    return { rows, ...aggregateFuelUsageRows(rows) };
 }
 
 function csvCell(value: string | number): string {
@@ -376,15 +413,12 @@ export function fuelUsageToCsv(
         ...report.byVehicle.map(v => [v.vehicleId, v.liters, v.count].map(String)),
         [],
         ['รายละเอียด'],
-        ['วันที่', 'ประเภท', 'น้ำมัน', 'ถัง', 'รถ', 'ลิตร', 'รายละเอียด'],
+        ['วันที่', 'รถ', 'ลิตร', 'รายละเอียด'],
         ...report.rows.map(r => [
             r.date,
-            fuelKindLabel(r.kind) + (r.estimated ? ' (ประมาณ)' : ''),
-            fuelTypeLabel(r.fuelType),
-            tankLabel(r.tank),
             r.vehicleId,
             r.liters,
-            r.description,
+            r.description + (r.estimated ? ' (ประมาณ)' : ''),
         ].map(String)),
     );
     const body = lines.map(cols => cols.map(csvCell).join(',')).join('\n');
@@ -404,70 +438,84 @@ export function fuelUsageToPrintHtml(opts: {
     orgSubtitle?: string;
     rangeLabel: string;
     report: FuelUsageReport;
-    balances?: FuelStockBalances;
+    group: FuelPrintGroup;
     formatDate?: (ymd: string) => string;
 }): string {
-    const liters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    const fmtLiters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
     const fmt = opts.formatDate || ((ymd: string) => ymd);
     const t = opts.report.totals;
-    const bal = opts.balances;
-    const vehicleRows = opts.report.byVehicle.map(v =>
-        `<tr><td>${escHtml(v.vehicleId)}</td><td>${escHtml(liters(v.liters))}</td><td>${escHtml(v.count)}</td></tr>`
-    ).join('') || '<tr><td colspan="3">ไม่มีข้อมูล</td></tr>';
-    const dayRows = opts.report.byDay.map(d =>
-        `<tr><td>${escHtml(fmt(d.date))}</td><td>${escHtml(liters(d.stockInLiters))}</td><td>${escHtml(liters(d.usageLiters))}</td><td>${escHtml(d.count)}</td></tr>`
-    ).join('') || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>';
-    const detailRows = opts.report.rows.map(r =>
-        `<tr><td>${escHtml(fmt(r.date))}</td><td>${escHtml(fuelKindLabel(r.kind) + (r.estimated ? ' (ประมาณ)' : ''))}</td><td>${escHtml(fuelTypeLabel(r.fuelType))}</td><td>${escHtml(r.vehicleId || '-')}</td><td>${escHtml(liters(r.liters))}</td><td>${escHtml(r.description)}</td></tr>`
-    ).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>';
+    const title = fuelPrintGroupTitle(opts.group);
+    const totalLiters = opts.report.rows.reduce((sum, r) => sum + r.liters, 0);
 
-    const balanceBlock = bal
-        ? `<div class="kpi">
-<div><span>คงเหลือถังหลัก</span><strong>${escHtml(liters(bal.Diesel))} ล.</strong></div>
-<div><span>คงเหลือถังสำรอง</span><strong>${escHtml(liters(bal.DieselReserve))} ล.</strong></div>
-${bal.reserveShortfallLiters > 0 ? `<div><span>ขาดบันทึกโอนเข้าสำรอง</span><strong>${escHtml(liters(bal.reserveShortfallLiters))} ล.</strong></div>` : ''}
-</div>`
-        : '';
+    const detailRows = opts.report.rows.map(r => {
+        const vehicle = r.vehicleId || '—';
+        const desc = r.description + (r.estimated ? ' (ประมาณ)' : '');
+        return `<tr>
+<td>${escHtml(fmt(r.date))}</td>
+<td>${escHtml(vehicle)}</td>
+<td class="num">${escHtml(fmtLiters(r.liters))}</td>
+<td>${escHtml(desc || '—')}</td>
+</tr>`;
+    }).join('') || '<tr><td colspan="4" class="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>';
 
-    return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>รายงานการใช้น้ำมัน</title>
+    let summaryBlock: string;
+    if (opts.group === 'other_fill') {
+        const fillTotal = t.stockInLiters + t.withdrawLiters + t.vehicleLiters + t.otherOutLiters;
+        summaryBlock = `<p class="summary">
+<span>รับเข้า (ถังหลัก) <strong>${escHtml(fmtLiters(t.stockInLiters))} ลิตร</strong></span>
+<span>เบิกไปถังสำรอง <strong>${escHtml(fmtLiters(t.withdrawLiters))} ลิตร</strong></span>
+<span>รวมทั้งหมด <strong>${escHtml(fmtLiters(fillTotal))} ลิตร</strong></span>
+</p>`;
+    } else {
+        summaryBlock = `<p class="summary">รวมใช้ <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong> · ${escHtml(t.count)} รายการ</p>`;
+    }
+
+    const footerNote = opts.group === 'sieve_generator'
+        ? `ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ลิตร/ชม. · สรุปปริมาณเป็นลิตรเท่านั้น`
+        : 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย';
+
+    return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
 <style>
-@page{margin:18mm}
-body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;padding:0;color:#0f172a;line-height:1.45}
-.header{border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:20px}
-.org{font-size:13px;color:#475569;margin:0 0 4px;letter-spacing:.02em}
-h1{font-size:22px;margin:0 0 6px;font-weight:700}
-.meta{margin:0;color:#64748b;font-size:13px}
-h2{font-size:14px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:.04em;color:#334155}
-table{width:100%;border-collapse:collapse;margin:0 0 8px;font-size:12px}
-th,td{border:1px solid #cbd5e1;padding:7px 8px;text-align:left}
-th{background:#f8fafc;font-weight:600;color:#334155}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-.summary{width:auto;min-width:320px}
-.summary td:first-child{font-weight:600}
-.kpi{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 8px}
-.kpi div{border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:120px}
-.kpi span{display:block;font-size:11px;color:#64748b;margin-bottom:2px}
-.kpi strong{font-size:16px;font-variant-numeric:tabular-nums}
-.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}
+@page{margin:16mm 18mm}
+*{box-sizing:border-box}
+body{font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;margin:0;padding:0;color:#111827;font-size:13px;line-height:1.5}
+.header{padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid #111827}
+.org{margin:0 0 2px;font-size:12px;color:#6b7280;letter-spacing:.01em}
+h1{margin:0 0 4px;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.meta{margin:0;font-size:12px;color:#6b7280}
+.summary{margin:0 0 20px;font-size:13px;color:#374151;display:flex;flex-wrap:wrap;gap:16px 24px}
+.summary strong{font-variant-numeric:tabular-nums;color:#111827}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{padding:8px 10px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+tbody td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+tbody tr:last-child td{border-bottom:1px solid #d1d5db}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.empty{text-align:center;color:#9ca3af;padding:24px}
+tfoot td{padding:10px;font-weight:600;border-top:2px solid #111827}
+tfoot td.num{text-align:right;font-variant-numeric:tabular-nums}
+.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <div class="header">
 ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
-<h1>รายงานการใช้น้ำมัน</h1>
-<p class="meta">${escHtml(opts.appName)} · ช่วง ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} รายการ</p>
+<h1>${escHtml(title)}</h1>
+<p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} รายการ</p>
 </div>
-<div class="kpi">
-<div><span>รับเข้า (ถังหลัก)</span><strong>${escHtml(liters(t.stockInLiters))} ล.</strong></div>
-<div><span>เบิกไปถังสำรอง</span><strong>${escHtml(liters(t.withdrawLiters))} ล.</strong></div>
-<div><span>ใช้แล้ว</span><strong>${escHtml(liters(t.usageLiters))} ล.</strong></div>
-<div><span>กระทบยอด</span><strong>${escHtml(liters(t.stockInLiters - t.usageLiters))} ล.</strong></div>
-</div>
-${balanceBlock}
-<h2>สรุปตามรถ</h2>
-<table><thead><tr><th>รถ</th><th class="num">ลิตร</th><th class="num">รายการ</th></tr></thead><tbody>${vehicleRows}</tbody></table>
-<h2>สรุปรายวัน</h2>
-<table><thead><tr><th>วันที่</th><th class="num">รับเข้า (ลิตร)</th><th class="num">ใช้ (ลิตร)</th><th class="num">รายการ</th></tr></thead><tbody>${dayRows}</tbody></table>
-<h2>รายละเอียด</h2>
-<table><thead><tr><th>วันที่</th><th>ประเภท</th><th>น้ำมัน</th><th>รถ</th><th class="num">ลิตร</th><th>รายละเอียด</th></tr></thead><tbody>${detailRows}</tbody></table>
-<p class="footer">เอกสารนี้สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · การโอนระหว่างถังไม่นับเป็นการใช้ · ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ล./ชม.</p>
+${summaryBlock}
+<table>
+<thead><tr>
+<th>วันที่</th>
+<th>${opts.group === 'sieve_generator' ? 'เครื่องจักร' : 'รถ'}</th>
+<th class="num">ปริมาณ (ลิตร)</th>
+<th>รายละเอียด</th>
+</tr></thead>
+<tbody>${detailRows}</tbody>
+<tfoot><tr>
+<td colspan="2">รวม</td>
+<td class="num">${escHtml(fmtLiters(totalLiters))}</td>
+<td></td>
+</tr></tfoot>
+</table>
+<p class="footer">${escHtml(footerNote)}</p>
 </body></html>`;
 }

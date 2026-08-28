@@ -17,16 +17,19 @@ import {
 import { estimateSieveUsageByDay } from '../../utils/fuelSieveEstimate';
 import {
     buildFuelUsageReport,
-    fuelKindLabel,
-    fuelTypeLabel,
+    filterFuelUsageReport,
+    fuelPrintGroupTitle,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
     shiftMonthBounds,
     yearBoundsFromYmd,
+    type FuelPrintGroup,
     type FuelTypeFilter,
     type FuelUsageKind,
 } from '../../utils/fuelUsageReport';
+
+const PRINT_GROUPS: FuelPrintGroup[] = ['macro', 'sieve_generator', 'other_fill'];
 
 interface ReportsModuleProps {
     transactions: Transaction[];
@@ -171,7 +174,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         });
     }, [transactions, range.end, settings.fuelOpeningStockLiters, estimatedSieveByDay]);
 
-    const liters = (n: number) => `${formatDisplayNumber(n)} ล.`;
+    const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
     const rangeLabel = `${formatDateBELong(range.start)} – ${formatDateBELong(range.end)}`;
 
     const applyBounds = (bounds: { start: string; end: string }) => {
@@ -201,13 +204,14 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         URL.revokeObjectURL(url);
     };
 
-    const printReport = () => {
+    const printGroupReport = (group: FuelPrintGroup) => {
+        const grouped = filterFuelUsageReport(report, group);
         const html = fuelUsageToPrintHtml({
             appName: orgTitle,
             orgSubtitle: orgLine || undefined,
             rangeLabel,
-            report,
-            balances: remainingStock,
+            report: grouped,
+            group,
             formatDate: formatDateBELong,
         });
         const w = window.open('', '_blank');
@@ -236,9 +240,19 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                     <Button type="button" variant="outline" className="px-3" onClick={exportCsv}>
                         <FileDown className="h-4 w-4" /> Export CSV
                     </Button>
-                    <Button type="button" variant="outline" className="px-3" onClick={printReport}>
-                        <Printer className="h-4 w-4" /> พิมพ์/PDF
-                    </Button>
+                    {PRINT_GROUPS.map(group => (
+                        <Button
+                            key={group}
+                            type="button"
+                            variant="outline"
+                            className="px-3 text-xs sm:text-sm"
+                            aria-label={fuelPrintGroupTitle(group)}
+                            onClick={() => printGroupReport(group)}
+                        >
+                            <Printer className="h-4 w-4 shrink-0" />
+                            <span className="max-w-[9rem] truncate sm:max-w-none">{fuelPrintGroupTitle(group)}</span>
+                        </Button>
+                    ))}
                 </div>
             </div>
 
@@ -294,19 +308,19 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                 <SummaryTile
                     label="ใช้แล้ว"
                     value={liters(report.totals.usageLiters)}
-                    hint={`กระทบยอด ${formatDisplayNumber(report.totals.stockInLiters - report.totals.usageLiters)} ล.`}
+                    hint={`กระทบยอด ${formatDisplayNumber(report.totals.stockInLiters - report.totals.usageLiters)} ลิตร`}
                 />
                 <SummaryTile
                     label="คงเหลือถังหลัก"
                     value={liters(remainingStock.Diesel)}
-                    hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ล.`}
+                    hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ลิตร`}
                 />
             </div>
             {(remainingStock.DieselReserve ?? 0) < 0 || remainingStock.reserveShortfallLiters > 0 ? (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
-                    ถังสำรองติดลบ {formatDisplayNumber(Math.abs(remainingStock.DieselReserve ?? 0))} ล.
+                    ถังสำรองติดลบ {formatDisplayNumber(Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
                     — ขาดบันทึกเบิกเติมเครื่องจักร (โอนเข้าถังสำรอง) ประมาณ{' '}
-                    {formatDisplayNumber(remainingStock.reserveShortfallLiters || Math.abs(remainingStock.DieselReserve ?? 0))} ล.
+                    {formatDisplayNumber(remainingStock.reserveShortfallLiters || Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
                 </div>
             ) : null}
 
@@ -355,7 +369,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                     <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                         <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
                                         <th scope="col" className="px-4 py-2.5 font-semibold text-right">รับเข้า</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">ใช้ (ล.)</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">ใช้ (ลิตร)</th>
                                         <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
                                     </tr>
                                 </thead>
@@ -387,8 +401,6 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                             <thead>
                                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                     <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                    <th scope="col" className="px-4 py-2.5 font-semibold">ประเภท</th>
-                                    <th scope="col" className="px-4 py-2.5 font-semibold">น้ำมัน</th>
                                     <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
                                     <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
                                     <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
@@ -398,8 +410,6 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                 {report.rows.map((row, i) => (
                                     <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
                                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBELong(row.date)}</td>
-                                        <td className="px-4 py-2.5">{fuelKindLabel(row.kind)}</td>
-                                        <td className="px-4 py-2.5">{fuelTypeLabel(row.fuelType)}</td>
                                         <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
                                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
                                         <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
