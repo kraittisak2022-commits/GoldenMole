@@ -34,6 +34,8 @@ interface CountRecordOverviewProps {
     shareMode?: boolean;
     /** SuperAdmin — open round manager filtered by kind */
     onManageRounds?: (kind: 'trip' | 'sand') => void;
+    /** Resolve catalog vehicle ids (v_…) to display names */
+    vehicleCatalog?: Array<{ id: string; name: string; defaultDriverId: string | null; sortOrder: number }>;
 }
 
 const SAND_RECENT_LAPS = 5;
@@ -454,6 +456,7 @@ const CountRecordOverview = ({
     increments = [],
     shareMode = false,
     onManageRounds,
+    vehicleCatalog = [],
 }: CountRecordOverviewProps) => {
     const { t, locale } = useShareLocale();
     const [highlight, setHighlight] = useState(false);
@@ -480,8 +483,8 @@ const CountRecordOverview = ({
     }, [increments]);
 
     const tripUnits = useMemo(
-        () => buildCountRecordTripUnits(dayKey, transactions, employees),
-        [dayKey, transactions, employees],
+        () => buildCountRecordTripUnits(dayKey, transactions, employees, vehicleCatalog),
+        [dayKey, transactions, employees, vehicleCatalog],
     );
     const sandUnit = useMemo(
         () => buildCountRecordSandUnit(dayKey, transactions),
@@ -517,8 +520,8 @@ const CountRecordOverview = ({
     );
     const yesterdayTripUnits = useMemo(() => {
         if (!priorTripDayKey) return [];
-        return buildCountRecordTripUnits(priorTripDayKey, transactions, employees);
-    }, [priorTripDayKey, transactions, employees]);
+        return buildCountRecordTripUnits(priorTripDayKey, transactions, employees, vehicleCatalog);
+    }, [priorTripDayKey, transactions, employees, vehicleCatalog]);
 
     const sandSpeedPerHour = useMemo(() => {
         if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;

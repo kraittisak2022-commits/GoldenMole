@@ -155,7 +155,7 @@ const CountRecordRoundManager = ({
     const [message, setMessage] = useState<string | null>(null);
 
     const rows = useMemo((): ManagedRow[] => {
-        const tripUnits = buildCountRecordTripUnits(dayKey, transactions, employees);
+        const tripUnits = buildCountRecordTripUnits(dayKey, transactions, employees, settings?.vehicleCatalog);
         const tripRows: ManagedRow[] = tripUnits.map((u) => {
             const tx = transactions.find((t) => t.id === u.id);
             if (!tx) return null;
@@ -184,7 +184,7 @@ const CountRecordRoundManager = ({
         }
 
         return [...tripRows, ...sandRows];
-    }, [dayKey, transactions, employees]);
+    }, [dayKey, transactions, employees, settings?.vehicleCatalog]);
 
     const visibleRows = useMemo(
         () => (filterKind ? rows.filter((r) => r.kind === filterKind) : rows),

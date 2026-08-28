@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Tractor, Users } from 'lucide-react';
 import type { Employee, Transaction } from '../../types';
+import type { VehicleCatalogRow } from '../../utils/vehicleCatalog';
 import { useShareLocale } from '../Share/shareI18n';
 import { formatDashboardMetric } from './countRecordUtils';
 import { buildAttendanceSummary, buildMacroUsageSummary } from './dailyOpsCardUtils';
@@ -10,14 +11,21 @@ interface DailyOpsCardsProps {
     transactions: Transaction[];
     employees: Employee[];
     shareMode?: boolean;
+    vehicleCatalog?: VehicleCatalogRow[];
 }
 
-const DailyOpsCards = ({ dayKey, transactions, employees, shareMode = false }: DailyOpsCardsProps) => {
+const DailyOpsCards = ({
+    dayKey,
+    transactions,
+    employees,
+    shareMode = false,
+    vehicleCatalog = [],
+}: DailyOpsCardsProps) => {
     const { t } = useShareLocale();
 
     const macroSummary = useMemo(
-        () => buildMacroUsageSummary(dayKey, transactions, employees),
-        [dayKey, transactions, employees],
+        () => buildMacroUsageSummary(dayKey, transactions, employees, vehicleCatalog),
+        [dayKey, transactions, employees, vehicleCatalog],
     );
 
     const attendance = useMemo(

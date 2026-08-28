@@ -2,6 +2,7 @@ import type { Employee, Transaction } from '../../types';
 import { normalizeDate } from '../../utils';
 import { buildFuelUsageReport, filterFuelUsageReport } from '../../utils/fuelUsageReport';
 import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
+import { transactionVehicleLabel, type VehicleCatalogRow } from '../../utils/vehicleCatalog';
 import { isMacroVehicleId } from './dailyStepRecorderUtils';
 import { driverDisplayName } from './countRecordUtils';
 
@@ -29,12 +30,12 @@ export interface AttendanceSummary {
 const stripRecorderSuffix = (details: string): string =>
     details.replace(/\s*\(ผู้กรอก:[^)]+\)\s*$/, '').trim();
 
-function isMacroWorkRow(t: Transaction, dayKey: string): boolean {
+function isMacroWorkRow(t: Transaction, dayKey: string, catalog: VehicleCatalogRow[] = []): boolean {
     if (normalizeDate(t.date) !== normalizeDate(dayKey)) return false;
     if (t.category !== 'Vehicle') return false;
-    if (!isMacroVehicleId(t.vehicleId)) return false;
-    const vehicleId = String(t.vehicleId ?? '').trim();
-    return Boolean(vehicleId);
+    const label = transactionVehicleLabel(t, catalog);
+    if (!isMacroVehicleId(label)) return false;
+    return Boolean(label);
 }
 
 function employeeDisplayName(employeeId: string, employees: Employee[]): string {
@@ -47,16 +48,21 @@ function employeeDisplayName(employeeId: string, employees: Employee[]): string 
     return id;
 }
 
-function macroFuelLitersByVehicle(dayKey: string, transactions: Transaction[]): Map<string, number> {
+function macroFuelLitersByVehicle(
+    dayKey: string,
+    transactions: Transaction[],
+    catalog: VehicleCatalogRow[] = [],
+): Map<string, number> {
     const report = filterFuelUsageReport(
         buildFuelUsageReport(transactions, { start: dayKey, end: dayKey }),
         'macro',
     );
     const map = new Map<string, number>();
     for (const row of report.byVehicle) {
-        const vid = String(row.vehicleId ?? '').trim();
-        if (!vid) continue;
-        map.set(vid, (map.get(vid) ?? 0) + row.liters);
+        const raw = String(row.vehicleId ?? '').trim();
+        if (!raw) continue;
+        const key = transactionVehicleLabel({ vehicleId: raw }, catalog);
+        map.set(key, (map.get(key) ?? 0) + row.liters);
     }
     return map;
 }
@@ -65,13 +71,14 @@ export function buildMacroUsageSummary(
     dayKey: string,
     transactions: Transaction[],
     employees: Employee[],
+    catalog: VehicleCatalogRow[] = [],
 ): MacroUsageSummary {
-    const fuelByVehicle = macroFuelLitersByVehicle(dayKey, transactions);
+    const fuelByVehicle = macroFuelLitersByVehicle(dayKey, transactions, catalog);
     const workByVehicle = new Map<string, Transaction>();
 
     for (const t of transactions) {
-        if (!isMacroWorkRow(t, dayKey)) continue;
-        const vehicleId = String(t.vehicleId ?? '').trim();
+        if (!isMacroWorkRow(t, dayKey, catalog)) continue;
+        const vehicleId = transactionVehicleLabel(t, catalog);
         workByVehicle.set(vehicleId, t);
     }
 

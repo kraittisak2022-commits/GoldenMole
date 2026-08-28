@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
+    buildCountRecordTripUnits,
     countRecordLapPeriods,
     diffCountRecordIncrements,
     isCountRecordSandTapRow,
@@ -191,5 +192,42 @@ describe('diffCountRecordIncrements', () => {
         expect(inc).toHaveLength(1);
         expect(inc[0]?.delta).toBe(-2);
         expect(inc[0]?.kind).toBe('trip');
+    });
+});
+
+describe('buildCountRecordTripUnits vehicle labels', () => {
+    it('shows vehicleName instead of catalog id', () => {
+        const units = buildCountRecordTripUnits(
+            '2026-06-26',
+            [
+                trip({
+                    id: 'v1',
+                    vehicleId: 'v_ef5549f371f7f0d8',
+                    vehicleName: 'รถดรัมโอเว่น',
+                    perCarTrips: 1,
+                    lapTimes: ['26/06 08:00:00'],
+                }),
+            ],
+            [],
+        );
+        expect(units).toHaveLength(1);
+        expect(units[0]?.vehicleId).toBe('รถดรัมโอเว่น');
+    });
+
+    it('resolves catalog id via vehicle catalog when vehicleName is missing', () => {
+        const units = buildCountRecordTripUnits(
+            '2026-06-26',
+            [
+                trip({
+                    id: 'v1',
+                    vehicleId: 'v_296bfec0b1056325',
+                    perCarTrips: 1,
+                    lapTimes: ['26/06 08:00:00'],
+                }),
+            ],
+            [],
+            [{ id: 'v_296bfec0b1056325', name: 'รถดรัมนายก', defaultDriverId: null, sortOrder: 0 }],
+        );
+        expect(units[0]?.vehicleId).toBe('รถดรัมนายก');
     });
 });

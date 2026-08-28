@@ -5,6 +5,43 @@ export interface VehicleCatalogRow {
     sortOrder: number;
 }
 
+export function looksLikeCatalogVehicleId(raw?: string | null): boolean {
+    const s = (raw ?? '').trim();
+    return s.startsWith('v_') && s.length >= 4;
+}
+
+export function findVehicleCatalogRow(
+    raw: string,
+    catalog: VehicleCatalogRow[] = [],
+): VehicleCatalogRow | undefined {
+    const key = raw.trim();
+    if (!key || catalog.length === 0) return undefined;
+    const exact = catalog.find((row) => row.id === key || row.name === key);
+    if (exact) return exact;
+    return undefined;
+}
+
+/**
+ * ชื่อรถสำหรับแสดงบน UI — ใช้ vehicleName ก่อน แล้วค่อย lookup จากแคตตาล็อก
+ * (แถวใหม่มักเก็บ vehicleId เป็นรหัส v_… และชื่อจริงอยู่ใน vehicleName)
+ */
+export function transactionVehicleLabel(
+    t: { vehicleId?: string | null; vehicleName?: string | null },
+    catalog: VehicleCatalogRow[] = [],
+): string {
+    const name = String(t.vehicleName ?? '').trim();
+    if (name && !looksLikeCatalogVehicleId(name)) return name;
+
+    const id = String(t.vehicleId ?? '').trim();
+    if (!id) return name;
+
+    const hit = findVehicleCatalogRow(id, catalog) ?? (name ? findVehicleCatalogRow(name, catalog) : undefined);
+    if (hit?.name) return hit.name.trim();
+
+    if (name) return name;
+    return id;
+}
+
 export function vehiclesToCarsAndDrivers(rows: VehicleCatalogRow[]): {
     cars: string[];
     vehicleDefaultDrivers: Record<string, string>;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     catalogFromCarsAndDrivers,
     makeVehicleId,
+    transactionVehicleLabel,
     vehiclesToCarsAndDrivers,
 } from './vehicleCatalog';
 
@@ -37,5 +38,27 @@ describe('vehicleCatalog', () => {
             [{ id: 'gone', name: 'รถเก่า', defaultDriverId: 'd1', sortOrder: 0 }],
         );
         expect(next.map((r) => r.name)).toEqual(['รถใหม่']);
+    });
+
+    it('transactionVehicleLabel prefers vehicleName over catalog id', () => {
+        expect(
+            transactionVehicleLabel({
+                vehicleId: 'v_ef5549f371f7f0d8',
+                vehicleName: 'รถดรัมโอเว่น',
+            }),
+        ).toBe('รถดรัมโอเว่น');
+    });
+
+    it('transactionVehicleLabel resolves catalog id when vehicleName is missing', () => {
+        const catalog = [
+            { id: 'v_ef5549f371f7f0d8', name: 'รถดรัมโอเว่น', defaultDriverId: null, sortOrder: 0 },
+            { id: 'v_296bfec0b1056325', name: 'รถดรัมนายก', defaultDriverId: null, sortOrder: 1 },
+        ];
+        expect(
+            transactionVehicleLabel({ vehicleId: 'v_ef5549f371f7f0d8' }, catalog),
+        ).toBe('รถดรัมโอเว่น');
+        expect(
+            transactionVehicleLabel({ vehicleId: 'v_296bfec0b1056325' }, catalog),
+        ).toBe('รถดรัมนายก');
     });
 });

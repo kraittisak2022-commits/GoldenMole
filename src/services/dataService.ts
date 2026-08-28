@@ -233,7 +233,7 @@ export const fetchVehicles = async (): Promise<VehicleCatalogRow[]> => {
 };
 
 const overlaySettingsFromVehicles = (s: AppSettings, rows: VehicleCatalogRow[]): AppSettings => {
-    if (rows.length === 0) return s;
+    if (rows.length === 0) return { ...s, vehicleCatalog: s.vehicleCatalog ?? [] };
     const overlay = vehiclesToCarsAndDrivers(rows);
     return {
         ...s,
@@ -242,6 +242,7 @@ const overlaySettingsFromVehicles = (s: AppSettings, rows: VehicleCatalogRow[]):
             ...(s.appDefaults || {}),
             vehicleDefaultDrivers: overlay.vehicleDefaultDrivers,
         },
+        vehicleCatalog: rows,
     };
 };
 

@@ -292,6 +292,8 @@ export interface AppSettings {
     fuelOpeningStockLiters?: { Diesel?: number; Benzine?: number };
     orgProfile?: OrgProfile;
     appDefaults?: AppDefaults;
+    /** Runtime overlay จากตาราง vehicles — ใช้ resolve ชื่อรถจากรหัส v_… */
+    vehicleCatalog?: Array<{ id: string; name: string; defaultDriverId: string | null; sortOrder: number }>;
 }
 
 export type AdminUiTheme = 'light' | 'dark' | 'system';

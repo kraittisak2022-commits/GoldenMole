@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Employee, Transaction } from '../types';
+import type { VehicleCatalogRow } from '../utils/vehicleCatalog';
 import {
     subscribeTransactionsRealtime,
     subscribeTransactionsRealtimeStatus,
@@ -20,6 +21,7 @@ export interface UseCountRecordRealtimeOptions {
     dayKey: string;
     transactions: Transaction[];
     employees?: Employee[];
+    vehicleCatalog?: VehicleCatalogRow[];
     onRefresh?: () => void | Promise<void>;
     pollIntervalMs?: number;
     maxActivities?: number;
@@ -42,6 +44,7 @@ export function useCountRecordRealtime({
     dayKey,
     transactions,
     employees = defaultEmployees,
+    vehicleCatalog = [],
     onRefresh,
     pollIntervalMs = 12000,
     maxActivities = 12,
@@ -81,12 +84,12 @@ export function useCountRecordRealtime({
         if (!dayKey) return;
         const prev = prevTransactionsRef.current;
         if (prev !== transactions) {
-            const items = diffCountRecordActivities(dayKey, prev, transactions, employees, displayLocale);
-            const incItems = diffCountRecordIncrements(dayKey, prev, transactions, employees);
+            const items = diffCountRecordActivities(dayKey, prev, transactions, employees, displayLocale, vehicleCatalog);
+            const incItems = diffCountRecordIncrements(dayKey, prev, transactions, employees, vehicleCatalog);
             if (items.length > 0 || incItems.length > 0) pushActivities(items, incItems, 'local');
         }
         prevTransactionsRef.current = transactions;
-    }, [dayKey, transactions, employees, pushActivities, displayLocale]);
+    }, [dayKey, transactions, employees, vehicleCatalog, pushActivities, displayLocale]);
 
     useEffect(() => subscribeTransactionsRealtimeStatus(setChannelStatus), []);
 

@@ -1,5 +1,9 @@
 import type { Employee, Transaction } from '../../types';
 import { isMacroVehicleId } from './dailyStepRecorderUtils';
+import {
+    transactionVehicleLabel,
+    type VehicleCatalogRow,
+} from '../../utils/vehicleCatalog';
 
 export const VEHICLE_BUTTON_COLORS = [
     '#1565C0',
@@ -191,17 +195,18 @@ export function buildCountRecordTripUnits(
     dayKey: string,
     transactions: Transaction[],
     employees: Employee[],
+    catalog: VehicleCatalogRow[] = [],
 ): CountRecordTripUnit[] {
     const units: CountRecordTripUnit[] = [];
     for (const t of transactions) {
         if (String(t.date ?? '').trim().slice(0, 10) !== dayKey.trim()) continue;
         if (!isCountRecordVehicleRow(t)) continue;
-        const vid = String(t.vehicleId ?? '').trim();
-        if (!vid || isMacroVehicleId(vid)) continue;
+        const label = transactionVehicleLabel(t, catalog);
+        if (!label || isMacroVehicleId(label)) continue;
         const periods = vehicleTripPeriodSplit(t);
         units.push({
             id: t.id,
-            vehicleId: vid,
+            vehicleId: label,
             driverId: String(t.driverId ?? '').trim(),
             driverLabel: driverDisplayName(String(t.driverId ?? ''), employees),
             rounds: tripRoundsFromTx(t),
@@ -251,6 +256,7 @@ export function countRecordMenuStatusLabel(
     dayKey: string,
     transactions: Transaction[],
     locale: 'th' | 'zh' = 'th',
+    catalog: VehicleCatalogRow[] = [],
 ): string | null {
     const vehicles = new Set<string>();
     let tripTotal = 0;
@@ -262,8 +268,8 @@ export function countRecordMenuStatusLabel(
         if (String(t.date ?? '').trim().slice(0, 10) !== dayKey.trim()) continue;
         if (!countRecordRowHasSavedData(t)) continue;
         if (isCountRecordVehicleRow(t)) {
-            const vid = String(t.vehicleId ?? '').trim();
-            if (vid) vehicles.add(vid);
+            const vid = transactionVehicleLabel(t, catalog);
+            if (vid && !isMacroVehicleId(vid)) vehicles.add(vid);
             tripTotal += Number((t as { perCarTrips?: number; tripCount?: number }).perCarTrips ?? (t as { tripCount?: number }).tripCount ?? 0);
         } else if (isCountRecordSandTapRow(t)) {
             sandRounds += Number((t as { drumsObtained?: number }).drumsObtained ?? 0);
@@ -329,10 +335,11 @@ export function diffCountRecordActivities(
     nextTransactions: Transaction[],
     employees: Employee[],
     locale: 'th' | 'zh' = 'th',
+    catalog: VehicleCatalogRow[] = [],
 ): CountRecordActivity[] {
     const at = Date.now();
-    const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees);
-    const nextTrips = buildCountRecordTripUnits(dayKey, nextTransactions, employees);
+    const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees, catalog);
+    const nextTrips = buildCountRecordTripUnits(dayKey, nextTransactions, employees, catalog);
     const prevSand = buildCountRecordSandUnit(dayKey, prevTransactions);
     const nextSand = buildCountRecordSandUnit(dayKey, nextTransactions);
     const out: CountRecordActivity[] = [];
@@ -408,10 +415,11 @@ export function diffCountRecordIncrements(
     prevTransactions: Transaction[],
     nextTransactions: Transaction[],
     employees: Employee[],
+    catalog: VehicleCatalogRow[] = [],
 ): CountRecordIncrement[] {
     const at = Date.now();
-    const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees);
-    const nextTrips = buildCountRecordTripUnits(dayKey, nextTransactions, employees);
+    const prevTrips = buildCountRecordTripUnits(dayKey, prevTransactions, employees, catalog);
+    const nextTrips = buildCountRecordTripUnits(dayKey, nextTransactions, employees, catalog);
     const prevSand = buildCountRecordSandUnit(dayKey, prevTransactions);
     const nextSand = buildCountRecordSandUnit(dayKey, nextTransactions);
     const out: CountRecordIncrement[] = [];

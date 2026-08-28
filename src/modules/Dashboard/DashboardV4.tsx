@@ -80,14 +80,14 @@ const DashboardV4 = ({
     const isToday = focusDate === today;
 
     const focusCountRecordStatus = useMemo(
-        () => countRecordMenuStatusLabel(focusDate, transactions, locale),
-        [focusDate, transactions, locale],
+        () => countRecordMenuStatusLabel(focusDate, transactions, locale, settings?.vehicleCatalog),
+        [focusDate, transactions, locale, settings?.vehicleCatalog],
     );
 
     const tripTotal = useMemo(() => {
-        const units = buildCountRecordTripUnits(focusDate, transactions, employees);
+        const units = buildCountRecordTripUnits(focusDate, transactions, employees, settings?.vehicleCatalog);
         return units.reduce((s, u) => s + u.rounds, 0);
-    }, [focusDate, transactions, employees]);
+    }, [focusDate, transactions, employees, settings?.vehicleCatalog]);
 
     const sandRounds = useMemo(() => {
         const sand = buildCountRecordSandUnit(focusDate, transactions);
@@ -112,6 +112,7 @@ const DashboardV4 = ({
         dayKey: focusDate,
         transactions,
         employees,
+        vehicleCatalog: settings?.vehicleCatalog,
         onRefresh: onRefreshTransactions,
         pollIntervalMs: 60000,
         displayLocale: locale,
@@ -344,6 +345,7 @@ const DashboardV4 = ({
                         transactions={transactions}
                         employees={employees}
                         shareMode={shareMode}
+                        vehicleCatalog={settings?.vehicleCatalog}
                     />
                     <CountRecordOverview
                         dayKey={focusDate}
@@ -352,6 +354,7 @@ const DashboardV4 = ({
                         pulseToken={realtime.pulseToken}
                         increments={realtime.increments}
                         shareMode={shareMode}
+                        vehicleCatalog={settings?.vehicleCatalog}
                         onManageRounds={showRoundManager ? (kind) => setRoundManagerKind(kind) : undefined}
                     />
                 </div>
