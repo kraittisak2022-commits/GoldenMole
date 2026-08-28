@@ -8,7 +8,7 @@ import { getToday } from '../../utils';
 import { useCountRecordRealtime } from '../../hooks/useCountRecordRealtime';
 import { useMobilePresence } from '../../hooks/useMobilePresence';
 import CountRecordOverview from './CountRecordOverview';
-import CountRecordActivityFeed from './CountRecordActivityFeed';
+import DailyOpsCards from './DailyOpsCards';
 import RealtimeLiveBadge from './RealtimeLiveBadge';
 import MobilePresenceBadge from './MobilePresenceBadge';
 import LiveIncrementOverlay from './LiveIncrementOverlay';
@@ -339,6 +339,12 @@ const DashboardV4 = ({
 
                 <div className="relative p-4 sm:p-5">
                     <LiveIncrementOverlay increments={realtime.increments} />
+                    <DailyOpsCards
+                        dayKey={focusDate}
+                        transactions={transactions}
+                        employees={employees}
+                        shareMode={shareMode}
+                    />
                     <CountRecordOverview
                         dayKey={focusDate}
                         transactions={transactions}
@@ -349,12 +355,6 @@ const DashboardV4 = ({
                         onManageRounds={showRoundManager ? (kind) => setRoundManagerKind(kind) : undefined}
                     />
                 </div>
-
-                {realtime.activities.length > 0 && (
-                    <div className={`border-t border-slate-100 bg-slate-50/40 dark:border-slate-800 dark:bg-slate-950/40 ${shareMode ? 'p-3 landscape:max-md:p-2.5 sm:p-5' : 'p-4 sm:p-5'}`}>
-                        <CountRecordActivityFeed activities={realtime.activities} compact={shareMode} />
-                    </div>
-                )}
             </div>
         </div>
     );

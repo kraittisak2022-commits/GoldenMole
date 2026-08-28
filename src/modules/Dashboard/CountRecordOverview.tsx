@@ -10,7 +10,6 @@ import {
     countRecordMenuStatusLabel,
     formatDashboardMetric,
 } from './countRecordUtils';
-import CountRecordAnalyticsPanel from './CountRecordAnalyticsPanel';
 import CountIncrementPop from './CountIncrementPop';
 import {
     addDaysToYmd,
@@ -690,16 +689,6 @@ const CountRecordOverview = ({
                                     <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">{t('noTimestamp')}</p>
                                 )}
                             </div>
-
-                            <div className={shareMode ? 'max-md:landscape:hidden' : undefined}>
-                                <CountRecordAnalyticsPanel
-                                    mode="trip"
-                                    dayKey={dayKey}
-                                    transactions={transactions}
-                                    employees={employees}
-                                    accentColor="#2563eb"
-                                />
-                            </div>
                         </div>
                     )}
                 </CountRecordPanelShell>
@@ -834,16 +823,6 @@ const CountRecordOverview = ({
                                     </div>
                                 </div>
                             )}
-
-                            <div className={shareMode ? 'max-md:landscape:hidden' : undefined}>
-                                <CountRecordAnalyticsPanel
-                                    mode="sand"
-                                    dayKey={dayKey}
-                                    transactions={transactions}
-                                    employees={employees}
-                                    accentColor="#db2777"
-                                />
-                            </div>
                         </div>
                     )}
                 </CountRecordPanelShell>
