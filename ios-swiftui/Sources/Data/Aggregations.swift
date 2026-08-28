@@ -27,9 +27,25 @@ enum DashboardAggregations {
         if preset == .custom, let start = customStart, let customEnd {
             return DateFilter(start: formatYMD(start), end: formatYMD(customEnd))
         }
+        if preset == .today {
+            let today = formatYMD(end)
+            return DateFilter(start: today, end: today)
+        }
+        if preset == .yesterday {
+            let yesterday = gregorian.date(byAdding: .day, value: -1, to: end) ?? end
+            let ymd = formatYMD(yesterday)
+            return DateFilter(start: ymd, end: ymd)
+        }
         let days = Int(preset.rawValue) ?? 7
         let start = gregorian.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         return DateFilter(start: formatYMD(start), end: formatYMD(end))
+    }
+
+    /// Single-day focus for home “สรุปวันนี้” — custom single day, else end of range.
+    static func focusDayKey(from filter: DateFilter) -> String {
+        if filter.start == filter.end, !filter.start.isEmpty { return filter.start }
+        if !filter.end.isEmpty { return filter.end }
+        return todayYMD()
     }
 
     static func countInclusiveDays(_ start: String, _ end: String) -> Int {

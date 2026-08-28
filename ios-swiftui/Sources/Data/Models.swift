@@ -97,6 +97,7 @@ enum DashboardTab: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum DateRangePreset: String, CaseIterable, Identifiable, Sendable {
+    case yesterday = "yesterday"
     case today = "1"
     case days7 = "7"
     case days14 = "14"
@@ -107,6 +108,7 @@ enum DateRangePreset: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
+        case .yesterday: return "เมื่อวานนี้"
         case .today: return "วันนี้"
         case .days7: return "7 วันล่าสุด"
         case .days14: return "14 วันล่าสุด"
