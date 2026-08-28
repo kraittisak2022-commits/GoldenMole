@@ -31,6 +31,9 @@ const String kFuelTransferSubCategory = 'Transfer';
 /// `subCategory` ของการใช้น้ำมันเครื่องร่อนทราย (อัตโนมัติ)
 const String kFuelSandSieveSubCategory = 'SandSieve';
 
+/// ชื่อรถ/เครื่องจักรที่บันทึกเมื่อเครื่องร่อนทรายทำงาน
+const String kFuelSandSieveVehicleId = 'เครื่องจักรร่อนทราย เครื่องปั่นไฟ';
+
 /// `subCategory` ของบันทึกการใช้น้ำมันรถแม็คโคร
 const String kFuelVehicleUsageSubCategory = 'VehicleUsage';
 

@@ -1100,6 +1100,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       fuelType: 'Diesel',
       fuelMovement: 'stock_out',
       fuelTank: kFuelTankReserve,
+      vehicleId: kFuelSandSieveVehicleId,
+      vehicleName: kFuelSandSieveVehicleId,
       workDetails: 'auto_sand_sieve',
     );
     final dayRows = _effectiveDayRows();

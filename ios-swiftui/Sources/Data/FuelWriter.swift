@@ -247,7 +247,7 @@ enum FuelWriter {
                 "ใช้น้ำมันเครื่องร่อนทราย: \(hoursLabel) ชม. × \(rateLabel) L = \(litersLabel) L\(clock)",
             amount: 0,
             note: "บันทึกอัตโนมัติจากนับร่อนทรายโดย \(adminName)",
-            vehicleId: nil,
+            vehicleId: FuelLogic.sandSieveVehicleId,
             driverId: nil,
             workDetails: "auto_sand_sieve",
             tripBillingMode: nil,

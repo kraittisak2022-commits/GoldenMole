@@ -2,6 +2,7 @@ import type { Transaction } from '../types';
 import type { FuelStockBalances } from './index';
 import {
     FUEL_SAND_SIEVE_SUB_CATEGORY,
+    FUEL_SAND_SIEVE_VEHICLE_ID,
     FUEL_STOCK_IN_SUB_CATEGORY,
     FUEL_TRANSFER_SUB_CATEGORY,
     FUEL_VEHICLE_USAGE_SUB_CATEGORY,
@@ -217,8 +218,11 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
         if (!kind) continue;
         const date = normalizeDate(t.date);
         if (date < start || date > end) continue;
+        const rawVehicleId = (t.vehicleId || '').trim();
         const vehicleId = normalizeFuelReportVehicleId(
-            (t.vehicleId || '').trim() || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
+            rawVehicleId
+                || (kind === 'sand_sieve' ? FUEL_SAND_SIEVE_VEHICLE_ID : '')
+                || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
         );
         if (vehicleFilter && vehicleId !== vehicleFilter) continue;
         const fuelType = resolveFuelType(t);
@@ -249,7 +253,7 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
                 kind: 'sand_sieve',
                 fuelType: 'Diesel',
                 tank: 'reserve',
-                vehicleId: '',
+                vehicleId: FUEL_SAND_SIEVE_VEHICLE_ID,
                 liters,
                 amount: 0,
                 description: `ประมาณจากชั่วโมงร่อนทราย ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ล./ชม.`,

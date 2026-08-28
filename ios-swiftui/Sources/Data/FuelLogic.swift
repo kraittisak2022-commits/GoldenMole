@@ -13,6 +13,7 @@ enum FuelLogic {
     static let withdrawSubCategory = "Withdraw"
     static let transferSubCategory = "Transfer"
     static let sandSieveSubCategory = "SandSieve"
+    static let sandSieveVehicleId = "เครื่องจักรร่อนทราย เครื่องปั่นไฟ"
     static let vehicleUsageSubCategory = "VehicleUsage"
     static let sandSieveLitersPerHour: Double = 18
 

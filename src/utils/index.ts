@@ -22,6 +22,8 @@ export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
 export const FUEL_WITHDRAW_SUB_CATEGORY = 'Withdraw';
 export const FUEL_TRANSFER_SUB_CATEGORY = 'Transfer';
 export const FUEL_SAND_SIEVE_SUB_CATEGORY = 'SandSieve';
+/** ชื่อรถ/เครื่องจักรเมื่อเครื่องร่อนทรายทำงาน */
+export const FUEL_SAND_SIEVE_VEHICLE_ID = 'เครื่องจักรร่อนทราย เครื่องปั่นไฟ';
 /** เพิ่มน้ำมันเข้าถังหลัก (ซื้อ/เติมสต็อก) — ไม่รวมโอนเข้าถังสำรอง */
 export const FUEL_STOCK_IN_SUB_CATEGORY = 'StockIn';
 /** ใช้น้ำมันรถ/แม็คโคร (เมนูการใช้น้ำมัน) */
