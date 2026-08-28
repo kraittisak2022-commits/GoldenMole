@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { Fuel, Tractor, UserRound, Users } from 'lucide-react';
+import { Fuel, UserRound, Users } from 'lucide-react';
 import type { Employee, Transaction } from '../../types';
 import type { VehicleCatalogRow } from '../../utils/vehicleCatalog';
 import { useShareLocale } from '../Share/shareI18n';
 import { formatDashboardMetric, VEHICLE_BUTTON_COLORS } from './countRecordUtils';
 import { buildAttendanceSummary, buildMacroUsageSummary } from './dailyOpsCardUtils';
+import ExcavatorIcon from './ExcavatorIcon';
 
 interface DailyOpsCardsProps {
     dayKey: string;
@@ -41,7 +42,7 @@ const DailyOpsCards = ({
                 <div className="border-b border-amber-100 bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-3 dark:border-amber-500/20">
                     <div className="flex items-center gap-2.5">
                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/20">
-                            <Tractor size={17} />
+                            <ExcavatorIcon size={18} />
                         </span>
                         <div className="min-w-0">
                             <h4 className="truncate text-sm font-bold text-white">{t('macroUsageTitle')}</h4>
@@ -79,7 +80,7 @@ const DailyOpsCards = ({
                                 </div>
                             </div>
 
-                            <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto">
+                            <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto">
                                 {macroSummary.rows.map((row, index) => {
                                     const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
                                     return (
@@ -95,11 +96,11 @@ const DailyOpsCards = ({
                                             />
                                             <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
                                             <div className="relative flex flex-col gap-1.5 p-2.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
-                                                        <Tractor size={16} />
-                                                    </span>
-                                                    <p className="min-w-0 truncate text-xs font-bold leading-tight">
+                                                <div className="flex flex-col items-center gap-1.5">
+                                                    <div className="flex w-full items-center justify-center rounded-lg bg-white/10 py-2 ring-1 ring-white/15">
+                                                        <ExcavatorIcon size={38} className="text-white" />
+                                                    </div>
+                                                    <p className="w-full truncate text-center text-xs font-bold leading-tight">
                                                         {row.vehicleId}
                                                     </p>
                                                 </div>
