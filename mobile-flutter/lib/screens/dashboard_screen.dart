@@ -867,10 +867,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final client = Supabase.instance.client;
 
     return Scaffold(
-      backgroundColor: DailyPalette.surfaceTop,
-      body: DecoratedBox(
-        decoration: const BoxDecoration(gradient: DailyPalette.surfaceGradient),
-        child: LayoutBuilder(
+      backgroundColor: DailyPalette.surface,
+      body: LayoutBuilder(
         builder: (context, bodyConstraints) {
           final rawBody = bodyConstraints.maxWidth.isFinite &&
                   bodyConstraints.maxWidth > 0
@@ -980,7 +978,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           );
         },
-      ),
       ),
       bottomNavigationBar: _buildBottomNav(client),
     );
@@ -1103,7 +1100,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   CountRecordWorkMode? _workMode;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
-  static const _kPanelShadowColor = DailyPalette.shadowSoft;
   static const _kMoreMenusBarHeight = 40.0;
 
   void _onEntranceStatus(AnimationStatus status) {
@@ -1273,24 +1269,18 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
     final dailyMenuPanel = DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: DailyPalette.hairline),
+        color: DailyPalette.card,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: const [
           BoxShadow(
-            color: DailyPalette.shadowSoft,
+            color: DailyPalette.shadowLift,
             blurRadius: 18,
             offset: Offset(0, 6),
-          ),
-          BoxShadow(
-            color: DailyPalette.shadowTight,
-            blurRadius: 4,
-            offset: Offset(0, 1),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: AnimatedSwitcher(
           duration: MenuPanelTransition.duration(lite: useLiteAnimations),
           switchInCurve: Curves.easeOutCubic,
@@ -1385,8 +1375,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       title: 'จำนวนเที่ยวรถ',
                       icon: Icons.fire_truck_outlined,
                       iconColor: DailyPalette.countTripIcon,
-                      backgroundColor: DailyPalette.countTripBg,
-                      borderColor: DailyPalette.countTripBorder,
+                      backgroundColor: DailyPalette.card,
+                      borderColor: DailyPalette.hairline,
                       counterMode: CounterMode.trip,
                     );
                   }
@@ -1396,8 +1386,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       title: 'การร่อนทราย',
                       icon: Icons.water_drop_outlined,
                       iconColor: DailyPalette.countSandIcon,
-                      backgroundColor: DailyPalette.countSandBg,
-                      borderColor: DailyPalette.countSandBorder,
+                      backgroundColor: DailyPalette.card,
+                      borderColor: DailyPalette.hairline,
                       counterMode: CounterMode.sand,
                     );
                   }
@@ -1407,8 +1397,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     title: 'จำนวนเที่ยวรถ',
                     icon: Icons.fire_truck_outlined,
                     iconColor: DailyPalette.countTripIcon,
-                    backgroundColor: DailyPalette.countTripBg,
-                    borderColor: DailyPalette.countTripBorder,
+                    backgroundColor: DailyPalette.card,
+                    borderColor: DailyPalette.hairline,
                     counterMode: CounterMode.trip,
                   );
                   final sandCell = counterCell(
@@ -1416,8 +1406,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     title: 'การร่อนทราย',
                     icon: Icons.water_drop_outlined,
                     iconColor: DailyPalette.countSandIcon,
-                    backgroundColor: DailyPalette.countSandBg,
-                    borderColor: DailyPalette.countSandBorder,
+                    backgroundColor: DailyPalette.card,
+                    borderColor: DailyPalette.hairline,
                     counterMode: CounterMode.sand,
                   );
                   // Flex ทิศทางเดียว — หมุนจอแค่อัปเดต direction ไม่สลับ Column/Row
@@ -1563,9 +1553,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: DailyPalette.brandChipTop,
+                            color: DailyPalette.chipSurface,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: DailyPalette.brandBorder),
                           ),
                           child: Row(
                             children: [
@@ -1583,13 +1572,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   style: GoogleFonts.kanit(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
-                                    color: DailyPalette.brandDateInk,
+                                    color: DailyPalette.ink,
                                   ),
                                 ),
                               ),
                               const Icon(
                                 Icons.chevron_right_rounded,
-                                color: Color(0xFF4A5A70),
+                                color: DailyPalette.inkMuted,
                               ),
                             ],
                           ),
@@ -1822,7 +1811,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                     ? Icons.expand_less_rounded
                                     : Icons.expand_more_rounded,
                                 size: 20,
-                                color: const Color(0xFF4A5A70),
+                                color: DailyPalette.inkMuted,
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -1832,7 +1821,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
-                                  color: Color(0xFF4A5A70),
+                                  color: DailyPalette.inkMuted,
                                 ),
                               ),
                             ],
@@ -1851,7 +1840,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
     return Stack(
       children: [
-        const Positioned.fill(child: ColoredBox(color: Color(0xFFF8FAFC))),
+        const Positioned.fill(child: ColoredBox(color: DailyPalette.surface)),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: Column(
@@ -1941,8 +1930,8 @@ class _CountRecordMenuCard extends StatelessWidget {
   final Widget? expandedChild;
 
   static const _cardDepthShadow = SoftPressDepthShadow(
-    color: Color(0x0A000000),
-    blurRadius: 10,
+    color: DailyPalette.shadowCard,
+    blurRadius: 12,
     offsetY: 3,
     pressedBlurRadius: 4,
     pressedOffsetY: 1,
@@ -1952,18 +1941,14 @@ class _CountRecordMenuCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final shell = DecoratedBox(
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: DailyPalette.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: expanded ? iconColor : borderColor,
-          width: expanded ? 2 : 1,
-        ),
         boxShadow: expanded
-            ? [
+            ? const [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+                  color: DailyPalette.shadowCard,
+                  blurRadius: 12,
+                  offset: Offset(0, 3),
                 ),
               ]
             : null,
@@ -1997,10 +1982,15 @@ class _CountRecordMenuCard extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            color: iconColor,
+            decoration: const BoxDecoration(
+              color: DailyPalette.card,
+              border: Border(
+                bottom: BorderSide(color: DailyPalette.hairline),
+              ),
+            ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: 22),
+                Icon(icon, color: iconColor, size: 22),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -2010,7 +2000,7 @@ class _CountRecordMenuCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: DailyPalette.ink,
                     ),
                   ),
                 ),
@@ -2043,7 +2033,7 @@ class _CountRecordMenuCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF1A2433),
+              color: DailyPalette.ink,
               height: 1.14,
             ),
           ),
@@ -2054,7 +2044,7 @@ class _CountRecordMenuCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF5C7088),
+              color: DailyPalette.inkMuted,
               height: 1.25,
             ),
           ),
@@ -2066,7 +2056,7 @@ class _CountRecordMenuCard extends StatelessWidget {
               Icon(
                 Icons.touch_app_rounded,
                 size: 14,
-                color: Color(0xFF6B7280),
+                color: DailyPalette.inkMuted,
               ),
               SizedBox(width: 4),
               Text(
@@ -2074,7 +2064,7 @@ class _CountRecordMenuCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF6B7280),
+                  color: DailyPalette.inkMuted,
                 ),
               ),
             ],
@@ -2142,9 +2132,8 @@ class _TopSettingsButton extends StatelessWidget {
           liftWhenIdle: true,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: DailyPalette.brandSurface,
+              color: DailyPalette.chipSurface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: DailyPalette.hairline),
             ),
             child: const Padding(
               padding: EdgeInsets.all(10),
@@ -2186,226 +2175,168 @@ class _HomeHeaderCompact extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: DailyPalette.brand.withValues(alpha: 0.10),
-            blurRadius: 22,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: _DailyHomeContentState._kPanelShadowColor,
-            blurRadius: 14,
-            offset: const Offset(0, 3),
+            color: DailyPalette.shadowCard,
+            blurRadius: 12,
+            offset: Offset(0, 3),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: DailyPalette.headerGradient,
-            border: Border.all(color: DailyPalette.brandBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                height: 5,
-                decoration: const BoxDecoration(
-                  gradient: DailyPalette.brandAccentBar,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: ColoredBox(
+          color: DailyPalette.card,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: DailyPalette.brand.withValues(alpha: 0.22),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: DailyPalette.brand.withValues(alpha: 0.14),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.all(10),
-                            child: AppLogo(size: 40),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                l10n.dailyLogTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 24,
-                                  color: DailyPalette.ink,
-                                  letterSpacing: -0.4,
-                                  height: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                appName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: DailyPalette.inkMuted,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SoftPressButton(
-                          onTap: () => onRefresh(),
-                          size: SoftPressSize.small,
-                          borderRadius: 12,
-                          liftWhenIdle: true,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: DailyPalette.brandSurface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: DailyPalette.hairline,
-                              ),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(
-                                Icons.refresh_rounded,
-                                color: DailyPalette.inkSubtle,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _TopSettingsButton(onTap: onOpenSettings),
-                      ],
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: DailyPalette.card,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: AppLogo(size: 40),
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.dailyLogTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 24,
+                              color: DailyPalette.ink,
+                              letterSpacing: -0.4,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            appName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: DailyPalette.inkMuted,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     SoftPressButton(
-                      onTap: onPickDay,
-                      size: SoftPressSize.medium,
-                      borderRadius: 18,
-                      isDarkSurface: false,
+                      onTap: () => onRefresh(),
+                      size: SoftPressSize.small,
+                      borderRadius: 12,
                       liftWhenIdle: true,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          gradient: DailyPalette.dateChipGradient,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: DailyPalette.brandBorder,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: DailyPalette.brand.withValues(alpha: 0.08),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
+                          color: DailyPalette.chipSurface,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                          child: Row(
-                            children: [
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: DailyPalette.brandIconGradient,
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: DailyPalette.brand.withValues(alpha: 0.28),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(11),
-                                  child: Icon(
-                                    Icons.calendar_month_rounded,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      selectedDateLabel,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 18,
-                                        color: DailyPalette.brandDateInk,
-                                        height: 1.2,
-                                        letterSpacing: -0.2,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      changeDayHint,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12.5,
-                                        color: DailyPalette.inkMuted.withValues(alpha: 0.95),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: DailyPalette.brand,
-                                size: 28,
-                              ),
-                            ],
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.refresh_rounded,
+                            color: DailyPalette.inkSubtle,
+                            size: 22,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _HeaderStatChip(
-                          icon: Icons.access_time_filled_rounded,
-                          label: '${l10n.latestPrefix} $lastLabel',
-                        ),
-                        _LiveClockChip(l10n: l10n),
-                      ],
-                    ),
+                    const SizedBox(width: 8),
+                    _TopSettingsButton(onTap: onOpenSettings),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                SoftPressButton(
+                  onTap: onPickDay,
+                  size: SoftPressSize.medium,
+                  borderRadius: 18,
+                  isDarkSurface: false,
+                  liftWhenIdle: true,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: DailyPalette.chipSurface,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.calendar_month_rounded,
+                            color: DailyPalette.brand,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  selectedDateLabel,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                    color: DailyPalette.ink,
+                                    height: 1.2,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  changeDayHint,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12.5,
+                                    color: DailyPalette.inkMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: DailyPalette.brand,
+                            size: 28,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _HeaderStatChip(
+                      icon: Icons.access_time_filled_rounded,
+                      label: '${l10n.latestPrefix} $lastLabel',
+                    ),
+                    _LiveClockChip(l10n: l10n),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2462,7 +2393,6 @@ class _HeaderStatChip extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  static const Color iconColor = Color(0xFF415268);
 
   @override
   Widget build(BuildContext context) {
@@ -2475,16 +2405,15 @@ class _HeaderStatChip extends StatelessWidget {
         final labelMax = (cap - 44).clamp(48.0, 260.0);
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFFF7FAFD),
+            color: DailyPalette.chipSurface,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFDCE4EF)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: iconColor, size: 15),
+                Icon(icon, color: DailyPalette.inkMuted, size: 15),
                 const SizedBox(width: 5),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: labelMax),
@@ -2493,7 +2422,7 @@ class _HeaderStatChip extends StatelessWidget {
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF415268),
+                      color: DailyPalette.inkMuted,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2843,13 +2772,13 @@ class _ProBottomNav extends StatelessWidget {
     final navHeight = profile.navBarHeight;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: DailyPalette.brand.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
+            color: DailyPalette.shadowCard,
+            blurRadius: 12,
+            offset: Offset(0, -3),
           ),
         ],
       ),

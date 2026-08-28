@@ -86,7 +86,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       subtitle: 'บันทึกจำนวนเที่ยวรถ',
       icon: Icons.fire_truck_rounded,
       accent: DailyPalette.countTripIcon,
-      iconTileColor: DailyPalette.countTripBg,
+      iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
       onTap: () => widget.onSelect(CountRecordWorkMode.trip),
     );
@@ -95,7 +95,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       subtitle: 'บันทึกการร่อนทราย',
       icon: Icons.water_drop_rounded,
       accent: DailyPalette.countSandIcon,
-      iconTileColor: DailyPalette.countSandBg,
+      iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
       onTap: () => widget.onSelect(CountRecordWorkMode.sand),
     );
@@ -104,7 +104,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       subtitle: 'ทั้ง 2 อย่าง — แสดงสองการ์ด',
       icon: Icons.layers_rounded,
       accent: _brandTeal,
-      iconTileColor: DailyPalette.countBothIconTile,
+      iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
       dualIcons: true,
       onTap: () => widget.onSelect(CountRecordWorkMode.both),
