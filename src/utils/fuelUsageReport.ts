@@ -112,8 +112,13 @@ export function fuelPrintGroupTitle(group: FuelPrintGroup): string {
     }
 }
 
-/** จัดกลุ่มแถวสำหรับพิมพ์แยก 3 ฉบับ */
-export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup {
+/** เติมเครื่องจักร: โอนถังหลัก → สำรอง — ไม่รวมในรายงานเติมน้ำมันอื่นๆ */
+export function isMachineReserveTransferRow(row: FuelUsageRow): boolean {
+    return row.kind === 'withdraw';
+}
+
+/** จัดกลุ่มแถวสำหรับพิมพ์แยก 3 ฉบับ — null = ไม่พิมพ์ในฉบับใด */
+export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup | null {
     const workType = (row.workType ?? '').trim().toLowerCase();
     const sub = (row.subCategory ?? '').trim();
 
@@ -122,6 +127,8 @@ export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup {
 
     if (sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY) return 'macro';
     if (row.kind === 'vehicle' && workType !== 'car' && isMacroVehicleId(row.vehicleId)) return 'macro';
+
+    if (isMachineReserveTransferRow(row)) return null;
 
     return 'other_fill';
 }
@@ -460,10 +467,10 @@ export function fuelUsageToPrintHtml(opts: {
 
     let summaryBlock: string;
     if (opts.group === 'other_fill') {
-        const fillTotal = t.stockInLiters + t.withdrawLiters + t.vehicleLiters + t.otherOutLiters;
+        const fillTotal = t.stockInLiters + t.vehicleLiters + t.otherOutLiters;
         summaryBlock = `<p class="summary">
 <span>รับเข้า (ถังหลัก) <strong>${escHtml(fmtLiters(t.stockInLiters))} ลิตร</strong></span>
-<span>เบิกไปถังสำรอง <strong>${escHtml(fmtLiters(t.withdrawLiters))} ลิตร</strong></span>
+<span>เติม/ใช้อื่นๆ <strong>${escHtml(fmtLiters(t.vehicleLiters + t.otherOutLiters))} ลิตร</strong></span>
 <span>รวมทั้งหมด <strong>${escHtml(fmtLiters(fillTotal))} ลิตร</strong></span>
 </p>`;
     } else {

@@ -440,6 +440,13 @@ describe('fuelPrintGroupOf', () => {
             kind: 'stock_in',
             subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
         }))).toBe('other_fill');
+
+        expect(fuelPrintGroupOf(row({
+            kind: 'withdraw',
+            subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+            workType: 'machine',
+            description: 'เติมเครื่องจักร',
+        }))).toBeNull();
     });
 
     it('filters grouped reports for print', () => {
@@ -465,11 +472,22 @@ describe('fuelPrintGroupOf', () => {
                 fuelMovement: 'stock_in',
                 quantity: 1000,
             }),
+            fuelTx({
+                id: 'tr-out',
+                date: '2026-08-10',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelTank: 'main',
+                workType: 'machine',
+                quantity: 600,
+                description: 'เติมเครื่องจักร',
+            }),
         ], { start: '2026-08-01', end: '2026-08-31' });
 
         expect(filterFuelUsageReport(report, 'macro').rows.map(r => r.id)).toEqual(['macro']);
         expect(filterFuelUsageReport(report, 'sieve_generator').rows.map(r => r.id)).toEqual(['gen']);
         expect(filterFuelUsageReport(report, 'other_fill').rows.map(r => r.id)).toEqual(['in']);
+        expect(filterFuelUsageReport(report, 'other_fill').rows.some(r => r.id === 'tr-out')).toBe(false);
     });
 });
 
