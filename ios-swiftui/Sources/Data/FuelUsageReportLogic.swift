@@ -1,0 +1,528 @@
+import Foundation
+
+/// Web parity — `src/utils/fuelUsageReport.ts` + `computeFuelStockBalances` in `src/utils/index.ts`.
+enum FuelUsageReportLogic {
+    enum Kind: String, Sendable {
+        case stockIn
+        case vehicle
+        case withdraw
+        case sandSieve
+        case otherOut
+    }
+
+    enum FuelTypeFilter: String, Sendable {
+        case diesel = "Diesel"
+        case benzine = "Benzine"
+    }
+
+    enum Tank: String, Sendable {
+        case main
+        case reserve
+    }
+
+    struct Filters: Sendable {
+        var start: String
+        var end: String
+        var vehicleId: String = ""
+        var fuelType: FuelTypeFilter?
+        var kind: Kind?
+        var estimatedSieveByDay: [String: Double] = [:]
+    }
+
+    struct Row: Identifiable, Sendable {
+        let id: String
+        let date: String
+        let kind: Kind
+        let fuelType: FuelTypeFilter
+        let tank: Tank
+        let vehicleId: String
+        let liters: Double
+        let amount: Double
+        let description: String
+        let subCategory: String?
+        let workType: String?
+        let estimated: Bool
+    }
+
+    struct Totals: Sendable {
+        var stockInLiters: Double = 0
+        var stockInAmount: Double = 0
+        var vehicleLiters: Double = 0
+        var vehicleAmount: Double = 0
+        var withdrawLiters: Double = 0
+        var sandSieveLiters: Double = 0
+        var otherOutLiters: Double = 0
+        var usageLiters: Double = 0
+        var usageAmount: Double = 0
+        var count: Int = 0
+    }
+
+    struct VehicleRow: Identifiable, Sendable {
+        var id: String { vehicleId }
+        let vehicleId: String
+        let liters: Double
+        let amount: Double
+        let count: Int
+    }
+
+    struct DayRow: Identifiable, Sendable {
+        var id: String { date }
+        let date: String
+        let stockInLiters: Double
+        let usageLiters: Double
+        let usageAmount: Double
+        let count: Int
+    }
+
+    struct Report: Sendable {
+        let rows: [Row]
+        let totals: Totals
+        let byVehicle: [VehicleRow]
+        let byDay: [DayRow]
+    }
+
+    struct StockBalances: Sendable {
+        var diesel: Double
+        var benzine: Double
+        var dieselReserve: Double
+        var benzineReserve: Double
+        var reserveShortfallLiters: Double
+    }
+
+    private static let unnamedVehicle = "ไม่ระบุรถ"
+    private static let taplienLegacyIds: Set<String> = [
+        "รถตาเปลื่ยน",
+        "ISUZU KB",
+        "รถISUZUKB",
+        "ISUZUตา",
+        "IsuzuKB",
+    ]
+
+    static func normalizeDate(_ d: String?) -> String {
+        guard let d, d.count >= 10 else { return d ?? "" }
+        return String(d.prefix(10))
+    }
+
+    static func kindLabel(_ kind: Kind) -> String {
+        switch kind {
+        case .stockIn: return "รับเข้า (ถังหลัก)"
+        case .vehicle: return "ใช้แล้ว (รถ/แม็คโคร)"
+        case .withdraw: return "เบิกไปถังสำรอง"
+        case .sandSieve: return "ใช้แล้ว (ร่อนทราย)"
+        case .otherOut: return "ใช้แล้ว (อื่น ๆ)"
+        }
+    }
+
+    static func tankLabel(_ tank: Tank) -> String {
+        tank == .reserve ? "ถังสำรอง" : "ถังหลัก"
+    }
+
+    static func fuelTypeLabel(_ fuelType: FuelTypeFilter) -> String {
+        fuelType == .benzine ? "เบนซิน" : "ดีเซล"
+    }
+
+    static func inferFuelMovement(_ t: Transaction) -> String {
+        guard t.category == "Fuel" else { return "stock_out" }
+        if t.fuelMovement == "stock_in" || t.fuelMovement == "stock_out" {
+            return t.fuelMovement ?? "stock_out"
+        }
+        let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return vehicle.isEmpty ? "stock_in" : "stock_out"
+    }
+
+    static func normalizeFuelTank(_ raw: String?) -> Tank {
+        let v = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if v == FuelLogic.tankReserve || v == "สำรอง" { return .reserve }
+        return .main
+    }
+
+    static func fuelUsageTankOf(_ t: Transaction) -> Tank {
+        let raw = (t.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty { return normalizeFuelTank(raw) }
+        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.category == "Fuel", sub == FuelLogic.vehicleUsageSubCategory {
+            return .reserve
+        }
+        return .main
+    }
+
+    static func normalizeVehicleId(_ raw: String) -> String {
+        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if taplienLegacyIds.contains(v) { return "รถตาเปลื่ยน (ISUZU KB)" }
+        return v
+    }
+
+    private static func withdrawPurpose(_ t: Transaction) -> String {
+        (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func classifyFuelTx(_ t: Transaction) -> Kind? {
+        guard t.category == "Fuel", t.type == .expense else { return nil }
+
+        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let movement = inferFuelMovement(t)
+        let tank = fuelUsageTankOf(t)
+        let purpose = withdrawPurpose(t)
+
+        if sub == FuelLogic.transferSubCategory, movement == "stock_in" {
+            return nil
+        }
+
+        if sub == FuelLogic.stockInSubCategory
+            || (movement == "stock_in" && tank == .main && sub != FuelLogic.transferSubCategory) {
+            return .stockIn
+        }
+
+        if sub == FuelLogic.transferSubCategory, movement == "stock_out" {
+            return .withdraw
+        }
+        if sub == FuelLogic.withdrawSubCategory, purpose == "machine" {
+            return .withdraw
+        }
+
+        if sub == FuelLogic.sandSieveSubCategory {
+            return .sandSieve
+        }
+
+        if sub == FuelLogic.withdrawSubCategory {
+            if purpose == "car" { return .vehicle }
+            return .otherOut
+        }
+
+        if sub == FuelLogic.vehicleUsageSubCategory
+            || !(t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .vehicle
+        }
+
+        if movement == "stock_in" { return .stockIn }
+        return .otherOut
+    }
+
+    private static func resolveFuelType(_ t: Transaction) -> FuelTypeFilter {
+        (t.fuelType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "benzine"
+            ? .benzine : .diesel
+    }
+
+    private static func isUsageKind(_ kind: Kind) -> Bool {
+        kind == .vehicle || kind == .sandSieve || kind == .otherOut
+    }
+
+    private static func sandLapTimes(_ t: Transaction) -> [String] {
+        guard let raw = t.workAssignments?["lapTimes"] else { return [] }
+        return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// Web `estimateSieveUsageByDay` — inferred liters for days without persisted SandSieve row.
+    static func estimateSieveByDay(transactions: [Transaction]) -> [String: Double] {
+        var sandSieveDays = Set<String>()
+        var sandByDay: [String: Transaction] = [:]
+
+        for t in transactions {
+            let day = normalizeDate(t.date)
+            guard !day.isEmpty, day >= FuelLogic.stockCutoverYmd else { continue }
+
+            if t.category == "Fuel", t.type == .expense,
+               (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == FuelLogic.sandSieveSubCategory {
+                sandSieveDays.insert(day)
+                continue
+            }
+
+            guard t.category == "DailyLog",
+                  (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == "Sand"
+            else { continue }
+
+            let laps = sandLapTimes(t)
+            guard !laps.isEmpty else { continue }
+            if let prev = sandByDay[day] {
+                let prevLen = sandLapTimes(prev).count
+                if laps.count >= prevLen { sandByDay[day] = t }
+            } else {
+                sandByDay[day] = t
+            }
+        }
+
+        var out: [String: Double] = [:]
+        for (day, sandTx) in sandByDay {
+            if sandSieveDays.contains(day) { continue }
+            let laps = sandLapTimes(sandTx)
+            let hours = CountRecordAnalytics.computeWorkDuration(lapTimes: laps, dayKey: day)?.totalActiveHours ?? 0
+            guard hours > 0 else { continue }
+            let liters = (hours * FuelLogic.sandSieveLitersPerHour * 100).rounded() / 100
+            if liters > 0 { out[day] = liters }
+        }
+        return out
+    }
+
+    static func buildReport(
+        transactions: [Transaction],
+        filters: Filters
+    ) -> Report {
+        let start = normalizeDate(filters.start)
+        let end = normalizeDate(filters.end)
+        let vehicleFilter = filters.vehicleId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fuelTypeFilter = filters.fuelType
+        let kindFilter = filters.kind
+
+        var rows: [Row] = []
+        for t in transactions {
+            guard let kind = classifyFuelTx(t) else { continue }
+            let date = normalizeDate(t.date)
+            guard date >= start, date <= end else { continue }
+
+            let rawVehicleId = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            var vehicleId = normalizeVehicleId(
+                rawVehicleId.isEmpty
+                    ? (kind == .sandSieve ? FuelLogic.sandSieveVehicleId
+                        : (kind == .vehicle || kind == .otherOut ? unnamedVehicle : ""))
+                    : rawVehicleId
+            )
+
+            if !vehicleFilter.isEmpty, vehicleId != vehicleFilter { continue }
+            let fuelType = resolveFuelType(t)
+            if let fuelTypeFilter, fuelType != fuelTypeFilter { continue }
+            if let kindFilter, kind != kindFilter { continue }
+
+            let desc = (t.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (t.workDetails ?? "") : t.description)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            rows.append(Row(
+                id: t.id,
+                date: date,
+                kind: kind,
+                fuelType: fuelType,
+                tank: fuelUsageTankOf(t),
+                vehicleId: vehicleId,
+                liters: DashboardAggregations.fuelTxToLiters(t),
+                amount: t.amount,
+                description: desc,
+                subCategory: (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                workType: (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                estimated: false
+            ))
+        }
+
+        let estimated = filters.estimatedSieveByDay
+        if vehicleFilter.isEmpty,
+           fuelTypeFilter == nil || fuelTypeFilter == .diesel,
+           kindFilter == nil || kindFilter == .sandSieve {
+            for (dayRaw, liters) in estimated {
+                let date = normalizeDate(dayRaw)
+                guard liters > 0, date >= start, date <= end else { continue }
+                rows.append(Row(
+                    id: "\(date)_fuel_sand_sieve_est",
+                    date: date,
+                    kind: .sandSieve,
+                    fuelType: .diesel,
+                    tank: .reserve,
+                    vehicleId: FuelLogic.sandSieveVehicleId,
+                    liters: liters,
+                    amount: 0,
+                    description: "ประมาณจากชั่วโมงร่อนทราย \(Int(FuelLogic.sandSieveLitersPerHour)) ลิตร/ชม.",
+                    subCategory: FuelLogic.sandSieveSubCategory,
+                    workType: nil,
+                    estimated: true
+                ))
+            }
+        }
+
+        rows.sort {
+            if $0.date != $1.date { return $0.date < $1.date }
+            return $0.id < $1.id
+        }
+
+        return aggregateRows(rows)
+    }
+
+    static func buildReport(
+        transactions: [Transaction],
+        start: String,
+        end: String,
+        allTransactionsForEstimate: [Transaction]? = nil
+    ) -> Report {
+        let source = allTransactionsForEstimate ?? transactions
+        let estimated = estimateSieveByDay(transactions: source)
+        return buildReport(
+            transactions: transactions,
+            filters: Filters(start: start, end: end, estimatedSieveByDay: estimated)
+        )
+    }
+
+    static func dayReport(transactions: [Transaction], dayKey: String) -> Report {
+        buildReport(transactions: transactions, start: dayKey, end: dayKey)
+    }
+
+    private static func aggregateRows(_ rows: [Row]) -> Report {
+        var totals = Totals()
+        totals.count = rows.count
+        var vehicleMap: [String: (liters: Double, amount: Double, count: Int)] = [:]
+        var dayMap: [String: (stockInLiters: Double, usageLiters: Double, usageAmount: Double, count: Int)] = [:]
+
+        for row in rows {
+            switch row.kind {
+            case .stockIn:
+                totals.stockInLiters += row.liters
+                totals.stockInAmount += row.amount
+            case .vehicle:
+                totals.vehicleLiters += row.liters
+                totals.vehicleAmount += row.amount
+            case .withdraw:
+                totals.withdrawLiters += row.liters
+            case .sandSieve:
+                totals.sandSieveLiters += row.liters
+            case .otherOut:
+                totals.otherOutLiters += row.liters
+            }
+
+            if isUsageKind(row.kind) {
+                totals.usageLiters += row.liters
+                totals.usageAmount += row.amount
+            }
+
+            if !row.vehicleId.isEmpty {
+                var prev = vehicleMap[row.vehicleId] ?? (0, 0, 0)
+                prev.liters += row.liters
+                prev.amount += row.amount
+                prev.count += 1
+                vehicleMap[row.vehicleId] = prev
+            }
+
+            var day = dayMap[row.date] ?? (0, 0, 0, 0)
+            day.count += 1
+            if row.kind == .stockIn { day.stockInLiters += row.liters }
+            if isUsageKind(row.kind) {
+                day.usageLiters += row.liters
+                day.usageAmount += row.amount
+            }
+            dayMap[row.date] = day
+        }
+
+        let byVehicle = vehicleMap.map { VehicleRow(vehicleId: $0.key, liters: $0.value.liters, amount: $0.value.amount, count: $0.value.count) }
+            .sorted { lhs, rhs in
+                if lhs.liters != rhs.liters { return lhs.liters > rhs.liters }
+                return lhs.vehicleId.localizedCompare(rhs.vehicleId) == .orderedAscending
+            }
+
+        let byDay = dayMap.map { DayRow(date: $0.key, stockInLiters: $0.value.stockInLiters, usageLiters: $0.value.usageLiters, usageAmount: $0.value.usageAmount, count: $0.value.count) }
+            .sorted { $0.date < $1.date }
+
+        return Report(rows: rows, totals: totals, byVehicle: byVehicle, byDay: byDay)
+    }
+
+    /// Web `computeFuelStockBalances` — remaining main/reserve through `endDate` inclusive.
+    static func computeStockBalances(
+        transactions: [Transaction],
+        opening: FuelStock?,
+        estimatedSieveByDay: [String: Double] = [:]
+    ) -> StockBalances {
+        struct Bucket {
+            var stockIn = 0.0
+            var withdraw = 0.0
+        }
+
+        var buckets: [String: Bucket] = [:]
+
+        var transferMachineDays = Set<String>()
+        for t in transactions {
+            guard t.category == "Fuel", t.type == .expense else { continue }
+            let day = normalizeDate(t.date)
+            guard day >= FuelLogic.stockCutoverYmd else { continue }
+            let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if sub == FuelLogic.transferSubCategory,
+               withdrawPurpose(t) == "machine" {
+                transferMachineDays.insert(day)
+            }
+        }
+
+        for t in transactions {
+            guard t.category == "Fuel", t.type == .expense else { continue }
+            let day = normalizeDate(t.date)
+            guard day >= FuelLogic.stockCutoverYmd else { continue }
+            let liters = DashboardAggregations.fuelTxToLiters(t)
+            guard liters > 0 else { continue }
+
+            let isBenzine = resolveFuelType(t) == .benzine
+            let tank = fuelUsageTankOf(t)
+            let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let purpose = withdrawPurpose(t)
+            let movement = inferFuelMovement(t)
+            let key = "\(day)|\(tank.rawValue)|\(isBenzine ? "B" : "D")"
+
+            if movement == "stock_in" {
+                buckets[key, default: Bucket()].stockIn += liters
+                continue
+            }
+
+            if sub == FuelLogic.withdrawSubCategory {
+                buckets[key, default: Bucket()].withdraw += liters
+                if purpose == "machine", !transferMachineDays.contains(day) {
+                    let reserveKey = "\(day)|\(Tank.reserve.rawValue)|\(isBenzine ? "B" : "D")"
+                    buckets[reserveKey, default: Bucket()].stockIn += liters
+                }
+                continue
+            }
+
+            if sub == FuelLogic.transferSubCategory
+                || sub == FuelLogic.sandSieveSubCategory
+                || sub == FuelLogic.vehicleUsageSubCategory {
+                buckets[key, default: Bucket()].withdraw += liters
+            }
+        }
+
+        for (dayRaw, liters) in estimatedSieveByDay {
+            let day = normalizeDate(dayRaw)
+            guard liters > 0, day >= FuelLogic.stockCutoverYmd else { continue }
+            let key = "\(day)|\(Tank.reserve.rawValue)|D"
+            buckets[key, default: Bucket()].withdraw += liters
+        }
+
+        var mainD = opening?.diesel ?? 0
+        var mainB = opening?.benzine ?? 0
+        var reserveD = 0.0
+        var reserveB = 0.0
+
+        for (key, bucket) in buckets {
+            let delta = bucket.stockIn - bucket.withdraw
+            let isReserve = key.contains("|\(Tank.reserve.rawValue)|")
+            let isBenzine = key.hasSuffix("|B")
+            if isReserve {
+                if isBenzine { reserveB += delta } else { reserveD += delta }
+            } else if isBenzine {
+                mainB += delta
+            } else {
+                mainD += delta
+            }
+        }
+
+        let reserveShortfall = max(0, -reserveD) + max(0, -reserveB)
+        return StockBalances(
+            diesel: mainD,
+            benzine: mainB,
+            dieselReserve: reserveD,
+            benzineReserve: reserveB,
+            reserveShortfallLiters: reserveShortfall
+        )
+    }
+
+    static func stockBalancesThrough(
+        endDate: String,
+        transactions: [Transaction],
+        opening: FuelStock?
+    ) -> StockBalances {
+        let end = normalizeDate(endDate)
+        let through = transactions.filter { normalizeDate($0.date) <= end }
+        let estimated = estimateSieveByDay(transactions: transactions)
+            .filter { normalizeDate($0.key) <= end }
+        return computeStockBalances(
+            transactions: through,
+            opening: opening,
+            estimatedSieveByDay: estimated
+        )
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}

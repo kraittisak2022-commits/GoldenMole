@@ -119,7 +119,7 @@ enum MobileOpsSnapshot {
         m.macroUsageCount = macroRows.count
         m.macroVehicles = Set(macroRows.compactMap { $0.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }).count
 
-        let fuel = fuelBreakdown(dayTx, dayKey: dayKey)
+        let fuel = fuelBreakdown(dayTx, dayKey: dayKey, allTransactions: transactions)
         m.fuelInLiters = fuel.inLiters
         m.fuelOutLiters = fuel.outLiters
         m.fuelWithdrawLiters = fuel.withdrawLiters
@@ -222,7 +222,11 @@ enum MobileOpsSnapshot {
         return false
     }
 
-    nonisolated private static func fuelBreakdown(_ txs: [Transaction], dayKey: String) -> (
+    nonisolated private static func fuelBreakdown(
+        _ dayTx: [Transaction],
+        dayKey: String,
+        allTransactions: [Transaction]
+    ) -> (
         inLiters: Double,
         outLiters: Double,
         withdrawLiters: Double,
@@ -232,22 +236,21 @@ enum MobileOpsSnapshot {
         carFillLiters: Double,
         carFillCount: Int
     ) {
-        var inn = 0.0
-        var out = 0.0
+        let report = FuelUsageReportLogic.buildReport(
+            transactions: dayTx,
+            start: dayKey,
+            end: dayKey,
+            allTransactionsForEstimate: allTransactions
+        )
         var withdraw = 0.0
         var withdrawCount = 0
         var macroLiters = 0.0
         var macroVehicleIds = Set<String>()
         var carFill = 0.0
         var carFillCount = 0
-        for t in txs where FuelLogic.isFuelExpense(t) {
+        for t in dayTx where String(t.date.prefix(10)) == dayKey && FuelLogic.isFuelExpense(t) {
             let liters = DashboardAggregations.fuelTxToLiters(t)
             guard liters != 0 else { continue }
-            if FuelLogic.isStockIn(t) {
-                inn += liters
-                continue
-            }
-            out += liters
             if FuelLogic.isCarFill(t) {
                 carFill += liters
                 carFillCount += 1
@@ -261,7 +264,15 @@ enum MobileOpsSnapshot {
                 }
             }
         }
-        out += FuelLogic.inferredSandSieveLiters(on: dayKey, transactions: txs)
-        return (inn, out, withdraw, withdrawCount, macroLiters, macroVehicleIds.count, carFill, carFillCount)
+        return (
+            report.totals.stockInLiters,
+            report.totals.usageLiters,
+            withdraw,
+            withdrawCount,
+            macroLiters,
+            macroVehicleIds.count,
+            carFill,
+            carFillCount
+        )
     }
 }

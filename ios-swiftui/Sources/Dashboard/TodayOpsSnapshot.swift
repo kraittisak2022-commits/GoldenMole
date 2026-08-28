@@ -49,7 +49,8 @@ struct TodayOpsSnapshot: Sendable {
         settings: AppSettings,
         dayKey: String = DashboardAggregations.todayYMD()
     ) -> TodayOpsSnapshot {
-        let fuel = FuelLogic.computeBalance(
+        let stock = FuelUsageReportLogic.stockBalancesThrough(
+            endDate: dayKey,
             transactions: transactions,
             opening: settings.fuelOpeningStockLiters
         )
@@ -162,10 +163,10 @@ struct TodayOpsSnapshot: Sendable {
 
         return TodayOpsSnapshot(
             dayKey: dayKey,
-            dieselLiters: fuel.mainDiesel,
-            mainDieselLiters: fuel.mainDiesel,
-            reserveDieselLiters: fuel.reserveDiesel,
-            benzineLiters: fuel.benzine,
+            dieselLiters: stock.diesel,
+            mainDieselLiters: stock.diesel,
+            reserveDieselLiters: stock.dieselReserve,
+            benzineLiters: stock.benzine,
             laborBaht: laborBaht,
             vehicleBaht: vehicleBaht,
             presentCount: workingIds.count,
