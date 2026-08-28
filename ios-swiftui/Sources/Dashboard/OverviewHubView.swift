@@ -165,6 +165,7 @@ struct OverviewHubView: View {
             VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                 greetingHeader
                 todayHighlightCard
+                dailyEventsCard
                 opsMetricGrid
                 drumVehiclesCard
                 macroVehiclesCard
@@ -678,6 +679,82 @@ struct OverviewHubView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Daily events (Android «เหตุการณ์»)
+
+    private var dailyEventRows: [Transaction] {
+        EventLogic.dayEvents(dayKey: focusDayKey, transactions: allTransactions)
+    }
+
+    private var dailyEventsCard: some View {
+        let rows = dailyEventRows
+        let title: String = {
+            if isFocusToday {
+                return "เหตุการณ์วันนี้ · \(rows.count) รายการ"
+            }
+            return "เหตุการณ์ · \(DashboardAggregations.thaiDateLong(focusDayKey)) · \(rows.count) รายการ"
+        }()
+
+        return Group {
+            if !rows.isEmpty {
+                NavigationLink {
+                    EventHubView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label(title, systemImage: "exclamationmark.bubble.fill")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(AppTheme.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                        }
+
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, event in
+                            if index > 0 { Divider() }
+                            dailyEventRow(event)
+                        }
+                    }
+                    .padding(18)
+                    .background(summaryCardBackground)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("แตะเพื่อเปิดเมนูเหตุการณ์")
+            }
+        }
+    }
+
+    private func dailyEventRow(_ t: Transaction) -> some View {
+        let kind = EventLogic.EventKind.from(raw: t.eventType)
+        let priority = EventLogic.Priority.from(raw: t.eventPriority)
+        let text = EventLogic.stripRecorder(t.description)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: kind.systemImage)
+                    .foregroundStyle(kind.accent)
+                Text(kind.label)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(kind.accent)
+                if priority == .urgent {
+                    Text("ด่วน")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(AppTheme.expense.opacity(0.15)))
+                        .foregroundStyle(AppTheme.expense)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(text.isEmpty ? "—" : text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Drum vehicles
