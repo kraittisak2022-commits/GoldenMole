@@ -14,6 +14,7 @@ import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
+import '../widgets/app_page_route.dart';
 import '../widgets/attendance_sub_mode_picker.dart';
 import '../widgets/daily_record_day_picker.dart';
 import '../widgets/fuel_sub_mode_picker.dart';
@@ -557,6 +558,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [];
   bool _fuelExtraVehiclesExpanded = false;
+
+  /// วัน (ymd) ที่เคยเด้ง popup เตือนให้ไปบันทึกการใช้รถแม็คโครแล้ว
+  String? _fuelMacroPromptDayKey;
 
   // ── น้ำมัน: เมนูย่อย + สต็อกถัง ──
   /// เมนูย่อยที่เลือกอยู่ใน «น้ำมัน» (null = ยังอยู่หน้าเลือกเมนู)
@@ -1467,6 +1471,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
+  /// รถที่แสดงในฟอร์มน้ำมันแม็คโคร = คันที่มีบันทึกการใช้รถวันนั้น
+  /// + คันที่เคยบันทึกน้ำมันของวันนั้นไว้แล้ว (กันข้อมูลเดิมหาย/แก้ไม่ได้)
+  List<String> _fuelMacroCarsForDay() {
+    final dayKey = _quickYmd(_selectedDate);
+    final out = <String>[];
+    for (final car in _fuelMacroCars()) {
+      final worked = macroVehicleWorkedForDay(
+        dayKey,
+        car,
+        _moduleDayAllTransactions,
+      );
+      if (worked) {
+        out.add(car);
+        continue;
+      }
+      final row = _fuelDraftForVehicle(car);
+      if (row == null) continue;
+      final saved = row.txId != null && row.txId!.trim().isNotEmpty;
+      final liters = double.tryParse(row.liters.trim()) ?? 0;
+      if (saved || liters > 0 || row.time.trim().isNotEmpty) {
+        out.add(car);
+      }
+    }
+    return out;
+  }
+
   bool _fuelVehicleMatchesPinned(String car, String nickname) {
     return car.contains(nickname);
   }
@@ -1582,7 +1612,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   /// เปิดกลุ่มรถแม็คโครเพิ่มเติมถ้ามีข้อมูลบันทึกแล้ว (กันซ่อนคันที่มีค่า)
   void _expandFuelExtraIfNeeded() {
-    final fuelCars = _fuelMacroCars();
+    final fuelCars = _fuelMacroCarsForDay();
     final extra = _fuelExtraMacroCars(fuelCars);
     for (final car in extra) {
       final row = _fuelDraftForVehicle(car);
@@ -1594,6 +1624,91 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         return;
       }
     }
+  }
+
+  /// เด้ง popup เมื่อยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้
+  Future<void> _maybePromptMacroUsageForFuel() async {
+    if (!mounted) return;
+    if (!_isFuelMode) return;
+    if (_fuelSubMode != FuelSubMode.macroUsage) return;
+    if (_moduleDayLoading) return;
+    if (_fuelMacroCars().isEmpty) return;
+    if (_fuelMacroCarsForDay().isNotEmpty) return;
+    final dayKey = _quickYmd(_selectedDate);
+    if (_fuelMacroPromptDayKey == dayKey) return;
+    _fuelMacroPromptDayKey = dayKey;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          size: 36,
+          color: Color(0xFFF08A24),
+        ),
+        title: Text(
+          'ยังไม่มีบันทึกการใช้รถแม็คโคร',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'ต้องบันทึกการทำงานรถแม็คโครในเมนู «บันทึกการใช้รถแม็คโคร» ก่อน '
+          'จึงจะกรอกการใช้น้ำมันรายคันได้',
+          style: GoogleFonts.kanit(fontSize: 15.5, height: 1.35),
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'ปิด',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0F5FAF),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ไปบันทึกการใช้รถแม็คโคร',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (go == true) {
+      await _openMacroVehicleUsageFromFuel();
+    }
+  }
+
+  /// เปิดหน้าบันทึกการใช้รถแม็คโครจากฟอร์มน้ำมัน แล้วรีเฟรชรายการเมื่อกลับมา
+  Future<void> _openMacroVehicleUsageFromFuel() async {
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      AppPageRoute<void>(
+        style: AppTransitionStyle.modalUp,
+        page: QuickInputScreen(
+          service: widget.service,
+          employeeService: widget.employeeService,
+          currentAdmin: widget.currentAdmin,
+          initialCategory: 'การใช้รถแม็คโคร',
+          appBarTitle: 'บันทึกการใช้รถแม็คโคร',
+          selectedDateForModule: DateTime(
+            _selectedDate.year,
+            _selectedDate.month,
+            _selectedDate.day,
+          ),
+          serverOnlineHint: widget.serverOnlineHint,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadModuleTransactions(forceRefresh: true);
   }
 
   /// รถดรัม/เที่ยว — ดรัม + หกล้อ/สิบล้อ (จากรายการตั้งค่าแอพ)
@@ -2106,6 +2221,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       if (_fuelSubMode == FuelSubMode.macroUsage) {
         _expandFuelExtraIfNeeded();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_maybePromptMacroUsageForFuel());
+        });
       }
       return;
     }
@@ -4683,11 +4801,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       requireSignature: false,
       stayOnPage: true,
       body: () async {
-        final fuelCars = _fuelMacroCars();
+        final fuelCars = _fuelMacroCarsForDay();
         if (fuelCars.isEmpty) {
-          _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
+          if (_fuelMacroCars().isEmpty) {
+            _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
+          }
+          _failSave(
+            'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
+            'บันทึกการทำงานที่เมนู «บันทึกการใช้รถแม็คโคร» ก่อน',
+          );
         }
+        final allowed = fuelCars.toSet();
         final activeRows = _fuelVehicleDrafts.where((row) {
+          if (!allowed.contains(row.vehicleId.trim())) return false;
           final liters = double.tryParse(row.liters.trim()) ?? 0;
           final hasTime = row.time.trim().isNotEmpty;
           return liters > 0 || hasTime || row.txId != null;
@@ -6013,9 +6139,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       transactions: txs,
     );
     if (picked != null) {
-      setState(
-        () => _selectedDate = DateTime(picked.year, picked.month, picked.day),
-      );
+      setState(() {
+        _selectedDate = DateTime(picked.year, picked.month, picked.day);
+        _fuelMacroPromptDayKey = null;
+      });
       await _loadModuleTransactions(
         forceRefresh: _isVehicleTripMode || _isMacroVehicleMode,
       );
@@ -11503,6 +11630,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _expandFuelExtraIfNeeded();
                 }
               });
+              if (selected == FuelSubMode.macroUsage) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  unawaited(_maybePromptMacroUsageForFuel());
+                });
+              }
             },
           )
         : switch (mode) {
@@ -12506,7 +12638,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildFuelFormCard() {
-    final fuelCars = _fuelMacroCars();
+    final allMacroCars = _fuelMacroCars();
+    final fuelCars = _fuelMacroCarsForDay();
     _expandFuelExtraIfNeeded();
     final pinnedCars = _fuelPinnedMacroCars(fuelCars);
     final extraCars = _fuelExtraMacroCars(fuelCars);
@@ -12518,7 +12651,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     // เดลต้าจากฟอร์ม — หักตามถังที่เลือก; แถวที่บันทึกแล้วและไม่เปลี่ยน = 0
     var pendingMain = 0.0;
     var pendingReserve = 0.0;
+    final allowedCars = fuelCars.toSet();
     for (final row in _fuelVehicleDrafts) {
+      if (!allowedCars.contains(row.vehicleId.trim())) continue;
       final liters = double.tryParse(row.liters.trim()) ?? 0;
       final tank = normalizeFuelTank(row.fuelTank);
       var priorLiters = 0.0;
@@ -12577,7 +12712,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'กรอกเฉพาะคันที่เติมน้ำมันวันนี้ — แต่ละแถวคือรถ 1 คันจากตั้งค่าแอพ · '
+            'แสดงเฉพาะคันที่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
+            'กรอกเฉพาะคันที่เติมน้ำมัน · '
             'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
             style: GoogleFonts.kanit(
               fontSize: 13,
@@ -12600,12 +12736,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFF5C2C2)),
               ),
-              child: Text(
-                'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
-                style: GoogleFonts.kanit(
-                  color: const Color(0xFFD14343),
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    allMacroCars.isEmpty
+                        ? 'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ'
+                        : 'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
+                            'บันทึกการทำงานที่เมนู «บันทึกการใช้รถแม็คโคร» ก่อน',
+                    style: GoogleFonts.kanit(
+                      color: const Color(0xFFD14343),
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (allMacroCars.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _openMacroVehicleUsageFromFuel,
+                      icon: const Icon(Icons.front_loader, size: 20),
+                      label: Text(
+                        'ไปบันทึกการใช้รถแม็คโคร',
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F5FAF),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ] else ...[

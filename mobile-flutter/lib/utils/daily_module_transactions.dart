@@ -501,6 +501,23 @@ Set<String> macroVehicleIdsUsedForDay(
   return ids;
 }
 
+/// รถแม็คโครคันนี้มีบันทึกการใช้รถ (มีรายละเอียดงาน) ในวันนั้นหรือไม่
+bool macroVehicleWorkedForDay(
+  String dayKey,
+  String vehicle,
+  Iterable<AppTransaction> transactions,
+) {
+  final v = vehicle.trim();
+  if (v.isEmpty) return false;
+  final day = dayKey.trim();
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isMacroVehicleRealUsageRow(t)) continue;
+    if (transactionVehicleMatches(t, v)) return true;
+  }
+  return false;
+}
+
 /// คนขับจากบันทึกการใช้รถแม็คโครวันนั้น (driverId ไม่ซ้ำ) — เฉพาะคันที่มีงานจริง
 Set<String> macroDriverIdsUsedForDay(
   String dayKey,
