@@ -63,9 +63,21 @@ enum FuelLogic {
         var label: String {
             switch self {
             case .mighty: return "ไมตี้"
-            case .taplien: return "รถตาเปลื่ยน"
+            case .taplien: return "รถตาเปลื่ยน (ISUZU KB)"
             case .ahming: return "อาหมิง"
             case .other: return "อื่นๆ"
+            }
+        }
+
+        static let taplienLegacyId = "รถตาเปลื่ยน"
+
+        static func from(vehicleId: String) -> CarFillVehicle {
+            let v = vehicleId.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch v {
+            case "ไมตี้": return .mighty
+            case "รถตาเปลื่ยน (ISUZU KB)", taplienLegacyId: return .taplien
+            case "อาหมิง": return .ahming
+            default: return .other
             }
         }
 

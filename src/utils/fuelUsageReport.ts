@@ -65,6 +65,13 @@ export interface FuelUsageReport {
 
 const UNNAMED_VEHICLE = 'ไม่ระบุรถ';
 
+/** ชื่อรถเก่า → ชื่อมาตรฐานปัจจุบัน */
+function normalizeFuelReportVehicleId(raw: string): string {
+    const v = raw.trim();
+    if (v === 'รถตาเปลื่ยน') return 'รถตาเปลื่ยน (ISUZU KB)';
+    return v;
+}
+
 export function fuelKindLabel(kind: FuelUsageKind): string {
     switch (kind) {
         case 'stock_in': return 'รับเข้า (ถังหลัก)';
@@ -202,7 +209,9 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
         if (!kind) continue;
         const date = normalizeDate(t.date);
         if (date < start || date > end) continue;
-        const vehicleId = (t.vehicleId || '').trim() || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : '');
+        const vehicleId = normalizeFuelReportVehicleId(
+            (t.vehicleId || '').trim() || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
+        );
         if (vehicleFilter && vehicleId !== vehicleFilter) continue;
         const fuelType = resolveFuelType(t);
         if (fuelTypeFilter && fuelType !== fuelTypeFilter) continue;

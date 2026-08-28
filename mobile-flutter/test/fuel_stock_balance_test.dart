@@ -649,6 +649,41 @@ void main() {
       expect(fuelCarFillVehicleFromId(hit!.vehicleId), FuelCarFillVehicle.taplien);
     });
 
+    test('legacy taplien vehicleId maps and matches new id lookup', () {
+      final legacy = _fuel(
+        id: 'c_legacy',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 30,
+        workType: 'car',
+        vehicleId: kFuelCarFillTaplienLegacy,
+        workDetails: '10:00',
+        createdAt: DateTime.utc(2026, 8, 10, 10),
+      );
+      expect(
+        fuelCarFillVehicleFromId(legacy.vehicleId),
+        FuelCarFillVehicle.taplien,
+      );
+      expect(
+        fuelCarFillVehicleIdMatches(
+          kFuelCarFillTaplienLegacy,
+          kFuelCarFillTaplien,
+        ),
+        isTrue,
+      );
+      final hit = latestFuelCarFillForVehicle(
+        dayYmd: _day,
+        transactions: [legacy],
+        vehicleId: kFuelCarFillTaplien,
+      );
+      expect(hit?.id, 'c_legacy');
+      final taplienDay = latestFuelTaplienFillForDay(
+        dayYmd: _day,
+        transactions: [legacy],
+      );
+      expect(taplienDay?.id, 'c_legacy');
+    });
+
     test('latestFuelWithdrawForDay picks newest purpose of the day', () {
       final machine = _fuel(
         id: 'xfer_out',

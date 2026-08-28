@@ -44,7 +44,10 @@ enum FuelWithdrawPurpose { machine, car, generator, mayor, other }
 enum FuelCarFillVehicle { mighty, taplien, ahming, other }
 
 const String kFuelCarFillMighty = 'ไมตี้';
-const String kFuelCarFillTaplien = 'รถตาเปลื่ยน';
+const String kFuelCarFillTaplien = 'รถตาเปลื่ยน (ISUZU KB)';
+
+/// ค่าเดิมที่เคยบันทึกไว้ก่อนเปลี่ยนชื่อ — ยังต้องอ่าน/แก้ได้
+const String kFuelCarFillTaplienLegacy = 'รถตาเปลื่ยน';
 const String kFuelCarFillAhming = 'อาหมิง';
 
 String fuelCarFillVehicleLabelOf(FuelCarFillVehicle vehicle) {
@@ -219,6 +222,7 @@ bool isFuelCarFillRow(AppTransaction t) {
 const Set<String> _kFuelCarFillKnownVehicleIds = {
   kFuelCarFillMighty,
   kFuelCarFillTaplien,
+  kFuelCarFillTaplienLegacy,
   kFuelCarFillAhming,
 };
 
@@ -231,9 +235,22 @@ bool isKnownFuelCarFillVehicleId(String? vehicleId) {
 FuelCarFillVehicle fuelCarFillVehicleFromId(String? vehicleId) {
   final v = (vehicleId ?? '').trim();
   if (v == kFuelCarFillMighty) return FuelCarFillVehicle.mighty;
-  if (v == kFuelCarFillTaplien) return FuelCarFillVehicle.taplien;
+  if (v == kFuelCarFillTaplien || v == kFuelCarFillTaplienLegacy) {
+    return FuelCarFillVehicle.taplien;
+  }
   if (v == kFuelCarFillAhming) return FuelCarFillVehicle.ahming;
   return FuelCarFillVehicle.other;
+}
+
+/// เทียบ `vehicleId` ที่บันทึก — รองรับชื่อเก่า/ใหม่ของรถตาเปลื่ยน
+bool fuelCarFillVehicleIdMatches(String rowVehicleId, String wantVehicleId) {
+  final a = rowVehicleId.trim();
+  final b = wantVehicleId.trim();
+  if (a == b) return true;
+  if (a.isEmpty || b.isEmpty) return false;
+  return isKnownFuelCarFillVehicleId(a) &&
+      isKnownFuelCarFillVehicleId(b) &&
+      fuelCarFillVehicleFromId(a) == fuelCarFillVehicleFromId(b);
 }
 
 String _stripFuelRecorderSuffix(String raw) =>
@@ -284,12 +301,24 @@ AppTransaction? latestFuelCarFillForVehicle({
     final rowVid = transactionVehicleLabel(t);
     if (wantOther) {
       if (rowVid.isEmpty || isKnownFuelCarFillVehicleId(rowVid)) continue;
-    } else if (rowVid != vid) {
+    } else if (!fuelCarFillVehicleIdMatches(rowVid, vid)) {
       continue;
     }
     matches.add(t);
   }
   return _latestFuelRow(matches);
+}
+
+/// แถวเติมน้ำมันรถตาเปลื่ยนล่าสุดของวัน (รวมชื่อเก่า/ใหม่)
+AppTransaction? latestFuelTaplienFillForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  return latestFuelCarFillForVehicle(
+    dayYmd: dayYmd,
+    transactions: transactions,
+    vehicleId: kFuelCarFillTaplien,
+  );
 }
 
 /// แถวเบิก/โอนล่าสุดของวันตามวัตถุประสงค์ (ไม่รวม car)
@@ -360,7 +389,6 @@ AppTransaction? latestFuelWithdrawForDay({
     FuelWithdrawPurpose.machine,
     FuelWithdrawPurpose.generator,
     FuelWithdrawPurpose.mayor,
-    FuelWithdrawPurpose.other,
   ];
   final matches = <AppTransaction>[];
   for (final purpose in purposes) {
@@ -371,6 +399,11 @@ AppTransaction? latestFuelWithdrawForDay({
     );
     if (hit != null) matches.add(hit);
   }
+  final taplien = latestFuelTaplienFillForDay(
+    dayYmd: dayYmd,
+    transactions: transactions,
+  );
+  if (taplien != null) matches.add(taplien);
   return _latestFuelRow(matches);
 }
 
