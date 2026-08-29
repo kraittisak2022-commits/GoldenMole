@@ -160,6 +160,10 @@ export interface AppDefaults {
     weeklyOffByMonday?: Record<string, number>;
     /** คีย์ = วันจันทร์ของสัปดาห์, ค่า = เหตุผลเมื่อเลื่อนหยุดรายสัปดาห์จากวันพฤหัสบดี */
     weeklyOffMoveReasonByMonday?: Record<string, string>;
+    /** versionCode ล่าสุดบน Play (Android) — แอพมือถือใช้แจ้ง soft update */
+    androidLatestVersionCode?: number;
+    /** ชื่อเวอร์ชันล่าสุด เช่น 1.0.2 — แสดงในไดอะล็อก soft update */
+    androidLatestVersionName?: string;
     sandCubicPerTrip?: number;
     vehicleDefaultMachineWage?: number;
     /** ชื่อรถ → employeeId คนขับเริ่มต้น */

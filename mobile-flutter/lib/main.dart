@@ -11,6 +11,7 @@ import 'l10n/app_locale.dart';
 import 'models/admin_user.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
+import 'services/app_update_service.dart';
 import 'services/auth_service.dart';
 import 'services/count_record_offline_sync.dart';
 import 'services/dashboard_service.dart';
@@ -442,6 +443,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
         _currentAdmin = admin;
         _bootstrapping = false;
       });
+      _scheduleSoftUpdateCheck();
     } catch (e) {
       debugPrint('Error restoring session: $e');
       await minSplash;
@@ -449,7 +451,19 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
       setState(() {
         _bootstrapping = false;
       });
+      _scheduleSoftUpdateCheck();
     }
+  }
+
+  void _scheduleSoftUpdateCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        final ctx = widget.navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        unawaited(AppUpdateService.maybePromptSoftUpdate(ctx));
+      });
+    });
   }
 
   @override
