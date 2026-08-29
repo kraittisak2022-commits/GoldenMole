@@ -17,7 +17,7 @@ export const VEHICLE_BUTTON_COLORS = [
 ] as const;
 
 /** Daily sand-wash round target used by V.4 overview + analytics */
-export const SAND_TARGET_ROUNDS = 800;
+export const SAND_TARGET_ROUNDS = 1000;
 
 export function formatDashboardMetric(v: number): string {
     if (Math.abs(v) < 1e-9) return '0';

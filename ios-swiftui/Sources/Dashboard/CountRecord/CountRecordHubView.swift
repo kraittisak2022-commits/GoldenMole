@@ -267,19 +267,6 @@ struct CountRecordHubView: View {
                     .background(AppTheme.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
-                if let msg = session.statusMessage {
-                    Text(msg)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(session.isErrorStatus ? AppTheme.expense : AppTheme.inkSecondary)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            (session.isErrorStatus ? AppTheme.expense : AppTheme.brand)
-                                .opacity(0.1),
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        )
-                }
-
                 if mode == .both {
                     ViewThatFits {
                         HStack(alignment: .top, spacing: 16) {
@@ -301,6 +288,21 @@ struct CountRecordHubView: View {
         }
         .scrollContentBackground(.hidden)
         .background(DashboardBackground())
+        .overlay(alignment: .top) {
+            if let msg = session.statusMessage {
+                CountRecordStatusToast(
+                    message: msg,
+                    isError: session.isErrorStatus
+                ) {
+                    session.statusMessage = nil
+                }
+                .padding(.top, 12)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.94)))
+                .zIndex(20)
+            }
+        }
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: session.statusMessage)
     }
 
     private var tripPanel: some View {

@@ -3,7 +3,8 @@ import Foundation
 /// Port of web `countRecordUtils.ts` + essential analytics helpers for Real-time V.4.
 enum CountRecordLogic {
     static let tripTarget = 266
-    static let sandTarget = 800
+    /// Daily sand wash target (คิว/วัน) — machine lap counts toward this goal.
+    static let sandTarget = 1000
     static let queuePerTrip = 4
     static let otStartHour = 17
     static let lunchStartHour = 12

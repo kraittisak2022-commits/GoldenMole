@@ -855,7 +855,7 @@ struct RealtimeV4View: View {
     private var sandPanel: some View {
         panelShell(
             title: "การร่อนทราย",
-            subtitle: sandUnit.map { "\($0.rounds) รอบ" } ?? "ยังไม่มีรอบ",
+            subtitle: sandUnit.map { "\($0.rounds) คิว" } ?? "ยังไม่มีคิว",
             icon: "drop.fill",
             gradient: [Color(hex: "#BE185D"), Color(hex: "#E11D48"), Color(hex: "#C026D3")]
         ) {
@@ -869,7 +869,7 @@ struct RealtimeV4View: View {
                     sandKPI(sand)
                 }
             } else {
-                emptyState(icon: "drop", title: "ยังไม่มีรอบทราย", subtitle: "รอการนับร่อนทรายจากมือถือ")
+                emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "รอการนับร่อนทรายจากมือถือ")
             }
         }
     }
@@ -887,8 +887,8 @@ struct RealtimeV4View: View {
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: sand.rounds)
-                    .modifier(ScoreFloatOverlay(value: sand.rounds, dayKey: focusDateStr))
-                Text("รอบ")
+                    .modifier(ScoreFloatOverlay(value: sand.rounds, dayKey: focusDateStr, unitLabel: "คิว"))
+                Text("คิว")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(2)
                     .foregroundStyle(.white.opacity(0.8))
@@ -914,9 +914,15 @@ struct RealtimeV4View: View {
         let hours = snapshot.sandHours
         let perHour = hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil }
         let perMin = hours.flatMap { $0 > 0 ? Double(sand.rounds) / ($0 * 60) : nil }
-        let pct = CountRecordLogic.sandTarget > 0
-            ? min(Double(sand.rounds) / Double(CountRecordLogic.sandTarget) * 100, 100)
+        let target = CountRecordLogic.sandTarget
+        let pct = target > 0
+            ? min(Double(sand.rounds) / Double(target) * 100, 100)
             : 0
+        let eta = CountRecordAnalytics.computeSandTargetEta(
+            lapTimes: sand.lapTimes,
+            dayKey: focusDateStr,
+            target: target
+        )
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("ตัวชี้วัดร่อนทราย")
@@ -926,11 +932,11 @@ struct RealtimeV4View: View {
 
             HStack(spacing: 8) {
                 kpiCell(
-                    title: "รอบ / ชม.",
+                    title: "คิว / ชม.",
                     value: perHour.map { String(format: "%.1f" , $0) } ?? "—"
                 )
                 kpiCell(
-                    title: "รอบ / นาที",
+                    title: "คิว / นาที",
                     value: perMin.map { String(format: "%.2f", $0) } ?? "—"
                 )
             }
@@ -943,13 +949,13 @@ struct RealtimeV4View: View {
                 afternoon: snapshot.sandAfternoonHours
             )
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("เป้าหมาย")
+                    Text("เป้าหมาย \(CountRecordLogic.formatMetric(target)) คิว/วัน")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(RealtimeV4Palette.inkSecondary)
                     Spacer()
-                    Text("\(CountRecordLogic.formatMetric(sand.rounds)) / \(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget)) · \(Int(pct.rounded()))%")
+                    Text("\(CountRecordLogic.formatMetric(sand.rounds)) / \(CountRecordLogic.formatMetric(target)) · \(Int(pct.rounded()))%")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(RealtimeV4Palette.ink)
                 }
@@ -957,11 +963,42 @@ struct RealtimeV4View: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(RealtimeV4Palette.sandTrack)
                         Capsule()
-                            .fill(Color(hex: "#EC4899"))
+                            .fill(
+                                LinearGradient(
+                                    colors: eta.reached
+                                        ? [Color(hex: "#10B981"), Color(hex: "#059669")]
+                                        : [Color(hex: "#EC4899"), Color(hex: "#DB2777")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                             .frame(width: geo.size.width * CGFloat(pct / 100))
                     }
                 }
                 .frame(height: 8)
+
+                if eta.reached {
+                    Label("ถึงเป้าแล้ว", systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: "#059669"))
+                } else if let clock = eta.etaClock {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.badge.checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("คาดการณ์ถึงเป้าประมาณ \(clock)")
+                            .font(.system(size: 11, weight: .semibold))
+                        if let hoursLeft = eta.hoursLeft {
+                            Text("· ~\(CountRecordAnalytics.formatDurationHours(hoursLeft))")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                        }
+                    }
+                    .foregroundStyle(Color(hex: "#BE185D"))
+                } else {
+                    Text("นับอย่างน้อย 2 คิว เพื่อคาดการณ์เวลาถึงเป้า")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
+                }
             }
         }
         .padding(14)
@@ -1131,12 +1168,13 @@ struct RealtimeV4View: View {
     }
 }
 
-// MARK: - Score popup (+N / -N game-style float)
+// MARK: - Score popup (+N / -N pro toast)
 
-/// Floating +N / -N badge when a live count changes (skips day switches and Reduce Motion).
+/// Floating +N / -N toast when a live count changes (skips day switches and Reduce Motion).
 private struct ScoreFloatOverlay: ViewModifier {
     let value: Int
     let dayKey: String
+    var unitLabel: String = ""
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lastValue: Int?
@@ -1147,19 +1185,45 @@ private struct ScoreFloatOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .top) {
+            .overlay(alignment: .center) {
                 if let delta = popupDelta, delta != 0 {
-                    Text(delta > 0 ? "+\(delta)" : "\(delta)")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(delta > 0 ? Color.emerald : Color(hex: "#FB7185"))
-                        .shadow(color: (delta > 0 ? Color.emerald : Color(hex: "#FB7185")).opacity(0.55), radius: 8, y: 0)
-                        .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
-                        .scaleEffect(floatAway ? 1.15 : 0.55)
-                        .opacity(floatAway ? 0 : 1)
-                        .offset(y: floatAway ? -42 : -6)
-                        .allowsHitTesting(false)
-                        .id(popupID)
-                        .accessibilityHidden(true)
+                    let positive = delta > 0
+                    VStack(spacing: 4) {
+                        Text(positive ? "+\(delta)" : "\(delta)")
+                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        if !unitLabel.isEmpty {
+                            Text(unitLabel)
+                                .font(.system(size: 11, weight: .bold))
+                                .tracking(1)
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: positive
+                                        ? [Color(hex: "#059669"), Color(hex: "#10B981")]
+                                        : [Color(hex: "#E11D48"), Color(hex: "#FB7185")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .shadow(color: (positive ? Color(hex: "#059669") : Color(hex: "#E11D48")).opacity(0.45), radius: 18, y: 8)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+                    )
+                    .scaleEffect(floatAway ? 1.08 : 0.72)
+                    .opacity(floatAway ? 0 : 1)
+                    .offset(y: floatAway ? -56 : 0)
+                    .allowsHitTesting(false)
+                    .id(popupID)
+                    .accessibilityHidden(true)
                 }
             }
             .onAppear {
@@ -1192,13 +1256,12 @@ private struct ScoreFloatOverlay: ViewModifier {
         floatAway = false
         popupDelta = delta
 
-        // Appear at rest, then float up and fade (game score popup).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-            withAnimation(.easeOut(duration: 0.85)) {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                 floatAway = true
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
             if popupDelta == delta {
                 popupDelta = nil
                 floatAway = false
@@ -1872,8 +1935,8 @@ private struct SandDetailSheet: View {
                     ])
 
                     DetailStatRow(items: [
-                        ("รอบ/ชม.", perHour.map { String(format: "%.1f", $0) } ?? "—"),
-                        ("เป้าหมาย", "\(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget))"),
+                        ("คิว/ชม.", perHour.map { String(format: "%.1f", $0) } ?? "—"),
+                        ("เป้า \(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget)) คิว/วัน", "\(CountRecordLogic.formatMetric(sand.rounds))"),
                         ("คงเหลือ", "\(max(0, CountRecordLogic.sandTarget - sand.rounds))")
                     ])
 

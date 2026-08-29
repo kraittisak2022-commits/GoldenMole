@@ -486,7 +486,7 @@ struct RealtimeV4AnalyticsPanel: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(eta.reached ? "ถึงเป้าแล้ว" : "เหลืออีก \(CountRecordLogic.formatMetric(eta.remaining)) รอบ")
+                        Text(eta.reached ? "ถึงเป้าแล้ว" : "เหลืออีก \(CountRecordLogic.formatMetric(eta.remaining)) คิว")
                             .font(.system(size: 9, weight: .bold))
                             .tracking(0.5)
                             .foregroundStyle(RealtimeV4Palette.inkMuted)
@@ -518,11 +518,11 @@ struct RealtimeV4AnalyticsPanel: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(AppTheme.income)
                 } else if let clock = eta.etaClock {
-                    Text("คาดถึงเป้าเวลา \(clock)" + (eta.hoursLeft.map { " · ~\(CountRecordAnalytics.formatDurationHours($0))" } ?? ""))
+                    Text("คาดการณ์ถึงเป้าประมาณ \(clock)" + (eta.hoursLeft.map { " · ~\(CountRecordAnalytics.formatDurationHours($0))" } ?? ""))
                         .font(.caption2)
                         .foregroundStyle(RealtimeV4Palette.inkMuted)
                 } else {
-                    Text("ต้องมีอย่างน้อย 2 รอบเพื่อคำนวณ")
+                    Text("ต้องมีอย่างน้อย 2 คิวเพื่อคำนวณ")
                         .font(.caption2)
                         .foregroundStyle(RealtimeV4Palette.inkFaint)
                 }

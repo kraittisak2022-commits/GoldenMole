@@ -492,8 +492,18 @@ final class CountRecordSession {
         unit.dirty = false
         sandUnit = unit
         await syncSandSieveFuelUsage(appState: appState, adminName: adminName)
-        let msg = result.queued ? "ร่อน +\(unit.rounds) · \(stamp) (รอซิงค์)" : "ร่อน +\(unit.rounds) · \(stamp)"
-        flash(unit.comboCount > 1 ? "\(msg) · ×\(unit.comboCount)" : msg)
+        let msg: String
+        if unit.rounds >= CountRecordLogic.sandTarget {
+            msg = result.queued
+                ? "ถึงเป้า \(CountRecordLogic.sandTarget) คิวแล้ว! · \(stamp) (รอซิงค์)"
+                : "ถึงเป้า \(CountRecordLogic.sandTarget) คิวแล้ว! · \(stamp)"
+        } else {
+            let base = result.queued
+                ? "ร่อน +\(1) คิว · รวม \(unit.rounds)/\(CountRecordLogic.sandTarget) · \(stamp) (รอซิงค์)"
+                : "ร่อน +\(1) คิว · รวม \(unit.rounds)/\(CountRecordLogic.sandTarget) · \(stamp)"
+            msg = unit.comboCount > 1 ? "\(base) · ×\(unit.comboCount)" : base
+        }
+        flash(msg)
         pendingUndo = CountRecordUndoAction(kind: .sand, message: "เลิกทำรอบล่าสุด", stamp: stamp)
     }
 
