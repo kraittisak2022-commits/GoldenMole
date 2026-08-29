@@ -28,6 +28,10 @@ struct DashboardShell: View {
     @State private var showOpsMenu = false
     @State private var opsMenuDrag: CGFloat = 0
     @State private var opsDestination: OpsMenuItem?
+    @State private var showHomeCustomDatePicker = false
+    @State private var homeCustomDraft = Date()
+
+    private static let homeDatePresets: [DateRangePreset] = [.today, .yesterday, .custom]
 
     private var isRealtimeTabActive: Bool {
         mainTab == .realtimeTrip || mainTab == .realtimeSand
@@ -165,24 +169,8 @@ struct DashboardShell: View {
     // MARK: - Home
 
     private var homeTab: some View {
-        let appStateBindable = Bindable(appState)
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             homeControlRow()
-
-            if appState.datePreset == .custom {
-                HStack {
-                    DatePicker("เริ่ม", selection: appStateBindable.customStart, displayedComponents: .date)
-                        .labelsHidden()
-                    Text("–")
-                        .foregroundStyle(AppTheme.inkMuted)
-                    DatePicker("สิ้นสุด", selection: appStateBindable.customEnd, displayedComponents: .date)
-                        .labelsHidden()
-                    Spacer(minLength: 0)
-                }
-                .font(.subheadline)
-                .padding(.horizontal, AppTheme.spaceLG)
-                .padding(.bottom, 8)
-            }
 
             loadingOr {
                 switch homeSegment {
@@ -228,6 +216,9 @@ struct DashboardShell: View {
         .navigationTitle(appState.settings.appName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { headerToolbar }
+        .sheet(isPresented: $showHomeCustomDatePicker) {
+            homeCustomDatePickerSheet
+        }
     }
 
     /// Sync Home date filter to the day tapped on the embedded calendar.
@@ -244,17 +235,71 @@ struct DashboardShell: View {
         appState.customEnd = day
     }
 
+    private var homeDateChipLabel: String {
+        switch appState.datePreset {
+        case .today:
+            return DateRangePreset.today.label
+        case .yesterday:
+            return DateRangePreset.yesterday.label
+        case .custom:
+            return ReportDateScope.shortThaiDate(appState.customEnd)
+        default:
+            return appState.datePreset.label
+        }
+    }
+
+    private var homeCustomDatePickerSheet: some View {
+        let earliest = DashboardAggregations.gregorian.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        return NavigationStack {
+            VStack(spacing: 12) {
+                DatePicker(
+                    "เลือกวันที่",
+                    selection: $homeCustomDraft,
+                    in: earliest...Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .padding(.horizontal, 8)
+                Spacer(minLength: 0)
+            }
+            .navigationTitle("กำหนดเอง")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("ยกเลิก") { showHomeCustomDatePicker = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("เลือก") {
+                        appState.datePreset = .custom
+                        appState.customStart = homeCustomDraft
+                        appState.customEnd = homeCustomDraft
+                        showHomeCustomDatePicker = false
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
     /// Compact pill segment + date-range chip for the Home tab.
     private func homeControlRow() -> some View {
         HStack(spacing: 10) {
             HomeSegmentPill(selection: $homeSegment)
             Spacer(minLength: 0)
             Menu {
-                ForEach(DateRangePreset.allCases) { preset in
+                ForEach(Self.homeDatePresets) { preset in
                     Button {
-                        appState.datePreset = preset
+                        if preset == .custom {
+                            homeCustomDraft = appState.datePreset == .custom
+                                ? appState.customEnd
+                                : Date()
+                            showHomeCustomDatePicker = true
+                        } else {
+                            appState.datePreset = preset
+                        }
                     } label: {
-                        if appState.datePreset == preset {
+                        if homeDateMenuSelected(preset) {
                             Label(preset.label, systemImage: "checkmark")
                         } else {
                             Text(preset.label)
@@ -265,7 +310,7 @@ struct DashboardShell: View {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
                         .font(.caption.weight(.semibold))
-                    Text(appState.datePreset.label)
+                    Text(homeDateChipLabel)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
@@ -280,9 +325,15 @@ struct DashboardShell: View {
                 )
                 .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
             }
+            .accessibilityLabel("เลือกวันที่ \(homeDateChipLabel)")
         }
         .padding(.horizontal, AppTheme.spaceLG)
         .padding(.vertical, 10)
+    }
+
+    private func homeDateMenuSelected(_ preset: DateRangePreset) -> Bool {
+        if preset == .custom { return appState.datePreset == .custom }
+        return appState.datePreset == preset
     }
 
     // MARK: - Realtime
