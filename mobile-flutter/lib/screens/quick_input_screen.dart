@@ -13102,6 +13102,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               '';
           if (titled.isNotEmpty &&
               titled != 'งานทั่วไป' &&
+              !_looksLikeTechnicalLaborKey(titled) &&
               !detailTitles.contains(titled)) {
             detailTitles.add(titled);
           }
@@ -13115,8 +13116,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final legacyName = _stripRecorderSuffix(
       t.workDetails ?? _laborWorkDetailsController.text,
     ).trim();
-    if (detailTitles.isEmpty && legacyName.isNotEmpty) {
-      detailTitles.addAll(_splitGeneralWorkDetailLines(legacyName));
+    if (detailTitles.isEmpty &&
+        legacyName.isNotEmpty &&
+        !_looksLikeTechnicalLaborKey(legacyName)) {
+      detailTitles.addAll(
+        _splitGeneralWorkDetailLines(legacyName)
+            .where((line) => !_looksLikeTechnicalLaborKey(line)),
+      );
     }
     _hydrateGeneralWorkDetailsFromLines(detailTitles);
     _laborWorkDetailsController.text = _composeGeneralWorkDetailsText();
@@ -13128,19 +13134,47 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     ];
   }
 
+  /// คีย์ระบบ (เช่น macro_driver) — ไม่โชว์เป็นรายละเอียดงาน
+  bool _looksLikeTechnicalLaborKey(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return true;
+    if (v.contains('_') || v.contains(':')) return true;
+    if (RegExp(r'^[a-zA-Z][a-zA-Z0-9]*$').hasMatch(v)) return true;
+    return false;
+  }
+
   String _laborCategoryLabel(String id) {
     if (_isGeneralAssignmentKey(id)) {
       final composed = _composeGeneralWorkDetailsText();
       if (composed.isNotEmpty) {
-        final first = composed.split('\n').first;
-        return first.length > 24 ? '${first.substring(0, 22)}…' : first;
+        final first = composed
+            .split('\n')
+            .map((e) => e.trim())
+            .firstWhere((e) => e.isNotEmpty, orElse: () => '');
+        if (first.isNotEmpty && !_looksLikeTechnicalLaborKey(first)) {
+          return first.length > 24 ? '${first.substring(0, 22)}…' : first;
+        }
       }
       return 'งานทั่วไป';
     }
     for (final c in _laborCategories) {
       if (c.id == id) return c.label;
     }
-    return id;
+    // คีย์จากเว็บ / ข้อมูลเก่า → ชื่อไทย (กันโชว์ macro_driver ดิบๆ)
+    switch (normalizeLaborCanvasKey(id)) {
+      case 'wash_sand':
+        return 'เครื่องร่อนทราย';
+      case 'sand_watch':
+        return 'เฝ้าท่าทราย';
+      case 'macro_driver':
+        return 'คนขับรถแม็คโคร';
+      case 'washHome':
+        return 'ล้างทรายที่บ้าน';
+      case 'general':
+        return 'งานทั่วไป';
+      default:
+        return _looksLikeTechnicalLaborKey(id) ? 'งานทั่วไป' : id;
+    }
   }
 
   Widget _employeeDataLoadProgressBanner() {

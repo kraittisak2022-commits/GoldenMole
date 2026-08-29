@@ -23,6 +23,7 @@ import {
     mergeAttendanceWorkAssignments,
     mergeAttendanceWorkTypeByEmployee,
     mergeLaborCanvasAssignments,
+    normalizeLaborCanvasKey,
     pickLatestByDayOrder,
     pickLatestWithDefinedField,
     persistedSandHomeDrums,
@@ -308,6 +309,33 @@ const splitGeneralWorkDetailLines = (raw: string): string[] => {
 const composeGeneralWorkDetails = (lines: string[]) =>
     lines.map(s => String(s || '').trim()).filter(Boolean).join('\n');
 
+const looksLikeTechnicalLaborKey = (value: string): boolean => {
+    const v = String(value || '').trim();
+    if (!v) return true;
+    if (v.includes('_') || v.includes(':')) return true;
+    return /^[a-zA-Z][a-zA-Z0-9]*$/.test(v);
+};
+
+const laborCanvasDisplayLabel = (catId: string): string => {
+    const id = String(catId || '').trim();
+    const known = DEFAULT_WORK_CATEGORIES.find(c => c.id === id);
+    if (known) return known.label;
+    switch (normalizeLaborCanvasKey(id)) {
+        case 'washSand':
+            return 'เครื่องร่อนทราย';
+        case 'washHome':
+            return 'ล้างทรายที่บ้าน';
+        case 'pierWatch':
+            return 'เฝ้าท่าทราย';
+        case 'macroDriver':
+            return 'คนขับรถแม็คโคร';
+        case 'generalWork':
+            return 'งานทั่วไป';
+        default:
+            return looksLikeTechnicalLaborKey(id) ? 'งานทั่วไป' : id;
+    }
+};
+
 const collectGeneralWorkDetailLines = (
     wa: Record<string, string[]>,
     customCategories?: Array<{ id?: string; label?: string }>,
@@ -317,7 +345,9 @@ const collectGeneralWorkDetailLines = (
     for (const row of customCategories || []) {
         const id = String(row.id || '').trim();
         const label = String(row.label || '').trim();
-        if (id && label && label !== 'งานทั่วไป') labelByKey[id] = label;
+        if (id && label && label !== 'งานทั่วไป' && !looksLikeTechnicalLaborKey(label)) {
+            labelByKey[id] = label;
+        }
     }
     const fromLabels: string[] = [];
     for (const key of Object.keys(wa)) {
@@ -326,7 +356,10 @@ const collectGeneralWorkDetailLines = (
         if (label && !fromLabels.includes(label)) fromLabels.push(label);
     }
     if (fromLabels.length > 0) return fromLabels;
-    return splitGeneralWorkDetailLines(String(legacyNote || ''));
+    const fromNote = splitGeneralWorkDetailLines(String(legacyNote || '')).filter(
+        line => line && !looksLikeTechnicalLaborKey(line)
+    );
+    return fromNote.length > 0 ? fromNote : [''];
 };
 
 /** รวมคีย์ประเภทงานเก่า/กำหนดเอง — ยุบกล่อง general:… เข้า generalWork */
@@ -704,13 +737,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const mobileLaborCanvasPreview = useMemo(() => {
         const assignments = mergedLaborAttendanceAssignments;
         if (Object.keys(assignments).length === 0) return [];
-        const knownLabels = new Map<string, string>();
-        DEFAULT_WORK_CATEGORIES.forEach(c => knownLabels.set(c.id, c.label));
         const rows = Object.entries(assignments)
             .filter(([catId]) => !HIDDEN_WORK_CATEGORY_IDS.has(catId))
             .filter(([, empIds]) => Array.isArray(empIds) && empIds.length > 0)
             .map(([catId, empIds]) => {
-                const label = knownLabels.get(catId) || catId;
+                const label = laborCanvasDisplayLabel(catId);
                 const names = empIds
                     .map(id => getEmployeeDisplayName(employees.find(e => e.id === id)))
                     .filter(Boolean) as string[];
@@ -1850,7 +1881,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                 );
                                 workGroups = Object.entries(mergedWa)
                                     .map(([catId, empIds]) => ({
-                                        label: DEFAULT_WORK_CATEGORIES.find(c => c.id === catId)?.label || catId,
+                                        label: laborCanvasDisplayLabel(catId),
                                         count: (empIds || []).length,
                                     }))
                                     .filter(g => g.count > 0);
@@ -2702,7 +2733,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     .filter(([, ids]) => ids.length > 0)
                                                     .map(([catId, ids]) => {
                                                         const cat = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
-                                                        let baseLabel = cat?.label || catId;
+                                                        let baseLabel = cat?.label || laborCanvasDisplayLabel(catId);
                                                         if (catId === 'generalWork' && genNote) {
                                                             baseLabel = `${baseLabel} (${genNote.replace(/\n/g, ', ')})`;
                                                         }

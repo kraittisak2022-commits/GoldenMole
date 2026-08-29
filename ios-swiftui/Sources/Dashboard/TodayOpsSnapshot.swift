@@ -379,20 +379,56 @@ extension DashboardAggregations {
     static func workCategoryLabel(_ rawId: String) -> String {
         let id = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
         if id.hasPrefix("general:") {
-            let rest = String(id.dropFirst("general:".count))
-            return rest.isEmpty ? "งานทั่วไป" : rest
+            let rest = String(id.dropFirst("general:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            // อย่าโชว์คีย์เทคนิค (เช่น macro_driver) เป็นชื่องานทั่วไป
+            if rest.isEmpty || looksLikeTechnicalLaborKey(rest) { return "งานทั่วไป" }
+            return rest
         }
         switch id {
-        case "wash1": return "ล้างทราย เครื่องร่อน 1"
-        case "wash2": return "ล้างทราย เครื่องร่อน 2"
-        case "washHome", "wash_home", "wash_yard_house", "sift_home": return "ล้างทรายที่บ้าน"
-        case "pierWatch": return "เฝ้าท่าทราย"
-        case "nightShift": return "กะดึก"
-        case "digHaul": return "ขุด/ขน"
-        case "generalWork": return "งานทั่วไป"
-        case "labor_menu_attendance": return "ลงเวลา (ค่าแรง/ลา)"
-        case "other": return "อื่นๆ"
-        default: return id.isEmpty ? "งาน" : id
+        case "wash1", "wash_old", "washSand", "wash_sand":
+            return "เครื่องร่อนทราย"
+        case "wash2", "wash_new":
+            return "เครื่องร่อนทราย"
+        case "washHome", "wash_home", "wash_yard_house", "sift_home":
+            return "ล้างทรายที่บ้าน"
+        case "pierWatch", "sand_watch":
+            return "เฝ้าท่าทราย"
+        case "macroDriver", "macro_driver":
+            return "คนขับรถแม็คโคร"
+        case "nightShift", "night_shift", "nightPatrol", "night_patrol":
+            return "งานทั่วไป"
+        case "digHaul", "dig_haul", "excavator_control":
+            return "งานทั่วไป"
+        case "generalWork", "general":
+            return "งานทั่วไป"
+        case "work":
+            return "มาทำงาน"
+        case "half:morning":
+            return "ครึ่งวัน · เช้า"
+        case "half:afternoon":
+            return "ครึ่งวัน · บ่าย"
+        case "drum", "drum:morning", "drum:afternoon":
+            return "ขับรถดรัม"
+        case "labor_menu_attendance":
+            return "ลงเวลา (ค่าแรง/ลา)"
+        case "other":
+            return "อื่นๆ"
+        default:
+            if id.isEmpty { return "งาน" }
+            if looksLikeTechnicalLaborKey(id) { return "งานทั่วไป" }
+            return id
         }
+    }
+
+    /// คีย์ระบบ / รหัสกล่อง — ไม่ควรโชว์ให้ผู้ใช้เห็นดิบๆ
+    private static func looksLikeTechnicalLaborKey(_ value: String) -> Bool {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty { return true }
+        if v.contains("_") || v.contains(":") { return true }
+        if v.range(of: #"^[a-zA-Z][a-zA-Z0-9]*$"#, options: .regularExpression) != nil {
+            // camelCase / ascii id เช่น macroDriver, washSand
+            return true
+        }
+        return false
     }
 }
