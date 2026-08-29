@@ -2,9 +2,14 @@ import { useMemo } from 'react';
 import { Fuel, UserRound, Users } from 'lucide-react';
 import type { Employee, Transaction } from '../../types';
 import type { VehicleCatalogRow } from '../../utils/vehicleCatalog';
+import type { AttendancePositionGroup } from '../../utils/advanceEmployeeFilter';
 import { useShareLocale } from '../Share/shareI18n';
 import { formatDashboardMetric, VEHICLE_BUTTON_COLORS } from './countRecordUtils';
-import { buildAttendanceSummary, buildMacroUsageSummary } from './dailyOpsCardUtils';
+import {
+    buildAttendanceSummary,
+    buildMacroUsageSummary,
+    type AttendancePerson,
+} from './dailyOpsCardUtils';
 import ExcavatorIcon from './ExcavatorIcon';
 
 interface DailyOpsCardsProps {
@@ -14,6 +19,8 @@ interface DailyOpsCardsProps {
     shareMode?: boolean;
     vehicleCatalog?: VehicleCatalogRow[];
 }
+
+const GROUP_ORDER: AttendancePositionGroup[] = ['sandYard', 'driver', 'other'];
 
 const DailyOpsCards = ({
     dayKey,
@@ -34,7 +41,24 @@ const DailyOpsCards = ({
         [dayKey, transactions, employees],
     );
 
+    const presentByGroup = useMemo(() => {
+        const map: Record<AttendancePositionGroup, AttendancePerson[]> = {
+            sandYard: [],
+            driver: [],
+            other: [],
+        };
+        for (const person of attendance.presentPeople) {
+            map[person.group].push(person);
+        }
+        return map;
+    }, [attendance.presentPeople]);
+
     const compact = shareMode;
+    const groupLabel = (g: AttendancePositionGroup) => {
+        if (g === 'sandYard') return t('attendanceGroupSand');
+        if (g === 'driver') return t('attendanceGroupDriver');
+        return t('attendanceGroupOther');
+    };
 
     return (
         <div className={`grid gap-3 sm:grid-cols-2 ${compact ? 'mb-3 landscape:max-md:mb-2' : 'mb-4'}`}>
@@ -80,13 +104,13 @@ const DailyOpsCards = ({
                                 </div>
                             </div>
 
-                            <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto">
+                            <div className="grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto sm:grid-cols-3">
                                 {macroSummary.rows.map((row, index) => {
                                     const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
                                     return (
                                         <article
                                             key={row.vehicleId}
-                                            className="relative overflow-hidden rounded-xl border border-white/10 bg-slate-900 text-white shadow-md shadow-slate-900/15"
+                                            className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-900 text-white shadow-sm shadow-slate-900/10"
                                         >
                                             <div
                                                 className="absolute inset-0 opacity-90"
@@ -94,35 +118,30 @@ const DailyOpsCards = ({
                                                     background: `linear-gradient(145deg, ${accent} 0%, ${accent}cc 42%, #0f172a 100%)`,
                                                 }}
                                             />
-                                            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
-                                            <div className="relative flex flex-col gap-1.5 p-2.5">
-                                                <div className="flex flex-col items-center gap-1.5">
-                                                    <div className="flex w-full items-center justify-center rounded-lg bg-white/10 py-2 ring-1 ring-white/15">
-                                                        <ExcavatorIcon size={38} className="text-white" />
+                                            <div className="relative flex flex-col gap-1 p-1.5">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <div className="flex w-full items-center justify-center rounded-md bg-white/10 py-1 ring-1 ring-white/15">
+                                                        <ExcavatorIcon size={22} className="text-white" />
                                                     </div>
-                                                    <p className="w-full truncate text-center text-xs font-bold leading-tight">
+                                                    <p className="w-full truncate text-center text-[10px] font-bold leading-tight">
                                                         {row.vehicleId}
                                                     </p>
                                                 </div>
-                                                <p className="flex items-center gap-1 truncate text-[10px] font-medium text-white/80">
-                                                    <UserRound size={10} className="shrink-0" />
+                                                <p className="flex items-center gap-0.5 truncate text-[9px] font-medium text-white/80">
+                                                    <UserRound size={9} className="shrink-0" />
                                                     {row.driverLabel}
                                                 </p>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <span className="rounded-md bg-black/25 px-1.5 py-0.5 text-[9px] font-bold text-white/90">
+                                                <div className="flex flex-wrap gap-0.5">
+                                                    <span className="rounded bg-black/25 px-1 py-0.5 text-[8px] font-bold text-white/90">
                                                         {row.workType === 'HalfDay' ? t('halfDay') : t('fullDay')}
                                                     </span>
                                                     {row.liters > 0 ? (
-                                                        <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-300/90 px-1.5 py-0.5 text-[9px] font-bold text-amber-950">
-                                                            <Fuel size={9} />
-                                                            {formatDashboardMetric(Math.round(row.liters * 10) / 10)}{' '}
-                                                            {t('litersUnit')}
+                                                        <span className="inline-flex items-center gap-0.5 rounded bg-amber-300/90 px-1 py-0.5 text-[8px] font-bold text-amber-950">
+                                                            <Fuel size={8} />
+                                                            {formatDashboardMetric(Math.round(row.liters * 10) / 10)}
                                                         </span>
                                                     ) : null}
                                                 </div>
-                                                <p className="line-clamp-2 text-[9px] leading-snug text-white/65">
-                                                    {row.workDetails || t('macroNoWorkDetail')}
-                                                </p>
                                             </div>
                                         </article>
                                     );
@@ -168,27 +187,40 @@ const DailyOpsCards = ({
                     </div>
 
                     {attendance.presentPeople.length > 0 ? (
-                        <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto">
-                            {attendance.presentPeople.map((person) => (
-                                <article
-                                    key={person.id}
-                                    className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/10"
-                                >
-                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                        {(person.name || '?').charAt(0)}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
-                                            {person.name}
+                        <div className="max-h-64 space-y-3 overflow-y-auto">
+                            {GROUP_ORDER.map((group) => {
+                                const people = presentByGroup[group];
+                                if (people.length === 0) return null;
+                                return (
+                                    <div key={group}>
+                                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
+                                            {groupLabel(group)} · {people.length}
                                         </p>
-                                        {person.ot ? (
-                                            <span className="mt-0.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
-                                                OT
-                                            </span>
-                                        ) : null}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {people.map((person) => (
+                                                <article
+                                                    key={person.id}
+                                                    className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+                                                >
+                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                                                        {(person.name || '?').charAt(0)}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
+                                                            {person.name}
+                                                        </p>
+                                                        {person.ot ? (
+                                                            <span className="mt-0.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+                                                                OT
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                </article>
+                                            ))}
+                                        </div>
                                     </div>
-                                </article>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
                         <p className="text-sm text-slate-500 dark:text-slate-400">{t('attendanceEmpty')}</p>

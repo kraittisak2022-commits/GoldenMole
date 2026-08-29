@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Radio, AlertCircle } from 'lucide-react';
 import DashboardV4 from '../Dashboard/DashboardV4';
 import SharePinGate from './SharePinGate';
 import { SharePreferenceControls, SharePreferencesProvider, useShareLocale, type ShareMessageKey } from './shareI18n';
 import { fetchShareSettings, type DashboardShareSettings } from '../../services/shareService';
+import {
+    getShareDeviceLabel,
+    recordShareVisit,
+    saveViewerDeviceLabel,
+} from '../../services/shareVisitService';
 import { isShareSessionUnlocked } from '../../utils/shareAuth';
 import { useShareTransactionsRealtime } from '../../hooks/useShareTransactionsRealtime';
 import * as db from '../../services/dataService';
 import type { Employee, AppSettings } from '../../types';
 import { getFirstDayOfMonth, getToday } from '../../utils';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 
 interface ShareDashboardPageProps {
     token: string;
@@ -22,6 +29,10 @@ const ShareDashboardContent = ({ token }: ShareDashboardPageProps) => {
     const [unlocked, setUnlocked] = useState(() => isShareSessionUnlocked(token));
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [appSettings, setAppSettings] = useState<AppSettings | undefined>();
+    const [deviceName, setDeviceName] = useState(() => getShareDeviceLabel());
+    const [deviceNameMsg, setDeviceNameMsg] = useState<string | null>(null);
+    const [savingDeviceName, setSavingDeviceName] = useState(false);
+    const visitLoggedRef = useRef(false);
 
     const canLoadData = unlocked && !!settings?.enabled;
 
@@ -80,6 +91,12 @@ const ShareDashboardContent = ({ token }: ShareDashboardPageProps) => {
         };
     }, [canLoadData]);
 
+    useEffect(() => {
+        if (!canLoadData || visitLoggedRef.current) return;
+        visitLoggedRef.current = true;
+        void recordShareVisit(token);
+    }, [canLoadData, token]);
+
     const dateFilter = useMemo(
         () => ({ start: getFirstDayOfMonth(), end: getToday() }),
         [],
@@ -88,6 +105,14 @@ const ShareDashboardContent = ({ token }: ShareDashboardPageProps) => {
     const handleUnlocked = useCallback(() => {
         setUnlocked(true);
     }, []);
+
+    const handleSaveDeviceName = async () => {
+        setSavingDeviceName(true);
+        const ok = await saveViewerDeviceLabel(token, deviceName);
+        setSavingDeviceName(false);
+        setDeviceNameMsg(ok ? t('deviceNameSaved') : null);
+        if (ok) window.setTimeout(() => setDeviceNameMsg(null), 2000);
+    };
 
     if (settingsLoading) {
         return (
@@ -134,6 +159,30 @@ const ShareDashboardContent = ({ token }: ShareDashboardPageProps) => {
                         )}
                         <SharePreferenceControls />
                     </div>
+                </div>
+
+                <div className="mb-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-900 sm:px-4">
+                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        {t('deviceNameLabel')}
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                            value={deviceName}
+                            onChange={(e) => setDeviceName(e.target.value.slice(0, 60))}
+                            placeholder={t('deviceNamePlaceholder')}
+                            className="flex-1 text-sm"
+                        />
+                        <Button
+                            className="shrink-0"
+                            onClick={() => void handleSaveDeviceName()}
+                            disabled={savingDeviceName}
+                        >
+                            {t('deviceNameSave')}
+                        </Button>
+                    </div>
+                    {deviceNameMsg ? (
+                        <p className="mt-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">{deviceNameMsg}</p>
+                    ) : null}
                 </div>
 
                 <DashboardV4

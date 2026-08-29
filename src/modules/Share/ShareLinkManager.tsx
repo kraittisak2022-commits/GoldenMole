@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { X, Link2, Copy, RefreshCw, Eye, EyeOff, Check } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { X, Link2, Copy, RefreshCw, Eye, EyeOff, Check, BarChart3, Pencil } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import ShareQrCode from './ShareQrCode';
@@ -11,6 +11,12 @@ import {
     saveShareSettings,
     type DashboardShareSettings,
 } from '../../services/shareService';
+import {
+    fetchShareVisits,
+    formatVisitWhen,
+    updateShareVisitLabel,
+    type DashboardShareVisit,
+} from '../../services/shareVisitService';
 import { isValidSharePinFormat } from '../../utils/shareAuth';
 
 interface ShareLinkManagerProps {
@@ -26,15 +32,36 @@ const ShareLinkManager = ({ open, onClose }: ShareLinkManagerProps) => {
     const [confirmPin, setConfirmPin] = useState('');
     const [copied, setCopied] = useState(false);
     const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+    const [visits, setVisits] = useState<DashboardShareVisit[]>([]);
+    const [visitsLoading, setVisitsLoading] = useState(false);
+    const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+    const [editingLabel, setEditingLabel] = useState('');
 
     const shareUrl = settings?.shareToken ? buildShareUrl(settings.shareToken) : '';
+
+    const visitStats = useMemo(() => {
+        const totalViews = visits.reduce((sum, v) => sum + v.visitCount, 0);
+        return {
+            devices: visits.length,
+            totalViews,
+            lastAt: visits[0]?.lastSeenAt ? formatVisitWhen(visits[0].lastSeenAt) : '—',
+        };
+    }, [visits]);
+
+    const loadVisits = useCallback(async () => {
+        setVisitsLoading(true);
+        const rows = await fetchShareVisits();
+        setVisits(rows);
+        setVisitsLoading(false);
+    }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
         const data = await ensureShareSettings();
         setSettings(data);
         setLoading(false);
-    }, []);
+        void loadVisits();
+    }, [loadVisits]);
 
     useEffect(() => {
         if (!open) return;
@@ -43,6 +70,8 @@ const ShareLinkManager = ({ open, onClose }: ShareLinkManagerProps) => {
         setConfirmPin('');
         setCopied(false);
         setMessage(null);
+        setEditingVisitId(null);
+        setEditingLabel('');
     }, [open, load]);
 
     useEffect(() => {
@@ -117,6 +146,26 @@ const ShareLinkManager = ({ open, onClose }: ShareLinkManagerProps) => {
         } catch {
             setMessage({ type: 'err', text: 'คัดลอกไม่สำเร็จ' });
         }
+    };
+
+    const startEditLabel = (visit: DashboardShareVisit) => {
+        setEditingVisitId(visit.id);
+        setEditingLabel(visit.deviceLabel);
+    };
+
+    const saveVisitLabel = async () => {
+        if (!editingVisitId) return;
+        const ok = await updateShareVisitLabel(editingVisitId, editingLabel);
+        if (!ok) {
+            setMessage({ type: 'err', text: 'บันทึกชื่ออุปกรณ์ไม่สำเร็จ' });
+            return;
+        }
+        setVisits((prev) =>
+            prev.map((v) => (v.id === editingVisitId ? { ...v, deviceLabel: editingLabel.trim() } : v)),
+        );
+        setEditingVisitId(null);
+        setEditingLabel('');
+        setMessage({ type: 'ok', text: 'อัปเดตชื่ออุปกรณ์แล้ว' });
     };
 
     if (!open) return null;
@@ -232,6 +281,100 @@ const ShareLinkManager = ({ open, onClose }: ShareLinkManagerProps) => {
                                 <Button onClick={() => void savePin()} disabled={saving || !newPin || !confirmPin}>
                                     บันทึก PIN
                                 </Button>
+                            </div>
+
+                            <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <BarChart3 size={16} className="text-indigo-600" />
+                                        <p className="text-sm font-semibold text-slate-800">สถิติการเข้าชม</p>
+                                    </div>
+                                    <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => void loadVisits()} disabled={visitsLoading}>
+                                        <RefreshCw size={12} className={visitsLoading ? 'animate-spin' : undefined} />
+                                        รีเฟรช
+                                    </Button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="rounded-xl bg-white px-2.5 py-2 text-center shadow-sm">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">อุปกรณ์</p>
+                                        <p className="text-lg font-black tabular-nums text-slate-800">{visitStats.devices}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white px-2.5 py-2 text-center shadow-sm">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">ครั้งทั้งหมด</p>
+                                        <p className="text-lg font-black tabular-nums text-slate-800">{visitStats.totalViews}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white px-2.5 py-2 text-center shadow-sm">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">ล่าสุด</p>
+                                        <p className="truncate text-[11px] font-bold text-slate-700">{visitStats.lastAt}</p>
+                                    </div>
+                                </div>
+
+                                {visits.length === 0 ? (
+                                    <p className="text-center text-xs text-slate-500">
+                                        {visitsLoading ? 'กำลังโหลดสถิติ...' : 'ยังไม่มีประวัติการเข้าชม'}
+                                    </p>
+                                ) : (
+                                    <ul className="max-h-56 space-y-2 overflow-y-auto">
+                                        {visits.map((visit) => (
+                                            <li
+                                                key={visit.id}
+                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm"
+                                            >
+                                                {editingVisitId === visit.id ? (
+                                                    <div className="flex gap-2">
+                                                        <Input
+                                                            value={editingLabel}
+                                                            onChange={(e) => setEditingLabel(e.target.value.slice(0, 60))}
+                                                            placeholder="ชื่ออุปกรณ์"
+                                                            className="flex-1 text-sm"
+                                                        />
+                                                        <Button className="shrink-0" onClick={() => void saveVisitLabel()}>
+                                                            บันทึก
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            className="shrink-0"
+                                                            onClick={() => {
+                                                                setEditingVisitId(null);
+                                                                setEditingLabel('');
+                                                            }}
+                                                        >
+                                                            ยกเลิก
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-bold text-slate-800">
+                                                                    {visit.deviceLabel || 'ยังไม่ตั้งชื่อ'}
+                                                                </p>
+                                                                <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+                                                                    IP: {visit.ipAddress || '—'}
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => startEditLabel(visit)}
+                                                                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                                                                aria-label="ตั้งชื่ออุปกรณ์"
+                                                                title="ตั้งชื่ออุปกรณ์"
+                                                            >
+                                                                <Pencil size={14} />
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
+                                                            <span>
+                                                                เข้าชม <strong className="tabular-nums">{visit.visitCount}</strong> ครั้ง
+                                                            </span>
+                                                            <span>ล่าสุด {formatVisitWhen(visit.lastSeenAt)}</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
 
                             {message && (

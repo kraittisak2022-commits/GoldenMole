@@ -1,6 +1,10 @@
 import type { Employee, Transaction } from '../../types';
 import { normalizeDate } from '../../utils';
-import { isSandYardOrMacroDriverEmployee } from '../../utils/advanceEmployeeFilter';
+import {
+    classifyAttendancePositionGroup,
+    isSandYardOrDriverEmployee,
+    type AttendancePositionGroup,
+} from '../../utils/advanceEmployeeFilter';
 import { buildFuelUsageReport, filterFuelUsageReport } from '../../utils/fuelUsageReport';
 import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 import { transactionVehicleLabel, type VehicleCatalogRow } from '../../utils/vehicleCatalog';
@@ -25,6 +29,7 @@ export interface AttendancePerson {
     id: string;
     name: string;
     ot: boolean;
+    group: AttendancePositionGroup;
 }
 
 export interface AttendanceSummary {
@@ -32,6 +37,8 @@ export interface AttendanceSummary {
     leave: number;
     absent: number;
     presentPeople: AttendancePerson[];
+    leavePeople: AttendancePerson[];
+    absentPeople: AttendancePerson[];
 }
 
 const stripRecorderSuffix = (details: string): string =>
@@ -119,9 +126,10 @@ export function buildAttendanceSummary(
     employees: Employee[],
 ): AttendanceSummary {
     const day = normalizeDate(dayKey);
-    const eligibleIds = new Set(
+    const byId = new Map(employees.map((e) => [e.id, e]));
+    const rosterIds = new Set(
         employees
-            .filter((e) => !e.inactive && isSandYardOrMacroDriverEmployee(e))
+            .filter((e) => !e.inactive && isSandYardOrDriverEmployee(e))
             .map((e) => e.id),
     );
     const presentIds = new Set<string>();
@@ -133,7 +141,7 @@ export function buildAttendanceSummary(
         if (t.laborStatus !== 'Work' && t.laborStatus !== 'OT') continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (!eid || !eligibleIds.has(eid)) continue;
+            if (!eid) continue;
             presentIds.add(eid);
             if (t.laborStatus === 'OT') otIds.add(eid);
         }
@@ -144,21 +152,40 @@ export function buildAttendanceSummary(
         if (!leaveRecordCoversDay(t, dayKey)) continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (eid && eligibleIds.has(eid)) leaveIds.add(eid);
+            if (eid && rosterIds.has(eid)) leaveIds.add(eid);
         }
     }
 
-    const presentPeople: AttendancePerson[] = [...presentIds]
-        .map((id) => ({
+    const toPerson = (id: string): AttendancePerson => {
+        const emp = byId.get(id);
+        return {
             id,
             name: employeeDisplayName(id, employees),
             ot: otIds.has(id),
-        }))
+            group: emp ? classifyAttendancePositionGroup(emp) : 'other',
+        };
+    };
+
+    const presentPeople: AttendancePerson[] = [...presentIds]
+        .map(toPerson)
         .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
-    const present = presentIds.size;
-    const leave = leaveIds.size;
-    const absent = Math.max(0, eligibleIds.size - present - leave);
+    const leavePeople: AttendancePerson[] = [...leaveIds]
+        .filter((id) => !presentIds.has(id))
+        .map(toPerson)
+        .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
-    return { present, leave, absent, presentPeople };
+    const absentPeople: AttendancePerson[] = [...rosterIds]
+        .filter((id) => !presentIds.has(id) && !leaveIds.has(id))
+        .map(toPerson)
+        .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+
+    return {
+        present: presentPeople.length,
+        leave: leavePeople.length,
+        absent: absentPeople.length,
+        presentPeople,
+        leavePeople,
+        absentPeople,
+    };
 }

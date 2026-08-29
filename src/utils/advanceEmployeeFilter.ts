@@ -100,23 +100,63 @@ export const employeeEligibleForAdvancePicker = (e: Employee): boolean =>
     !e.inactive && !isExcludedFromAdvanceEmployeePicker(e);
 
 /** ตำแหน่งพูลเช็คชื่อหน้าแรก / Real-time V.4 — ตรง Flutter + iOS */
-export const SAND_YARD_OR_MACRO_DRIVER_TITLES = new Set([
+export const SAND_YARD_TITLES = new Set([
     'พนักงานท่าทราย',
     'พนักงานทำทราย',
     'ท่าทราย',
+]);
+
+export const DRIVER_POSITION_TITLES = new Set([
+    'คนขับรถ',
+    'พนักงานขับรถ',
     'คนขับรถแม็คโคร',
     'คนขับรถแมคโคร',
 ]);
 
+/** @deprecated ใช้ SAND_YARD_TITLES ∪ DRIVER_POSITION_TITLES (แม็คโคร) — คงไว้เพื่อความเข้ากันได้ */
+export const SAND_YARD_OR_MACRO_DRIVER_TITLES = new Set([
+    ...SAND_YARD_TITLES,
+    'คนขับรถแม็คโคร',
+    'คนขับรถแมคโคร',
+]);
+
+const compactPosition = (token: string): string =>
+    normalizePositionTitle(token).replace(/\s+/g, '');
+
+export const isSandYardPositionToken = (token: string): boolean => {
+    const compact = compactPosition(token);
+    return compact !== '' && SAND_YARD_TITLES.has(compact);
+};
+
+export const isDriverPositionToken = (token: string): boolean => {
+    const compact = compactPosition(token);
+    return compact !== '' && DRIVER_POSITION_TITLES.has(compact);
+};
+
 /** เทียบตำแหน่งกับบัญชีขาวโดยไม่สนใจช่องว่าง (เช่น «พนักงาน ท่าทราย») */
 export const isSandYardOrMacroDriverPositionToken = (token: string): boolean => {
-    const compact = normalizePositionTitle(token).replace(/\s+/g, '');
+    const compact = compactPosition(token);
     return compact !== '' && SAND_YARD_OR_MACRO_DRIVER_TITLES.has(compact);
 };
 
 /** พนักงานท่าทราย หรือ คนขับรถแม็คโคร */
 export const isSandYardOrMacroDriverEmployee = (e: Employee): boolean =>
     collectEmployeePositionTokens(e).some(isSandYardOrMacroDriverPositionToken);
+
+export type AttendancePositionGroup = 'sandYard' | 'driver' | 'other';
+
+/** จัดกลุ่มตำแหน่ง: คนขับมาก่อน แล้วท่าทราย แล้วอื่นๆ */
+export const classifyAttendancePositionGroup = (e: Employee): AttendancePositionGroup => {
+    const tokens = collectEmployeePositionTokens(e);
+    if (tokens.some(isDriverPositionToken)) return 'driver';
+    if (tokens.some(isSandYardPositionToken)) return 'sandYard';
+    return 'other';
+};
+
+export const isSandYardOrDriverEmployee = (e: Employee): boolean => {
+    const g = classifyAttendancePositionGroup(e);
+    return g === 'sandYard' || g === 'driver';
+};
 
 /** @deprecated ใช้ collectEmployeePositionTokens แทน */
 export const getEmployeePositions = (e: Employee): string[] =>

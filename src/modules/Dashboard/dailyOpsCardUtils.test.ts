@@ -96,7 +96,7 @@ describe('buildMacroUsageSummary', () => {
 });
 
 describe('buildAttendanceSummary', () => {
-    it('counts only sand-yard staff and macro drivers for present/leave/absent', () => {
+    it('counts all Work/OT as present; leave/absent from sand-yard + driver roster', () => {
         const transactions: Transaction[] = [
             {
                 id: 'l1',
@@ -146,20 +146,21 @@ describe('buildAttendanceSummary', () => {
 
         const summary = buildAttendanceSummary(dayKey, transactions, employees);
 
-        // pool: e1,e2,e3,e6,e7 (e4 inactive, e5 คนขับรถ excluded)
-        expect(summary.present).toBe(3);
+        // present: e1,e2,e3,e5 — roster leave/absent: e1–e3,e5–e7 (e4 inactive)
+        expect(summary.present).toBe(4);
         expect(summary.leave).toBe(1);
         expect(summary.absent).toBe(1);
-        expect(summary.presentPeople).toHaveLength(3);
-        const names = summary.presentPeople.map((p) => p.name);
-        expect(names).toContain('ชาย');
-        expect(names).toContain('หญิง');
-        expect(names).toContain('ศักดิ์');
-        expect(names).not.toContain('หมาย');
-        expect(summary.presentPeople.every((p) => !p.ot)).toBe(true);
+        expect(summary.presentPeople).toHaveLength(4);
+        const byId = Object.fromEntries(summary.presentPeople.map((p) => [p.id, p]));
+        expect(byId.e1).toMatchObject({ name: 'ชาย', group: 'sandYard', ot: false });
+        expect(byId.e2).toMatchObject({ name: 'หญิง', group: 'sandYard', ot: false });
+        expect(byId.e3).toMatchObject({ name: 'ศักดิ์', group: 'driver', ot: false });
+        expect(byId.e5).toMatchObject({ name: 'หมาย', group: 'driver', ot: false });
+        expect(summary.absentPeople.map((p) => p.id)).toEqual(['e6']);
+        expect(summary.leavePeople.map((p) => p.id)).toEqual(['e7']);
     });
 
-    it('includes OT rows in present count when employee is in pool', () => {
+    it('includes OT rows in present for all employees including drivers', () => {
         const transactions: Transaction[] = [
             {
                 id: 'ot1',
@@ -176,7 +177,7 @@ describe('buildAttendanceSummary', () => {
                 date: dayKey,
                 type: 'Expense',
                 category: 'Labor',
-                description: 'OT คนขับรถ — ละเว้น',
+                description: 'OT คนขับรถ',
                 amount: 300,
                 laborStatus: 'OT',
                 employeeIds: ['e5'],
@@ -184,7 +185,40 @@ describe('buildAttendanceSummary', () => {
         ];
 
         const summary = buildAttendanceSummary(dayKey, transactions, employees);
-        expect(summary.present).toBe(1);
-        expect(summary.presentPeople).toEqual([{ id: 'e3', name: 'ศักดิ์', ot: true }]);
+        expect(summary.present).toBe(2);
+        expect(summary.presentPeople).toEqual(
+            expect.arrayContaining([
+                { id: 'e3', name: 'ศักดิ์', ot: true, group: 'driver' },
+                { id: 'e5', name: 'หมาย', ot: true, group: 'driver' },
+            ]),
+        );
+    });
+
+    it('groups office staff as other when present', () => {
+        const office: Employee = {
+            id: 'e8',
+            name: 'สมศรี',
+            nickname: 'ศรี',
+            type: 'Monthly',
+            positions: ['บัญชี'],
+        };
+        const transactions: Transaction[] = [
+            {
+                id: 'l1',
+                date: dayKey,
+                type: 'Expense',
+                category: 'Labor',
+                description: 'ค่าแรง',
+                amount: 500,
+                laborStatus: 'Work',
+                employeeIds: ['e8'],
+            },
+        ];
+
+        const summary = buildAttendanceSummary(dayKey, transactions, [...employees, office]);
+        expect(summary.presentPeople).toEqual([
+            { id: 'e8', name: 'ศรี', ot: false, group: 'other' },
+        ]);
+        expect(summary.absent).toBe(6);
     });
 });
