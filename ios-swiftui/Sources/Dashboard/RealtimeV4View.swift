@@ -1936,7 +1936,7 @@ private struct SandDetailSheet: View {
 
                     DetailStatRow(items: [
                         ("คิว/ชม.", perHour.map { String(format: "%.1f", $0) } ?? "—"),
-                        ("เป้า \(CountRecordLogic.formatMetric(CountRecordLogic.sandTarget)) คิว/วัน", "\(CountRecordLogic.formatMetric(sand.rounds))"),
+                        ("เป้า \(CountRecordLogic.sandTarget) คิว", "\(CountRecordLogic.formatMetric(sand.rounds))"),
                         ("คงเหลือ", "\(max(0, CountRecordLogic.sandTarget - sand.rounds))")
                     ])
 
