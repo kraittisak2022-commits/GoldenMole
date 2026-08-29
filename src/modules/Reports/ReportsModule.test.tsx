@@ -65,7 +65,8 @@ describe('ReportsModule', () => {
         expect(screen.getByRole('heading', { name: 'สรุปภาพรวมแต่ละรายงาน' })).toBeInTheDocument();
         expect(screen.getByRole('columnheader', { name: 'พิมพ์+ภาษาจีน' })).toBeInTheDocument();
         expect(screen.getAllByText('รายงานรับน้ำมันเข้า').length).toBeGreaterThanOrEqual(1);
-        expect(screen.getAllByRole('button', { name: '收油报表' }).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByRole('button', { name: 'พิมพ์收油报表' }).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByRole('button', { name: '燃油报表总览' }).length).toBeGreaterThanOrEqual(1);
         expect(screen.getAllByText(/60 ลิตร/).length).toBeGreaterThan(0);
         expect(screen.queryByText(/60 ล\./)).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'ประเภท' })).not.toBeInTheDocument();
