@@ -1,2 +1,18 @@
+# Block all crawlers site-wide. Pages remain reachable by direct URL only.
 User-agent: *
 Disallow: /
+
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Googlebot-Image
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: DuckDuckBot
+Disallow: /
+
+# No public sitemap
+Sitemap:
