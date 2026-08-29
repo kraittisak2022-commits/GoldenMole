@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Fragment } from 'react';
 import { FileDown, Fuel, Printer, Truck } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -8,7 +8,7 @@ import {
     THAI_MONTHS,
     computeFuelStockBalances,
     daysInMonth,
-    formatDateBELong,
+    formatDateBE,
     formatDisplayNumber,
     getToday,
     normalizeDate,
@@ -19,7 +19,7 @@ import {
     buildFuelUsageReport,
     filterFuelUsageReport,
     fuelPrintGroupTitle,
-    fuelPrintOverviewItems,
+    fuelPrintOverviewSections,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
@@ -29,6 +29,7 @@ import {
     type FuelTypeFilter,
     type FuelUsageKind,
 } from '../../utils/fuelUsageReport';
+import { transactionVehicleLabel } from '../../utils/vehicleCatalog';
 
 const PRINT_GROUPS: FuelPrintGroup[] = ['overview', 'stock_in', 'macro', 'sieve_generator', 'other_fill'];
 
@@ -132,12 +133,18 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     const orgLine = [settings.orgProfile?.address, settings.orgProfile?.phone].filter(Boolean).join(' · ');
 
     const vehicleOptions = useMemo(() => {
+        const catalog = settings.vehicleCatalog || [];
         const names = new Set<string>(settings.cars || []);
-        transactions.forEach(t => {
-            if (t.category === 'Fuel' && t.vehicleId) names.add(t.vehicleId);
+        transactions.forEach((t) => {
+            if (t.category !== 'Fuel') return;
+            const label = transactionVehicleLabel(
+                { vehicleId: t.vehicleId, vehicleName: t.vehicleName },
+                catalog,
+            );
+            if (label) names.add(label);
         });
         return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));
-    }, [settings.cars, transactions]);
+    }, [settings.cars, settings.vehicleCatalog, transactions]);
 
     /** ช่วงที่ใช้คำนวณจริง — สลับถ้าตั้งแต่ > ถึง */
     const range = useMemo(() => {
@@ -159,8 +166,9 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             fuelType,
             kind,
             estimatedSieveByDay,
+            vehicleCatalog: settings.vehicleCatalog,
         }),
-        [transactions, range.start, range.end, vehicleId, fuelType, kind, estimatedSieveByDay]
+        [transactions, range.start, range.end, vehicleId, fuelType, kind, estimatedSieveByDay, settings.vehicleCatalog]
     );
 
     const remainingStock = useMemo(() => {
@@ -176,9 +184,9 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     }, [transactions, range.end, settings.fuelOpeningStockLiters, estimatedSieveByDay]);
 
     const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
-    const rangeLabel = `${formatDateBELong(range.start)} – ${formatDateBELong(range.end)}`;
+    const rangeLabel = `${formatDateBE(range.start)} – ${formatDateBE(range.end)}`;
 
-    const overviewItems = useMemo(() => fuelPrintOverviewItems(report), [report]);
+    const overviewSections = useMemo(() => fuelPrintOverviewSections(report), [report]);
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
@@ -218,7 +226,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             report: grouped,
             group,
             fullReport: report,
-            formatDate: formatDateBELong,
+            formatDate: formatDateBE,
         });
         const w = window.open('', '_blank');
         if (!w) return;
@@ -319,34 +327,48 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {overviewItems.map((item, i) => (
-                                <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
-                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(item.liters)}</td>
-                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
-                                    <td className="px-4 py-2.5 text-right">
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="px-2 py-1.5 text-xs inline-flex"
-                                            aria-label={`พิมพ์${item.title}`}
-                                            onClick={() => printGroupReport(item.group)}
-                                        >
-                                            <Printer className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </td>
-                                </tr>
+                            {overviewSections.map((section) => (
+                                <Fragment key={section.id}>
+                                    <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
+                                        <td colSpan={4} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                                            {section.title}
+                                            <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
+                                                {formatDisplayNumber(section.liters)} ลิตร · {section.count} รายการ
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {section.items.map((item, i) => (
+                                        <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                            <td className="px-4 py-2.5 pl-6 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
+                                            <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(item.liters)}</td>
+                                            <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
+                                            <td className="px-4 py-2.5 text-right">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    className="px-2 py-1.5 text-xs inline-flex"
+                                                    aria-label={`พิมพ์${item.title}`}
+                                                    onClick={() => printGroupReport(item.group)}
+                                                >
+                                                    <Printer className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    <tr className="border-b border-slate-200 font-semibold text-slate-800 dark:border-white/10 dark:text-slate-100">
+                                        <td className="px-4 py-2.5 pl-6">รวม{section.title}</td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(section.liters)}</td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums">{section.count}</td>
+                                        <td className="px-4 py-2.5" />
+                                    </tr>
+                                </Fragment>
                             ))}
                         </tbody>
                         <tfoot>
                             <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
-                                <td className="px-4 py-2.5">รวมทุกรายงาน</td>
-                                <td className="px-4 py-2.5 text-right tabular-nums">
-                                    {formatDisplayNumber(overviewItems.reduce((s, i) => s + i.liters, 0))}
-                                </td>
-                                <td className="px-4 py-2.5 text-right tabular-nums">
-                                    {overviewItems.reduce((s, i) => s + i.count, 0)}
-                                </td>
+                                <td className="px-4 py-2.5">พิมพ์สรุปภาพรวม</td>
+                                <td className="px-4 py-2.5" />
+                                <td className="px-4 py-2.5" />
                                 <td className="px-4 py-2.5 text-right">
                                     <Button
                                         type="button"
@@ -442,7 +464,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                 <tbody>
                                     {report.byDay.map((row, i) => (
                                         <tr key={row.date} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                            <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBELong(row.date)}</td>
+                                            <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBE(row.date)}</td>
                                             <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.stockInLiters)}</td>
                                             <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.usageLiters)}</td>
                                             <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
@@ -473,14 +495,37 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {report.rows.map((row, i) => (
-                                    <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBELong(row.date)}</td>
-                                        <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
-                                        <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
-                                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
-                                    </tr>
-                                ))}
+                                {(() => {
+                                    const byDate = new Map<string, typeof report.rows>();
+                                    for (const row of report.rows) {
+                                        const list = byDate.get(row.date) || [];
+                                        list.push(row);
+                                        byDate.set(row.date, list);
+                                    }
+                                    return [...byDate.entries()].map(([date, dayRows]) => {
+                                        const dayLiters = dayRows.reduce((s, r) => s + r.liters, 0);
+                                        return (
+                                            <Fragment key={date}>
+                                                <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
+                                                    <td colSpan={4} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                        {formatDateBE(date)}
+                                                        <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
+                                                            {formatDisplayNumber(dayLiters)} ลิตร · {dayRows.length} รายการ
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                {dayRows.map((row, i) => (
+                                                    <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
+                                                        <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
+                                                        <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
+                                                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </Fragment>
+                                        );
+                                    });
+                                })()}
                             </tbody>
                         </table>
                     </div>

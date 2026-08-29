@@ -138,15 +138,15 @@ describe('ReportsModule', () => {
 
         expect(screen.getByText('เติมเดือนสิงหาคม')).toBeInTheDocument();
         expect(screen.queryByText('เติมเดือนกรกฎาคม')).not.toBeInTheDocument();
-        expect(screen.getByText(/1 รายการ/)).toBeInTheDocument();
+        expect(screen.getAllByText(/1 รายการ/).length).toBeGreaterThanOrEqual(1);
 
         await user.selectOptions(screen.getByLabelText('ตั้งแต่ เดือน'), '7');
         await user.selectOptions(screen.getByLabelText('ถึง เดือน'), '7');
 
         expect(screen.getByText('เติมเดือนกรกฎาคม')).toBeInTheDocument();
         expect(screen.queryByText('เติมเดือนสิงหาคม')).not.toBeInTheDocument();
-        expect(screen.getByText(/1 กรกฎาคม 2569 – 31 กรกฎาคม 2569/)).toBeInTheDocument();
-        expect(screen.getByText(/1 รายการ/)).toBeInTheDocument();
+        expect(screen.getByText(/01\/07\/2569 – 31\/07\/2569/)).toBeInTheDocument();
+        expect(screen.getAllByText(/1 รายการ/).length).toBeGreaterThanOrEqual(1);
     });
 
     it('still calculates when start and end dates are inverted', async () => {
@@ -172,6 +172,6 @@ describe('ReportsModule', () => {
         await user.selectOptions(screen.getByLabelText('ถึง วัน'), '1');
 
         expect(screen.getByText('เติมเดือนสิงหาคม')).toBeInTheDocument();
-        expect(screen.getByText(/1 สิงหาคม 2569 – 31 สิงหาคม 2569/)).toBeInTheDocument();
+        expect(screen.getByText(/01\/08\/2569 – 31\/08\/2569/)).toBeInTheDocument();
     });
 });

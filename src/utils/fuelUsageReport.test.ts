@@ -14,6 +14,7 @@ import {
     fuelPrintGroupOf,
     fuelPrintGroupTitle,
     fuelPrintOverviewItems,
+    fuelPrintOverviewSections,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
@@ -21,6 +22,7 @@ import {
     yearBoundsFromYmd,
     type FuelUsageRow,
 } from './fuelUsageReport';
+import { formatDateBE } from './index';
 
 function fuelTx(partial: Partial<Transaction> & Pick<Transaction, 'id' | 'date'>): Transaction {
     return {
@@ -514,6 +516,28 @@ describe('fuelPrintGroupOf', () => {
         expect(items).toHaveLength(4);
         expect(items.find(i => i.group === 'stock_in')).toMatchObject({ liters: 1000, count: 1 });
         expect(items.find(i => i.group === 'macro')).toMatchObject({ liters: 40, count: 1 });
+
+        const sections = fuelPrintOverviewSections(report);
+        expect(sections).toHaveLength(2);
+        expect(sections[0]).toMatchObject({ id: 'receive', title: 'รับน้ำมัน', liters: 1000, count: 1 });
+        expect(sections[1]).toMatchObject({ id: 'usage', title: 'ใช้น้ำมัน', liters: 40, count: 1 });
+    });
+
+    it('resolves catalog vehicle ids for macro rows', () => {
+        const catalog = [{ id: 'v_11a41cf5246471f4', name: 'แม็คโคร 01', defaultDriverId: null, sortOrder: 0 }];
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'm1',
+                date: '2026-08-28',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'v_11a41cf5246471f4',
+                quantity: 30,
+            }),
+        ], { start: '2026-08-28', end: '2026-08-29', vehicleCatalog: catalog });
+
+        expect(report.rows[0]?.vehicleId).toBe('แม็คโคร 01');
+        expect(report.byVehicle[0]?.vehicleId).toBe('แม็คโคร 01');
+        expect(filterFuelUsageReport(report, 'macro').rows).toHaveLength(1);
     });
 });
 
@@ -532,20 +556,55 @@ describe('fuelUsageToPrintHtml', () => {
         const grouped = filterFuelUsageReport(report, 'macro');
         const html = fuelUsageToPrintHtml({
             appName: 'Goldenmole',
-            rangeLabel: '1 ส.ค. – 31 ส.ค. 2569',
+            rangeLabel: '01/08/2569 – 31/08/2569',
             report: grouped,
             group: 'macro',
+            formatDate: formatDateBE,
         });
 
         expect(html).toContain(fuelPrintGroupTitle('macro'));
         expect(html).toContain('ปริมาณ (ลิตร)');
         expect(html).toContain('ใช้แม็คโคร');
+        expect(html).toContain('10/08/2569');
+        expect(html).toContain('class="day-header"');
         expect(html).not.toContain('>ประเภท<');
         expect(html).not.toContain('>น้ำมัน<');
         expect(html).not.toContain(' ล.');
     });
 
-    it('renders stock-in and overview print documents', () => {
+    it('separates multi-day macro rows with day headers and resolved names', () => {
+        const catalog = [{ id: 'v_11a41cf5246471f4', name: 'แม็คโคร 01', defaultDriverId: null, sortOrder: 0 }];
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'd1',
+                date: '2026-08-28',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'v_11a41cf5246471f4',
+                quantity: 20,
+            }),
+            fuelTx({
+                id: 'd2',
+                date: '2026-08-29',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'v_11a41cf5246471f4',
+                quantity: 25,
+            }),
+        ], { start: '2026-08-28', end: '2026-08-29', vehicleCatalog: catalog });
+        const html = fuelUsageToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '28/08/2569 – 29/08/2569',
+            report: filterFuelUsageReport(report, 'macro'),
+            group: 'macro',
+            formatDate: formatDateBE,
+        });
+        expect(html).toContain('แม็คโคร 01');
+        expect(html).not.toContain('v_11a41cf5246471f4');
+        expect(html).toContain('28/08/2569');
+        expect(html).toContain('29/08/2569');
+        expect(html.match(/class="day-header"/g)?.length).toBe(2);
+    });
+
+    it('renders stock-in and overview print documents with receive/usage sections', () => {
         const report = buildFuelUsageReport([
             fuelTx({
                 id: 'in',
@@ -555,26 +614,38 @@ describe('fuelUsageToPrintHtml', () => {
                 quantity: 500,
                 description: 'เพิ่มน้ำมัน',
             }),
+            fuelTx({
+                id: 'macro',
+                date: '2026-08-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 40,
+            }),
         ], { start: '2026-08-01', end: '2026-08-31' });
         const stockIn = filterFuelUsageReport(report, 'stock_in');
         const stockHtml = fuelUsageToPrintHtml({
             appName: 'Goldenmole',
-            rangeLabel: '1 ส.ค. – 31 ส.ค. 2569',
+            rangeLabel: '01/08/2569 – 31/08/2569',
             report: stockIn,
             group: 'stock_in',
+            formatDate: formatDateBE,
         });
         expect(stockHtml).toContain(fuelPrintGroupTitle('stock_in'));
         expect(stockHtml).toContain('ถังหลัก');
         expect(stockHtml).toContain('เพิ่มน้ำมัน');
+        expect(stockHtml).toContain('10/08/2569');
 
         const overviewHtml = fuelUsageToPrintHtml({
             appName: 'Goldenmole',
-            rangeLabel: '1 ส.ค. – 31 ส.ค. 2569',
+            rangeLabel: '01/08/2569 – 31/08/2569',
             report,
             group: 'overview',
             fullReport: report,
         });
         expect(overviewHtml).toContain(fuelPrintGroupTitle('overview'));
+        expect(overviewHtml).toContain('รับน้ำมัน');
+        expect(overviewHtml).toContain('ใช้น้ำมัน');
         expect(overviewHtml).toContain(fuelPrintGroupTitle('stock_in'));
+        expect(overviewHtml).not.toContain('รวมทุกรายงาน');
     });
 });
