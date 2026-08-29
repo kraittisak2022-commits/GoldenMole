@@ -65,7 +65,7 @@ struct DashboardShell: View {
                 NavigationStack {
                     tasksTab
                 }
-                .tabItem { Label("งาน", systemImage: "checklist") }
+                .tabItem { Label("งาน", systemImage: "bubble.left.and.bubble.right.fill") }
                 .badge(taskStore.inboxCount)
                 .tag(AppMainTab.tasks)
             }
