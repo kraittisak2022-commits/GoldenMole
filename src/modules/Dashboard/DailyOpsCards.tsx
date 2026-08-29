@@ -62,92 +62,80 @@ const DailyOpsCards = ({
 
     return (
         <div className={`grid gap-3 sm:grid-cols-2 ${compact ? 'mb-3 landscape:max-md:mb-2' : 'mb-4'}`}>
-            <article className="overflow-hidden rounded-2xl border border-amber-200/80 bg-white shadow-sm dark:border-amber-500/25 dark:bg-slate-900">
-                <div className="border-b border-amber-100 bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-3 dark:border-amber-500/20">
-                    <div className="flex items-center gap-2.5">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/20">
-                            <ExcavatorIcon size={18} />
+            <article className="overflow-hidden rounded-2xl border border-amber-200/70 bg-white shadow-sm dark:border-amber-500/20 dark:bg-slate-900">
+                <div className="flex items-center justify-between gap-3 border-b border-amber-100/80 bg-gradient-to-r from-amber-500 to-orange-500 px-3.5 py-2.5 dark:border-amber-500/15">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white ring-1 ring-white/25">
+                            <ExcavatorIcon size={16} />
                         </span>
                         <div className="min-w-0">
                             <h4 className="truncate text-sm font-bold text-white">{t('macroUsageTitle')}</h4>
-                            <p className="truncate text-[11px] font-medium text-amber-100/90">
+                            <p className="truncate text-[11px] font-medium text-amber-50/90">
                                 {macroSummary.vehicleCount > 0
                                     ? t('macroVehicleCount', { n: macroSummary.vehicleCount })
                                     : t('macroUsageEmpty')}
                             </p>
                         </div>
                     </div>
+                    {macroSummary.rows.length > 0 ? (
+                        <div className="shrink-0 rounded-lg bg-white/15 px-2.5 py-1 text-right ring-1 ring-white/20">
+                            <p className="text-[9px] font-bold uppercase tracking-wide text-amber-50/80">
+                                {t('macroFuelTotal')}
+                            </p>
+                            <p className="text-sm font-black tabular-nums text-white">
+                                {formatDashboardMetric(Math.round(macroSummary.totalLiters * 10) / 10)}
+                                <span className="ml-0.5 text-[10px] font-bold text-amber-50/90">{t('litersUnit')}</span>
+                            </p>
+                        </div>
+                    ) : null}
                 </div>
 
-                <div className={`space-y-3 ${compact ? 'p-3 landscape:max-md:p-2.5' : 'p-4'}`}>
+                <div className={compact ? 'p-2.5 landscape:max-md:p-2' : 'p-3'}>
                     {macroSummary.rows.length === 0 ? (
-                        <p className="text-center text-sm text-slate-500 dark:text-slate-400">{t('macroUsageEmpty')}</p>
+                        <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">{t('macroUsageEmpty')}</p>
                     ) : (
-                        <>
-                            <div className="flex flex-wrap items-end justify-between gap-2">
-                                <div>
-                                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                        {t('vehicleUnit')}
-                                    </p>
-                                    <p className="text-3xl font-black tabular-nums text-amber-700 dark:text-amber-300">
-                                        {formatDashboardMetric(macroSummary.vehicleCount)}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                        {t('macroFuelTotal')}
-                                    </p>
-                                    <p className="text-lg font-black tabular-nums text-slate-800 dark:text-slate-100">
-                                        {formatDashboardMetric(Math.round(macroSummary.totalLiters * 10) / 10)}{' '}
-                                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{t('litersUnit')}</span>
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto sm:grid-cols-3">
-                                {macroSummary.rows.map((row, index) => {
-                                    const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
-                                    return (
-                                        <article
-                                            key={row.vehicleId}
-                                            className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-900 text-white shadow-sm shadow-slate-900/10"
+                        <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+                            {macroSummary.rows.map((row, index) => {
+                                const accent = VEHICLE_BUTTON_COLORS[index % VEHICLE_BUTTON_COLORS.length];
+                                return (
+                                    <li
+                                        key={row.vehicleId}
+                                        className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 px-2 py-1.5 dark:border-white/10 dark:bg-slate-800/60"
+                                    >
+                                        <span
+                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
+                                            style={{ backgroundColor: accent }}
                                         >
-                                            <div
-                                                className="absolute inset-0 opacity-90"
-                                                style={{
-                                                    background: `linear-gradient(145deg, ${accent} 0%, ${accent}cc 42%, #0f172a 100%)`,
-                                                }}
-                                            />
-                                            <div className="relative flex flex-col gap-1 p-1.5">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <div className="flex w-full items-center justify-center rounded-md bg-white/10 py-1 ring-1 ring-white/15">
-                                                        <ExcavatorIcon size={22} className="text-white" />
-                                                    </div>
-                                                    <p className="w-full truncate text-center text-[10px] font-bold leading-tight">
-                                                        {row.vehicleId}
-                                                    </p>
-                                                </div>
-                                                <p className="flex items-center gap-0.5 truncate text-[9px] font-medium text-white/80">
-                                                    <UserRound size={9} className="shrink-0" />
-                                                    {row.driverLabel}
-                                                </p>
-                                                <div className="flex flex-wrap gap-0.5">
-                                                    <span className="rounded bg-black/25 px-1 py-0.5 text-[8px] font-bold text-white/90">
-                                                        {row.workType === 'HalfDay' ? t('halfDay') : t('fullDay')}
-                                                    </span>
-                                                    {row.liters > 0 ? (
-                                                        <span className="inline-flex items-center gap-0.5 rounded bg-amber-300/90 px-1 py-0.5 text-[8px] font-bold text-amber-950">
-                                                            <Fuel size={8} />
-                                                            {formatDashboardMetric(Math.round(row.liters * 10) / 10)}
-                                                        </span>
-                                                    ) : null}
-                                                </div>
+                                            <ExcavatorIcon size={16} />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-xs font-bold leading-snug text-slate-800 dark:text-slate-100">
+                                                {row.vehicleId}
+                                            </p>
+                                            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                                                <span className="inline-flex max-w-full items-center gap-0.5 truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                                    <UserRound size={10} className="shrink-0" />
+                                                    <span className="truncate">{row.driverLabel}</span>
+                                                </span>
+                                                <span className="rounded-md bg-slate-200/80 px-1.5 py-px text-[9px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                                    {row.workType === 'HalfDay' ? t('halfDay') : t('fullDay')}
+                                                </span>
                                             </div>
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                        </>
+                                        </div>
+                                        {row.liters > 0 ? (
+                                            <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-bold tabular-nums text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                                                <Fuel size={11} className="shrink-0 opacity-80" />
+                                                {formatDashboardMetric(Math.round(row.liters * 10) / 10)}
+                                            </span>
+                                        ) : (
+                                            <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-400 dark:bg-slate-700/80 dark:text-slate-500">
+                                                —
+                                            </span>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
                     )}
                 </div>
             </article>
