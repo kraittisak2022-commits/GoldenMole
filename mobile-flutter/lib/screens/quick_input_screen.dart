@@ -18049,118 +18049,86 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
     );
   }
 
-  Widget _generalWorkDetailsSection() {
+  Widget _generalWorkDetailsInline() {
     const parentColor = _kGeneralWorkColor;
     final filled = widget.generalWorkDetails
         .where((c) => c.text.trim().isNotEmpty)
         .length;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: parentColor.withValues(alpha: 0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: parentColor.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(height: 4, color: parentColor),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'รายละเอียดงาน',
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                              color: const Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'ระบุว่าทำอะไรบ้าง — เพิ่มได้หลายรายการในวันเดียวกัน',
-                            style: GoogleFonts.kanit(
-                              fontSize: 12,
-                              height: 1.35,
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'รายละเอียดงาน',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                      color: const Color(0xFF0F172A),
                     ),
-                    TextButton.icon(
-                      onPressed: widget.onAddGeneralWorkDetail,
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: Text(
-                        'เพิ่มงาน',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (filled > 0) ...[
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: parentColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '$filled รายการ',
-                        style: GoogleFonts.kanit(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: parentColor,
-                        ),
-                      ),
+                  ),
+                  Text(
+                    'เพิ่มได้หลายรายการในวันเดียวกัน',
+                    style: GoogleFonts.kanit(
+                      fontSize: 11.5,
+                      height: 1.3,
+                      color: const Color(0xFF64748B),
                     ),
                   ),
                 ],
-                const SizedBox(height: 10),
-                ...List.generate(widget.generalWorkDetails.length, (i) {
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: i == widget.generalWorkDetails.length - 1
-                          ? 0
-                          : 8,
-                    ),
-                    child: _generalWorkDetailField(
-                      widget.generalWorkDetails[i],
-                      i,
-                    ),
-                  );
-                }),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
+            if (filled > 0)
+              Container(
+                margin: const EdgeInsets.only(right: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: parentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$filled รายการ',
+                  style: GoogleFonts.kanit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: parentColor,
+                  ),
+                ),
+              ),
+            TextButton.icon(
+              onPressed: widget.onAddGeneralWorkDetail,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(
+                'เพิ่ม',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...List.generate(widget.generalWorkDetails.length, (i) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: i == widget.generalWorkDetails.length - 1 ? 0 : 8,
+            ),
+            child: _generalWorkDetailField(widget.generalWorkDetails[i], i),
+          );
+        }),
+      ],
     );
   }
 
@@ -18405,7 +18373,11 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 _employeeUiDisplayName(a).compareTo(_employeeUiDisplayName(b)),
           );
 
-    Widget bucketCard(_LaborWorkCategory category, {bool compact = false}) {
+    Widget bucketCard(
+      _LaborWorkCategory category, {
+      bool compact = false,
+      Widget? footer,
+    }) {
       final id = category.id;
       final ids = widget.assignments[id] ?? <String>{};
       final expanded = (widget.bucketExpanded[id] ?? false) || ids.isNotEmpty;
@@ -18415,6 +18387,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
         expanded: expanded,
         compact: compact,
         employeesById: widget.employeesById,
+        footer: footer,
         onToggleExpanded: () => _syncBoard(() {
           widget.bucketExpanded[id] = !expanded;
         }),
@@ -18471,16 +18444,22 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           .clamp(1, 3);
       final itemWidth = (maxWidth - spacing * (nCol - 1)) / nCol;
       final visibleCategories = categoriesForPool(widget.poolKind);
-      final showDetails = _showsGeneralWorkEditors &&
-          visibleCategories.any((c) => c.id == 'general');
+      final fixedCategories =
+          visibleCategories.where((c) => c.id != 'general').toList();
+      final generalIdx =
+          visibleCategories.indexWhere((c) => c.id == 'general');
+      final generalCategory =
+          generalIdx >= 0 ? visibleCategories[generalIdx] : null;
+      final showDetails =
+          _showsGeneralWorkEditors && generalCategory != null;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (visibleCategories.isNotEmpty)
+          if (fixedCategories.isNotEmpty)
             Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: visibleCategories
+              children: fixedCategories
                   .map(
                     (category) => SizedBox(
                       width: itemWidth,
@@ -18489,9 +18468,30 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   )
                   .toList(),
             ),
-          if (visibleCategories.isNotEmpty && showDetails)
+          if (fixedCategories.isNotEmpty && generalCategory != null)
             const SizedBox(height: 12),
-          if (showDetails) _generalWorkDetailsSection(),
+          if (generalCategory != null)
+            bucketCard(
+              generalCategory,
+              footer: showDetails
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F6FD),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _kGeneralWorkColor.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                          child: _generalWorkDetailsInline(),
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
         ],
       );
     }
@@ -18870,6 +18870,7 @@ class _LaborBucketCard extends StatelessWidget {
     required this.expanded,
     this.compact = false,
     required this.employeesById,
+    this.footer,
     required this.onToggleExpanded,
     required this.onDropEmployee,
     required this.onDeleteEmployee,
@@ -18881,6 +18882,7 @@ class _LaborBucketCard extends StatelessWidget {
   final bool expanded;
   final bool compact;
   final Map<String, Employee> employeesById;
+  final Widget? footer;
   final VoidCallback onToggleExpanded;
   final ValueChanged<String> onDropEmployee;
   final ValueChanged<String> onDeleteEmployee;
@@ -19140,6 +19142,7 @@ class _LaborBucketCard extends StatelessWidget {
                         ),
                 ),
               ),
+              ?footer,
             ],
           ),
         );

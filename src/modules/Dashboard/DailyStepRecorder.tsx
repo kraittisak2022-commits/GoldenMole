@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, LayoutGrid, Search, GripVertical } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -136,6 +136,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
     onToggleHalfDay,
     onMovePickedHere,
     onDragStartEmployee,
+    footer,
 }: {
     cat: LaborCanvasCategoryDef;
     assigned: string[];
@@ -151,6 +152,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
     onToggleHalfDay: (empId: string) => void;
     onMovePickedHere: () => void;
     onDragStartEmployee: (empId: string | null) => void;
+    footer?: ReactNode;
 }) {
     const showMembers = expanded || assigned.length > 0;
     return (
@@ -243,6 +245,7 @@ const LaborCanvasBucketCard = memo(function LaborCanvasBucketCard({
                         ย้ายมาที่นี่ ({selectedCount})
                     </button>
                 )}
+                {footer ? <div className="mt-2 border-t border-slate-100 pt-2">{footer}</div> : null}
             </div>
         </div>
     );
@@ -2579,97 +2582,122 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                                     const assigned = workAssignments[cat.id] || [];
                                                                     const expanded =
                                                                         laborBucketExpanded[cat.id] ?? assigned.length > 0;
+                                                                    const isGeneral = cat.id === 'generalWork';
+                                                                    const showGeneralDetails =
+                                                                        isGeneral &&
+                                                                        (laborEmployeeBucket === 'generalLabor' ||
+                                                                            laborEmployeeBucket === 'all');
+                                                                    const filledDetails = generalWorkDetails.filter(
+                                                                        line => String(line || '').trim()
+                                                                    ).length;
                                                                     return (
-                                                                        <LaborCanvasBucketCard
+                                                                        <div
                                                                             key={cat.id}
-                                                                            cat={cat}
-                                                                            assigned={assigned}
-                                                                            expanded={expanded}
-                                                                            touchUI={touchUI}
-                                                                            dragActive={dragEmployee !== null}
-                                                                            selectedCount={selectedEmps.length}
-                                                                            employees={employees}
-                                                                            halfDayEmpIds={halfDayEmpIds}
-                                                                            onToggleExpanded={() =>
-                                                                                setLaborBucketExpanded(prev => ({
-                                                                                    ...prev,
-                                                                                    [cat.id]: !expanded,
-                                                                                }))
-                                                                            }
-                                                                            onDropEmployee={empId =>
-                                                                                void assignEmployeesToLaborBucket(cat.id, [empId])
-                                                                            }
-                                                                            onRemoveEmployee={empId =>
-                                                                                removeEmployeeFromLaborBucket(cat.id, empId)
-                                                                            }
-                                                                            onToggleHalfDay={eid =>
-                                                                                setHalfDayEmpIds(prev => {
-                                                                                    const n = new Set(prev);
-                                                                                    if (n.has(eid)) n.delete(eid);
-                                                                                    else n.add(eid);
-                                                                                    return n;
-                                                                                })
-                                                                            }
-                                                                            onMovePickedHere={() =>
-                                                                                void assignEmployeesToLaborBucket(cat.id, selectedEmps)
-                                                                            }
-                                                                            onDragStartEmployee={id => setDragEmployee(id)}
-                                                                        />
+                                                                            className={isGeneral ? 'sm:col-span-2 2xl:col-span-3' : undefined}
+                                                                        >
+                                                                            <LaborCanvasBucketCard
+                                                                                cat={cat}
+                                                                                assigned={assigned}
+                                                                                expanded={expanded}
+                                                                                touchUI={touchUI}
+                                                                                dragActive={dragEmployee !== null}
+                                                                                selectedCount={selectedEmps.length}
+                                                                                employees={employees}
+                                                                                halfDayEmpIds={halfDayEmpIds}
+                                                                                onToggleExpanded={() =>
+                                                                                    setLaborBucketExpanded(prev => ({
+                                                                                        ...prev,
+                                                                                        [cat.id]: !expanded,
+                                                                                    }))
+                                                                                }
+                                                                                onDropEmployee={empId =>
+                                                                                    void assignEmployeesToLaborBucket(cat.id, [empId])
+                                                                                }
+                                                                                onRemoveEmployee={empId =>
+                                                                                    removeEmployeeFromLaborBucket(cat.id, empId)
+                                                                                }
+                                                                                onToggleHalfDay={eid =>
+                                                                                    setHalfDayEmpIds(prev => {
+                                                                                        const n = new Set(prev);
+                                                                                        if (n.has(eid)) n.delete(eid);
+                                                                                        else n.add(eid);
+                                                                                        return n;
+                                                                                    })
+                                                                                }
+                                                                                onMovePickedHere={() =>
+                                                                                    void assignEmployeesToLaborBucket(cat.id, selectedEmps)
+                                                                                }
+                                                                                onDragStartEmployee={id => setDragEmployee(id)}
+                                                                                footer={
+                                                                                    showGeneralDetails ? (
+                                                                                        <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-2.5">
+                                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                                <div>
+                                                                                                    <p className="text-sm font-bold text-slate-700">รายละเอียดงาน</p>
+                                                                                                    <p className="text-[11px] text-slate-500">
+                                                                                                        เพิ่มได้หลายรายการในวันเดียวกัน
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    {filledDetails > 0 && (
+                                                                                                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                                                                                                            {filledDetails} รายการ
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() =>
+                                                                                                            setGeneralWorkDetails(prev => [...prev, ''])
+                                                                                                        }
+                                                                                                        className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
+                                                                                                    >
+                                                                                                        + เพิ่ม
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <div className="space-y-2">
+                                                                                                {generalWorkDetails.map((line, index) => (
+                                                                                                    <div key={`gwd-${index}`} className="flex items-start gap-1">
+                                                                                                        <input
+                                                                                                            type="text"
+                                                                                                            value={line}
+                                                                                                            onChange={e => {
+                                                                                                                const value = e.target.value;
+                                                                                                                setGeneralWorkDetails(prev =>
+                                                                                                                    prev.map((row, i) =>
+                                                                                                                        i === index ? value : row
+                                                                                                                    )
+                                                                                                                );
+                                                                                                            }}
+                                                                                                            placeholder={`รายละเอียดงาน ${index + 1} เช่น ทำรั้วสแสลม`}
+                                                                                                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                                                        />
+                                                                                                        {generalWorkDetails.length > 1 && (
+                                                                                                            <button
+                                                                                                                type="button"
+                                                                                                                title="ลบรายละเอียดนี้"
+                                                                                                                onClick={() =>
+                                                                                                                    setGeneralWorkDetails(prev =>
+                                                                                                                        prev.filter((_, i) => i !== index)
+                                                                                                                    )
+                                                                                                                }
+                                                                                                                className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
+                                                                                                            >
+                                                                                                                ×
+                                                                                                            </button>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : undefined
+                                                                                }
+                                                                            />
+                                                                        </div>
                                                                     );
                                                                 })}
                                                             </div>
                                                         </>
-                                                    )}
-                                                    {(laborEmployeeBucket === 'generalLabor' || laborEmployeeBucket === 'all') && (
-                                                        <div className="mt-4 rounded-xl border border-indigo-200/80 bg-indigo-50/40 p-3">
-                                                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                                <div>
-                                                                    <span className="text-base font-bold text-slate-700">รายละเอียดงาน</span>
-                                                                    <p className="text-xs text-slate-500">
-                                                                        ระบุว่าทำอะไรบ้าง — เพิ่มได้หลายรายการในวันเดียวกัน
-                                                                    </p>
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setGeneralWorkDetails(prev => [...prev, ''])}
-                                                                    className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
-                                                                >
-                                                                    + เพิ่มงาน
-                                                                </button>
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                {generalWorkDetails.map((line, index) => (
-                                                                    <div key={`gwd-${index}`} className="flex items-start gap-1">
-                                                                        <input
-                                                                            type="text"
-                                                                            value={line}
-                                                                            onChange={e => {
-                                                                                const value = e.target.value;
-                                                                                setGeneralWorkDetails(prev =>
-                                                                                    prev.map((row, i) => (i === index ? value : row))
-                                                                                );
-                                                                            }}
-                                                                            placeholder={`รายละเอียดงาน ${index + 1} เช่น ทำรั้วสแสลม`}
-                                                                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                                                                        />
-                                                                        {generalWorkDetails.length > 1 && (
-                                                                            <button
-                                                                                type="button"
-                                                                                title="ลบรายละเอียดนี้"
-                                                                                onClick={() =>
-                                                                                    setGeneralWorkDetails(prev =>
-                                                                                        prev.filter((_, i) => i !== index)
-                                                                                    )
-                                                                                }
-                                                                                className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
-                                                                            >
-                                                                                ×
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
                                                     )}
                                                     <div
                                                         className={`mt-3 flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-center text-sm font-bold ${
