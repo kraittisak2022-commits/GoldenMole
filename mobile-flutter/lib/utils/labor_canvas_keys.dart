@@ -1,13 +1,11 @@
 /// คีย์ canvas บันทึกการทำงาน (สอดคล้อง `normalizeLaborCanvasKey` บนเว็บ)
 const kGeneralWorkPrefix = 'general:';
 
+/// กล่องงานที่แสดงบนแอปมือถือ (หลังรวมเครื่องร่อน / ตัดขุดขน·เวรกลางคืน)
 const flutterLaborCanvasCategoryIds = <String>{
-  'wash_old',
-  'wash_new',
+  'wash_sand',
   'washHome',
   'sand_watch',
-  'night_shift',
-  'dig_haul',
   'macro_driver',
 };
 
@@ -44,22 +42,23 @@ String normalizeLaborCanvasKey(String key) {
   switch (trimmed) {
     case 'wash1':
     case 'wash_old':
-      return 'wash_old';
     case 'wash2':
     case 'wash_new':
-      return 'wash_new';
+    case 'wash_sand':
+    case 'washSand':
+      return 'wash_sand';
     case 'pierWatch':
     case 'sand_watch':
       return 'sand_watch';
+    // กล่องที่เลิกใช้ → ยุบเข้างานทั่วไปเมื่อโหลดข้อมูลเก่า
     case 'nightShift':
     case 'night_shift':
     case 'nightPatrol':
     case 'night_patrol':
-      return 'night_shift';
     case 'digHaul':
     case 'dig_haul':
     case 'excavator_control':
-      return 'dig_haul';
+      return 'general';
     case 'macroDriver':
     case 'macro_driver':
       return 'macro_driver';

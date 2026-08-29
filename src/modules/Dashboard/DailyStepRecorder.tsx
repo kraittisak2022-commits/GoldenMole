@@ -283,12 +283,10 @@ const STEPS = [
 
 // Default work categories for labor canvas (fixed set — ไม่มีกล่องอื่นนอกจากรายการนี้)
 const DEFAULT_WORK_CATEGORIES = [
-    { id: 'wash1', label: 'ล้างทราย เครื่องร่อน 1 (เก่า)', shortTitle: 'เครื่องร่อน 1 (เก่า)', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200', accent: '#4A90E2' },
-    { id: 'wash2', label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)', shortTitle: 'เครื่องร่อน 2 (ใหม่)', color: 'bg-cyan-500', bgLight: 'bg-cyan-50 border-cyan-200', accent: '#24A7B8' },
+    { id: 'washSand', label: 'เครื่องร่อนทราย', shortTitle: 'เครื่องร่อนทราย', color: 'bg-blue-500', bgLight: 'bg-blue-50 border-blue-200', accent: '#4A90E2' },
     { id: 'washHome', label: 'ล้างทรายที่บ้าน', shortTitle: 'ล้างทรายที่บ้าน', color: 'bg-teal-500', bgLight: 'bg-teal-50 border-teal-200', accent: '#2CB67D' },
     { id: 'pierWatch', label: 'เฝ้าท่าทราย', shortTitle: 'เฝ้าท่าทราย', color: 'bg-pink-500', bgLight: 'bg-pink-50 border-pink-200', accent: '#E64A9E' },
-    { id: 'nightShift', label: 'เวร/เฝ้ากลางคืน', shortTitle: 'เวร/เฝ้ากลางคืน', color: 'bg-indigo-600', bgLight: 'bg-indigo-50 border-indigo-200', accent: '#7B5AE6' },
-    { id: 'digHaul', label: 'ขุดขน', shortTitle: 'ขุดขน', color: 'bg-orange-600', bgLight: 'bg-orange-50 border-orange-200', accent: '#7962E6' },
+    { id: 'macroDriver', label: 'คนขับรถแม็คโคร', shortTitle: 'คนขับแม็คโคร', color: 'bg-orange-500', bgLight: 'bg-orange-50 border-orange-200', accent: '#EF6C00' },
     { id: 'generalWork', label: 'งานทั่วไป', shortTitle: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200', accent: '#5F6AD8' },
 ];
 const FIXED_LABOR_CANVAS_CATEGORIES = DEFAULT_WORK_CATEGORIES.filter(c => c.id !== 'generalWork');
@@ -3597,10 +3595,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 />
                                                 <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    {(workAssignments['wash2'] || []).length > 0 ? (workAssignments['wash2'] || []).map(eid => {
+                                                    {([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                    ])]).length > 0 ? ([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                    ])]).map(eid => {
                                                         const emp = employees.find(e => e.id === eid);
                                                         return emp ? <span key={eid} className="rounded-lg bg-cyan-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 2 (ใหม่)&quot; ในขั้นค่าแรง</span>}
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;เครื่องร่อนทราย&quot; ในขั้นค่าแรง</span>}
                                                 </div>
                                             </div>
                                             <div className="rounded-[14px] border border-blue-200/90 bg-blue-50/80 p-2.5 dark:border-blue-500/30 dark:bg-blue-500/10">
@@ -3618,10 +3630,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 />
                                                 <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    {(workAssignments['wash1'] || []).length > 0 ? (workAssignments['wash1'] || []).map(eid => {
+                                                    {([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                    ])]).length > 0 ? ([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                    ])]).map(eid => {
                                                         const emp = employees.find(e => e.id === eid);
                                                         return emp ? <span key={eid} className="rounded-lg bg-blue-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 1 (เก่า)&quot; ในขั้นค่าแรง</span>}
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;เครื่องร่อนทราย&quot; ในขั้นค่าแรง</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -3648,10 +3674,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 />
                                                 <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    {(workAssignments['wash2'] || []).length > 0 ? (workAssignments['wash2'] || []).map(eid => {
+                                                    {([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                    ])]).length > 0 ? ([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                    ])]).map(eid => {
                                                         const emp = employees.find(e => e.id === eid);
                                                         return emp ? <span key={`pm2-${eid}`} className="rounded-lg bg-cyan-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 2 (ใหม่)&quot; ในขั้นค่าแรง</span>}
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;เครื่องร่อนทราย&quot; ในขั้นค่าแรง</span>}
                                                 </div>
                                             </div>
                                             <div className="rounded-[14px] border border-blue-200/90 bg-blue-50/80 p-2.5 dark:border-blue-500/30 dark:bg-blue-500/10">
@@ -3669,10 +3709,24 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 />
                                                 <p className="mb-1 mt-2 text-[11.5px] font-semibold text-slate-600 dark:text-slate-400">พนักงานล้าง</p>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    {(workAssignments['wash1'] || []).length > 0 ? (workAssignments['wash1'] || []).map(eid => {
+                                                    {([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                    ])]).length > 0 ? ([...new Set([
+                                                        ...(workAssignments['washSand'] || []),
+                                                        ...(workAssignments['wash1'] || []),
+                                                        ...(workAssignments['wash_old'] || []),
+                                                        ...(workAssignments['wash_sand'] || []),
+                                                        ...(workAssignments['wash2'] || []),
+                                                        ...(workAssignments['wash_new'] || []),
+                                                    ])]).map(eid => {
                                                         const emp = employees.find(e => e.id === eid);
                                                         return emp ? <span key={`pm1-${eid}`} className="rounded-lg bg-blue-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm">{getEmployeeDisplayName(emp)}</span> : null;
-                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;ล้างทราย เครื่องร่อน 1 (เก่า)&quot; ในขั้นค่าแรง</span>}
+                                                    }) : <span className="text-xs italic text-slate-400">ลากพนักงานใส่กล่อง &quot;เครื่องร่อนทราย&quot; ในขั้นค่าแรง</span>}
                                                 </div>
                                             </div>
                                         </div>

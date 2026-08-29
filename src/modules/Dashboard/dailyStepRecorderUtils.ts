@@ -205,12 +205,12 @@ export const GENERAL_WORK_ASSIGNMENT_PREFIX = 'general:';
 
 /** คีย์ canvas ค่าแรงบนเว็บ (สอดคล้องขั้นล้างทราย wash1/wash2) */
 export const WEB_LABOR_CANVAS_CATEGORY_IDS = new Set([
+    'washSand',
     'wash1',
     'wash2',
     'washHome',
     'pierWatch',
-    'nightShift',
-    'digHaul',
+    'macroDriver',
     'generalWork',
 ]);
 
@@ -263,9 +263,9 @@ export const classifyLaborEmployeePool = (emp: Employee): LaborEmployeePool | nu
 
 /** กล่องงานที่แสดงเมื่อเลือกกลุ่ม — คีย์เว็บหลัง `normalizeLaborCanvasKey` */
 export const LABOR_POOL_FIXED_CANVAS_IDS: Record<LaborEmployeePool, string[]> = {
-    sifter: ['wash1', 'wash2', 'washHome', 'pierWatch'],
-    excavatorMac: ['digHaul'],
-    nightWatch: ['nightShift'],
+    sifter: ['washSand', 'washHome', 'pierWatch'],
+    excavatorMac: ['macroDriver'],
+    nightWatch: [],
     generalLabor: [],
 };
 
@@ -280,10 +280,11 @@ export const normalizeLaborCanvasKey = (key: string): string => {
     switch (k) {
         case 'wash1':
         case 'wash_old':
-            return 'wash1';
         case 'wash2':
         case 'wash_new':
-            return 'wash2';
+        case 'wash_sand':
+        case 'washSand':
+            return 'washSand';
         case 'pierWatch':
         case 'sand_watch':
             return 'pierWatch';
@@ -291,12 +292,13 @@ export const normalizeLaborCanvasKey = (key: string): string => {
         case 'night_shift':
         case 'nightPatrol':
         case 'night_patrol':
-            return 'nightShift';
         case 'digHaul':
         case 'dig_haul':
         case 'excavator_control':
+            return 'generalWork';
         case 'macro_driver':
-            return 'digHaul';
+        case 'macroDriver':
+            return 'macroDriver';
         case 'generalWork':
         case 'general':
             return 'generalWork';

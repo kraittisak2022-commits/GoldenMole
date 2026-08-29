@@ -353,13 +353,16 @@ describe('computeSandDrumStockSummary', () => {
 
 describe('normalizeLaborCanvasKey', () => {
     it('maps Android keys to web canvas ids', () => {
-        expect(normalizeLaborCanvasKey('wash_old')).toBe('wash1');
-        expect(normalizeLaborCanvasKey('wash_new')).toBe('wash2');
+        expect(normalizeLaborCanvasKey('wash_old')).toBe('washSand');
+        expect(normalizeLaborCanvasKey('wash_new')).toBe('washSand');
+        expect(normalizeLaborCanvasKey('wash1')).toBe('washSand');
+        expect(normalizeLaborCanvasKey('wash2')).toBe('washSand');
         expect(normalizeLaborCanvasKey('sand_watch')).toBe('pierWatch');
-        expect(normalizeLaborCanvasKey('night_shift')).toBe('nightShift');
-        expect(normalizeLaborCanvasKey('night_patrol')).toBe('nightShift');
-        expect(normalizeLaborCanvasKey('nightPatrol')).toBe('nightShift');
-        expect(normalizeLaborCanvasKey('dig_haul')).toBe('digHaul');
+        expect(normalizeLaborCanvasKey('night_shift')).toBe('generalWork');
+        expect(normalizeLaborCanvasKey('night_patrol')).toBe('generalWork');
+        expect(normalizeLaborCanvasKey('nightPatrol')).toBe('generalWork');
+        expect(normalizeLaborCanvasKey('dig_haul')).toBe('generalWork');
+        expect(normalizeLaborCanvasKey('macro_driver')).toBe('macroDriver');
     });
 
     it('keeps washHome separate from general work', () => {
@@ -370,13 +373,14 @@ describe('normalizeLaborCanvasKey', () => {
         ).toEqual({ washHome: ['e1'], generalWork: ['e2'] });
     });
 
-    it('merges night patrol assignments into night shift canvas', () => {
+    it('merges retired night/dig boxes into general work', () => {
         expect(
             mergeLaborCanvasAssignments({
                 nightShift: ['e1'],
                 nightPatrol: ['e2'],
+                digHaul: ['e3'],
             })
-        ).toEqual({ nightShift: ['e1', 'e2'] });
+        ).toEqual({ generalWork: ['e1', 'e2', 'e3'] });
     });
 });
 
@@ -649,10 +653,10 @@ describe('mergeAttendanceWorkAssignments / section duplicates', () => {
         expect((picked as any).drumsWashedAtHome).toBe(7);
     });
 
-    it('maps macro_driver to digHaul for web canvas', () => {
-        expect(normalizeLaborCanvasKey('macro_driver')).toBe('digHaul');
+    it('maps macro_driver to macroDriver for web canvas', () => {
+        expect(normalizeLaborCanvasKey('macro_driver')).toBe('macroDriver');
         expect(mergeLaborCanvasAssignments({ macro_driver: ['c1'], work: ['a1'] })).toEqual({
-            digHaul: ['c1'],
+            macroDriver: ['c1'],
             generalWork: ['a1'],
         });
     });

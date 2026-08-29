@@ -142,34 +142,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const List<_LaborWorkCategory> _laborCategories = [
     _LaborWorkCategory(
-      id: 'wash_old',
-      label: 'ล้างทราย เครื่องร่อน 1 (เก่า)',
-      shortTitle: 'เครื่องร่อน 1 (เก่า)',
+      id: 'wash_sand',
+      label: 'เครื่องร่อนทราย',
+      shortTitle: 'เครื่องร่อนทราย',
       color: Color(0xFF4A90E2),
-    ),
-    _LaborWorkCategory(
-      id: 'wash_new',
-      label: 'ล้างทราย เครื่องร่อน 2 (ใหม่)',
-      shortTitle: 'เครื่องร่อน 2 (ใหม่)',
-      color: Color(0xFF24A7B8),
     ),
     _LaborWorkCategory(
       id: 'sand_watch',
       label: 'เฝ้าท่าทราย',
       shortTitle: 'เฝ้าท่าทราย',
       color: Color(0xFFE64A9E),
-    ),
-    _LaborWorkCategory(
-      id: 'night_shift',
-      label: 'เวร/เฝ้ากลางคืน',
-      shortTitle: 'เวร/เฝ้ากลางคืน',
-      color: Color(0xFF7B5AE6),
-    ),
-    _LaborWorkCategory(
-      id: 'dig_haul',
-      label: 'ขุดขน',
-      shortTitle: 'ขุดขน',
-      color: Color(0xFF7962E6),
     ),
     _LaborWorkCategory(
       id: 'macro_driver',
@@ -1853,7 +1835,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return _extractNamesFromDescription(t.description);
   }
 
-  /// ชื่อผู้ล้างจากบันทึกการทำงาน (canvas) — รองรับคีย์เว็บ wash1/wash2 และคีย์แอป wash_old/wash_new
+  /// ชื่อผู้ล้างจากบันทึกการทำงาน (canvas) — รองรับคีย์รวม wash_sand และคีย์เก่า wash1/wash2
   ({List<String> oldNames, List<String> newNames})
   _operatorNamesFromLatestLaborWash(Iterable<AppTransaction> dayRows) {
     bool laborAttendanceLike(AppTransaction t) {
@@ -1878,7 +1860,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return (wa['wash1']?.isNotEmpty ?? false) ||
           (wa['wash2']?.isNotEmpty ?? false) ||
           (wa['wash_old']?.isNotEmpty ?? false) ||
-          (wa['wash_new']?.isNotEmpty ?? false);
+          (wa['wash_new']?.isNotEmpty ?? false) ||
+          (wa['wash_sand']?.isNotEmpty ?? false) ||
+          (wa['washSand']?.isNotEmpty ?? false);
     }
 
     candidates.sort((a, b) {
@@ -1905,18 +1889,63 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return out;
     }
 
-    final oldIds = <String>{
+    final washIds = <String>{
       ...(wa['wash1'] ?? const []),
       ...(wa['wash_old'] ?? const []),
-    };
-    final newIds = <String>{
       ...(wa['wash2'] ?? const []),
       ...(wa['wash_new'] ?? const []),
+      ...(wa['wash_sand'] ?? const []),
+      ...(wa['washSand'] ?? const []),
     };
-    return (
-      oldNames: uniqDisplayNames(oldIds),
-      newNames: uniqDisplayNames(newIds),
-    );
+    final names = uniqDisplayNames(washIds);
+    // เครื่องร่อนรวมกล่องเดียว — คืนชื่อชุดเดียวกันทั้งสองช่องเพื่อโค้ดเดิมที่อ่าน old/new
+    return (oldNames: names, newNames: names);
+  }
+
+  /// พนักงานที่เช็คชื่อ «มาทำงาน» ของวันนั้น (ท่าทราย + คนขับ) — ไม่รวมลางาน
+  Set<String> _attendancePresentWorkIdsToday() {
+    final dayKey = _quickYmd(_selectedDate);
+    final ids = <String>{};
+    for (final t in _moduleDayAllTransactions) {
+      if (t.date.trim() != dayKey.trim()) continue;
+      if (t.category != 'Labor') continue;
+      if ((t.subCategory ?? '').trim() != 'Attendance') continue;
+      final ls = (t.laborStatus ?? '').trim().toLowerCase();
+      if (ls == 'leave' ||
+          ls == 'sick' ||
+          ls == 'personal' ||
+          ls == 'ot') {
+        continue;
+      }
+      final desc = t.description;
+      final isCheckInPresent = desc.contains('เช็คชื่อ') &&
+          desc.contains('มาทำงาน') &&
+          !desc.contains('ลางาน');
+      if (!isCheckInPresent) continue;
+
+      final wa = t.workAssignments;
+      if (wa != null && wa.isNotEmpty) {
+        for (final role in const [
+          'work',
+          'half:morning',
+          'half:afternoon',
+          'macro_driver',
+          'drum',
+          'drum:morning',
+          'drum:afternoon',
+        ]) {
+          for (final id in wa[role] ?? const <String>[]) {
+            final v = id.trim();
+            if (v.isNotEmpty) ids.add(v);
+          }
+        }
+      }
+      for (final id in t.employeeIds) {
+        final v = id.trim();
+        if (v.isNotEmpty) ids.add(v);
+      }
+    }
+    return ids;
   }
 
   void _hydrateSandWashModule(
@@ -13279,6 +13308,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       bucketExpanded: _laborBucketExpanded,
       laborEmpPoolKind: _laborEmpPoolKindFor,
       macroDriverPoolIds: _macroDriverIdsFromVehicleUsageToday(),
+      attendancePresentIds: _attendancePresentWorkIdsToday(),
       onSharedStateChanged: () => setState(() {}),
       openThaiTextPad: _openThaiTextPad,
     );
@@ -13429,6 +13459,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 bucketExpanded: _laborBucketExpanded,
                 laborEmpPoolKind: _laborEmpPoolKindFor,
                 macroDriverPoolIds: _macroDriverIdsFromVehicleUsageToday(),
+                attendancePresentIds: _attendancePresentWorkIdsToday(),
                 onSharedStateChanged: () => setState(() {}),
                 openThaiTextPad: _openThaiTextPad,
               ),
@@ -17879,12 +17910,11 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
 enum _LaborEmpPoolKind { allEmployees, sandSieve, excavatorMac, nightWatch, generalLabor }
 
 const _sandSievePoolCategoryIds = {
-  'wash_old',
-  'wash_new',
+  'wash_sand',
   'sand_watch',
 };
-const _excavatorMacPoolCategoryIds = {'macro_driver', 'dig_haul'};
-const _nightWatchPoolCategoryIds = {'night_shift'};
+const _excavatorMacPoolCategoryIds = {'macro_driver'};
+const _nightWatchPoolCategoryIds = <String>{};
 
 enum _LaborDragBoardLayout { combined, poolOnly, canvasOnly }
 
@@ -17907,6 +17937,7 @@ class _LaborDragBoard extends StatefulWidget {
     required this.bucketExpanded,
     required this.laborEmpPoolKind,
     required this.macroDriverPoolIds,
+    required this.attendancePresentIds,
     required this.onSharedStateChanged,
     required this.openThaiTextPad,
   });
@@ -17927,6 +17958,8 @@ class _LaborDragBoard extends StatefulWidget {
   final Map<String, bool> bucketExpanded;
   final _LaborEmpPoolKind? Function(Employee e) laborEmpPoolKind;
   final Set<String> macroDriverPoolIds;
+  /// จากเช็คชื่อ «มาทำงาน» ของวันนั้น — ใช้กรองพูล «พนักงานทั้งหมด»
+  final Set<String> attendancePresentIds;
   final VoidCallback onSharedStateChanged;
   final Future<void> Function({
     required TextEditingController controller,
@@ -18145,7 +18178,10 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                     widget.poolKind == _LaborEmpPoolKind.excavatorMac &&
                             widget.macroDriverPoolIds.isEmpty
                         ? 'ยังไม่มีคนขับจากบันทึกการใช้รถแม็คโครวันนี้ — บันทึกที่เมนู «การใช้รถแม็คโคร» ก่อน'
-                        : 'ไม่มีพนักงานในกลุ่มนี้ (หรือจัดลงกล่องงานหมดแล้ว)',
+                        : widget.poolKind == _LaborEmpPoolKind.allEmployees &&
+                                widget.attendancePresentIds.isEmpty
+                            ? 'ยังไม่มีคนจากเช็คชื่อ «มาทำงาน» วันนี้ — บันทึกที่เมนู «เช็คชื่อ» ก่อน'
+                            : 'ไม่มีพนักงานในกลุ่มนี้ (หรือจัดลงกล่องงานหมดแล้ว)',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontSize: 13,
@@ -18255,7 +18291,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   return widget.macroDriverPoolIds.contains(e.id);
                 }
                 if (widget.poolKind == _LaborEmpPoolKind.allEmployees) {
-                  return true;
+                  return widget.attendancePresentIds.contains(e.id);
                 }
                 return widget.laborEmpPoolKind(e) == widget.poolKind;
               },
@@ -18633,7 +18669,9 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                       kind: _LaborEmpPoolKind.allEmployees,
                       icon: Icons.grid_view_rounded,
                       title: 'พนักงานทั้งหมด',
-                      subtitle: 'เลือกลงกล่องงานได้ทุกประเภท',
+                      subtitle: widget.attendancePresentIds.isEmpty
+                          ? 'ยังไม่มีคนจากเช็คชื่อ «มาทำงาน» วันนี้'
+                          : 'จากเช็คชื่อมาทำงาน ${widget.attendancePresentIds.length} คน',
                     ),
                     _poolKindTile(
                       kind: _LaborEmpPoolKind.sandSieve,
