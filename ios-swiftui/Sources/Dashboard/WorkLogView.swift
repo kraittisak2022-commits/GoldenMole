@@ -20,8 +20,16 @@ struct WorkLogView: View {
             .sorted { ($0.createdAt ?? "") < ($1.createdAt ?? "") }
     }
 
-    private var income: Double { dayTransactions.filter { $0.type == .income }.reduce(0) { $0 + $1.amount } }
-    private var expense: Double { dayTransactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount } }
+    private var income: Double {
+        dayTransactions
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + displayMonetaryAmount($1) }
+    }
+    private var expense: Double {
+        dayTransactions
+            .filter { $0.type == .expense && $0.category != "Fuel" }
+            .reduce(0) { $0 + displayMonetaryAmount($1) }
+    }
 
     private var tripUnits: [CountRecordTripUnit] {
         CountRecordLogic.buildTripUnits(
@@ -199,20 +207,47 @@ struct WorkLogView: View {
     // MARK: - Category sections
 
     private func categorySection(category: String, items: [Transaction]) -> some View {
-        let color = AppTheme.categoryColor(for: category)
-        let total = items.reduce(0.0) { acc, tx in
-            acc + (tx.type == .income ? tx.amount : (tx.type == .expense ? -tx.amount : 0))
-        }
         return SectionCard(categoryLabel(category), systemImage: categoryIcon(category)) {
             VStack(spacing: 8) {
                 ForEach(items) { tx in
-                    recordRow(tx, color: color)
+                    recordRow(tx)
                     if tx.id != items.last?.id { Divider() }
+                }
+            }
+            categoryFooter(category: category, items: items)
+        }
+    }
+
+    @ViewBuilder
+    private func categoryFooter(category: String, items: [Transaction]) -> some View {
+        if category == "Fuel" {
+            let liters = items.reduce(0.0) { $0 + FuelLogic.liters(of: $1) }
+            if liters != 0 {
+                HStack {
+                    Text("รวมปริมาณ")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                    Spacer()
+                    Text("\(FuelLogic.formatLiters(liters)) L")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.fuel)
+                }
+                .padding(.top, 4)
+            }
+        } else {
+            let total = items.reduce(0.0) { acc, tx in
+                let amt = displayMonetaryAmount(tx)
+                switch tx.type {
+                case .income: return acc + amt
+                case .expense: return acc - amt
+                case .leave: return acc
                 }
             }
             if total != 0 {
                 HStack {
-                    Text("สุทธิหมวดนี้").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.inkMuted)
+                    Text("สุทธิหมวดนี้")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
                     Spacer()
                     Text(DashboardAggregations.formatCurrency(total))
                         .font(.subheadline.weight(.bold))
@@ -223,8 +258,25 @@ struct WorkLogView: View {
         }
     }
 
-    private func recordRow(_ tx: Transaction, color: Color) -> some View {
+    /// Labor/Vehicle often persist `amount = 0` and store wages elsewhere — mirror web wizard totals.
+    private func displayMonetaryAmount(_ tx: Transaction) -> Double {
+        if tx.category == "Labor" {
+            let ids = (tx.employeeIds ?? []).filter { !$0.isEmpty }
+            if !ids.isEmpty {
+                let wageSum = ids.reduce(0.0) {
+                    $0 + DashboardAggregations.laborWageForEmployee(tx, employeeId: $1, employees: employees)
+                }
+                if wageSum > 0 { return wageSum }
+            }
+        }
+        let inferred = DashboardAggregations.wizardMonetaryAmount(tx, employees: employees)
+        if inferred > 0 { return inferred }
+        return tx.amount
+    }
+
+    private func recordRow(_ tx: Transaction) -> some View {
         let amountColor: Color = {
+            if tx.category == "Fuel" { return AppTheme.fuel }
             switch tx.type {
             case .income: return AppTheme.income
             case .expense: return AppTheme.expense
@@ -239,8 +291,12 @@ struct WorkLogView: View {
                 Spacer()
                 if tx.type == .leave {
                     PillBadge(text: "ลา", color: AppTheme.slate)
+                } else if tx.category == "Fuel" {
+                    Text("\(FuelLogic.formatLiters(FuelLogic.liters(of: tx))) L")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(amountColor)
                 } else {
-                    Text(DashboardAggregations.formatCurrency(tx.amount))
+                    Text(DashboardAggregations.formatCurrency(displayMonetaryAmount(tx)))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(amountColor)
                 }
