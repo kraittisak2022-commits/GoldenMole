@@ -181,7 +181,8 @@ struct DashboardShell: View {
                         employees: appState.employees,
                         settings: appState.settings,
                         dateFilter: appState.dateFilter,
-                        greetingName: auth.currentAdmin?.displayName
+                        greetingName: auth.currentAdmin?.displayName,
+                        transactionsRevision: appState.transactionsRevision
                     )
                     .refreshable { await appState.refresh(forceFull: true) }
                 case .worklog:
@@ -344,6 +345,7 @@ struct DashboardShell: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     RealtimeV4View(
                         transactions: appState.transactions,
+                        transactionsByDay: appState.transactionsByDay,
                         employees: appState.employees,
                         settings: appState.settings,
                         transactionsRevision: appState.transactionsRevision,

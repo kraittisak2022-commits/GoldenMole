@@ -593,7 +593,7 @@ private struct DayDetailSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+                LazyVStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                     header
                     if day.opsMark != .none { realtimeOpsSection }
                     financeDashboard

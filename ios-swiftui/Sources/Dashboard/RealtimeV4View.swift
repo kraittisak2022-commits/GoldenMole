@@ -65,10 +65,11 @@ struct RealtimeV4Snapshot: Sendable {
         employees: [Employee],
         cars: [String] = [],
         catalog: [VehicleCatalogRow] = [],
-        light: Bool = false
+        light: Bool = false,
+        byDay: [String: [Transaction]]? = nil
     ) -> RealtimeV4Snapshot {
-        let byDay = Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
-        let dayTx = byDay[dayKey] ?? []
+        let dayIndex = byDay ?? Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
+        let dayTx = dayIndex[dayKey] ?? []
         let units = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: dayTx,
@@ -84,7 +85,7 @@ struct RealtimeV4Snapshot: Sendable {
                 from: dayKey,
                 transactions: transactions,
                 employees: employees,
-                byDay: byDay
+                byDay: dayIndex
             )
         let priorSandKey = light
             ? nil
@@ -93,7 +94,7 @@ struct RealtimeV4Snapshot: Sendable {
                 mode: .sand,
                 transactions: transactions,
                 employees: employees,
-                byDay: byDay
+                byDay: dayIndex
             )
 
         let tripAnalytics = CountRecordAnalytics.buildTripAnalytics(
@@ -102,7 +103,7 @@ struct RealtimeV4Snapshot: Sendable {
             employees: employees,
             tripUnits: units,
             priorKey: priorTripKey,
-            byDay: byDay,
+            byDay: dayIndex,
             light: light
         )
         let sandAnalytics = CountRecordAnalytics.buildSandAnalytics(
@@ -111,7 +112,7 @@ struct RealtimeV4Snapshot: Sendable {
             employees: employees,
             sandUnit: sand,
             priorKey: priorSandKey,
-            byDay: byDay,
+            byDay: dayIndex,
             light: light
         )
 
@@ -164,7 +165,7 @@ struct RealtimeV4Snapshot: Sendable {
                 transactions: transactions,
                 employees: employees,
                 priorKey: priorTripKey,
-                byDay: byDay
+                byDay: dayIndex
             ),
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
             fleetMorningSpanLabel: periodSpans.morning,
@@ -212,6 +213,8 @@ enum RealtimeBoardMode: String, Sendable {
 
 struct RealtimeV4View: View {
     let transactions: [Transaction]
+    /// Pre-grouped day index from AppState — skips O(n) regroup on every rebuild.
+    var transactionsByDay: [String: [Transaction]] = [:]
     let employees: [Employee]
     let settings: AppSettings
     var transactionsRevision: Int = 0
@@ -339,6 +342,9 @@ struct RealtimeV4View: View {
         rebuildTask?.cancel()
         let dayKey = focusDateStr
         let txs = transactions
+        let byDay = transactionsByDay.isEmpty
+            ? Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
+            : transactionsByDay
         let emps = employees
         let cars = settings.cars
         let catalog = settings.vehicleCatalog
@@ -350,13 +356,16 @@ struct RealtimeV4View: View {
             await MainActor.run { buildSupervisor.beginBuild() }
             let (built, ms) = await Task.detached(priority: .userInitiated) {
                 RealtimeBuildSupervisor.measureBuild {
+                    let focusTx = byDay[dayKey] ?? []
                     RealtimeV4Snapshot.build(
                         dayKey: dayKey,
-                        transactions: txs,
+                        // Light builds only need the focus day; full builds keep the list for prior-day scans.
+                        transactions: light ? focusTx : txs,
                         employees: emps,
                         cars: cars,
                         catalog: catalog,
-                        light: light
+                        light: light,
+                        byDay: byDay
                     )
                 }
             }.value
@@ -375,7 +384,9 @@ struct RealtimeV4View: View {
     }
 
     private func adaptiveDebounceNs() -> UInt64 {
-        // More events in the last 2s → longer debounce (250ms … 800ms).
+        // More events in the last 2s → longer debounce (250ms … 900ms).
+        // Economy mode always prefers the longer end to keep the main thread free.
+        if buildSupervisor.isEconomyMode { return 900_000_000 }
         let n = recentEventTimes.count
         if n >= 8 { return 800_000_000 }
         if n >= 4 { return 500_000_000 }
@@ -487,7 +498,7 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
         )
-        .shadow(color: heroAccentColors.first?.opacity(0.28) ?? .clear, radius: 10, y: 4)
+        .shadow(color: heroAccentColors.first?.opacity(0.18) ?? .clear, radius: 6, y: 2)
         .sheet(isPresented: $showDatePicker) {
             focusDatePickerSheet
         }
@@ -577,7 +588,7 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 6)
+        .shadow(color: .black.opacity(0.04), radius: 6, y: 3)
     }
 
     private var liveBoardHeader: some View {
@@ -1156,7 +1167,7 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(RealtimeV4Palette.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
@@ -1415,7 +1426,7 @@ private struct TripVehicleCard: View {
         }
         .frame(minHeight: 168)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+        .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
         .overlay(alignment: .topTrailing) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
                 .font(.system(size: 9, weight: .bold))

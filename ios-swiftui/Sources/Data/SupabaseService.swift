@@ -43,6 +43,21 @@ struct FailableDecodable<T: Decodable>: Decodable {
 final class SupabaseService: ObservableObject {
     private let client: SupabaseClient
 
+    /// Columns required by `Transaction` decoding — mirrors Flutter `_transactionColumns`
+    /// to cut Disk IO / JSON payload vs `select(*)`.
+    static let transactionSelectColumns =
+        "id, date, type, category, description, amount, quantity, unit, note, "
+        + "sub_category, created_at, updated_at, employee_id, employee_ids, "
+        + "driver_id, driver_wage, vehicle_wage, vehicle_id, vehicle_name, "
+        + "unit_price, project_id, labor_status, work_type, work_type_by_employee, "
+        + "work_assignments, ot_amount, advance_amount, special_amount, ot_hours, "
+        + "leave_reason, leave_days, work_details, fuel_type, fuel_movement, fuel_tank, "
+        + "machine_id, machine_hours, trip_count, trip_morning, trip_afternoon, "
+        + "trip_billing_mode, cubic_per_trip, total_cubic, per_car_trips, per_car_cubic, "
+        + "sand_morning, sand_afternoon, sand_machine_type, sand_operators, sand_transport, "
+        + "drums_obtained, drums_washed_at_home, sand_batch_id, "
+        + "event_type, event_priority, event_time, income_payment_status"
+
     init() throws {
         guard SupabaseConfig.isConfigured else { throw DataServiceError.notConfigured }
         client = SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey)
@@ -98,17 +113,20 @@ final class SupabaseService: ObservableObject {
         return TransactionFetchResult(transactions: decoded, skippedCount: skipped)
     }
 
-    /// Recent transactions only (≈90 days, max 2000 rows) so analytics stay light.
-    /// Network runs here; decoding is offloaded off the main actor.
-    func fetchTransactions() async throws -> TransactionFetchResult {
-        let since = Self.transactionsWindowStartYMD()
+    /// Recent transactions only (default ≈90 days) so analytics stay light.
+    /// Uses a projected column list to cut Disk IO / payload vs `select(*)`.
+    /// - Parameters:
+    ///   - daysBack: Inclusive lookback from today (Bangkok). Use 14 for cold-start.
+    ///   - limit: Max rows (newest first).
+    func fetchTransactions(daysBack: Int = 90, limit: Int = 2000) async throws -> TransactionFetchResult {
+        let since = Self.transactionsWindowStartYMD(daysBack: daysBack)
         let data: Data
         do {
             data = try await client.from("transactions")
-                .select()
+                .select(Self.transactionSelectColumns)
                 .gte("date", value: since)
                 .order("created_at", ascending: false)
-                .limit(2000)
+                .limit(limit)
                 .execute()
                 .data
         } catch {
@@ -119,11 +137,11 @@ final class SupabaseService: ObservableObject {
         }.value
     }
 
-    /// Gregorian YMD ~90 days ago (Bangkok calendar), used to bound the main fetch.
-    nonisolated static func transactionsWindowStartYMD() -> String {
+    /// Gregorian YMD N days ago (Bangkok calendar), used to bound the main fetch.
+    nonisolated static func transactionsWindowStartYMD(daysBack: Int = 90) -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Bangkok") ?? .current
-        let start = cal.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let start = cal.date(byAdding: .day, value: -max(0, daysBack), to: Date()) ?? Date()
         let y = cal.component(.year, from: start)
         let m = cal.component(.month, from: start)
         let d = cal.component(.day, from: start)
@@ -132,11 +150,11 @@ final class SupabaseService: ObservableObject {
 
     /// Delta fetch: only rows changed since `isoTimestamp` (bounded to the 90-day window).
     func fetchTransactionsSince(_ isoTimestamp: String) async throws -> TransactionFetchResult {
-        let since = Self.transactionsWindowStartYMD()
+        let since = Self.transactionsWindowStartYMD(daysBack: 90)
         let data: Data
         do {
             data = try await client.from("transactions")
-                .select()
+                .select(Self.transactionSelectColumns)
                 .gte("date", value: since)
                 .gt("updated_at", value: isoTimestamp)
                 .order("updated_at", ascending: false)
@@ -153,7 +171,7 @@ final class SupabaseService: ObservableObject {
 
     /// Lightweight index for reconcile: ids + updated_at in the 90-day window (no row body).
     func fetchTransactionIndex() async throws -> [TransactionIndexRow] {
-        let since = Self.transactionsWindowStartYMD()
+        let since = Self.transactionsWindowStartYMD(daysBack: 90)
         do {
             return try await client.from("transactions")
                 .select("id,updated_at")
@@ -184,7 +202,7 @@ final class SupabaseService: ObservableObject {
             let data: Data
             do {
                 data = try await client.from("transactions")
-                    .select()
+                    .select(Self.transactionSelectColumns)
                     .in("id", values: chunk)
                     .execute()
                     .data

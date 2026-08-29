@@ -155,6 +155,8 @@ struct OverviewHubView: View {
     let settings: AppSettings
     let dateFilter: DateFilter
     var greetingName: String? = nil
+    /// Prefer revision over Equatable-diffing the full transaction arrays.
+    var transactionsRevision: Int = 0
 
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var todayOps = TodayOpsSnapshot.empty
@@ -168,7 +170,7 @@ struct OverviewHubView: View {
     }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+            LazyVStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                 greetingHeader
                 todayHighlightCard
                 dailyEventsCard
@@ -190,8 +192,7 @@ struct OverviewHubView: View {
             showAllWorkingStaff = false
             scheduleRebuild()
         }
-        .onChange(of: transactions) { _, _ in scheduleRebuild() }
-        .onChange(of: allTransactions.count) { _, _ in scheduleRebuild() }
+        .onChange(of: transactionsRevision) { _, _ in scheduleRebuild() }
         .onChange(of: employees.count) { _, _ in scheduleRebuild() }
         .onChange(of: settings.cars) { _, _ in scheduleRebuild() }
         .onChange(of: settings.vehicleCatalog) { _, _ in scheduleRebuild() }

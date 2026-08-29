@@ -47,6 +47,9 @@ final class AppState {
     /// Bumped on every transactions mutation so views can avoid Equatable-diffing the full array.
     private(set) var transactionsRevision = 0
 
+    /// Day-keyed index (`yyyy-MM-dd` → rows) rebuilt with each revision — avoids regrouping on Realtime rebuilds.
+    private(set) var transactionsByDay: [String: [Transaction]] = [:]
+
     var dateFilter: DateFilter {
         DashboardAggregations.dateFilter(preset: datePreset, customStart: customStart, customEnd: customEnd)
     }
@@ -88,6 +91,7 @@ final class AppState {
         transactions = []
         employees = []
         settings = .fallback
+        transactionsByDay = [:]
         transactionsRevision += 1
         cacheMeta = nil
         didHydrateFromCache = false
@@ -109,10 +113,8 @@ final class AppState {
         cacheMeta = snap.meta
         lastReconcileAt = snap.meta.lastReconcileAt
         if transactions.isEmpty, !snap.transactions.isEmpty {
-            transactions = snap.transactions
-            transactionsRevision += 1
+            replaceTransactions(snap.transactions, bumpFetchedAt: snap.meta.transactionsSavedAt)
             lastFetchTransactionCount = snap.transactions.count
-            lastFetchedAt = snap.meta.transactionsSavedAt
         }
         if employees.isEmpty, !snap.employees.isEmpty {
             employees = snap.employees
@@ -149,35 +151,63 @@ final class AppState {
 
     // MARK: - Incremental realtime apply
 
+    private func rebuildTransactionsByDay() {
+        transactionsByDay = Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
+    }
+
+    private func bumpTransactionsRevision() {
+        transactionsRevision += 1
+        rebuildTransactionsByDay()
+    }
+
+    /// Replaces the in-memory transaction list and refreshes the day index.
+    func replaceTransactions(_ rows: [Transaction], bumpFetchedAt: Date? = Date()) {
+        transactions = rows
+        bumpTransactionsRevision()
+        lastFetchTransactionCount = rows.count
+        if let bumpFetchedAt {
+            lastFetchedAt = bumpFetchedAt
+        }
+    }
+
     /// Inserts or replaces a transaction by id, keeping the list ordered by created_at desc.
     /// New rows use sorted insertion (O(n)) instead of re-sorting the whole array.
-    func upsertTransaction(_ tx: Transaction) {
+    func upsertTransaction(_ tx: Transaction, rebuildIndex: Bool = true) {
+        var changed = false
         if let idx = transactions.firstIndex(where: { $0.id == tx.id }) {
             if transactions[idx] != tx {
                 transactions[idx] = tx
-                transactionsRevision += 1
+                changed = true
             }
         } else {
             let key = tx.createdAt ?? ""
             // List is newest-first; insert before the first older row.
             let insertAt = transactions.firstIndex { ($0.createdAt ?? "") < key } ?? transactions.count
             transactions.insert(tx, at: insertAt)
-            transactionsRevision += 1
+            changed = true
+        }
+        if changed {
+            if rebuildIndex {
+                bumpTransactionsRevision()
+            }
+            // Batch callers (`applyTransactionDelta`) bump once after the loop.
         }
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
-        if !suppressCachePersist {
+        if rebuildIndex, !suppressCachePersist {
             scheduleCachePersist()
         }
     }
 
-    func removeTransaction(id: String) {
+    func removeTransaction(id: String, rebuildIndex: Bool = true) {
         guard let idx = transactions.firstIndex(where: { $0.id == id }) else { return }
         transactions.remove(at: idx)
-        transactionsRevision += 1
+        if rebuildIndex {
+            bumpTransactionsRevision()
+        }
         lastFetchTransactionCount = transactions.count
         lastFetchedAt = Date()
-        if !suppressCachePersist {
+        if rebuildIndex, !suppressCachePersist {
             scheduleCachePersist()
         }
     }
@@ -187,8 +217,9 @@ final class AppState {
         guard !rows.isEmpty else { return }
         suppressCachePersist = true
         for tx in rows {
-            upsertTransaction(tx)
+            upsertTransaction(tx, rebuildIndex: false)
         }
+        bumpTransactionsRevision()
         suppressCachePersist = false
         scheduleCachePersist()
     }
@@ -205,7 +236,7 @@ final class AppState {
 
         do {
             let index = try await dataService.fetchTransactionIndex()
-            let windowStart = SupabaseService.transactionsWindowStartYMD()
+            let windowStart = SupabaseService.transactionsWindowStartYMD(daysBack: 90)
             var remoteById: [String: TransactionIndexRow] = [:]
             remoteById.reserveCapacity(index.count)
             for row in index { remoteById[row.id] = row }
@@ -315,11 +346,24 @@ final class AppState {
                 lastSkippedTransactionCount = result.skippedCount
                 lastFetchedAt = Date()
                 lastFetchTransactionCount = transactions.count
-            } else {
-                let fetchResult = try await dataService.fetchTransactions()
+            } else if transactions.isEmpty && !forceFull {
+                // Cold start: paint UI from ~14 days, then expand to the full 90-day window.
+                let recent = try await dataService.fetchTransactions(daysBack: 14, limit: 600)
+                if !recent.transactions.isEmpty {
+                    replaceTransactions(recent.transactions)
+                    lastSkippedTransactionCount = recent.skippedCount
+                }
+                let fetchResult = try await dataService.fetchTransactions(daysBack: 90, limit: 2000)
                 if transactions != fetchResult.transactions {
-                    transactions = fetchResult.transactions
-                    transactionsRevision += 1
+                    replaceTransactions(fetchResult.transactions)
+                }
+                lastFetchTransactionCount = fetchResult.transactions.count
+                lastSkippedTransactionCount = fetchResult.skippedCount
+                lastReconcileAt = Date()
+            } else {
+                let fetchResult = try await dataService.fetchTransactions(daysBack: 90, limit: 2000)
+                if transactions != fetchResult.transactions {
+                    replaceTransactions(fetchResult.transactions)
                 }
                 lastFetchTransactionCount = fetchResult.transactions.count
                 lastSkippedTransactionCount = fetchResult.skippedCount

@@ -154,7 +154,7 @@ struct TasksHubView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 communityHero
                 composerPrompt
                 segmentPill
@@ -336,7 +336,7 @@ struct TasksHubView: View {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 20, y: 10)
+        .shadow(color: AppTheme.brand.opacity(0.22), radius: 12, y: 6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("กระดานงานวันนี้ ทั้งหมด \(todayTasks.count) เสร็จแล้ว \(doneToday)")
     }
@@ -449,7 +449,7 @@ struct TasksHubView: View {
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(AppTheme.surface)
-                    .shadow(color: AppTheme.cardShadow.opacity(0.7), radius: 14, y: 6)
+                    .shadow(color: AppTheme.cardShadow.opacity(0.35), radius: 8, y: 3)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -577,7 +577,7 @@ struct TasksHubView: View {
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow.opacity(0.65), radius: 16, y: 6)
+                .shadow(color: AppTheme.cardShadow.opacity(0.35), radius: 8, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -663,7 +663,7 @@ struct TasksHubView: View {
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow.opacity(0.55), radius: 14, y: 5)
+                .shadow(color: AppTheme.cardShadow.opacity(0.3), radius: 8, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -750,7 +750,7 @@ struct TasksHubView: View {
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                 .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow, radius: 18, y: 8)
+                .shadow(color: AppTheme.cardShadow.opacity(0.35), radius: 10, y: 4)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
@@ -789,7 +789,7 @@ struct TasksHubView: View {
                 )
                 .padding(.vertical, 8)
             } else {
-                VStack(spacing: 12) {
+                LazyVStack(spacing: 12) {
                     ForEach(listedTasks) { task in
                         feedPost(task)
                     }
@@ -940,7 +940,7 @@ struct TasksHubView: View {
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow.opacity(0.45), radius: 10, y: 4)
+                .shadow(color: AppTheme.cardShadow.opacity(0.25), radius: 6, y: 2)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
