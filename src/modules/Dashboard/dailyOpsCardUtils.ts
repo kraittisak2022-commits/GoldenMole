@@ -1,5 +1,6 @@
 import type { Employee, Transaction } from '../../types';
 import { normalizeDate } from '../../utils';
+import { isSandYardOrMacroDriverEmployee } from '../../utils/advanceEmployeeFilter';
 import { buildFuelUsageReport, filterFuelUsageReport } from '../../utils/fuelUsageReport';
 import { leaveRecordCoversDay } from '../../utils/laborLeaveSpan';
 import { transactionVehicleLabel, type VehicleCatalogRow } from '../../utils/vehicleCatalog';
@@ -118,6 +119,11 @@ export function buildAttendanceSummary(
     employees: Employee[],
 ): AttendanceSummary {
     const day = normalizeDate(dayKey);
+    const eligibleIds = new Set(
+        employees
+            .filter((e) => !e.inactive && isSandYardOrMacroDriverEmployee(e))
+            .map((e) => e.id),
+    );
     const presentIds = new Set<string>();
     const otIds = new Set<string>();
 
@@ -127,7 +133,7 @@ export function buildAttendanceSummary(
         if (t.laborStatus !== 'Work' && t.laborStatus !== 'OT') continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (!eid) continue;
+            if (!eid || !eligibleIds.has(eid)) continue;
             presentIds.add(eid);
             if (t.laborStatus === 'OT') otIds.add(eid);
         }
@@ -138,11 +144,10 @@ export function buildAttendanceSummary(
         if (!leaveRecordCoversDay(t, dayKey)) continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (eid) leaveIds.add(eid);
+            if (eid && eligibleIds.has(eid)) leaveIds.add(eid);
         }
     }
 
-    const activeEmployees = employees.filter((e) => !e.inactive);
     const presentPeople: AttendancePerson[] = [...presentIds]
         .map((id) => ({
             id,
@@ -153,7 +158,7 @@ export function buildAttendanceSummary(
 
     const present = presentIds.size;
     const leave = leaveIds.size;
-    const absent = Math.max(0, activeEmployees.length - present - leave);
+    const absent = Math.max(0, eligibleIds.size - present - leave);
 
     return { present, leave, absent, presentPeople };
 }

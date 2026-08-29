@@ -6,10 +6,13 @@ import { buildAttendanceSummary, buildMacroUsageSummary } from './dailyOpsCardUt
 const dayKey = '2026-08-28';
 
 const employees: Employee[] = [
-    { id: 'e1', name: 'สมชาย', nickname: 'ชาย', type: 'Daily' },
-    { id: 'e2', name: 'สมหญิง', nickname: 'หญิง', type: 'Daily' },
-    { id: 'e3', name: 'สมศักดิ์', nickname: 'ศักดิ์', type: 'Daily' },
-    { id: 'e4', name: 'สมปอง', nickname: 'ปอง', type: 'Daily', inactive: true },
+    { id: 'e1', name: 'สมชาย', nickname: 'ชาย', type: 'Daily', positions: ['พนักงานท่าทราย'] },
+    { id: 'e2', name: 'สมหญิง', nickname: 'หญิง', type: 'Daily', positions: ['พนักงานท่าทราย'] },
+    { id: 'e3', name: 'สมศักดิ์', nickname: 'ศักดิ์', type: 'Daily', positions: ['คนขับรถแม็คโคร'] },
+    { id: 'e4', name: 'สมปอง', nickname: 'ปอง', type: 'Daily', positions: ['พนักงานท่าทราย'], inactive: true },
+    { id: 'e5', name: 'สมหมาย', nickname: 'หมาย', type: 'Daily', positions: ['คนขับรถ'] },
+    { id: 'e6', name: 'สมจิตร', nickname: 'จิตร', type: 'Daily', positions: ['พนักงานท่าทราย'] },
+    { id: 'e7', name: 'สมพร', nickname: 'พร', type: 'Daily', positions: ['คนขับรถแมคโคร'] },
 ];
 
 describe('buildMacroUsageSummary', () => {
@@ -93,7 +96,7 @@ describe('buildMacroUsageSummary', () => {
 });
 
 describe('buildAttendanceSummary', () => {
-    it('unions employee ids across multiple labor rows and counts leave/absent', () => {
+    it('counts only sand-yard staff and macro drivers for present/leave/absent', () => {
         const transactions: Transaction[] = [
             {
                 id: 'l1',
@@ -104,7 +107,7 @@ describe('buildAttendanceSummary', () => {
                 description: 'ค่าแรง',
                 amount: 1000,
                 laborStatus: 'Work',
-                employeeIds: ['e1', 'e2'],
+                employeeIds: ['e1', 'e2', 'e5'],
             },
             {
                 id: 'l2',
@@ -125,6 +128,17 @@ describe('buildAttendanceSummary', () => {
                 description: 'ลาป่วย',
                 amount: 0,
                 laborStatus: 'Sick',
+                employeeIds: ['e7'],
+                leaveDays: 1,
+            },
+            {
+                id: 'leave2',
+                date: dayKey,
+                type: 'Leave',
+                category: 'Leave',
+                description: 'ลา (inactive — ละเว้น)',
+                amount: 0,
+                laborStatus: 'Sick',
                 employeeIds: ['e4'],
                 leaveDays: 1,
             },
@@ -132,18 +146,20 @@ describe('buildAttendanceSummary', () => {
 
         const summary = buildAttendanceSummary(dayKey, transactions, employees);
 
+        // pool: e1,e2,e3,e6,e7 (e4 inactive, e5 คนขับรถ excluded)
         expect(summary.present).toBe(3);
         expect(summary.leave).toBe(1);
-        expect(summary.absent).toBe(0);
+        expect(summary.absent).toBe(1);
         expect(summary.presentPeople).toHaveLength(3);
         const names = summary.presentPeople.map((p) => p.name);
         expect(names).toContain('ชาย');
         expect(names).toContain('หญิง');
         expect(names).toContain('ศักดิ์');
+        expect(names).not.toContain('หมาย');
         expect(summary.presentPeople.every((p) => !p.ot)).toBe(true);
     });
 
-    it('includes OT rows in present count', () => {
+    it('includes OT rows in present count when employee is in pool', () => {
         const transactions: Transaction[] = [
             {
                 id: 'ot1',
@@ -154,6 +170,16 @@ describe('buildAttendanceSummary', () => {
                 amount: 300,
                 laborStatus: 'OT',
                 employeeIds: ['e3'],
+            },
+            {
+                id: 'ot2',
+                date: dayKey,
+                type: 'Expense',
+                category: 'Labor',
+                description: 'OT คนขับรถ — ละเว้น',
+                amount: 300,
+                laborStatus: 'OT',
+                employeeIds: ['e5'],
             },
         ];
 

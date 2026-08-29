@@ -5,6 +5,8 @@ import {
     coercePositionSources,
     employeeEligibleForAdvancePicker,
     isExcludedFromAdvanceEmployeePicker,
+    isSandYardOrMacroDriverEmployee,
+    isSandYardOrMacroDriverPositionToken,
 } from './advanceEmployeeFilter';
 
 const base = (overrides: Partial<Employee> = {}): Employee => ({
@@ -72,5 +74,32 @@ describe('advance employee filter', () => {
                 base({ positions: ['ร่อนทราย'], position: 'ร่อนทราย' }),
             ),
         ).toEqual(['ร่อนทราย']);
+    });
+});
+
+describe('sand yard / macro driver pool', () => {
+    it('matches whitelist titles including alternate spellings', () => {
+        expect(isSandYardOrMacroDriverPositionToken('พนักงานท่าทราย')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('พนักงานทำทราย')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('ท่าทราย')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('คนขับรถแม็คโคร')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('คนขับรถแมคโคร')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('พนักงาน ท่าทราย')).toBe(true);
+        expect(isSandYardOrMacroDriverPositionToken('คนขับรถ')).toBe(false);
+        expect(isSandYardOrMacroDriverPositionToken('ร่อนทราย')).toBe(false);
+    });
+
+    it('matches employee when any position is in the pool', () => {
+        expect(isSandYardOrMacroDriverEmployee(base({ positions: ['คนขับรถ', 'พนักงานท่าทราย'] }))).toBe(true);
+        expect(isSandYardOrMacroDriverEmployee(base({ position: 'คนขับรถแม็คโคร' }))).toBe(true);
+        expect(isSandYardOrMacroDriverEmployee(base({ positions: ['คนขับรถ'] }))).toBe(false);
+    });
+
+    it('does not use inactive for the position predicate', () => {
+        expect(
+            isSandYardOrMacroDriverEmployee(
+                base({ positions: ['พนักงานท่าทราย'], inactive: true }),
+            ),
+        ).toBe(true);
     });
 });

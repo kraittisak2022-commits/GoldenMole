@@ -99,6 +99,25 @@ export const isExcludedFromAdvanceEmployeePicker = (e: Employee): boolean => {
 export const employeeEligibleForAdvancePicker = (e: Employee): boolean =>
     !e.inactive && !isExcludedFromAdvanceEmployeePicker(e);
 
+/** ตำแหน่งพูลเช็คชื่อหน้าแรก / Real-time V.4 — ตรง Flutter + iOS */
+export const SAND_YARD_OR_MACRO_DRIVER_TITLES = new Set([
+    'พนักงานท่าทราย',
+    'พนักงานทำทราย',
+    'ท่าทราย',
+    'คนขับรถแม็คโคร',
+    'คนขับรถแมคโคร',
+]);
+
+/** เทียบตำแหน่งกับบัญชีขาวโดยไม่สนใจช่องว่าง (เช่น «พนักงาน ท่าทราย») */
+export const isSandYardOrMacroDriverPositionToken = (token: string): boolean => {
+    const compact = normalizePositionTitle(token).replace(/\s+/g, '');
+    return compact !== '' && SAND_YARD_OR_MACRO_DRIVER_TITLES.has(compact);
+};
+
+/** พนักงานท่าทราย หรือ คนขับรถแม็คโคร */
+export const isSandYardOrMacroDriverEmployee = (e: Employee): boolean =>
+    collectEmployeePositionTokens(e).some(isSandYardOrMacroDriverPositionToken);
+
 /** @deprecated ใช้ collectEmployeePositionTokens แทน */
 export const getEmployeePositions = (e: Employee): string[] =>
     collectEmployeePositionTokens(e);
