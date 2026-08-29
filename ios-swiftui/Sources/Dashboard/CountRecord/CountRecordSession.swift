@@ -140,7 +140,9 @@ final class CountRecordSession {
         let built = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: dayTx,
-            employees: appState.employees
+            employees: appState.employees,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
 
         var nextTrips: [CountRecordTripDraft] = []

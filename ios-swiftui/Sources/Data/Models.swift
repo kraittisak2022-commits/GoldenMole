@@ -242,6 +242,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
     let driverWage: Double?
     let vehicleWage: Double?
     let vehicleId: String?
+    let vehicleName: String?
     let quantity: Double?
     let unit: String?
     let unitPrice: Double?
@@ -295,6 +296,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         case driverWage = "driver_wage"
         case vehicleWage = "vehicle_wage"
         case vehicleId = "vehicle_id"
+        case vehicleName = "vehicle_name"
         case unitPrice = "unit_price"
         case projectId = "project_id"
         case laborStatus = "labor_status"
@@ -352,6 +354,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         driverWage = FlexibleNumber.decodeIfPresent(c, forKey: .driverWage)
         vehicleWage = FlexibleNumber.decodeIfPresent(c, forKey: .vehicleWage)
         vehicleId = try c.decodeIfPresent(String.self, forKey: .vehicleId)
+        vehicleName = try c.decodeIfPresent(String.self, forKey: .vehicleName)
         quantity = FlexibleNumber.decodeIfPresent(c, forKey: .quantity)
         unit = try c.decodeIfPresent(String.self, forKey: .unit)
         unitPrice = FlexibleNumber.decodeIfPresent(c, forKey: .unitPrice)
@@ -429,6 +432,7 @@ struct Transaction: Codable, Identifiable, Sendable, Equatable {
         try c.encodeIfPresent(driverWage, forKey: .driverWage)
         try c.encodeIfPresent(vehicleWage, forKey: .vehicleWage)
         try c.encodeIfPresent(vehicleId, forKey: .vehicleId)
+        try c.encodeIfPresent(vehicleName, forKey: .vehicleName)
         try c.encodeIfPresent(quantity, forKey: .quantity)
         try c.encodeIfPresent(unit, forKey: .unit)
         try c.encodeIfPresent(unitPrice, forKey: .unitPrice)
@@ -508,6 +512,8 @@ struct AppSettings: Codable, Sendable, Equatable {
     let fuelOpeningStockLiters: FuelStock?
     /// From `app_settings.app_defaults.vehicleDefaultDrivers` (Flutter parity).
     let vehicleDefaultDrivers: [String: String]
+    /// From `vehicles` table — resolves `v_…` ids to display names.
+    let vehicleCatalog: [VehicleCatalogRow]
 
     enum CodingKeys: String, CodingKey {
         case cars, locations
@@ -522,6 +528,57 @@ struct AppSettings: Codable, Sendable, Equatable {
         case employeePositions = "employee_positions"
         case fuelOpeningStockLiters = "fuel_opening_stock"
         case vehicleDefaultDrivers = "vehicle_default_drivers"
+        case vehicleCatalog = "vehicle_catalog"
+    }
+
+    init(
+        appName: String,
+        appSubtext: String?,
+        appIcon: String?,
+        cars: [String],
+        jobDescriptions: [String],
+        incomeTypes: [String],
+        expenseTypes: [String],
+        maintenanceTypes: [String],
+        locations: [String],
+        landGroups: [String],
+        employeePositions: [String]?,
+        fuelOpeningStockLiters: FuelStock?,
+        vehicleDefaultDrivers: [String: String],
+        vehicleCatalog: [VehicleCatalogRow] = []
+    ) {
+        self.appName = appName
+        self.appSubtext = appSubtext
+        self.appIcon = appIcon
+        self.cars = cars
+        self.jobDescriptions = jobDescriptions
+        self.incomeTypes = incomeTypes
+        self.expenseTypes = expenseTypes
+        self.maintenanceTypes = maintenanceTypes
+        self.locations = locations
+        self.landGroups = landGroups
+        self.employeePositions = employeePositions
+        self.fuelOpeningStockLiters = fuelOpeningStockLiters
+        self.vehicleDefaultDrivers = vehicleDefaultDrivers
+        self.vehicleCatalog = vehicleCatalog
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        appName = (try c.decodeIfPresent(String.self, forKey: .appName)) ?? "Goldenmole"
+        appSubtext = try c.decodeIfPresent(String.self, forKey: .appSubtext)
+        appIcon = try c.decodeIfPresent(String.self, forKey: .appIcon)
+        cars = (try c.decodeIfPresent([String].self, forKey: .cars)) ?? []
+        jobDescriptions = (try c.decodeIfPresent([String].self, forKey: .jobDescriptions)) ?? []
+        incomeTypes = IncomeTypes.visible((try c.decodeIfPresent([String].self, forKey: .incomeTypes)) ?? [])
+        expenseTypes = (try c.decodeIfPresent([String].self, forKey: .expenseTypes)) ?? []
+        maintenanceTypes = (try c.decodeIfPresent([String].self, forKey: .maintenanceTypes)) ?? []
+        locations = (try c.decodeIfPresent([String].self, forKey: .locations)) ?? []
+        landGroups = (try c.decodeIfPresent([String].self, forKey: .landGroups)) ?? []
+        employeePositions = try c.decodeIfPresent([String].self, forKey: .employeePositions)
+        fuelOpeningStockLiters = try c.decodeIfPresent(FuelStock.self, forKey: .fuelOpeningStockLiters)
+        vehicleDefaultDrivers = (try c.decodeIfPresent([String: String].self, forKey: .vehicleDefaultDrivers)) ?? [:]
+        vehicleCatalog = (try c.decodeIfPresent([VehicleCatalogRow].self, forKey: .vehicleCatalog)) ?? []
     }
 
     static let fallback = AppSettings(
@@ -537,8 +594,22 @@ struct AppSettings: Codable, Sendable, Equatable {
         landGroups: [],
         employeePositions: [],
         fuelOpeningStockLiters: nil,
-        vehicleDefaultDrivers: [:]
+        vehicleDefaultDrivers: [:],
+        vehicleCatalog: []
     )
+}
+
+struct VehicleCatalogRow: Codable, Sendable, Equatable, Identifiable {
+    let id: String
+    let name: String
+    let defaultDriverId: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case defaultDriverId = "default_driver_id"
+        case sortOrder = "sort_order"
+    }
 }
 
 /// Nested JSON in `app_settings.app_defaults`.
@@ -605,12 +676,26 @@ struct AppSettingsRow: Decodable, Sendable {
         case appDefaults = "app_defaults"
     }
 
-    func toAppSettings() -> AppSettings {
-        AppSettings(
+    func toAppSettings(vehicleCatalog: [VehicleCatalogRow] = []) -> AppSettings {
+        let catalogCars = vehicleCatalog
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let carsList = catalogCars.isEmpty ? (cars ?? []) : catalogCars
+        var drivers = appDefaults?.vehicleDefaultDrivers ?? [:]
+        if !vehicleCatalog.isEmpty {
+            var fromCatalog: [String: String] = [:]
+            for row in vehicleCatalog {
+                let name = row.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty, let driver = row.defaultDriverId?.trimmingCharacters(in: .whitespacesAndNewlines), !driver.isEmpty else { continue }
+                fromCatalog[name] = driver
+            }
+            if !fromCatalog.isEmpty { drivers = fromCatalog }
+        }
+        return AppSettings(
             appName: appName ?? "Goldenmole",
             appSubtext: appSubtext,
             appIcon: appIcon,
-            cars: cars ?? [],
+            cars: carsList,
             jobDescriptions: jobDescriptions ?? [],
             incomeTypes: IncomeTypes.visible(incomeTypes ?? []),
             expenseTypes: expenseTypes ?? [],
@@ -619,7 +704,8 @@ struct AppSettingsRow: Decodable, Sendable {
             landGroups: landGroups ?? [],
             employeePositions: employeePositions,
             fuelOpeningStockLiters: fuelOpeningStock,
-            vehicleDefaultDrivers: appDefaults?.vehicleDefaultDrivers ?? [:]
+            vehicleDefaultDrivers: drivers,
+            vehicleCatalog: vehicleCatalog
         )
     }
 }

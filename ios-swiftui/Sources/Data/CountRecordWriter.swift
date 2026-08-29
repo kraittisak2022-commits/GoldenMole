@@ -11,6 +11,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
     var amount: Double
     var note: String?
     var vehicleId: String?
+    var vehicleName: String? = nil
     var driverId: String?
     var workDetails: String?
     var tripBillingMode: String?
@@ -48,6 +49,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         case id, date, type, category, description, amount, note, quantity, unit
         case subCategory = "sub_category"
         case vehicleId = "vehicle_id"
+        case vehicleName = "vehicle_name"
         case driverId = "driver_id"
         case workDetails = "work_details"
         case tripBillingMode = "trip_billing_mode"
@@ -88,6 +90,7 @@ struct TransactionWritePayload: Codable, Sendable, Equatable {
         try c.encodeIfPresent(subCategory, forKey: .subCategory)
         try c.encodeIfPresent(note, forKey: .note)
         try c.encodeIfPresent(vehicleId, forKey: .vehicleId)
+        try c.encodeIfPresent(vehicleName, forKey: .vehicleName)
         try c.encodeIfPresent(driverId, forKey: .driverId)
         try c.encodeIfPresent(workDetails, forKey: .workDetails)
         try c.encodeIfPresent(tripBillingMode, forKey: .tripBillingMode)
@@ -192,6 +195,7 @@ enum CountRecordWriter {
     ) -> TransactionWritePayload {
         let assignments: [String: [String]]? = lapTimes.isEmpty ? nil : ["lapTimes": lapTimes]
         let driver = (driverId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        let displayName = CountRecordLogic.looksLikeCatalogVehicleId(vehicleId) ? nil : vehicleId
 
         if isSupport {
             return TransactionWritePayload(
@@ -204,6 +208,7 @@ enum CountRecordWriter {
                 amount: 0,
                 note: "นับเที่ยวโดย \(adminName)",
                 vehicleId: vehicleId,
+                vehicleName: displayName,
                 driverId: driver,
                 workDetails: workDetails,
                 tripBillingMode: "PerTrip",
@@ -234,6 +239,7 @@ enum CountRecordWriter {
             amount: 0,
             note: "นับเที่ยวโดย \(adminName)",
             vehicleId: vehicleId,
+            vehicleName: displayName,
             driverId: driver,
             workDetails: workDetails,
             tripBillingMode: "PerTrip",

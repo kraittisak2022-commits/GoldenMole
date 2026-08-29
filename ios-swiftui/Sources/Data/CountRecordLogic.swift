@@ -4,7 +4,7 @@ import Foundation
 enum CountRecordLogic {
     static let tripTarget = 266
     static let sandTarget = 800
-    static let queuePerTrip = 3
+    static let queuePerTrip = 4
     static let otStartHour = 17
     static let lunchStartHour = 12
     static let lunchEndHour = 13
@@ -127,6 +127,58 @@ enum CountRecordLogic {
         return false
     }
 
+    /// Catalog ids look like `v_` + hex (web `makeVehicleId`).
+    static func looksLikeCatalogVehicleId(_ raw: String?) -> Bool {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.hasPrefix("v_") && s.count >= 4
+    }
+
+    /// Port of web `makeVehicleId` — stable hash id for a display name.
+    static func makeVehicleId(from name: String) -> String {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var hash: Int32 = 0
+        for scalar in key.unicodeScalars {
+            let c = Int32(bitPattern: UInt32(scalar.value))
+            hash = ((hash &<< 5) &- hash) &+ c
+        }
+        let absHash = hash == Int32.min ? Int64(Int32.max) + 1 : Int64(abs(hash))
+        return "v_\(String(absHash, radix: 16))"
+    }
+
+    /// Display label for trip cards — prefer `vehicleName`, then catalog / cars map for `v_…`.
+    static func vehicleDisplayLabel(
+        vehicleId: String?,
+        vehicleName: String?,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
+    ) -> String {
+        let name = (vehicleName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty, !looksLikeCatalogVehicleId(name) { return name }
+
+        let id = (vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if id.isEmpty { return name }
+
+        if let hit = catalog.first(where: {
+            $0.id == id || $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == id
+        }) {
+            let hitName = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !hitName.isEmpty { return hitName }
+        }
+
+        if looksLikeCatalogVehicleId(id) {
+            for car in cars {
+                let trimmed = car.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                if makeVehicleId(from: trimmed) == id { return trimmed }
+            }
+        } else if !isMacroVehicleId(id) {
+            return id
+        }
+
+        if !name.isEmpty { return name }
+        return id
+    }
+
     static func getLapTimes(_ t: Transaction) -> [String] {
         t.workAssignments?["lapTimes"] ?? []
     }
@@ -218,20 +270,28 @@ enum CountRecordLogic {
     static func buildTripUnits(
         dayKey: String,
         transactions: [Transaction],
-        employees: [Employee]
+        employees: [Employee],
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
     ) -> [CountRecordTripUnit] {
         let key = dayKey.trimmingCharacters(in: .whitespacesAndNewlines)
         var units: [CountRecordTripUnit] = []
         for t in transactions {
             guard String(t.date.prefix(10)) == key else { continue }
             guard isCountRecordVehicleRow(t) else { continue }
-            let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !vid.isEmpty, !isMacroVehicleId(vid) else { continue }
+            let rawId = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = vehicleDisplayLabel(
+                vehicleId: t.vehicleId,
+                vehicleName: t.vehicleName,
+                cars: cars,
+                catalog: catalog
+            )
+            guard !label.isEmpty, !isMacroVehicleId(label), !isMacroVehicleId(rawId) else { continue }
             let periods = vehicleTripPeriodSplit(t)
             units.append(
                 CountRecordTripUnit(
                     id: t.id,
-                    vehicleId: vid,
+                    vehicleId: label,
                     driverId: (t.driverId ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                     driverLabel: driverDisplayName(t.driverId ?? "", employees: employees),
                     rounds: tripRounds(from: t),

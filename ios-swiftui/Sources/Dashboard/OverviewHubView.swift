@@ -765,7 +765,9 @@ struct OverviewHubView: View {
         let units = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: allTransactions,
-            employees: employees
+            employees: employees,
+            cars: settings.cars,
+            catalog: settings.vehicleCatalog
         )
         .filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) }
 

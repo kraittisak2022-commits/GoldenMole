@@ -231,13 +231,29 @@ final class SupabaseService: ObservableObject {
     }
 
     func fetchSettings() async throws -> AppSettings {
-        let rows: [AppSettingsRow] = try await client.from("app_settings")
+        async let settingsTask: [AppSettingsRow] = client.from("app_settings")
             .select()
             .eq("id", value: "default")
             .limit(1)
             .execute()
             .value
-        return rows.first?.toAppSettings() ?? .fallback
+        let rows = try await settingsTask
+        let catalog: [VehicleCatalogRow]
+        do {
+            let rows: [VehicleCatalogRow] = try await client.from("vehicles")
+                .select("id, name, default_driver_id, sort_order")
+                .order("sort_order", ascending: true)
+                .order("name", ascending: true)
+                .execute()
+                .value
+            catalog = rows.filter {
+                !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        } catch {
+            catalog = []
+        }
+        return rows.first?.toAppSettings(vehicleCatalog: catalog) ?? .fallback
     }
 
     /// Inserts one diagnostic row (crash / hang / runtime error) into `mobile_error_reports`.

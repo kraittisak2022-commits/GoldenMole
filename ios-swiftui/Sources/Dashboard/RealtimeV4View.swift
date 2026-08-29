@@ -63,11 +63,19 @@ struct RealtimeV4Snapshot: Sendable {
         dayKey: String,
         transactions: [Transaction],
         employees: [Employee],
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = [],
         light: Bool = false
     ) -> RealtimeV4Snapshot {
         let byDay = Dictionary(grouping: transactions) { String($0.date.prefix(10)) }
         let dayTx = byDay[dayKey] ?? []
-        let units = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: dayTx, employees: employees)
+        let units = CountRecordLogic.buildTripUnits(
+            dayKey: dayKey,
+            transactions: dayTx,
+            employees: employees,
+            cars: cars,
+            catalog: catalog
+        )
         let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: dayTx)
 
         let priorTripKey = light
@@ -332,6 +340,8 @@ struct RealtimeV4View: View {
         let dayKey = focusDateStr
         let txs = transactions
         let emps = employees
+        let cars = settings.cars
+        let catalog = settings.vehicleCatalog
         let light = buildSupervisor.isEconomyMode
         let debounceNs = adaptiveDebounceNs()
         rebuildTask = Task {
@@ -344,6 +354,8 @@ struct RealtimeV4View: View {
                         dayKey: dayKey,
                         transactions: txs,
                         employees: emps,
+                        cars: cars,
+                        catalog: catalog,
                         light: light
                     )
                 }
@@ -756,8 +768,8 @@ struct RealtimeV4View: View {
         let queueTotal = tripTotal * CountRecordLogic.queuePerTrip
         let queueTarget = CountRecordLogic.tripTarget * CountRecordLogic.queuePerTrip
         let hours = snapshot.tripHours
-        let perHour = hours.flatMap { $0 > 0 ? Double(queueTotal) / $0 : nil }
-        let perMin = hours.flatMap { $0 > 0 ? Double(queueTotal) / ($0 * 60) : nil }
+        let tripsPerHour = hours.flatMap { $0 > 0 ? Double(tripTotal) / $0 : nil }
+        let tripsPerMin = hours.flatMap { $0 > 0 ? Double(tripTotal) / ($0 * 60) : nil }
         let pct = queueTarget > 0
             ? min(Double(queueTotal) / Double(queueTarget) * 100, 100)
             : 0
@@ -773,14 +785,14 @@ struct RealtimeV4View: View {
 
             HStack(spacing: 8) {
                 kpiCell(
-                    title: "คิว / ชม.",
-                    value: perHour.map { String(format: "%.1f", $0) } ?? "—",
+                    title: "เที่ยว / ชม.",
+                    value: tripsPerHour.map { String(format: "%.1f", $0) } ?? "—",
                     labelColor: tripBlueLabel,
                     fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
                 )
                 kpiCell(
-                    title: "คิว / นาที",
-                    value: perMin.map { String(format: "%.2f", $0) } ?? "—",
+                    title: "เที่ยว / นาที",
+                    value: tripsPerMin.map { String(format: "%.2f", $0) } ?? "—",
                     labelColor: tripBlueLabel,
                     fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
                 )

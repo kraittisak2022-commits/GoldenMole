@@ -39,7 +39,7 @@ interface CountRecordOverviewProps {
 }
 
 const SAND_RECENT_LAPS = 5;
-const QUEUE_PER_TRIP = 3;
+const QUEUE_PER_TRIP = 4;
 const TRIP_TARGET_TRIPS = 266;
 
 function TargetProgressBar({
