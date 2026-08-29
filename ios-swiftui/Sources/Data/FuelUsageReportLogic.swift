@@ -2,7 +2,7 @@ import Foundation
 
 /// Web parity — `src/utils/fuelUsageReport.ts` + `computeFuelStockBalances` in `src/utils/index.ts`.
 enum FuelUsageReportLogic {
-    enum Kind: String, Sendable {
+    enum Kind: String, Sendable, Equatable {
         case stockIn
         case vehicle
         case withdraw
@@ -123,8 +123,9 @@ enum FuelUsageReportLogic {
 
     static func inferFuelMovement(_ t: Transaction) -> String {
         guard t.category == "Fuel" else { return "stock_out" }
-        if t.fuelMovement == "stock_in" || t.fuelMovement == "stock_out" {
-            return t.fuelMovement ?? "stock_out"
+        let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if mov == "stock_in" || mov == "stock_out" {
+            return mov
         }
         let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return vehicle.isEmpty ? "stock_in" : "stock_out"
@@ -136,11 +137,39 @@ enum FuelUsageReportLogic {
         return .main
     }
 
+    private static func normalizedSubCategory(_ t: Transaction) -> String {
+        (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func subEquals(_ t: Transaction, _ expected: String) -> Bool {
+        normalizedSubCategory(t).caseInsensitiveCompare(expected) == .orderedSame
+    }
+
+    /// โอนหลัก→สำรอง / เบิกเติมเครื่องจักร — ยังไม่นับเป็นใช้แล้ว
+    static func isMachineReserveTransfer(_ t: Transaction) -> Bool {
+        guard t.category == "Fuel", t.type == .expense else { return false }
+        let purpose = withdrawPurpose(t)
+        let movement = inferFuelMovement(t)
+        let desc = t.description
+
+        if subEquals(t, FuelLogic.transferSubCategory) {
+            // ฝั่งรับเข้าถังสำรองไม่นับซ้ำ
+            if movement == "stock_in" { return false }
+            return true
+        }
+        if subEquals(t, FuelLogic.withdrawSubCategory), purpose == "machine" {
+            return true
+        }
+        if desc.contains("โอนถังหลัก") || desc.contains("เติมเครื่องจักร") || desc.contains("รับเข้าถังสำรองจากถังหลัก") {
+            return movement != "stock_in"
+        }
+        return false
+    }
+
     static func fuelUsageTankOf(_ t: Transaction) -> Tank {
         let raw = (t.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !raw.isEmpty { return normalizeFuelTank(raw) }
-        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.category == "Fuel", sub == FuelLogic.vehicleUsageSubCategory {
+        if subEquals(t, FuelLogic.vehicleUsageSubCategory) {
             return .reserve
         }
         return .main
@@ -159,37 +188,45 @@ enum FuelUsageReportLogic {
     static func classifyFuelTx(_ t: Transaction) -> Kind? {
         guard t.category == "Fuel", t.type == .expense else { return nil }
 
-        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let movement = inferFuelMovement(t)
         let tank = fuelUsageTankOf(t)
         let purpose = withdrawPurpose(t)
 
-        if sub == FuelLogic.transferSubCategory, movement == "stock_in" {
+        // คู่โอนเข้าถังสำรอง — ไม่แสดงซ้ำ (ฝั่ง stock_out นับเป็นเบิก)
+        if subEquals(t, FuelLogic.transferSubCategory), movement == "stock_in" {
             return nil
         }
 
-        if sub == FuelLogic.stockInSubCategory
-            || (movement == "stock_in" && tank == .main && sub != FuelLogic.transferSubCategory) {
+        // รับเข้าถังหลักจริง (ซื้อ/เพิ่มสต็อก)
+        if subEquals(t, FuelLogic.stockInSubCategory)
+            || (movement == "stock_in" && tank == .main && !subEquals(t, FuelLogic.transferSubCategory)) {
             return .stockIn
         }
 
-        if sub == FuelLogic.transferSubCategory, movement == "stock_out" {
+        // โอนหลัก → สำรอง (เติมเครื่องจักร) = เบิก ยังไม่ใช้
+        if isMachineReserveTransfer(t) {
             return .withdraw
         }
-        if sub == FuelLogic.withdrawSubCategory, purpose == "machine" {
+        if subEquals(t, FuelLogic.transferSubCategory), movement == "stock_out" {
+            return .withdraw
+        }
+        if subEquals(t, FuelLogic.withdrawSubCategory), purpose == "machine" {
             return .withdraw
         }
 
-        if sub == FuelLogic.sandSieveSubCategory {
+        // ใช้แล้วจากถังสำรอง (ร่อนทราย)
+        if subEquals(t, FuelLogic.sandSieveSubCategory) {
             return .sandSieve
         }
 
-        if sub == FuelLogic.withdrawSubCategory {
+        // เมนูเบิกน้ำมันที่ตัดออกจากถังหลักแล้ว = ใช้แล้ว (รถ / ปั่นไฟ / อื่น)
+        if subEquals(t, FuelLogic.withdrawSubCategory) {
             if purpose == "car" { return .vehicle }
             return .otherOut
         }
 
-        if sub == FuelLogic.vehicleUsageSubCategory
+        // การใช้น้ำมันรถ / แม็คโคร
+        if subEquals(t, FuelLogic.vehicleUsageSubCategory)
             || !(t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .vehicle
         }
@@ -428,7 +465,7 @@ enum FuelUsageReportLogic {
             let day = normalizeDate(t.date)
             guard day >= FuelLogic.stockCutoverYmd else { continue }
             let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if sub == FuelLogic.transferSubCategory,
+            if sub.caseInsensitiveCompare(FuelLogic.transferSubCategory) == .orderedSame,
                withdrawPurpose(t) == "machine" {
                 transferMachineDays.insert(day)
             }
@@ -453,7 +490,7 @@ enum FuelUsageReportLogic {
                 continue
             }
 
-            if sub == FuelLogic.withdrawSubCategory {
+            if sub.caseInsensitiveCompare(FuelLogic.withdrawSubCategory) == .orderedSame {
                 buckets[key, default: Bucket()].withdraw += liters
                 if purpose == "machine", !transferMachineDays.contains(day) {
                     let reserveKey = "\(day)|\(Tank.reserve.rawValue)|\(isBenzine ? "B" : "D")"
@@ -462,9 +499,9 @@ enum FuelUsageReportLogic {
                 continue
             }
 
-            if sub == FuelLogic.transferSubCategory
-                || sub == FuelLogic.sandSieveSubCategory
-                || sub == FuelLogic.vehicleUsageSubCategory {
+            if sub.caseInsensitiveCompare(FuelLogic.transferSubCategory) == .orderedSame
+                || sub.caseInsensitiveCompare(FuelLogic.sandSieveSubCategory) == .orderedSame
+                || sub.caseInsensitiveCompare(FuelLogic.vehicleUsageSubCategory) == .orderedSame {
                 buckets[key, default: Bucket()].withdraw += liters
             }
         }

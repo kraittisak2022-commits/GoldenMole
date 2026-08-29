@@ -417,6 +417,9 @@ struct OverviewHubView: View {
                         .foregroundStyle(AppTheme.ink)
                         .minimumScaleFactor(0.75)
                         .lineLimit(1)
+                    Text("ไม่รวมเบิกไปถังสำรอง")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(AppTheme.inkMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -429,6 +432,11 @@ struct OverviewHubView: View {
                         .foregroundStyle(AppTheme.fuel)
                         .minimumScaleFactor(0.75)
                         .lineLimit(1)
+                    if snapshot.mobileToday.fuelWithdrawLiters > 0 {
+                        Text("เบิกสำรอง \(DashboardAggregations.formatNumber(snapshot.mobileToday.fuelWithdrawLiters)) L")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(AppTheme.warning)
+                    }
                 }
             }
         }

@@ -242,7 +242,6 @@ enum MobileOpsSnapshot {
             end: dayKey,
             allTransactionsForEstimate: allTransactions
         )
-        var withdraw = 0.0
         var withdrawCount = 0
         var macroLiters = 0.0
         var macroVehicleIds = Set<String>()
@@ -254,8 +253,7 @@ enum MobileOpsSnapshot {
             if FuelLogic.isCarFill(t) {
                 carFill += liters
                 carFillCount += 1
-            } else if FuelLogic.isWithdraw(t) {
-                withdraw += liters
+            } else if FuelUsageReportLogic.classifyFuelTx(t) == .withdraw {
                 withdrawCount += 1
             } else if FuelLogic.isVehicleUsage(t) {
                 macroLiters += liters
@@ -267,7 +265,7 @@ enum MobileOpsSnapshot {
         return (
             report.totals.stockInLiters,
             report.totals.usageLiters,
-            withdraw,
+            report.totals.withdrawLiters,
             withdrawCount,
             macroLiters,
             macroVehicleIds.count,
