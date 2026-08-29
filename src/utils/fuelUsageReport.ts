@@ -103,18 +103,45 @@ export function fuelTypeLabel(fuelType: FuelTypeFilter): string {
     return fuelType === 'Benzine' ? 'เบนซิน' : 'ดีเซล';
 }
 
-export function tankLabel(tank: 'main' | 'reserve'): string {
+export function tankLabel(tank: 'main' | 'reserve', locale: FuelPrintLocale = 'th'): string {
+    if (locale === 'zh') {
+        return tank === 'reserve' ? '备用油箱' : '主油箱';
+    }
     return tank === 'reserve' ? 'ถังสำรอง' : 'ถังหลัก';
 }
 
-export function fuelPrintGroupTitle(group: FuelPrintGroup): string {
-    switch (group) {
-        case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
-        case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
-        case 'stock_in': return 'รายงานรับน้ำมันเข้า';
-        case 'overview': return 'สรุปภาพรวมรายงานการใช้น้ำมัน';
-        default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
-    }
+export type FuelPrintLocale = 'th' | 'zh';
+export type FuelPrintOverviewSectionId = 'receive' | 'usage';
+
+const FUEL_PRINT_GROUP_TITLE_ZH: Record<FuelPrintGroup, string> = {
+    stock_in: '收油报表',
+    macro: '挖掘机用油报表',
+    sieve_generator: '筛沙机·发电机用油报表',
+    other_fill: '其他加油报表',
+    overview: '燃油报表总览',
+};
+
+export function fuelPrintGroupTitleZh(group: FuelPrintGroup): string {
+    return FUEL_PRINT_GROUP_TITLE_ZH[group];
+}
+
+export function fuelPrintGroupTitle(group: FuelPrintGroup, locale: FuelPrintLocale = 'th'): string {
+    const th = (() => {
+        switch (group) {
+            case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
+            case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
+            case 'stock_in': return 'รายงานรับน้ำมันเข้า';
+            case 'overview': return 'สรุปภาพรวมรายงานการใช้น้ำมัน';
+            default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
+        }
+    })();
+    if (locale === 'zh') return `${th}(${fuelPrintGroupTitleZh(group)})`;
+    return th;
+}
+
+export function fuelPrintSectionTitle(id: FuelPrintOverviewSectionId, locale: FuelPrintLocale = 'th'): string {
+    if (id === 'receive') return locale === 'zh' ? 'รับน้ำมัน(收油)' : 'รับน้ำมัน';
+    return locale === 'zh' ? 'ใช้น้ำมัน(用油)' : 'ใช้น้ำมัน';
 }
 
 export interface FuelPrintOverviewItem {
@@ -123,8 +150,6 @@ export interface FuelPrintOverviewItem {
     liters: number;
     count: number;
 }
-
-export type FuelPrintOverviewSectionId = 'receive' | 'usage';
 
 export interface FuelPrintOverviewSection {
     id: FuelPrintOverviewSectionId;
@@ -139,13 +164,16 @@ const DATA_PRINT_GROUPS: Array<Exclude<FuelPrintGroup, 'overview'>> = [
 ];
 
 /** สรุปยอดลิตรและจำนวนรายการของแต่ละรายงานพิมพ์ */
-export function fuelPrintOverviewItems(report: FuelUsageReport): FuelPrintOverviewItem[] {
+export function fuelPrintOverviewItems(
+    report: FuelUsageReport,
+    locale: FuelPrintLocale = 'th',
+): FuelPrintOverviewItem[] {
     return DATA_PRINT_GROUPS.map(group => {
         const grouped = filterFuelUsageReport(report, group);
         const liters = grouped.rows.reduce((sum, r) => sum + r.liters, 0);
         return {
             group,
-            title: fuelPrintGroupTitle(group),
+            title: fuelPrintGroupTitle(group, locale),
             liters,
             count: grouped.totals.count,
         };
@@ -153,8 +181,11 @@ export function fuelPrintOverviewItems(report: FuelUsageReport): FuelPrintOvervi
 }
 
 /** สรุปภาพรวมแยกหมวด รับน้ำมัน / ใช้น้ำมัน */
-export function fuelPrintOverviewSections(report: FuelUsageReport): FuelPrintOverviewSection[] {
-    const items = fuelPrintOverviewItems(report);
+export function fuelPrintOverviewSections(
+    report: FuelUsageReport,
+    locale: FuelPrintLocale = 'th',
+): FuelPrintOverviewSection[] {
+    const items = fuelPrintOverviewItems(report, locale);
     const receiveItems = items.filter((i) => i.group === 'stock_in');
     const usageItems = items.filter((i) => i.group !== 'stock_in');
     const sum = (list: FuelPrintOverviewItem[]) => ({
@@ -164,8 +195,8 @@ export function fuelPrintOverviewSections(report: FuelUsageReport): FuelPrintOve
     const receive = sum(receiveItems);
     const usage = sum(usageItems);
     return [
-        { id: 'receive', title: 'รับน้ำมัน', items: receiveItems, ...receive },
-        { id: 'usage', title: 'ใช้น้ำมัน', items: usageItems, ...usage },
+        { id: 'receive', title: fuelPrintSectionTitle('receive', locale), ...receive, items: receiveItems },
+        { id: 'usage', title: fuelPrintSectionTitle('usage', locale), ...usage, items: usageItems },
     ];
 }
 
@@ -503,6 +534,57 @@ function escHtml(value: string | number): string {
         .replace(/"/g, '&quot;');
 }
 
+function fuelPrintUi(locale: FuelPrintLocale) {
+    if (locale === 'zh') {
+        return {
+            litersUnit: '升',
+            itemsUnit: '笔',
+            reportCol: '报表',
+            qtyCol: '数量（升）',
+            itemsCol: '笔数',
+            dateCol: '日期',
+            detailCol: '明细',
+            vehicleCol: '车辆',
+            tankCol: '油箱',
+            machineCol: '机械',
+            total: '合计',
+            empty: '此期间无数据',
+            estimated: '（估算）',
+            stockInSum: '收油合计',
+            otherFillSum: '其他加油/用油',
+            usageSum: '用油合计',
+            overviewFooter: '仅汇总升数 · 不含主油箱→备用油箱调拨（机械加油）',
+            stockInFooter: '收油 = 仅计入主油箱入库 · 仅汇总升数',
+            sieveFooter: (n: number) => `无实记录的筛沙按 ${n} 升/小时估算 · 仅汇总升数`,
+            defaultFooter: '仅汇总燃油升数，不含费用',
+            totalPrefix: '合计',
+        };
+    }
+    return {
+        litersUnit: 'ลิตร',
+        itemsUnit: 'รายการ',
+        reportCol: 'รายงาน',
+        qtyCol: 'ปริมาณ (ลิตร)',
+        itemsCol: 'รายการ',
+        dateCol: 'วันที่',
+        detailCol: 'รายละเอียด',
+        vehicleCol: 'รถ',
+        tankCol: 'ถัง',
+        machineCol: 'เครื่องจักร',
+        total: 'รวม',
+        empty: 'ไม่มีข้อมูลในช่วงนี้',
+        estimated: ' (ประมาณ)',
+        stockInSum: 'รับเข้ารวม',
+        otherFillSum: 'เติม/ใช้อื่นๆ',
+        usageSum: 'รวมใช้',
+        overviewFooter: 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น · ไม่รวมโอนถังหลัก→สำรอง (เติมเครื่องจักร)',
+        stockInFooter: 'รับเข้า = เพิ่มน้ำมันเข้าถังหลักเท่านั้น · สรุปปริมาณเป็นลิตรเท่านั้น',
+        sieveFooter: (n: number) => `ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${n} ลิตร/ชม. · สรุปปริมาณเป็นลิตรเท่านั้น`,
+        defaultFooter: 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย',
+        totalPrefix: 'รวม',
+    };
+}
+
 export function fuelUsageToPrintHtml(opts: {
     appName: string;
     orgSubtitle?: string;
@@ -512,14 +594,19 @@ export function fuelUsageToPrintHtml(opts: {
     formatDate?: (ymd: string) => string;
     /** ใช้กับ group=overview — สรุปทุกรายงานจาก report เต็ม */
     fullReport?: FuelUsageReport;
+    /** th = ไทยอย่างเดียว, zh = ไทย(中文) + ป้ายกำกับจีน */
+    locale?: FuelPrintLocale;
 }): string {
-    const fmtLiters = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    const locale: FuelPrintLocale = opts.locale === 'zh' ? 'zh' : 'th';
+    const ui = fuelPrintUi(locale);
+    const fmtLiters = (n: number) => n.toLocaleString(locale === 'zh' ? 'zh-CN' : 'th-TH', { maximumFractionDigits: 2 });
     const fmt = opts.formatDate || ((ymd: string) => ymd);
-    const title = fuelPrintGroupTitle(opts.group);
+    const title = fuelPrintGroupTitle(opts.group, locale);
+    const htmlLang = locale === 'zh' ? 'zh-CN' : 'th';
 
     if (opts.group === 'overview') {
         const source = opts.fullReport || opts.report;
-        const sections = fuelPrintOverviewSections(source);
+        const sections = fuelPrintOverviewSections(source, locale);
         const sectionsHtml = sections.map((section) => {
             const body = section.items.map((item) =>
                 `<tr>
@@ -527,25 +614,25 @@ export function fuelUsageToPrintHtml(opts: {
 <td class="num">${escHtml(fmtLiters(item.liters))}</td>
 <td class="num">${escHtml(item.count)}</td>
 </tr>`
-            ).join('') || '<tr><td colspan="3" class="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+            ).join('') || `<tr><td colspan="3" class="empty">${escHtml(ui.empty)}</td></tr>`;
             return `<h2 class="section-title">${escHtml(section.title)}</h2>
-<p class="summary"><span>รวม${escHtml(section.title)} <strong>${escHtml(fmtLiters(section.liters))} ลิตร</strong></span><span>${escHtml(section.count)} รายการ</span></p>
+<p class="summary"><span>${escHtml(ui.totalPrefix)}${escHtml(section.title)} <strong>${escHtml(fmtLiters(section.liters))} ${escHtml(ui.litersUnit)}</strong></span><span>${escHtml(section.count)} ${escHtml(ui.itemsUnit)}</span></p>
 <table>
 <thead><tr>
-<th>รายงาน</th>
-<th class="num">ปริมาณ (ลิตร)</th>
-<th class="num">รายการ</th>
+<th>${escHtml(ui.reportCol)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th class="num">${escHtml(ui.itemsCol)}</th>
 </tr></thead>
 <tbody>${body}</tbody>
 <tfoot><tr>
-<td>รวม${escHtml(section.title)}</td>
+<td>${escHtml(ui.totalPrefix)}${escHtml(section.title)}</td>
 <td class="num">${escHtml(fmtLiters(section.liters))}</td>
 <td class="num">${escHtml(section.count)}</td>
 </tr></tfoot>
 </table>`;
         }).join('\n');
 
-        return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+        return `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
 ${printHtmlStyles()}
 </head><body>
 <div class="header">
@@ -554,69 +641,69 @@ ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
 <p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)}</p>
 </div>
 ${sectionsHtml}
-<p class="footer">สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น · ไม่รวมโอนถังหลัก→สำรอง (เติมเครื่องจักร)</p>
+<p class="footer">${escHtml(ui.overviewFooter)}</p>
 </body></html>`;
     }
 
     const t = opts.report.totals;
     const totalLiters = opts.report.rows.reduce((sum, r) => sum + r.liters, 0);
-    const detailRows = buildPrintDetailRowsHtml(opts.report.rows, opts.group, fmt, fmtLiters);
+    const detailRows = buildPrintDetailRowsHtml(opts.report.rows, opts.group, fmt, fmtLiters, locale, ui);
 
     let summaryBlock: string;
     if (opts.group === 'stock_in') {
         summaryBlock = `<p class="summary">
-<span>รับเข้ารวม <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong></span>
-<span>${escHtml(t.count)} รายการ</span>
+<span>${escHtml(ui.stockInSum)} <strong>${escHtml(fmtLiters(totalLiters))} ${escHtml(ui.litersUnit)}</strong></span>
+<span>${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</span>
 </p>`;
     } else if (opts.group === 'other_fill') {
         const fillTotal = t.vehicleLiters + t.otherOutLiters;
         summaryBlock = `<p class="summary">
-<span>เติม/ใช้อื่นๆ <strong>${escHtml(fmtLiters(fillTotal))} ลิตร</strong></span>
-<span>${escHtml(t.count)} รายการ</span>
+<span>${escHtml(ui.otherFillSum)} <strong>${escHtml(fmtLiters(fillTotal))} ${escHtml(ui.litersUnit)}</strong></span>
+<span>${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</span>
 </p>`;
     } else if (opts.group === 'macro' && opts.report.byVehicle.length > 0) {
         const top = opts.report.byVehicle.slice(0, 3)
-            .map(v => `${v.vehicleId} ${fmtLiters(v.liters)} ลิตร`)
+            .map(v => `${v.vehicleId} ${fmtLiters(v.liters)} ${ui.litersUnit}`)
             .join(' · ');
         summaryBlock = `<p class="summary">
-<span>รวมใช้ <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong> · ${escHtml(t.count)} รายการ</span>
+<span>${escHtml(ui.usageSum)} <strong>${escHtml(fmtLiters(totalLiters))} ${escHtml(ui.litersUnit)}</strong> · ${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</span>
 <span>${escHtml(top)}</span>
 </p>`;
     } else {
-        summaryBlock = `<p class="summary">รวมใช้ <strong>${escHtml(fmtLiters(totalLiters))} ลิตร</strong> · ${escHtml(t.count)} รายการ</p>`;
+        summaryBlock = `<p class="summary">${escHtml(ui.usageSum)} <strong>${escHtml(fmtLiters(totalLiters))} ${escHtml(ui.litersUnit)}</strong> · ${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</p>`;
     }
 
     const footerNote = opts.group === 'sieve_generator'
-        ? `ร่อนทรายที่ไม่มีแถวจริงประมาณที่ ${FUEL_SAND_SIEVE_LITERS_PER_HOUR} ลิตร/ชม. · สรุปปริมาณเป็นลิตรเท่านั้น`
+        ? ui.sieveFooter(FUEL_SAND_SIEVE_LITERS_PER_HOUR)
         : opts.group === 'stock_in'
-            ? 'รับเข้า = เพิ่มน้ำมันเข้าถังหลักเท่านั้น · สรุปปริมาณเป็นลิตรเท่านั้น'
-            : 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย';
+            ? ui.stockInFooter
+            : ui.defaultFooter;
 
     const col2Header = opts.group === 'stock_in'
-        ? 'ถัง'
+        ? ui.tankCol
         : opts.group === 'sieve_generator'
-            ? 'เครื่องจักร'
-            : 'รถ';
+            ? ui.machineCol
+            : ui.vehicleCol;
 
-    return `<!doctype html><html lang="th"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+    return `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
 ${printHtmlStyles()}
 </head><body>
 <div class="header">
 ${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
 <h1>${escHtml(title)}</h1>
-<p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} รายการ</p>
+<p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</p>
 </div>
 ${summaryBlock}
 <table>
 <thead><tr>
-<th>วันที่</th>
-<th>${col2Header}</th>
-<th class="num">ปริมาณ (ลิตร)</th>
-<th>รายละเอียด</th>
+<th>${escHtml(ui.dateCol)}</th>
+<th>${escHtml(col2Header)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th>${escHtml(ui.detailCol)}</th>
 </tr></thead>
 <tbody>${detailRows}</tbody>
 <tfoot><tr>
-<td colspan="2">รวม</td>
+<td colspan="2">${escHtml(ui.total)}</td>
 <td class="num">${escHtml(fmtLiters(totalLiters))}</td>
 <td></td>
 </tr></tfoot>
@@ -630,9 +717,11 @@ function buildPrintDetailRowsHtml(
     group: FuelPrintGroup,
     fmt: (ymd: string) => string,
     fmtLiters: (n: number) => string,
+    locale: FuelPrintLocale,
+    ui: ReturnType<typeof fuelPrintUi>,
 ): string {
     if (rows.length === 0) {
-        return '<tr><td colspan="4" class="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+        return `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`;
     }
 
     const byDate = new Map<string, FuelUsageRow[]>();
@@ -646,18 +735,18 @@ function buildPrintDetailRowsHtml(
     for (const [date, dayRows] of byDate) {
         const dayLiters = dayRows.reduce((sum, r) => sum + r.liters, 0);
         parts.push(
-            `<tr class="day-header"><td colspan="4">${escHtml(fmt(date))} · ${escHtml(fmtLiters(dayLiters))} ลิตร · ${escHtml(dayRows.length)} รายการ</td></tr>`,
+            `<tr class="day-header"><td colspan="4">${escHtml(fmt(date))} · ${escHtml(fmtLiters(dayLiters))} ${escHtml(ui.litersUnit)} · ${escHtml(dayRows.length)} ${escHtml(ui.itemsUnit)}</td></tr>`,
         );
         for (const r of dayRows) {
             if (group === 'stock_in') {
                 parts.push(`<tr>
 <td>${escHtml(fmt(r.date))}</td>
-<td>${escHtml(tankLabel(r.tank))}</td>
+<td>${escHtml(tankLabel(r.tank, locale))}</td>
 <td class="num">${escHtml(fmtLiters(r.liters))}</td>
 <td>${escHtml(r.description || '—')}</td>
 </tr>`);
             } else {
-                const desc = r.description + (r.estimated ? ' (ประมาณ)' : '');
+                const desc = r.description + (r.estimated ? ui.estimated : '');
                 parts.push(`<tr>
 <td>${escHtml(fmt(r.date))}</td>
 <td>${escHtml(r.vehicleId || '—')}</td>

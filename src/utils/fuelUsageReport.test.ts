@@ -521,6 +521,13 @@ describe('fuelPrintGroupOf', () => {
         expect(sections).toHaveLength(2);
         expect(sections[0]).toMatchObject({ id: 'receive', title: 'รับน้ำมัน', liters: 1000, count: 1 });
         expect(sections[1]).toMatchObject({ id: 'usage', title: 'ใช้น้ำมัน', liters: 40, count: 1 });
+
+        const zhSections = fuelPrintOverviewSections(report, 'zh');
+        expect(zhSections[0]?.title).toBe('รับน้ำมัน(收油)');
+        expect(zhSections[0]?.items[0]?.title).toBe('รายงานรับน้ำมันเข้า(收油报表)');
+        expect(zhSections[1]?.items.find((i) => i.group === 'macro')?.title).toBe(
+            'รายงานใช้น้ำมันรถแม็คโคร(挖掘机用油报表)',
+        );
     });
 
     it('resolves catalog vehicle ids for macro rows', () => {
@@ -647,5 +654,20 @@ describe('fuelUsageToPrintHtml', () => {
         expect(overviewHtml).toContain('ใช้น้ำมัน');
         expect(overviewHtml).toContain(fuelPrintGroupTitle('stock_in'));
         expect(overviewHtml).not.toContain('รวมทุกรายงาน');
+
+        const overviewZh = fuelUsageToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '01/08/2569 – 31/08/2569',
+            report,
+            group: 'overview',
+            fullReport: report,
+            locale: 'zh',
+        });
+        expect(overviewZh).toContain('สรุปภาพรวมรายงานการใช้น้ำมัน(燃油报表总览)');
+        expect(overviewZh).toContain('รายงานรับน้ำมันเข้า(收油报表)');
+        expect(overviewZh).toContain('收油');
+        expect(overviewZh).toContain('用油');
+        expect(overviewZh).toContain('升');
+        expect(overviewZh).toContain('笔');
     });
 });

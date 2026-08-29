@@ -26,6 +26,7 @@ import {
     shiftMonthBounds,
     yearBoundsFromYmd,
     type FuelPrintGroup,
+    type FuelPrintLocale,
     type FuelTypeFilter,
     type FuelUsageKind,
 } from '../../utils/fuelUsageReport';
@@ -186,7 +187,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
     const rangeLabel = `${formatDateBE(range.start)} – ${formatDateBE(range.end)}`;
 
-    const overviewSections = useMemo(() => fuelPrintOverviewSections(report), [report]);
+    const overviewSections = useMemo(() => fuelPrintOverviewSections(report, 'zh'), [report]);
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
@@ -215,7 +216,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         URL.revokeObjectURL(url);
     };
 
-    const printGroupReport = (group: FuelPrintGroup) => {
+    const printGroupReport = (group: FuelPrintGroup, locale: FuelPrintLocale = 'th') => {
         const grouped = group === 'overview'
             ? report
             : filterFuelUsageReport(report, group);
@@ -227,6 +228,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             group,
             fullReport: report,
             formatDate: formatDateBE,
+            locale,
         });
         const w = window.open('', '_blank');
         if (!w) return;
@@ -323,14 +325,15 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                 <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
                                 <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
                                 <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-24">พิมพ์</th>
+                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-20">พิมพ์</th>
+                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-28">พิมพ์+ภาษาจีน</th>
                             </tr>
                         </thead>
                         <tbody>
                             {overviewSections.map((section) => (
                                 <Fragment key={section.id}>
                                     <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
-                                        <td colSpan={4} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                                        <td colSpan={5} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
                                             {section.title}
                                             <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
                                                 {formatDisplayNumber(section.liters)} ลิตร · {section.count} รายการ
@@ -347,10 +350,22 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                                     type="button"
                                                     variant="ghost"
                                                     className="px-2 py-1.5 text-xs inline-flex"
-                                                    aria-label={`พิมพ์${item.title}`}
-                                                    onClick={() => printGroupReport(item.group)}
+                                                    aria-label={`พิมพ์${fuelPrintGroupTitle(item.group)}`}
+                                                    onClick={() => printGroupReport(item.group, 'th')}
                                                 >
                                                     <Printer className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                    aria-label={`พิมพ์${fuelPrintGroupTitle(item.group, 'zh')}`}
+                                                    onClick={() => printGroupReport(item.group, 'zh')}
+                                                >
+                                                    <Printer className="h-3.5 w-3.5" />
+                                                    <span className="text-[10px] font-bold">中文</span>
                                                 </Button>
                                             </td>
                                         </tr>
@@ -359,6 +374,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                         <td className="px-4 py-2.5 pl-6">รวม{section.title}</td>
                                         <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(section.liters)}</td>
                                         <td className="px-4 py-2.5 text-right tabular-nums">{section.count}</td>
+                                        <td className="px-4 py-2.5" />
                                         <td className="px-4 py-2.5" />
                                     </tr>
                                 </Fragment>
@@ -375,9 +391,21 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
                                         variant="ghost"
                                         className="px-2 py-1.5 text-xs inline-flex"
                                         aria-label={fuelPrintGroupTitle('overview')}
-                                        onClick={() => printGroupReport('overview')}
+                                        onClick={() => printGroupReport('overview', 'th')}
                                     >
                                         <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                        aria-label={fuelPrintGroupTitle('overview', 'zh')}
+                                        onClick={() => printGroupReport('overview', 'zh')}
+                                    >
+                                        <Printer className="h-3.5 w-3.5" />
+                                        <span className="text-[10px] font-bold">中文</span>
                                     </Button>
                                 </td>
                             </tr>
