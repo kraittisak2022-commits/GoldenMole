@@ -437,7 +437,7 @@ const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
     generalLabor: 'พนักงานทั่วไป',
 };
 const LABOR_EMPLOYEE_BUCKET_HINT: Record<LaborEmployeeBucket, string> = {
-    all: 'เลือกลงกล่องงานได้ทุกประเภท',
+    all: 'จากเช็คชื่อ «มาทำงาน» ของวันนี้',
     sifter: 'ตำแหน่งมีคำว่า «ร่อน»',
     excavatorMac: 'ตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น',
     nightWatch: 'ตำแหน่งเวร/เฝ้ากลางคืน',
@@ -690,6 +690,38 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             ) as Transaction[],
         [dayTransactions]
     );
+    /** พนักงานจากเช็คชื่อ «มาทำงาน» (ไม่รวมแถวค่าแรง canvas / ลางาน) */
+    const attendancePresentWorkIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const t of laborAttendanceRowsToday) {
+            const ls = String(t.laborStatus || '').trim().toLowerCase();
+            if (ls === 'leave' || ls === 'sick' || ls === 'personal' || ls === 'ot') continue;
+            const desc = String(t.description || '');
+            if (!desc.includes('เช็คชื่อ') || !desc.includes('มาทำงาน') || desc.includes('ลางาน')) {
+                continue;
+            }
+            const wa = (t.workAssignments || {}) as Record<string, string[]>;
+            for (const role of [
+                'work',
+                'half:morning',
+                'half:afternoon',
+                'macro_driver',
+                'drum',
+                'drum:morning',
+                'drum:afternoon',
+            ]) {
+                for (const id of wa[role] || []) {
+                    const v = String(id || '').trim();
+                    if (v) ids.add(v);
+                }
+            }
+            for (const id of t.employeeIds || []) {
+                const v = String(id || '').trim();
+                if (v) ids.add(v);
+            }
+        }
+        return ids;
+    }, [laborAttendanceRowsToday]);
     const mergedLaborAttendanceAssignments = useMemo(
         () =>
             mergeUnknownLaborCanvasAssignments(
@@ -930,10 +962,12 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             employees.filter(e => {
                 if (e.inactive) return false;
                 if (!isEmployeeMatchedBySearch(e, debouncedLaborSearch)) return false;
-                if (laborEmployeeBucket === 'all') return true;
+                if (laborEmployeeBucket === 'all') {
+                    return attendancePresentWorkIds.has(e.id);
+                }
                 return classifyLaborEmployeePool(e) === laborEmployeeBucket;
             }),
-        [employees, laborEmployeeBucket, debouncedLaborSearch]
+        [employees, laborEmployeeBucket, debouncedLaborSearch, attendancePresentWorkIds]
     );
     const otVisibleEmployees = useMemo(
         () => filteredLaborEmployees.slice(0, otVisibleEmployeeCount),
