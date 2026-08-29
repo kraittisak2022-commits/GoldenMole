@@ -215,7 +215,7 @@ export const WEB_LABOR_CANVAS_CATEGORY_IDS = new Set([
 ]);
 
 /** กลุ่มพนักงานในขั้นค่าแรง (ไม่รวม «ทั้งหมด») — สอดคล้อง `_LaborEmpPoolKind` บน Android */
-export type LaborEmployeePool = 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+export type LaborEmployeePool = 'sifter' | 'excavatorMac' | 'generalLabor';
 
 const MACRO_EXCAVATOR_DRIVER_TITLES = new Set(['คนขับรถแม็คโคร', 'คนขับรถแมคโคร']);
 
@@ -256,7 +256,6 @@ export const isGeneralLaborPoolEmployee = (emp: Employee): boolean =>
 export const classifyLaborEmployeePool = (emp: Employee): LaborEmployeePool | null => {
     if (isMacroExcavatorDriverEmployee(emp)) return 'excavatorMac';
     if (isSandSievePoolEmployee(emp)) return 'sifter';
-    if (isNightWatchPoolEmployee(emp)) return 'nightWatch';
     if (isGeneralLaborPoolEmployee(emp)) return 'generalLabor';
     return null;
 };
@@ -265,8 +264,7 @@ export const classifyLaborEmployeePool = (emp: Employee): LaborEmployeePool | nu
 export const LABOR_POOL_FIXED_CANVAS_IDS: Record<LaborEmployeePool, string[]> = {
     sifter: ['washSand', 'washHome', 'pierWatch'],
     excavatorMac: ['macroDriver'],
-    nightWatch: [],
-    generalLabor: [],
+    generalLabor: ['generalWork'],
 };
 
 /**
@@ -275,7 +273,7 @@ export const LABOR_POOL_FIXED_CANVAS_IDS: Record<LaborEmployeePool, string[]> = 
 export const normalizeLaborCanvasKey = (key: string): string => {
     const k = String(key || '').trim();
     if (!k) return 'generalWork';
-    if (k.startsWith(GENERAL_WORK_ASSIGNMENT_PREFIX)) return k;
+    if (k.startsWith(GENERAL_WORK_ASSIGNMENT_PREFIX)) return 'generalWork';
     if (['wash_home', 'wash_yard_house', 'sift_home', 'washHome'].includes(k)) return 'washHome';
     switch (k) {
         case 'wash1':
@@ -328,9 +326,7 @@ export const mergeLaborCanvasAssignments = (
     };
     for (const [k, ids] of Object.entries(raw)) {
         const canon = normalizeLaborCanvasKey(k);
-        if (canon.startsWith(GENERAL_WORK_ASSIGNMENT_PREFIX)) {
-            pushUnique(canon, ids);
-        } else if (WEB_LABOR_CANVAS_CATEGORY_IDS.has(canon)) {
+        if (WEB_LABOR_CANVAS_CATEGORY_IDS.has(canon)) {
             pushUnique(canon, ids);
         } else {
             pushUnique('generalWork', ids);

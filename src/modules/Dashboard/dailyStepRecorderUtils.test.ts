@@ -382,6 +382,16 @@ describe('normalizeLaborCanvasKey', () => {
             })
         ).toEqual({ generalWork: ['e1', 'e2', 'e3'] });
     });
+
+    it('merges legacy general: sub-job keys into generalWork', () => {
+        expect(normalizeLaborCanvasKey('general:abc')).toBe('generalWork');
+        expect(
+            mergeLaborCanvasAssignments({
+                'general:fence': ['e1'],
+                general: ['e2'],
+            })
+        ).toEqual({ generalWork: ['e1', 'e2'] });
+    });
 });
 
 describe('computeDayWizardStepStats', () => {
@@ -557,8 +567,8 @@ describe('classifyLaborEmployeePool (Android _laborEmpPoolKindFor)', () => {
         expect(classifyLaborEmployeePool(both)).toBe('excavatorMac');
     });
 
-    it('classifies night watch and general labor', () => {
-        expect(classifyLaborEmployeePool(emp({ id: 'n1', position: 'เฝ้ากลางคืน' }))).toBe('nightWatch');
+    it('classifies general labor; night watch is not a separate pool', () => {
+        expect(classifyLaborEmployeePool(emp({ id: 'n1', position: 'เฝ้ากลางคืน' }))).toBeNull();
         expect(classifyLaborEmployeePool(emp({ id: 'g1', positions: ['พนักงานทั่วไป'] }))).toBe(
             'generalLabor',
         );

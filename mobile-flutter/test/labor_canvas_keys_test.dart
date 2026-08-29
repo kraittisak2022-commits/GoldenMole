@@ -16,17 +16,23 @@ void main() {
     expect(normalizeLaborCanvasKey('macroDriver'), 'macro_driver');
     expect(normalizeLaborCanvasKey('macro_driver'), 'macro_driver');
     expect(normalizeLaborCanvasKey('wash_home'), 'washHome');
+    expect(normalizeLaborCanvasKey('generalWork'), 'general');
+    expect(normalizeLaborCanvasKey('general'), 'general');
   });
 
-  test('keeps Flutter canvas keys out of general work', () {
+  test('keeps fixed canvas keys (except general) out of general-only helper', () {
     for (final id in flutterLaborCanvasCategoryIds) {
       expect(normalizeLaborCanvasKey(id), id);
-      expect(isGeneralLaborAssignmentKey(normalizeLaborCanvasKey(id)), isFalse);
+      if (id == 'general') {
+        expect(isGeneralLaborAssignmentKey(id), isTrue);
+      } else {
+        expect(isGeneralLaborAssignmentKey(id), isFalse);
+      }
     }
   });
 
-  test('general sub-job keys stay prefixed', () {
-    expect(normalizeLaborCanvasKey('general:abc'), 'general:abc');
+  test('legacy general sub-job keys collapse into general box', () {
+    expect(normalizeLaborCanvasKey('general:abc'), 'general');
     expect(isGeneralLaborAssignmentKey('general:abc'), isTrue);
   });
 }

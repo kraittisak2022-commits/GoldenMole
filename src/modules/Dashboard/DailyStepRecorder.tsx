@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, Moon, LayoutGrid, Search, GripVertical } from 'lucide-react';
+import { Calendar, Users, Truck, Fuel, CheckCircle2, ChevronRight, ChevronDown, FileText, Plus, Trash2, Droplets, AlertTriangle, ClipboardList, Pencil, Wallet, Sun, Sunset, LayoutGrid, Search, GripVertical } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -102,7 +102,7 @@ const EmployeeSelectChip = memo(function EmployeeSelectChip({
     );
 });
 
-type LaborEmployeeBucket = 'all' | 'sifter' | 'excavatorMac' | 'nightWatch' | 'generalLabor';
+type LaborEmployeeBucket = 'all' | 'sifter' | 'excavatorMac' | 'generalLabor';
 
 type LaborCanvasCategoryDef = {
     id: string;
@@ -117,7 +117,6 @@ const LABOR_POOL_BUCKET_ICON: Record<LaborEmployeeBucket, typeof Droplets> = {
     all: LayoutGrid,
     sifter: Droplets,
     excavatorMac: Truck,
-    nightWatch: Moon,
     generalLabor: Users,
 };
 
@@ -289,96 +288,48 @@ const DEFAULT_WORK_CATEGORIES = [
     { id: 'macroDriver', label: 'คนขับรถแม็คโคร', shortTitle: 'คนขับแม็คโคร', color: 'bg-orange-500', bgLight: 'bg-orange-50 border-orange-200', accent: '#EF6C00' },
     { id: 'generalWork', label: 'งานทั่วไป', shortTitle: 'งานทั่วไป', color: 'bg-slate-600', bgLight: 'bg-slate-50 border-slate-200', accent: '#5F6AD8' },
 ];
-const FIXED_LABOR_CANVAS_CATEGORIES = DEFAULT_WORK_CATEGORIES.filter(c => c.id !== 'generalWork');
+const FIXED_LABOR_CANVAS_CATEGORIES = DEFAULT_WORK_CATEGORIES;
 const DEFAULT_WORK_CATEGORY_IDS = new Set(DEFAULT_WORK_CATEGORIES.map(c => c.id));
 const GENERAL_WORK_PREFIX = 'general:';
-type GeneralSubJob = { id: string; title: string };
-const newGeneralSubJobId = () => Date.now().toString(36);
-const generalSubJobAssignmentKey = (subId: string) => `${GENERAL_WORK_PREFIX}${subId}`;
 const isGeneralAssignmentKey = (key: string) =>
     key === 'generalWork' || key === 'general' || key.startsWith(GENERAL_WORK_PREFIX);
 
-const buildGeneralSubJobsFromAssignments = (
+const splitGeneralWorkDetailLines = (raw: string): string[] => {
+    const t = String(raw || '').trim();
+    if (!t) return [''];
+    if (t.includes('\n')) {
+        const lines = t.split('\n').map(s => s.trim()).filter(Boolean);
+        return lines.length > 0 ? lines : [''];
+    }
+    const parts = t.split(',').map(s => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [''];
+};
+
+const composeGeneralWorkDetails = (lines: string[]) =>
+    lines.map(s => String(s || '').trim()).filter(Boolean).join('\n');
+
+const collectGeneralWorkDetailLines = (
     wa: Record<string, string[]>,
     customCategories?: Array<{ id?: string; label?: string }>,
     legacyNote?: string
-): GeneralSubJob[] => {
+): string[] => {
     const labelByKey: Record<string, string> = {};
     for (const row of customCategories || []) {
         const id = String(row.id || '').trim();
         const label = String(row.label || '').trim();
-        if (id && label) labelByKey[id] = label;
+        if (id && label && label !== 'งานทั่วไป') labelByKey[id] = label;
     }
-    const buckets: Array<{ key: string; ids: string[] }> = [];
-    for (const [key, ids] of Object.entries(wa)) {
-        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
-        if (list.length === 0) continue;
-        if (isGeneralAssignmentKey(key) || !DEFAULT_WORK_CATEGORY_IDS.has(key)) {
-            buckets.push({ key, ids: list });
-        }
+    const fromLabels: string[] = [];
+    for (const key of Object.keys(wa)) {
+        if (!isGeneralAssignmentKey(key)) continue;
+        const label = labelByKey[key];
+        if (label && !fromLabels.includes(label)) fromLabels.push(label);
     }
-    if (buckets.length === 0) {
-        return [{ id: newGeneralSubJobId(), title: String(legacyNote || '').trim() }];
-    }
-    return buckets.map(bucket => {
-        if (bucket.key.startsWith(GENERAL_WORK_PREFIX)) {
-            return {
-                id: bucket.key.slice(GENERAL_WORK_PREFIX.length),
-                title:
-                    labelByKey[bucket.key] ||
-                    (bucket.key === 'generalWork' || bucket.key === 'general'
-                        ? String(legacyNote || '').trim()
-                        : ''),
-            };
-        }
-        return {
-            id: newGeneralSubJobId(),
-            title:
-                labelByKey[bucket.key] ||
-                (bucket.key === 'generalWork' || bucket.key === 'general'
-                    ? String(legacyNote || '').trim()
-                    : ''),
-        };
-    });
+    if (fromLabels.length > 0) return fromLabels;
+    return splitGeneralWorkDetailLines(String(legacyNote || ''));
 };
 
-const remapGeneralWorkAssignments = (
-    wa: Record<string, string[]>,
-    subJobs: GeneralSubJob[]
-): Record<string, string[]> => {
-    const out: Record<string, string[]> = {};
-    const pushUnique = (key: string, ids: string[]) => {
-        const list = (ids || []).map(id => String(id).trim()).filter(Boolean);
-        if (list.length === 0) return;
-        if (!out[key]) out[key] = [];
-        const seen = new Set(out[key]);
-        for (const id of list) {
-            if (!seen.has(id)) {
-                seen.add(id);
-                out[key].push(id);
-            }
-        }
-    };
-    for (const [k, ids] of Object.entries(wa)) {
-        if (!isGeneralAssignmentKey(k) && DEFAULT_WORK_CATEGORY_IDS.has(k)) {
-            pushUnique(k, ids);
-        }
-    }
-    const generalBuckets = Object.entries(wa).filter(
-        ([k, ids]) =>
-            (isGeneralAssignmentKey(k) || !DEFAULT_WORK_CATEGORY_IDS.has(k)) &&
-            Array.isArray(ids) &&
-            ids.length > 0
-    );
-    generalBuckets.forEach(([, ids], index) => {
-        const job = subJobs[index] || subJobs[subJobs.length - 1];
-        if (!job) return;
-        pushUnique(generalSubJobAssignmentKey(job.id), ids);
-    });
-    return out;
-};
-
-/** รวมคีย์ประเภทงานเก่า/กำหนดเอง — คงกล่อง general:… แยกตามชื่องาน */
+/** รวมคีย์ประเภทงานเก่า/กำหนดเอง — ยุบกล่อง general:… เข้า generalWork */
 const mergeUnknownLaborCanvasAssignments = (raw: Record<string, string[]> | undefined | null): Record<string, string[]> =>
     mergeLaborCanvasAssignments(sanitizeWorkAssignments(raw));
 const normalizeCategoryLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -433,17 +384,15 @@ const LABOR_EMPLOYEE_BUCKET_LABEL: Record<LaborEmployeeBucket, string> = {
     all: 'พนักงานทั้งหมด',
     sifter: 'พนักงานร่อนทราย',
     excavatorMac: 'คนขับรถแม็คโคร',
-    nightWatch: 'เฝ้ากลางคืน',
     generalLabor: 'พนักงานทั่วไป',
 };
 const LABOR_EMPLOYEE_BUCKET_HINT: Record<LaborEmployeeBucket, string> = {
     all: 'จากเช็คชื่อ «มาทำงาน» ของวันนี้',
     sifter: 'ตำแหน่งมีคำว่า «ร่อน»',
     excavatorMac: 'ตำแหน่ง «คนขับรถแม็คโคร» เท่านั้น',
-    nightWatch: 'ตำแหน่งเวร/เฝ้ากลางคืน',
     generalLabor: 'เฉพาะตำแหน่งพนักงานทั่วไป',
 };
-const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['all', 'sifter', 'excavatorMac', 'nightWatch', 'generalLabor'];
+const LABOR_EMPLOYEE_BUCKET_ORDER: LaborEmployeeBucket[] = ['all', 'sifter', 'excavatorMac', 'generalLabor'];
 const detectDefaultCubicPerTrip = (vehicleName: string, fallback: number) => {
     const name = (vehicleName || '').toLowerCase().replace(/\s+/g, '');
     if (name.includes('10ล้อ') || name.includes('สิบล้อ')) return 6;
@@ -638,7 +587,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             .join(',');
         const notesRow = [...laborAttendance]
             .reverse()
-            .find(t => String((t as any).laborGeneralWorkNotes ?? '').trim());
+            .find(t => String(t.workDetails ?? (t as any).laborGeneralWorkNotes ?? '').trim());
         const homeRow = pickLatestWithDefinedField(laborAttendance as any[], dayTransactions, 'drumsWashedAtHome') as any;
         const idsSig = laborAttendance
             .map(t => t.id)
@@ -648,7 +597,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         return [
             idsSig,
             waSig,
-            String((notesRow as any)?.laborGeneralWorkNotes ?? '').trim(),
+            String(notesRow?.workDetails ?? (notesRow as any)?.laborGeneralWorkNotes ?? '').trim(),
             halfSig,
             String(homeRow?.drumsWashedAtHome ?? ''),
         ].join('#');
@@ -928,7 +877,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const debouncedLaborSearch = useDebouncedValue(laborSearch, 220);
     const [laborEmployeeBucket, setLaborEmployeeBucket] = useState<LaborEmployeeBucket>('all');
     const [laborGeneralWorkNotes, setLaborGeneralWorkNotes] = useState('');
-    const [generalSubJobs, setGeneralSubJobs] = useState<GeneralSubJob[]>([{ id: 'default', title: '' }]);
+    const [generalWorkDetails, setGeneralWorkDetails] = useState<string[]>(['']);
     const [otVisibleEmployeeCount, setOtVisibleEmployeeCount] = useState(48);
     const [selectedEmps, setSelectedEmps] = useState<string[]>([]);
     const [laborStatus, setLaborStatus] = useState<'Work' | 'OT' | 'Leave'>('Work');
@@ -948,7 +897,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
     const [dragEmployee, setDragEmployee] = useState<string | null>(null);
     const [laborBucketExpanded, setLaborBucketExpanded] = useState<Record<string, boolean>>({});
     const laborBucketCounts = useMemo(() => {
-        const counts: Record<LaborEmployeeBucket, number> = { all: 0, sifter: 0, excavatorMac: 0, nightWatch: 0, generalLabor: 0 };
+        const counts: Record<LaborEmployeeBucket, number> = { all: 0, sifter: 0, excavatorMac: 0, generalLabor: 0 };
         for (const e of employees) {
             if (e.inactive) continue;
             counts.all += 1;
@@ -1426,9 +1375,13 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             const latest = pickLatestByDayOrder(laborAttendance as any[], dayTransactions) as any;
             const mergedWa = mergeUnknownLaborCanvasAssignments(mergeAttendanceWorkAssignments(laborAttendance));
             const notesRow =
-                [...laborAttendance].reverse().find(t => String((t as any).laborGeneralWorkNotes ?? '').trim()) ||
+                [...laborAttendance]
+                    .reverse()
+                    .find(t => String(t.workDetails ?? (t as any).laborGeneralWorkNotes ?? '').trim()) ||
                 latest;
-            const legacyNote = String((notesRow as any)?.laborGeneralWorkNotes || '').trim();
+            const legacyNote = String(
+                notesRow?.workDetails || (notesRow as any)?.laborGeneralWorkNotes || ''
+            ).trim();
             const catsSource =
                 [...laborAttendance]
                     .reverse()
@@ -1437,12 +1390,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
             const customCats = Array.isArray((catsSource as any)?.customWorkCategories)
                 ? ((catsSource as any).customWorkCategories as Array<{ id?: string; label?: string }>)
                 : [];
-            const subJobs = buildGeneralSubJobsFromAssignments(mergedWa, customCats, legacyNote);
-            setGeneralSubJobs(subJobs);
-            const remappedWa = remapGeneralWorkAssignments(mergedWa, subJobs);
-            const hasAssignedWorkers = Object.values(remappedWa).some(ids => Array.isArray(ids) && ids.length > 0);
-            setWorkAssignments(hasAssignedWorkers ? remappedWa : {});
-            setLaborGeneralWorkNotes(legacyNote);
+            const detailLines = collectGeneralWorkDetailLines(mergedWa, customCats, legacyNote);
+            setGeneralWorkDetails(detailLines);
+            const hasAssignedWorkers = Object.values(mergedWa).some(ids => Array.isArray(ids) && ids.length > 0);
+            setWorkAssignments(hasAssignedWorkers ? mergedWa : {});
+            setLaborGeneralWorkNotes(composeGeneralWorkDetails(detailLines));
             const wte = mergeAttendanceWorkTypeByEmployee(laborAttendance);
             if (Object.keys(wte).length > 0) {
                 const half = new Set<string>();
@@ -1456,7 +1408,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
         } else {
             setWorkAssignments({});
             setLaborGeneralWorkNotes('');
-            setGeneralSubJobs([{ id: newGeneralSubJobId(), title: '' }]);
+            setGeneralWorkDetails(['']);
             setHalfDayEmpIds(new Set());
         }
     }, [date, laborCanvasPersistedPrefillSignature]);
@@ -2638,124 +2590,53 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                         </>
                                                     )}
                                                     {(laborEmployeeBucket === 'generalLabor' || laborEmployeeBucket === 'all') && (
-                                                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
+                                                        <div className="mt-4 rounded-xl border border-indigo-200/80 bg-indigo-50/40 p-3">
                                                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                                <span className="text-base font-bold text-slate-700">งานทั่วไป (ชื่องาน)</span>
+                                                                <div>
+                                                                    <span className="text-base font-bold text-slate-700">รายละเอียดงาน</span>
+                                                                    <p className="text-xs text-slate-500">
+                                                                        ระบุว่าทำอะไรบ้าง — เพิ่มได้หลายรายการในวันเดียวกัน
+                                                                    </p>
+                                                                </div>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => {
-                                                                        const id = newGeneralSubJobId();
-                                                                        setGeneralSubJobs(prev => [...prev, { id, title: '' }]);
-                                                                        setWorkAssignments(prev => ({
-                                                                            ...prev,
-                                                                            [generalSubJobAssignmentKey(id)]:
-                                                                                prev[generalSubJobAssignmentKey(id)] || [],
-                                                                        }));
-                                                                    }}
+                                                                    onClick={() => setGeneralWorkDetails(prev => [...prev, ''])}
                                                                     className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-300 touch-manipulation"
                                                                 >
                                                                     + เพิ่มงาน
                                                                 </button>
                                                             </div>
-                                                            <p className="mb-2 text-xs text-slate-500">
-                                                                แยกหลายงานได้ — ลากพนักงานลงแต่ละกล่อง
-                                                            </p>
-                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                                {generalSubJobs.map(job => {
-                                                                    const bucketId = generalSubJobAssignmentKey(job.id);
-                                                                    const assigned = workAssignments[bucketId] || [];
-                                                                    const generalBase = DEFAULT_WORK_CATEGORIES.find(
-                                                                        c => c.id === 'generalWork'
-                                                                    )!;
-                                                                    const displayTitle = job.title.trim() || 'งานทั่วไป';
-                                                                    const cat: LaborCanvasCategoryDef = {
-                                                                        id: bucketId,
-                                                                        label: displayTitle,
-                                                                        shortTitle:
-                                                                            displayTitle.length > 28
-                                                                                ? `${displayTitle.slice(0, 28)}…`
-                                                                                : displayTitle,
-                                                                        color: generalBase.color,
-                                                                        bgLight: generalBase.bgLight,
-                                                                        accent: generalBase.accent,
-                                                                    };
-                                                                    const expanded =
-                                                                        laborBucketExpanded[bucketId] ?? assigned.length > 0;
-                                                                    return (
-                                                                        <div key={job.id} className="space-y-1.5">
-                                                                            <div className="flex items-center gap-1">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    value={job.title}
-                                                                                    onChange={e =>
-                                                                                        setGeneralSubJobs(prev =>
-                                                                                            prev.map(row =>
-                                                                                                row.id === job.id
-                                                                                                    ? { ...row, title: e.target.value }
-                                                                                                    : row
-                                                                                            )
-                                                                                        )
-                                                                                    }
-                                                                                    placeholder="ชื่องาน เช่น ทำรั้วสแสลม"
-                                                                                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                                                                                />
-                                                                                {generalSubJobs.length > 1 && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        title="ลบงานนี้"
-                                                                                        onClick={() => {
-                                                                                            setGeneralSubJobs(prev =>
-                                                                                                prev.filter(row => row.id !== job.id)
-                                                                                            );
-                                                                                            setWorkAssignments(prev => {
-                                                                                                const u = { ...prev };
-                                                                                                delete u[bucketId];
-                                                                                                return u;
-                                                                                            });
-                                                                                        }}
-                                                                                        className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
-                                                                                    >
-                                                                                        ×
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
-                                                                            <LaborCanvasBucketCard
-                                                                                cat={cat}
-                                                                                assigned={assigned}
-                                                                                expanded={expanded}
-                                                                                touchUI={touchUI}
-                                                                                dragActive={dragEmployee !== null}
-                                                                                selectedCount={selectedEmps.length}
-                                                                                employees={employees}
-                                                                                halfDayEmpIds={halfDayEmpIds}
-                                                                                onToggleExpanded={() =>
-                                                                                    setLaborBucketExpanded(prev => ({
-                                                                                        ...prev,
-                                                                                        [bucketId]: !expanded,
-                                                                                    }))
+                                                            <div className="space-y-2">
+                                                                {generalWorkDetails.map((line, index) => (
+                                                                    <div key={`gwd-${index}`} className="flex items-start gap-1">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={line}
+                                                                            onChange={e => {
+                                                                                const value = e.target.value;
+                                                                                setGeneralWorkDetails(prev =>
+                                                                                    prev.map((row, i) => (i === index ? value : row))
+                                                                                );
+                                                                            }}
+                                                                            placeholder={`รายละเอียดงาน ${index + 1} เช่น ทำรั้วสแสลม`}
+                                                                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                                                        />
+                                                                        {generalWorkDetails.length > 1 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                title="ลบรายละเอียดนี้"
+                                                                                onClick={() =>
+                                                                                    setGeneralWorkDetails(prev =>
+                                                                                        prev.filter((_, i) => i !== index)
+                                                                                    )
                                                                                 }
-                                                                                onDropEmployee={empId =>
-                                                                                    void assignEmployeesToLaborBucket(bucketId, [empId])
-                                                                                }
-                                                                                onRemoveEmployee={empId =>
-                                                                                    removeEmployeeFromLaborBucket(bucketId, empId)
-                                                                                }
-                                                                                onToggleHalfDay={eid =>
-                                                                                    setHalfDayEmpIds(prev => {
-                                                                                        const n = new Set(prev);
-                                                                                        if (n.has(eid)) n.delete(eid);
-                                                                                        else n.add(eid);
-                                                                                        return n;
-                                                                                    })
-                                                                                }
-                                                                                onMovePickedHere={() =>
-                                                                                    void assignEmployeesToLaborBucket(bucketId, selectedEmps)
-                                                                                }
-                                                                                onDragStartEmployee={id => setDragEmployee(id)}
-                                                                            />
-                                                                        </div>
-                                                                    );
-                                                                })}
+                                                                                className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600 touch-manipulation"
+                                                                            >
+                                                                                ×
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         </div>
                                                     )}
@@ -2777,34 +2658,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                         </div>
                                         <div className="pt-2 border-t space-y-2">
                                             <Button onClick={async () => {
-                                                for (const job of generalSubJobs) {
-                                                    const key = generalSubJobAssignmentKey(job.id);
-                                                    const count = (workAssignments[key] || []).length;
-                                                    if (count > 0 && !job.title.trim()) {
-                                                        await sessionAlert('กรุณาระบุชื่องานสำหรับงานทั่วไปที่มีพนักงาน');
-                                                        return;
-                                                    }
-                                                }
-                                                const fixedWa = Object.fromEntries(
-                                                    Object.entries(workAssignments).filter(
-                                                        ([k]) =>
-                                                            DEFAULT_WORK_CATEGORY_IDS.has(k) &&
-                                                            k !== 'generalWork'
-                                                    )
-                                                );
-                                                const generalWa = Object.fromEntries(
-                                                    generalSubJobs
-                                                        .map(job => {
-                                                            const key = generalSubJobAssignmentKey(job.id);
-                                                            const ids = workAssignments[key] || [];
-                                                            return ids.length > 0 ? [key, ids] : null;
-                                                        })
-                                                        .filter(Boolean) as Array<[string, string[]]>
-                                                );
-                                                const normalizedWa = mergeUnknownLaborCanvasAssignments({
-                                                    ...fixedWa,
-                                                    ...generalWa,
-                                                });
+                                                const normalizedWa = mergeUnknownLaborCanvasAssignments(workAssignments);
                                                 const allAssigned = Object.entries(normalizedWa).flatMap(([, ids]) => ids);
                                                 const driverWorkedToday = dayTransactions
                                                     .filter(t => t.category === 'Vehicle' && !!t.driverId)
@@ -2842,26 +2696,15 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     createdAt: existingDailyLaborTx?.createdAt || new Date().toISOString(),
                                                 };
                                                 const genNote =
-                                                    generalSubJobs
-                                                        .filter(
-                                                            job =>
-                                                                (workAssignments[generalSubJobAssignmentKey(job.id)] || [])
-                                                                    .length > 0
-                                                        )
-                                                        .map(job => job.title.trim())
-                                                        .filter(Boolean)
-                                                        .join(', ') || laborGeneralWorkNotes.trim();
+                                                    composeGeneralWorkDetails(generalWorkDetails) ||
+                                                    laborGeneralWorkNotes.trim();
                                                 const desc = Object.entries(normalizedWa)
                                                     .filter(([, ids]) => ids.length > 0)
                                                     .map(([catId, ids]) => {
                                                         const cat = DEFAULT_WORK_CATEGORIES.find(c => c.id === catId);
                                                         let baseLabel = cat?.label || catId;
-                                                        if (catId.startsWith(GENERAL_WORK_PREFIX)) {
-                                                            const subId = catId.slice(GENERAL_WORK_PREFIX.length);
-                                                            const job = generalSubJobs.find(j => j.id === subId);
-                                                            baseLabel = job?.title.trim() || 'งานทั่วไป';
-                                                        } else if (catId === 'generalWork' && genNote) {
-                                                            baseLabel = `${baseLabel} (${genNote})`;
+                                                        if (catId === 'generalWork' && genNote) {
+                                                            baseLabel = `${baseLabel} (${genNote.replace(/\n/g, ', ')})`;
                                                         }
                                                         const names = ids
                                                             .map(
@@ -2908,23 +2751,11 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                     description: `ค่าแรง (${allEmps.length} คน) ${workLabel}${desc ? ` [${desc}]` : ''}${driverOnlyNames ? ` [คนขับจากงานใช้รถ: ${driverOnlyNames}]` : ''}`,
                                                     amount: total,
                                                     workAssignments: { ...normalizedWa },
-                                                    customWorkCategories: [
-                                                        ...FIXED_LABOR_CANVAS_CATEGORIES.map(c => ({
-                                                            id: c.id,
-                                                            label: c.label,
-                                                        })),
-                                                        ...generalSubJobs
-                                                            .filter(
-                                                                job =>
-                                                                    (workAssignments[
-                                                                        generalSubJobAssignmentKey(job.id)
-                                                                    ] || []).length > 0
-                                                            )
-                                                            .map(job => ({
-                                                                id: generalSubJobAssignmentKey(job.id),
-                                                                label: job.title.trim() || 'งานทั่วไป',
-                                                            })),
-                                                    ],
+                                                    workDetails: genNote || undefined,
+                                                    customWorkCategories: FIXED_LABOR_CANVAS_CATEGORIES.map(c => ({
+                                                        id: c.id,
+                                                        label: c.label,
+                                                    })),
                                                     ...(drumsHome !== undefined ? { drumsWashedAtHome: drumsHome } : {}),
                                                 };
                                                 if (hasSemanticNearDuplicate(t as Transaction, { ignoreId: existingDailyLaborTx?.id })) {
@@ -2939,7 +2770,7 @@ const DailyStepRecorder = ({ employees, settings, transactions, initialDate, ini
                                                 setSelectedEmps([]);
                                                 setWorkAssignments({});
                                                 setLaborGeneralWorkNotes('');
-                                                setGeneralSubJobs([{ id: newGeneralSubJobId(), title: '' }]);
+                                                setGeneralWorkDetails(['']);
                                                 setHalfDayEmpIds(new Set());
                                                 if (drumsHome !== undefined) setDrumsWashedAtHome('');
                                             }} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 text-base focus-ring-strong" data-hotkey-primary="true">
